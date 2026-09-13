@@ -28,6 +28,7 @@ import { AppearanceController } from "./lib/appearance.tsx";
 import { installClientBusOnlineBridge } from "./lib/client-bus-online.ts";
 import { prefetchCloudWorkspaceSession } from "./lib/cloud-workspace-session-cache.ts";
 import { clearControlPlaneSessionCache } from "./lib/control-plane-client.ts";
+import { ExtensionHostController } from "./lib/extension-registry.tsx";
 
 import { markRendererStartupMilestone } from "./lib/performance-marks.ts";
 
@@ -44,6 +45,12 @@ import { useProvidersStore } from "./store/providers.ts";
 import { useUiStore } from "./store/ui.ts";
 
 import { useWorkspaceStore } from "./store/workspace.ts";
+
+const ExtensionSurfaceHost = lazy(() =>
+	import("./lib/extension-surfaces.tsx").then((module) => ({
+		default: module.ExtensionSurfaceHost,
+	})),
+);
 
 const PrWatchController = lazy(() =>
 	import("./components/pr-watch-controller.tsx").then((module) => ({
@@ -124,6 +131,10 @@ export function App({ onReady }: { readonly onReady?: () => void }) {
 	);
 	return (
 		<>
+			<ExtensionHostController />
+			<Suspense fallback={null}>
+				<ExtensionSurfaceHost />
+			</Suspense>
 			<ReadyApp
 				onboardingCompleted={onboardingCompleted}
 				onReady={onReady}

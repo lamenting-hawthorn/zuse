@@ -35,6 +35,7 @@ export type SettingsSection =
 	| { readonly kind: "general" }
 	| { readonly kind: "defaults" }
 	| { readonly kind: "providers" }
+	| { readonly kind: "extensions" }
 	| { readonly kind: "integrations" }
 	| { readonly kind: "mcp" }
 	| { readonly kind: "devices" }
@@ -51,7 +52,18 @@ export type SettingsSection =
  * the file tab only exists when `openFile !== null`. Opening a different file
  * replaces (never stacks) the file tab — see specs/0.02-MVP/features/file-viewer.md.
  */
-export type MainTab = "chat" | "file" | "changes" | "archives" | "usage";
+export type MainTab =
+	| "chat"
+	| "file"
+	| "changes"
+	| "archives"
+	| "usage"
+	| "extension";
+
+export interface ExtensionPanelRef {
+	readonly extensionId: string;
+	readonly panelId: string;
+}
 
 /**
  * Whether the Usage dashboard shows every project's usage (`global`, opened
@@ -194,6 +206,7 @@ type UiState = {
 	readonly setFileSearchOpen: (open: boolean) => void;
 	readonly setSettingsSection: (section: SettingsSection) => void;
 	readonly activeMainTab: MainTab;
+	readonly extensionPanel: ExtensionPanelRef | null;
 	readonly usageScope: UsageScope;
 	readonly openFile: OpenFile | null;
 	readonly changesTabOpen: boolean;
@@ -225,6 +238,8 @@ type UiState = {
 	readonly selectedSubagentByChat: Record<string, string | null>;
 	readonly revealedAnnotation: RevealedAnnotation | null;
 	readonly setActiveMainTab: (tab: MainTab) => void;
+	readonly openExtensionPanel: (panel: ExtensionPanelRef) => void;
+	readonly closeExtensionPanel: () => void;
 	/** Open the Usage dashboard in the main pane at the given scope. */
 	readonly openUsage: (scope: UsageScope) => void;
 	readonly openFileInTab: (
@@ -556,6 +571,7 @@ export const useUiStore = create<UiState>((set, get) => ({
 		set({ settingsSection: section });
 	},
 	activeMainTab: "chat",
+	extensionPanel: null,
 	usageScope: "global",
 	openFile: null,
 	changesTabOpen: false,
@@ -579,6 +595,17 @@ export const useUiStore = create<UiState>((set, get) => ({
 			return;
 		}
 		set({ activeMainTab: tab });
+	},
+	openExtensionPanel: (extensionPanel) => {
+		const open = () =>
+			set({ view: "chat", activeMainTab: "extension", extensionPanel });
+		if (get().activeMainTab === "changes") requestReviewLeave(open);
+		else open();
+	},
+	closeExtensionPanel: () => {
+		const close = () => set({ activeMainTab: "chat", extensionPanel: null });
+		if (get().activeMainTab === "changes") requestReviewLeave(close);
+		else close();
 	},
 	openUsage: (scope) =>
 		set({ view: "chat", activeMainTab: "usage", usageScope: scope }),

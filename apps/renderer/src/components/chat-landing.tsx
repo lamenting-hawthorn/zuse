@@ -1,4 +1,5 @@
 import "@zuse/i18n/english/shell";
+import { runtimeDefaultModelFor as defaultModelFor } from "@zuse/client-runtime/provider-selection";
 import { subscribeControlPlaneSessionCache } from "~/lib/control-plane-client.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import "@zuse/i18n/english/common";
@@ -17,7 +18,6 @@ import {
 	type CloudProviderOption,
 	CommandId,
 	ComposerInput,
-	defaultModelFor,
 	EnvironmentId,
 	type ExternalThread,
 	type FolderId,
@@ -102,6 +102,7 @@ import {
 	type PreparedLinearContext,
 	transferLinearContext,
 } from "~/lib/linear-cloud-context";
+import { resolveReadyProvider } from "~/lib/model-picker-availability";
 import { newChatPreferences } from "~/lib/new-chat-preferences";
 import {
 	captureNewChatLanding,
@@ -134,6 +135,7 @@ import {
 import { useEnvironmentCatalogStore } from "~/store/environment-catalog";
 import { useExternalThreadsStore } from "~/store/external-threads";
 import { currentModelCatalog } from "~/store/model-catalog";
+import { useProvidersStore } from "~/store/providers";
 import { DRAFT_SESSION_ID, useSessionsStore } from "~/store/sessions";
 import { useUiStore } from "~/store/ui";
 import { useWorkspaceStore } from "~/store/workspace";
@@ -270,8 +272,28 @@ export function ChatLanding() {
 	);
 
 	const defaultProviderId = useSettingsStore((s) => s.defaultProviderId);
+	const providerEnabled = useSettingsStore((s) => s.providerEnabled);
 	const defaultModelByProvider = useSettingsStore(
 		(s) => s.defaultModelByProvider,
+	);
+	const providerAvailability = useProvidersStore((s) => s.availability);
+	const providerAvailabilityLoaded = useProvidersStore(
+		(s) => s.availabilityLoaded,
+	);
+	const effectiveDefaultProviderId = useMemo(
+		() =>
+			resolveReadyProvider({
+				preferred: defaultProviderId,
+				availability: providerAvailability,
+				providerEnabled,
+				availabilityLoaded: providerAvailabilityLoaded,
+			}),
+		[
+			defaultProviderId,
+			providerAvailability,
+			providerAvailabilityLoaded,
+			providerEnabled,
+		],
 	);
 	const activeEnvironmentId = useEnvironmentCatalogStore(
 		(s) => s.activeEnvironmentId,
@@ -703,6 +725,7 @@ export function ChatLanding() {
 	// edits the user makes inside the composer mutate the draft in place, so we
 	// must not clobber them on unrelated default-settings changes.
 	useLayoutEffect(() => {
+		if (!providerAvailabilityLoaded) return;
 		let cancelled = false;
 		// A create-from source is scoped to the project it was picked in, and a
 		// "Run on" override to the draft it was picked for.
@@ -723,10 +746,10 @@ export function ChatLanding() {
 				if (cancelled) return;
 				beginDraft({
 					projectId: draftFolderId,
-					providerId: defaultProviderId,
+					providerId: effectiveDefaultProviderId,
 					model:
-						defaultModelByProvider[defaultProviderId] ??
-						defaultModelFor(currentModelCatalog(), defaultProviderId),
+						defaultModelByProvider[effectiveDefaultProviderId] ??
+						defaultModelFor(currentModelCatalog(), effectiveDefaultProviderId),
 					runtimeMode,
 				});
 			},
@@ -742,7 +765,13 @@ export function ChatLanding() {
 			clearDraft();
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [activeEnvironmentId, selectedFolderId, remoteAnchor, draftAttempt]);
+	}, [
+		activeEnvironmentId,
+		selectedFolderId,
+		remoteAnchor,
+		draftAttempt,
+		providerAvailabilityLoaded,
+	]);
 
 	const headline =
 		anchoredGroup !== null
