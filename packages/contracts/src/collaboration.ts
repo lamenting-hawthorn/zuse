@@ -115,6 +115,7 @@ export const CollaborationAuditAction = Schema.Literals([
 	"invite.accepted",
 	"invite.revoked",
 	"workspace.grant_set",
+	"workspace.shared",
 	"workspace.grant_removed",
 ]);
 export type CollaborationAuditAction = typeof CollaborationAuditAction.Type;

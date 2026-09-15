@@ -20,8 +20,9 @@ import {
 	type TeamMemberId,
 	WorkspaceGrant,
 } from "@zuse/contracts";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { SqlClient } from "effect/unstable/sql";
+import { ConnectionIdentity } from "../../lan-auth/services/connection-identity.ts";
 
 import {
 	type CollaborationProfile,
@@ -782,6 +783,41 @@ export const CollaborationServiceLive = Layer.effect(
 				return asGrant(row);
 			});
 
+		const shareWorkspace = Effect.fn("CollaborationService.shareWorkspace")(
+			function* (actor: ActorIdentity, chatId: ChatId) {
+				const identity = yield* Effect.serviceOption(ConnectionIdentity);
+				if (Option.isNone(identity) || identity.value.kind !== "local")
+					return yield* denied("host_authorization_required");
+				yield* validateActor(actor, "owner");
+				yield* sql.withTransaction(
+					Effect.gen(function* () {
+						yield* validateActor(actor, "owner", false);
+						const chats = yield* sql`SELECT id FROM chats WHERE id = ${chatId}`;
+						if (chats.length === 0)
+							return yield* new CollaborationNotFoundError({
+								resource: "chat",
+							});
+						const workspace = yield* sql<{
+							readonly team_id: string;
+						}>`SELECT team_id FROM collaboration_workspaces WHERE chat_id = ${chatId}`;
+						if (workspace[0] !== undefined) {
+							if (workspace[0].team_id !== actor.teamId)
+								return yield* denied("workspace_belongs_to_another_team");
+							return;
+						}
+						yield* sql`INSERT INTO collaboration_workspaces (chat_id, team_id) VALUES (${chatId}, ${actor.teamId})`;
+						yield* appendAudit({
+							teamId: actor.teamId,
+							actorMemberId: actor.memberId,
+							action: "workspace.shared",
+							resourceKind: "chat",
+							resourceId: chatId,
+						});
+					}),
+				);
+			},
+		);
+
 		const setWorkspaceGrant = (
 			actor: ActorIdentity,
 			chatId: ChatId,
@@ -816,12 +852,10 @@ export const CollaborationServiceLive = Layer.effect(
 						const workspace = yield* sql<{
 							readonly team_id: string;
 						}>`SELECT team_id FROM collaboration_workspaces WHERE chat_id = ${chatId}`;
-						if (
-							workspace[0] !== undefined &&
-							workspace[0].team_id !== actor.teamId
-						)
+						if (workspace[0] === undefined)
+							return yield* denied("workspace_not_shared");
+						if (workspace[0].team_id !== actor.teamId)
 							return yield* denied("workspace_belongs_to_another_team");
-						yield* sql`INSERT INTO collaboration_workspaces (chat_id, team_id) VALUES (${chatId}, ${actor.teamId}) ON CONFLICT (chat_id) DO NOTHING`;
 						yield* sql`
 							INSERT INTO collaboration_chat_grants
 								(team_id, chat_id, member_id, role, granted_by_member_id,
@@ -936,6 +970,8 @@ export const CollaborationServiceLive = Layer.effect(
 				setWorkspaceGrant(...args).pipe(
 					Effect.catchTag("SqlError", Effect.die),
 				),
+			shareWorkspace: (...args) =>
+				shareWorkspace(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			removeWorkspaceGrant: (...args) =>
 				removeWorkspaceGrant(...args).pipe(
 					Effect.catchTag("SqlError", Effect.die),

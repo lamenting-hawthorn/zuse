@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { CollaborationServiceLive } from "../../src/collaboration/layers/collaboration-service.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
 import { OrganizationAuthority } from "../../src/collaboration/services/organization-authority.ts";
+import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const makeRuntime = (
@@ -169,6 +170,49 @@ describe("CollaborationService", () => {
 				yield* sql`INSERT INTO projects (id, path, name, created_at, updated_at) VALUES ('project-org', '/tmp/project-org', 'Org', ${now}, ${now})`;
 				yield* sql`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES ('chat-org', 'project-org', 'Private', ${now}, ${now})`;
 				const chatId = "chat-org" as ChatId;
+				expect(
+					yield* service
+						.setWorkspaceGrant(first.actor, chatId, driver.memberId, "driver")
+						.pipe(Effect.flip),
+				).toMatchObject({ reason: "workspace_not_shared" });
+				expect(
+					yield* service.shareWorkspace(first.actor, chatId).pipe(Effect.flip),
+				).toMatchObject({ reason: "host_authorization_required" });
+				expect(
+					yield* service.shareWorkspace(first.actor, chatId).pipe(
+						Effect.provideService(ConnectionIdentity, {
+							kind: "account",
+							subject: first.actor.subject,
+							expiresAt: Date.now() + 60_000,
+						}),
+						Effect.flip,
+					),
+				).toMatchObject({ reason: "host_authorization_required" });
+				yield* service
+					.shareWorkspace(first.actor, chatId)
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				expect(
+					yield* service
+						.shareWorkspace(other.actor, chatId)
+						.pipe(
+							Effect.provideService(ConnectionIdentity, { kind: "local" }),
+							Effect.flip,
+						),
+				).toMatchObject({ reason: "workspace_belongs_to_another_team" });
+				expect(
+					yield* service
+						.shareWorkspace(driver, chatId)
+						.pipe(
+							Effect.provideService(ConnectionIdentity, { kind: "local" }),
+							Effect.flip,
+						),
+				).toMatchObject({ _tag: "CollaborationAccessDeniedError" });
+				yield* service
+					.shareWorkspace(first.actor, chatId)
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				const sharingEvents =
+					yield* sql`SELECT id FROM collaboration_audit_events WHERE action = 'workspace.shared' AND resource_id = ${chatId}`;
+				expect(sharingEvents).toHaveLength(1);
 				yield* service.setWorkspaceGrant(
 					first.actor,
 					chatId,
@@ -234,6 +278,9 @@ describe("CollaborationService", () => {
 					yield* sql`INSERT INTO projects (id, path, name, created_at, updated_at) VALUES ('project-rejoin', '/tmp/project-rejoin', 'Org', ${now}, ${now})`;
 					yield* sql`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES ('chat-rejoin', 'project-rejoin', 'Private', ${now}, ${now})`;
 					const chatId = "chat-rejoin" as ChatId;
+					yield* service
+						.shareWorkspace(actor, chatId)
+						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
 					yield* service.setWorkspaceGrant(
 						actor,
 						chatId,
@@ -502,6 +549,11 @@ describe("CollaborationService", () => {
 		);
 
 		const chatId = "chat-collab" as ChatId;
+		await runtime.runPromise(
+			result.collaboration
+				.shareWorkspace(result.owner, chatId)
+				.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
+		);
 		await expect(
 			runtime.runPromise(
 				result.collaboration.requireWorkspaceRole(
