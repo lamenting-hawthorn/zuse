@@ -215,9 +215,11 @@ const nowIso = Effect.map(Clock.currentTimeMillis, (ms) =>
 );
 
 const toLanAuthError = (cause: unknown): LanAuthError =>
-	new LanAuthError({
-		reason: cause instanceof Error ? cause.message : String(cause),
-	});
+	cause instanceof LanAuthError
+		? cause
+		: new LanAuthError({
+				reason: cause instanceof Error ? cause.message : String(cause),
+			});
 
 const configuredHost = (
 	advertisedHost: string | null,
@@ -236,6 +238,7 @@ export const LanAuthServiceLive = Layer.effect(
 		const sql = yield* SqlClient.SqlClient;
 		const config = yield* LanAuthConfig;
 		const pairingCodes = yield* Ref.make(new Map<string, PairingCodeState>());
+		const pairingEndpoint = yield* Ref.make<string | undefined>(undefined);
 		const nearbyPairings = yield* Ref.make(
 			new Map<string, NearbyPairingState>(),
 		);
@@ -696,8 +699,44 @@ export const LanAuthServiceLive = Layer.effect(
 			},
 		);
 
-		const makePairingUrls = (code: string) =>
+		const makePairingUrls = (
+			code: string,
+			endpoint?: { readonly httpBaseUrl: string },
+		) =>
 			Effect.gen(function* () {
+				const httpBaseUrl =
+					endpoint?.httpBaseUrl ?? (yield* Ref.get(pairingEndpoint));
+				if (httpBaseUrl !== undefined) {
+					const base = yield* Effect.try({
+						try: () => new URL(httpBaseUrl),
+						catch: () =>
+							new LanAuthError({ reason: "invalid_pairing_endpoint" }),
+					});
+					if (
+						!["http:", "https:"].includes(base.protocol) ||
+						base.username ||
+						base.password ||
+						base.search ||
+						base.hash ||
+						base.port === "0"
+					) {
+						return yield* new LanAuthError({
+							reason: "invalid_pairing_endpoint",
+						});
+					}
+					const browserUrl = buildBrowserPairUrl({
+						httpBaseUrl: base.toString(),
+						code,
+					});
+					if (endpoint !== undefined)
+						yield* Ref.set(pairingEndpoint, base.toString());
+					base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+					return {
+						pairingUrl: base.toString().replace(/\/$/u, ""),
+						browserUrl,
+						qrText: browserUrl,
+					};
+				}
 				if (config.port === null) {
 					return yield* Effect.fail(
 						new LanAuthError({ reason: "no_pairing_endpoint" }),
@@ -802,12 +841,12 @@ export const LanAuthServiceLive = Layer.effect(
           `;
 					return rows.length > 0;
 				}).pipe(Effect.mapError(toLanAuthError)),
-			createPairingCode: () =>
+			createPairingCode: (endpoint) =>
 				Effect.gen(function* () {
 					const code = yield* randomShortPairingCode;
 					const now = yield* Clock.currentTimeMillis;
 					const expiresAtMs = now + PAIRING_TTL_MS;
-					const urls = yield* makePairingUrls(code);
+					const urls = yield* makePairingUrls(code, endpoint);
 					yield* Ref.update(pairingCodes, (codes) => {
 						const next = new Map(
 							[...codes].filter(([, entry]) => entry.expiresAtMs > now),

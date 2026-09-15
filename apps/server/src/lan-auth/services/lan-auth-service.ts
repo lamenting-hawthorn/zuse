@@ -86,7 +86,10 @@ export interface LanAuthServiceShape {
 	>;
 	readonly revokeToken: (id: AuthTokenId) => Effect.Effect<void, LanAuthError>;
 	readonly hasActiveTokens: () => Effect.Effect<boolean, LanAuthError>;
-	readonly createPairingCode: () => Effect.Effect<
+	/** A transport's resolved endpoint is reused for subsequent codes during this runtime. */
+	readonly createPairingCode: (endpoint?: {
+		readonly httpBaseUrl: string;
+	}) => Effect.Effect<
 		{
 			readonly code: string;
 			readonly expiresAt: Date;

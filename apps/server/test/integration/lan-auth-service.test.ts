@@ -162,6 +162,49 @@ describe("LanAuthService", () => {
 		});
 	});
 
+	it("uses a resolved transport endpoint consistently for browser and native pairing", async () => {
+		await withRuntime(async (run) => {
+			await run(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					for (const httpBaseUrl of [
+						"http://localhost:32123",
+						"https://vps.example.test",
+						"http://[::1]:32123",
+					]) {
+						const pairing = yield* auth.createPairingCode({ httpBaseUrl });
+						expect(pairing.browserUrl).toBe(
+							`${httpBaseUrl}/#pair=${pairing.code}`,
+						);
+						expect(pairing.qrText).toBe(pairing.browserUrl);
+						expect(pairing.pairingUrl).toBe(
+							httpBaseUrl.replace(/^http/u, "ws"),
+						);
+						const redeemed = yield* auth.redeemPairingCode(pairing.code);
+						expect(yield* auth.verifyToken(redeemed.token)).toBe(true);
+						const subsequent = yield* auth.createPairingCode();
+						expect(subsequent.browserUrl).toBe(
+							`${httpBaseUrl}/#pair=${subsequent.code}`,
+						);
+					}
+					for (const httpBaseUrl of [
+						"javascript:alert(1)",
+						"http://user:password@localhost",
+						"http://localhost:0",
+						"https://example.test/?secret=value",
+						"https://example.test/#token",
+					]) {
+						const failure = yield* auth
+							.createPairingCode({ httpBaseUrl })
+							.pipe(Effect.flip);
+						expect(failure._tag).toBe("LanAuthError");
+						expect(failure.reason).toBe("invalid_pairing_endpoint");
+					}
+				}),
+			);
+		});
+	});
+
 	it("redeems pairing codes once and returns a usable bearer", async () => {
 		await withRuntime(async (run) => {
 			const result = await run(

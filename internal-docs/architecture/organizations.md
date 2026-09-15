@@ -119,10 +119,25 @@ and eventual multi-client session tests once the sharing transport is implemente
 - Full headless system suite with the renderer bundled: 13 tests passed and four
   failed. All four failures reproduced with branch changes stashed on unmodified
   `512f0f77`: protected-socket connection refused; legacy fixture missing
-  `relay_config` at migration 52; an extra permission request after restart (plus
+  its pre-rename configuration table at migration 52; an extra permission request after restart (plus
   an interrupted-fiber rejection); and browser pairing startup failing with
   `LanAuthError`. An earlier missing-HTML failure was resolved by building and
   copying the renderer through the existing packaging script.
 - Desktop package tests, real SSH installation across the OS/architecture matrix,
   and live WorkOS acceptance were not verified. Browser settings QA used the real
   component with mocked account API responses, not production credentials.
+
+### Resolved pairing startup failure
+
+The protected-socket and browser-pairing failures above were traced to pairing
+requiring LAN address discovery even when the transport already had a resolved
+endpoint. This matters on tunnel-only hosts and machines with no routable IPv4 LAN
+interface. The auth service now accepts the transport's resolved HTTP(S) base URL
+when minting a pairing code. Browser, native, QR, and redemption URLs continue to
+come from that single source. Ephemeral wildcard listeners advertise localhost for
+their local browser URL; configured public and managed HTTPS origins retain priority.
+
+The production startup, protected-socket rejection, and browser pairing/reload system
+checks now pass. Auth integration checks also cover HTTPS, IPv6, one-use codes, and
+rejection of credential-bearing, non-HTTP, or unresolved-port endpoints. This fixes
+pairing reliability; it does not yet enable account-only or cross-account sharing.

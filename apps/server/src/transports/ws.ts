@@ -4,7 +4,6 @@ import * as https from "node:https";
 import { NodeHttpServer } from "@effect/platform-node";
 import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import {
-	buildBrowserPairUrl,
 	formatPairingCodeForDisplay,
 	MemoizeRpcs,
 	WIRE_PROTOCOL_VERSION,
@@ -825,7 +824,6 @@ export const wsServerProtocolLayer = (
 				(auth.policy === "protected" || api?.tunnelHostname !== undefined) &&
 				auth.pairingBootstrap
 			) {
-				const pairing = yield* auth.createPairingCode();
 				// One reachable origin drives every printed link: explicit public
 				// origin > managed tunnel > actual listener (ephemeral port) >
 				// the server-issued LAN pairing. Browser URL, deep link, and the
@@ -836,17 +834,14 @@ export const wsServerProtocolLayer = (
 					(api?.tunnelHostname !== undefined
 						? `https://${api.tunnelHostname}`
 						: opts.port === 0 && listeningAddress !== null
-							? `${opts.tls === undefined ? "http" : "https"}://${listeningAddress.host}:${listeningAddress.port}`
+							? `${opts.tls === undefined ? "http" : "https"}://${listeningAddress.host === "0.0.0.0" || listeningAddress.host === "::" ? "localhost" : listeningAddress.host.includes(":") ? `[${listeningAddress.host}]` : listeningAddress.host}:${listeningAddress.port}`
 							: null);
-				const browserUrl =
-					httpBaseUrl !== null
-						? buildBrowserPairUrl({ httpBaseUrl, code: pairing.code })
-						: pairing.browserUrl;
+				const pairing = yield* auth.createPairingCode(
+					httpBaseUrl === null ? undefined : { httpBaseUrl },
+				);
+				const browserUrl = pairing.browserUrl;
 				const qrText = browserUrl;
-				const redeemBaseUrl =
-					httpBaseUrl ?? pairing.pairingUrl.replace(/^ws:/u, "http:");
-				const baseUrl =
-					httpBaseUrl ?? pairing.browserUrl.replace(/\/#pair=.*$/u, "");
+				const baseUrl = browserUrl.replace(/\/#pair=.*$/u, "");
 				yield* Effect.sync(() => {
 					console.log("Zuse browser pairing enabled");
 					console.log(`Browser: ${browserUrl}`);
@@ -858,7 +853,7 @@ export const wsServerProtocolLayer = (
 						`Remote access: ${api?.tunnelHostname === undefined ? "inactive" : "active"}`,
 					);
 					console.log(
-						`Redeem with: POST ${redeemBaseUrl}/pair {"code":"${pairing.code}"}`,
+						`Redeem with: POST ${baseUrl}/pair {"code":"${pairing.code}"}`,
 					);
 					opts.onPairing?.({
 						browserUrl,
