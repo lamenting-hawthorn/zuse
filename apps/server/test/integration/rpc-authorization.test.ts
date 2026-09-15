@@ -23,6 +23,10 @@ const Rpcs = RpcGroup.make(
 		payload: { sessionId: SessionId },
 		success: Schema.String,
 	}),
+	Rpc.make("attachments.read", {
+		payload: { sessionId: SessionId, id: Schema.String },
+		success: Schema.String,
+	}),
 	Rpc.make("session.events", {
 		payload: { sessionId: SessionId },
 		success: Schema.String,
@@ -32,6 +36,7 @@ const Rpcs = RpcGroup.make(
 ).middleware(RpcAuthorization);
 const handlers = Rpcs.toLayer({
 	"session.get": () => Effect.succeed("transcript"),
+	"attachments.read": () => Effect.succeed("attachment"),
 	"session.events": () =>
 		Stream.concat(Stream.succeed("connected"), Stream.never),
 	"host.secret": () => Effect.succeed("host-only"),
@@ -163,6 +168,22 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				client("session.get", { sessionId: SessionId.make("shared-session") }),
 			),
 		).resolves.toBe("transcript");
+		await expect(
+			call(guestIdentity, (client) =>
+				client("attachments.read", {
+					sessionId: SessionId.make("shared-session"),
+					id: "attachment_1",
+				}),
+			),
+		).resolves.toBe("attachment");
+		await expect(
+			call(guestIdentity, (client) =>
+				client("attachments.read", {
+					sessionId: SessionId.make("private-session"),
+					id: "attachment_1",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
 		await expect(
 			call(guestIdentity, (client) =>
 				client("session.get", { sessionId: SessionId.make("private-session") }),

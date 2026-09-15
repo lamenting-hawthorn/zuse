@@ -52,6 +52,7 @@ export const RpcAuthorizationLive = Layer.effect(
 					} else {
 						switch (rpc._tag) {
 							case "session.get":
+							case "attachments.read":
 							case "messages.list":
 							case "session.events":
 							case "session.events.head":

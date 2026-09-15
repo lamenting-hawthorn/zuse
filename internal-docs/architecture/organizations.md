@@ -99,7 +99,7 @@ All public RPCs now carry `RpcAuthorization`. Native IPC and explicitly paired d
 retain existing host authority. Verified same-account connections retain host access;
 other account identities are denied by default. The initial guest allowlist covers
 `chat.get`, `session.get`, `messages.list`, `session.events`, `session.events.head`, and
-`session.messages.page`, each checked against the actual session-to-chat binding and
+`session.messages.page`, and `attachments.read`, each checked against the actual session-to-chat binding and
 an explicit workspace grant (or that workspace's organization-owner role).
 
 Account streams recheck external authority every 20 seconds and at credential expiry.
@@ -114,10 +114,17 @@ server-side WorkOS membership lookup uses host authority, while general guest RP
 cannot obtain or use the host's account token.
 
 Before enabling cross-account environment discovery, finish scoped
-environment/catalog views, HTTP attachment authorization, and
+environment/catalog views and
 workspace-scoped file/Git/terminal/agent operations. These remain denied to guests.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
+
+Legacy HTTP attachment URLs are deliberately host-only: verified account credentials
+must match the signed-in host account, while explicitly paired devices retain access.
+Responses use `private, no-store` so browsers do not reuse authenticated downloads after
+revocation. Teammate attachment reads use the existing session-scoped RPC; its storage
+lookup matches both attachment ID and session ID. The browser's legacy URL consumers
+still need to use that scoped path before enabling teammate discovery.
 
 The branch's presence, control-lease, notes, and collaborative-document contracts are
 foundation types only. They do not implement CRDT editing, transferable terminal

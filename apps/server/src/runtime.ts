@@ -760,6 +760,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 					Layer.provide(
 						Layer.mergeAll(
 							EnrolledLanAuthLayer,
+							AuthLayer,
 							AttachmentLayer,
 							DeviceBridgeLayer,
 						),

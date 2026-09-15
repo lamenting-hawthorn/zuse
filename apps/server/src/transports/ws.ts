@@ -13,7 +13,7 @@ import {
 	makeRpcPayloadReporter,
 } from "@zuse/utils/rpc-payload-metrics";
 import { fetchSiteFavicon } from "@zuse/utils/site-favicon";
-import { Effect, FileSystem, Layer, Schema } from "effect";
+import { Effect, FileSystem, Layer, Option, Schema } from "effect";
 import {
 	HttpIncomingMessage,
 	HttpRouter,
@@ -23,6 +23,7 @@ import {
 } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 import { CompactSign, importJWK } from "jose";
+import { AuthService } from "../auth/services/auth-service.ts";
 import { DeviceBridgeService } from "../device-bridge/service.ts";
 import { ConnectionIdentity } from "../lan-auth/services/connection-identity.ts";
 import {
@@ -514,6 +515,7 @@ export const wsServerProtocolLayer = (
 		RpcServer.Protocol,
 		Effect.gen(function* () {
 			const bridge = yield* Effect.serviceOption(DeviceBridgeService);
+			const hostAuth = yield* Effect.serviceOption(AuthService);
 			const auth = yield* LanAuthService;
 			const attachments = yield* AttachmentService;
 			const log = opts.onDiagnostic ?? (() => {});
@@ -766,13 +768,29 @@ export const wsServerProtocolLayer = (
 							browserSecurity.trustProxy,
 						)
 					) {
-						const authenticated =
-							credential !== null &&
-							(yield* auth
-								.verifyToken(credential)
-								.pipe(Effect.orElseSucceed(() => false)));
-						if (!authenticated) {
+						const identity =
+							credential === null
+								? null
+								: yield* auth
+										.authenticateToken(credential)
+										.pipe(Effect.orElseSucceed(() => null));
+						if (identity === null) {
 							return yield* json({ error: "unauthorized" }, 401);
+						}
+						// This legacy URL has no session scope. A teammate must use
+						// attachments.read, which verifies both workspace access and
+						// the attachment's session, rather than an unscoped ID lookup.
+						if (identity.kind === "account") {
+							const session = Option.isSome(hostAuth)
+								? yield* hostAuth.value.getSession()
+								: null;
+							if (
+								identity.expiresAt <= Date.now() ||
+								session?._tag !== "SignedIn" ||
+								session.session.user.id !== identity.subject
+							) {
+								return yield* json({ error: "forbidden" }, 403);
+							}
 						}
 					}
 					const pathname = new URL(request.url, "http://localhost").pathname;
@@ -791,7 +809,7 @@ export const wsServerProtocolLayer = (
 					if (asset === null) return yield* json({ error: "not_found" }, 404);
 					return HttpServerResponse.uint8Array(asset.bytes, {
 						contentType: asset.mimeType,
-						headers: { "cache-control": "private, max-age=3600" },
+						headers: { "cache-control": "private, no-store" },
 					});
 				}),
 			);
