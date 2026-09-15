@@ -24,6 +24,7 @@ import {
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 import { CompactSign, importJWK } from "jose";
 import { DeviceBridgeService } from "../device-bridge/service.ts";
+import { ConnectionIdentity } from "../lan-auth/services/connection-identity.ts";
 import {
 	LanAuthService,
 	type LanAuthServiceShape,
@@ -564,6 +565,7 @@ export const wsServerProtocolLayer = (
 					ticketCredential === "local"
 						? null
 						: (ticketCredential ?? bearerFromRequest(request));
+				let identity: ConnectionIdentity["Service"] = { kind: "local" };
 				yield* Effect.sync(() =>
 					log("ws.request", {
 						path: requestUrl.pathname,
@@ -584,11 +586,13 @@ export const wsServerProtocolLayer = (
 						browserSecurity.trustProxy,
 					)
 				) {
-					const ok =
-						token !== null &&
-						(yield* auth
-							.verifyToken(token)
-							.pipe(Effect.orElseSucceed(() => false)));
+					const authenticated =
+						token === null
+							? null
+							: yield* auth
+									.authenticateToken(token)
+									.pipe(Effect.orElseSucceed(() => null));
+					const ok = authenticated !== null;
 					yield* Effect.sync(() =>
 						log(ok ? "ws.auth.ok" : "ws.auth.fail", {
 							path: requestUrl.pathname,
@@ -596,7 +600,9 @@ export const wsServerProtocolLayer = (
 							hasToken: token !== null,
 						}),
 					);
-					if (!ok) return yield* json({ error: "unauthorized" }, 401);
+					if (authenticated === null)
+						return yield* json({ error: "unauthorized" }, 401);
+					identity = authenticated;
 				}
 				if (!supportsWireProtocol(receivedVersion)) {
 					log("ws.protocol.reject", {
@@ -626,6 +632,7 @@ export const wsServerProtocolLayer = (
 				});
 				const release = opts.onAuthenticatedConnection?.();
 				return yield* httpEffect.pipe(
+					Effect.provideService(ConnectionIdentity, identity),
 					Effect.provideService(
 						HttpServerRequest.HttpServerRequest,
 						upgradedRequest,

@@ -76,6 +76,21 @@ as a competing source of membership truth.
 
 ## Remaining session-sharing work
 
+The WebSocket transport now carries `ConnectionIdentity` through the existing
+Effect RPC request context. It distinguishes local trusted connections, paired
+credentials (token ID and optional device ID), and API-signed account credentials
+(verified subject and expiration). `authenticateToken` owns verification;
+`verifyToken` is its boolean adapter for existing callers. Account grants must
+contain both subject and expiry, in addition to matching signature, issuer,
+audience, token type, and environment.
+
+RPC payloads and headers are not identity sources. An integration test exercises
+two simultaneous connections with forged RPC authorization/actor headers and
+verifies that each handler still sees its own transport-verified identity.
+Identity alone does not grant workspace authority or turn a paired device ID into
+a human account. Existing access remains same-account/private; organization
+connections must not be enabled before the remaining authorization below exists.
+
 Before exposing a team environment, establish the authenticated human actor at the
 transport boundary and enforce workspace grants on **every** session, file, Git,
 terminal, subscription, and management operation. Account-management RPCs must not

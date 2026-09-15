@@ -19,19 +19,26 @@ import {
 	SHORT_PAIRING_CODE_LENGTH,
 } from "@zuse/contracts";
 import { firstReachableIpv4 } from "@zuse/utils/network-address";
-import { Clock, Effect, Layer, Ref, Semaphore } from "effect";
+import { Clock, Effect, Layer, Ref, Schema, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { importJWK, type JWK, jwtVerify } from "jose";
 import {
 	generateEnvironmentKeypair,
 	signEnvironmentLinkProof,
 } from "../../api/link-proof.ts";
+import type { CredentialIdentity } from "../services/connection-identity.ts";
 import {
 	LanAuthConfig,
 	LanAuthError,
 	LanAuthService,
 	PairingRedeemError,
 } from "../services/lan-auth-service.ts";
+
+const ConnectIdentityClaims = Schema.Struct({
+	sub: Schema.String.check(Schema.isMinLength(1)),
+	exp: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+	environmentId: Schema.String,
+});
 
 const PAIRING_TTL_MS = 5 * 60 * 1000;
 const NEARBY_PAIRING_TTL_MS = 2 * 60 * 1000;
@@ -752,54 +759,78 @@ export const LanAuthServiceLive = Layer.effect(
 				return { pairingUrl, browserUrl, qrText } as const;
 			});
 
-		const service = LanAuthService.of({
-			policy: config.policy,
-			pairingBootstrap: config.pairingBootstrap,
-			mintToken,
-			verifyToken: (token) =>
-				Effect.gen(function* () {
-					const hash = yield* tokenHash(token);
-					const rows = yield* sql<{ readonly id: string }>`
-            SELECT id
+		const authenticateToken = (
+			token: string,
+		): Effect.Effect<CredentialIdentity | null, LanAuthError> =>
+			Effect.gen(function* () {
+				const hash = yield* tokenHash(token);
+				const rows = yield* sql<{
+					readonly id: string;
+					readonly device_id: string | null;
+				}>`
+            SELECT id, device_id
             FROM auth_tokens
             WHERE token_hash = ${hash}
               AND revoked_at IS NULL
             LIMIT 1
           `;
-					const matchedToken = rows[0];
-					if (matchedToken === undefined) {
-						const apiRows = yield* sql<ApiConfigAuthRow>`
+				const matchedToken = rows[0];
+				if (matchedToken === undefined) {
+					const apiRows = yield* sql<ApiConfigAuthRow>`
               SELECT environment_id, api_issuer, api_mint_public_key
               FROM api_config
               LIMIT 1
             `;
-						const api = apiRows[0];
-						if (api === undefined || api.api_mint_public_key === null) {
-							return false;
-						}
-						const mintPublicKey = api.api_mint_public_key;
-						return yield* Effect.tryPromise({
-							try: async () => {
-								const jwk = JSON.parse(mintPublicKey) as JWK;
-								const key = await importJWK(jwk, "EdDSA");
-								const verified = await jwtVerify(token, key, {
-									issuer: api.api_issuer,
-									audience: `zuse-env:${api.environment_id}`,
-									typ: "connect+jwt",
-								});
-								return verified.payload.environmentId === api.environment_id;
-							},
-							catch: (cause) => cause,
-						}).pipe(Effect.catch(() => Effect.succeed(false)));
+					const api = apiRows[0];
+					if (api === undefined || api.api_mint_public_key === null) {
+						return null;
 					}
-					const usedAt = yield* nowIso;
-					yield* sql`
+					const mintPublicKey = api.api_mint_public_key;
+					return yield* Effect.tryPromise({
+						try: async () => {
+							const jwk = JSON.parse(mintPublicKey) as JWK;
+							const key = await importJWK(jwk, "EdDSA");
+							const verified = await jwtVerify(token, key, {
+								issuer: api.api_issuer,
+								audience: `zuse-env:${api.environment_id}`,
+								typ: "connect+jwt",
+							});
+							const claims = Schema.decodeUnknownSync(ConnectIdentityClaims)(
+								verified.payload,
+							);
+							return claims.environmentId === api.environment_id
+								? {
+										kind: "account" as const,
+										subject: claims.sub,
+										expiresAt: claims.exp * 1000,
+									}
+								: null;
+						},
+						catch: (cause) => cause,
+					}).pipe(Effect.catch(() => Effect.succeed(null)));
+				}
+				const usedAt = yield* nowIso;
+				yield* sql`
             UPDATE auth_tokens
             SET last_used_at = ${usedAt}
 							WHERE id = ${matchedToken.id}
           `;
-					return true;
-				}).pipe(Effect.mapError(toLanAuthError)),
+				return {
+					kind: "paired" as const,
+					tokenId: matchedToken.id as AuthTokenId,
+					deviceId: matchedToken.device_id,
+				};
+			}).pipe(Effect.mapError(toLanAuthError));
+
+		const service = LanAuthService.of({
+			policy: config.policy,
+			pairingBootstrap: config.pairingBootstrap,
+			mintToken,
+			authenticateToken,
+			verifyToken: (token) =>
+				authenticateToken(token).pipe(
+					Effect.map((identity) => identity !== null),
+				),
 			listTokens: () =>
 				Effect.gen(function* () {
 					const rows = yield* sql<TokenRow>`

@@ -663,6 +663,58 @@ describe("LanAuthService", () => {
 		});
 	});
 
+	it("requires a verified account subject and expiration for connect identities", async () => {
+		await withRuntime(async (run) => {
+			const mintKey = await generateKeyPair("EdDSA", { extractable: true });
+			const mintPublicKey = JSON.stringify(await exportJWK(mintKey.publicKey));
+			const { auth, environmentId } = await run(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					const environmentId = yield* auth.environmentId();
+					yield* auth.saveApiConfig({
+						apiUrl: "https://api.test",
+						apiIssuer: "https://api.test",
+						environmentId,
+						environmentCredential: "zec_test",
+						mintPublicKey,
+					});
+					return { auth, environmentId };
+				}),
+			);
+			const expiresAt = Math.floor(Date.now() / 1000) + 60;
+			const sign = (claims: { sub?: string; exp?: number }) =>
+				new SignJWT({ environmentId, ...claims })
+					.setProtectedHeader({ alg: "EdDSA", typ: "connect+jwt" })
+					.setIssuer("https://api.test")
+					.setAudience(`zuse-env:${environmentId}`)
+					.sign(mintKey.privateKey);
+			const valid = await sign({ sub: "account-a", exp: expiresAt });
+			expect(await run(auth.authenticateToken(valid))).toEqual({
+				kind: "account",
+				subject: "account-a",
+				expiresAt: expiresAt * 1000,
+			});
+			for (const claims of [
+				{ sub: "account-a" },
+				{ exp: expiresAt },
+				{ sub: "", exp: expiresAt },
+				{ sub: "account-a", exp: 1 },
+			]) {
+				const token = await sign(claims);
+				expect(await run(auth.authenticateToken(token))).toBeNull();
+				expect(await run(auth.verifyToken(token))).toBe(false);
+			}
+			const paired = await run(auth.mintToken("paired"));
+			expect(await run(auth.authenticateToken(paired.token))).toEqual({
+				kind: "paired",
+				tokenId: paired.id,
+				deviceId: null,
+			});
+			await run(auth.revokeToken(paired.id));
+			expect(await run(auth.authenticateToken(paired.token))).toBeNull();
+		});
+	});
+
 	it("rejects malformed api connect tokens without failing verification", async () => {
 		await withRuntime(async (run) => {
 			const mintKey = await generateKeyPair("EdDSA", { extractable: true });

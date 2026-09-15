@@ -8,6 +8,7 @@ import type {
 import { Context, type Effect, Schema } from "effect";
 
 import type { LanAuthPolicy } from "../policy.ts";
+import type { CredentialIdentity } from "./connection-identity.ts";
 
 export interface LanAuthConfigShape {
 	readonly policy: LanAuthPolicy;
@@ -80,6 +81,9 @@ export interface LanAuthServiceShape {
 		LanAuthError
 	>;
 	readonly verifyToken: (token: string) => Effect.Effect<boolean, LanAuthError>;
+	readonly authenticateToken: (
+		token: string,
+	) => Effect.Effect<CredentialIdentity | null, LanAuthError>;
 	readonly listTokens: () => Effect.Effect<
 		ReadonlyArray<AuthTokenSummary>,
 		LanAuthError

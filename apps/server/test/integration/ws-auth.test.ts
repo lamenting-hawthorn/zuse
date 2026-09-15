@@ -15,6 +15,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LanAuthServiceLive } from "../../src/lan-auth/layers/lan-auth-service.ts";
 import type { LanAuthPolicy } from "../../src/lan-auth/policy.ts";
+import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
 import {
 	LanAuthConfig,
 	LanAuthService,
@@ -32,7 +33,18 @@ const LargePayloadRpc = Rpc.make("test.largePayload", {
 	payload: Schema.Struct({}),
 	success: Schema.String,
 });
-const TestRpcs = RpcGroup.make(PingRpc, LargePayloadRpc);
+const IdentityRpc = Rpc.make("test.identity", {
+	payload: Schema.Struct({}),
+	success: Schema.Unknown,
+});
+const TestRpcs = RpcGroup.make(PingRpc, LargePayloadRpc, IdentityRpc);
+const IdentityHandler = TestRpcs.toLayerHandler("test.identity", () =>
+	Effect.serviceOption(ConnectionIdentity).pipe(
+		Effect.map((identity) =>
+			identity._tag === "Some" ? identity.value : null,
+		),
+	),
+);
 const LARGE_PAYLOAD = "large-session-payload\n".repeat(256 * 1024);
 
 const PingHandler = TestRpcs.toLayerHandler("ping.ping", () =>
@@ -138,7 +150,9 @@ const makeRuntime = (opts: {
 		onAuthenticatedConnection: opts.onAuthenticatedConnection,
 	}).pipe(Layer.provide(Layer.merge(LanAuthLayer, AttachmentLayer)));
 	const ServerLayer = RpcServer.layer(TestRpcs).pipe(
-		Layer.provide(Layer.merge(PingHandler, LargePayloadHandler)),
+		Layer.provide(
+			Layer.mergeAll(PingHandler, LargePayloadHandler, IdentityHandler),
+		),
 		Layer.provide(ProtocolLayer),
 	);
 	return ManagedRuntime.make(Layer.mergeAll(LanAuthLayer, ServerLayer));
@@ -219,6 +233,62 @@ const upgradeStatus = (
 	upgradeResponse(port, path, headers).then((response) => response.status);
 
 describe("WS LAN auth", () => {
+	it("isolates verified connection identity and ignores forged RPC identity headers", async () => {
+		const port = await freePort();
+		const runtime = makeRuntime({ policy: "protected", port });
+		try {
+			const [first, second] = await runtime.runPromise(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					return [
+						yield* auth.mintToken("First"),
+						yield* auth.mintToken("Second"),
+					] as const;
+				}),
+			);
+			const connect = (token: string) =>
+				makeRpcClientSession(
+					wsClientProtocolLayer({ host: "127.0.0.1", port, token }),
+					TestRpcs,
+				);
+			const firstClient = await connect(first.token);
+			const secondClient = await connect(second.token);
+			try {
+				const [firstIdentity, secondIdentity] = await Promise.all([
+					Effect.runPromise(
+						firstClient.client["test.identity"](
+							{},
+							{
+								headers: {
+									authorization: `Bearer ${second.token}`,
+									"x-zuse-actor": "owner",
+									"x-zuse-connection-identity": '{"kind":"local"}',
+								},
+							},
+						),
+					),
+					Effect.runPromise(secondClient.client["test.identity"]({})),
+				]);
+				expect(firstIdentity).toMatchObject({
+					kind: "paired",
+					tokenId: first.id,
+				});
+				expect(secondIdentity).toMatchObject({
+					kind: "paired",
+					tokenId: second.id,
+				});
+				expect(JSON.stringify([firstIdentity, secondIdentity])).not.toContain(
+					first.token,
+				);
+			} finally {
+				await firstClient.dispose();
+				await secondClient.dispose();
+			}
+		} finally {
+			await disposeRuntime(runtime);
+		}
+	});
+
 	it("serves favicon images through the authenticated asset route", async () => {
 		const port = await freePort();
 		const runtime = makeRuntime({ policy: "protected", port });
@@ -575,6 +645,9 @@ describe("WS LAN auth", () => {
 					clientSession.client["test.largePayload"]({}),
 				);
 				expect(received).toBe(LARGE_PAYLOAD);
+				expect(
+					await Effect.runPromise(clientSession.client["test.identity"]({})),
+				).toEqual({ kind: "local" });
 			} finally {
 				await clientSession.dispose();
 			}
