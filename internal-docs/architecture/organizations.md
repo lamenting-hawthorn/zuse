@@ -113,6 +113,16 @@ supervisors can renew them; permission denials do not trigger retry loops. The n
 server-side WorkOS membership lookup uses host authority, while general guest RPCs
 cannot obtain or use the host's account token.
 
+Successful `organizations.setRole` demotions and `organizations.removeMember` calls
+apply their confirmed restriction to the local membership projection before returning.
+This clears affected grants and publishes the same revocation signal without a second
+roster fetch, so self-removal also works when the caller can no longer fetch that roster.
+The update matches both organization ID and WorkOS membership ID; failed API calls,
+promotions, and repeated member-role assignments do not erase existing grants. Network
+calls remain interruptible; once success is observed, the local commit and notification
+are protected from request cancellation. Provider changes with an unconfirmed response
+still rely on live authorization and subsequent synchronization.
+
 Before enabling cross-account environment discovery, finish scoped
 environment/catalog views and
 workspace-scoped file/Git/terminal/agent operations. These remain denied to guests.

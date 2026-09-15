@@ -4,18 +4,24 @@ import {
 	Organization,
 	OrganizationDetails,
 	OrganizationMember,
+	OrganizationsRemoveMemberRpc,
+	OrganizationsSetRoleRpc,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Effect, Layer, ManagedRuntime, PubSub, Stream } from "effect";
+import { RpcGroup, RpcTest } from "effect/unstable/rpc";
 import { SqlClient } from "effect/unstable/sql";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthTokenError } from "../../src/auth/errors.ts";
 import { AuthService } from "../../src/auth/services/auth-service.ts";
 import { CollaborationServiceLive } from "../../src/collaboration/layers/collaboration-service.ts";
+import { OrganizationHandlersLayer } from "../../src/collaboration/organization-handlers.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
 import { OrganizationAuthority } from "../../src/collaboration/services/organization-authority.ts";
 import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
+import { MachineControlServiceLive } from "../../src/machine/machine-control-service.ts";
+import { MachineRuntimeRole } from "../../src/machine/machine-runtime-role.ts";
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const makeRuntime = (
@@ -116,7 +122,85 @@ describe("CollaborationService", () => {
 	});
 
 	afterEach(async () => {
+		vi.restoreAllMocks();
 		await runtime.dispose();
+	});
+
+	test("organization mutation RPCs restrict local access only after the account API confirms success", async () => {
+		let accepted = false;
+		const requests: string[] = [];
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+			requests.push(String(url));
+			return Response.json(accepted ? { ok: true } : { error: "forbidden" }, {
+				status: accepted ? 200 : 403,
+			});
+		});
+		const machine = MachineControlServiceLive.pipe(
+			Layer.provide(Layer.succeed(MachineRuntimeRole, "control-plane")),
+			Layer.provide(
+				Layer.succeed(AuthService, {
+					getSession: () => Effect.succeed({ _tag: "SignedOut" }),
+					signIn: () => Effect.die("unused"),
+					signOut: () => Effect.void,
+					sessionChanges: () => Stream.empty,
+					getAccessToken: () => Effect.succeed("test-account-token"),
+				}),
+			),
+		);
+		const clientEffect = RpcTest.makeClient(
+			RpcGroup.make(OrganizationsRemoveMemberRpc, OrganizationsSetRoleRpc),
+			{ flatten: true },
+		);
+		await runtime.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const service = yield* CollaborationService;
+					const { team, actor } = yield* service.synchronizeOrganization(
+						organizationRoster("org-a", true, "admin"),
+					);
+					const driver = yield* service.resolveActor(team.id, "driver");
+					const subscription = yield* service.subscribeAccessRevocations;
+					const client = yield* clientEffect;
+					const input = { organizationId: "org-a", memberId: "org-a-driver" };
+					expect(
+						yield* client("organizations.removeMember", input).pipe(
+							Effect.flip,
+						),
+					).toMatchObject({ _tag: "OrganizationError", code: "not-allowed" });
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
+					expect(
+						(yield* service.listMembers(actor)).find(
+							(member) => member.id === driver.memberId,
+						)?.role,
+					).toBe("owner");
+					accepted = true;
+					yield* client("organizations.setRole", { ...input, role: "member" });
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([
+						{ kind: "member", memberId: driver.memberId },
+					]);
+					expect(
+						(yield* service.listMembers(actor)).find(
+							(member) => member.id === driver.memberId,
+						)?.role,
+					).toBe("driver");
+					yield* client("organizations.removeMember", input);
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([
+						{ kind: "member", memberId: driver.memberId },
+					]);
+					expect(
+						yield* service.resolveActor(team.id, "driver").pipe(Effect.flip),
+					).toMatchObject({ reason: "membership_not_active" });
+				}),
+			).pipe(
+				Effect.provide(OrganizationHandlersLayer),
+				Effect.provide(machine),
+			),
+		);
+		expect(requests.map((url) => new URL(url).pathname)).toEqual([
+			"/v1/organizations/remove-member",
+			"/v1/organizations/set-role",
+			"/v1/organizations/remove-member",
+		]);
 	});
 
 	test("signals committed roster revocations without invalidating unchanged rosters", async () => {
@@ -140,6 +224,96 @@ describe("CollaborationService", () => {
 					yield* service.synchronizeOrganization(
 						organizationRoster("org-a", false),
 					);
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
+				}),
+			),
+		);
+	});
+
+	test("applies confirmed membership restrictions by organization and membership ID without a roster refresh", async () => {
+		await runtime.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const service = yield* CollaborationService;
+					const sql = yield* SqlClient.SqlClient;
+					const { team, actor } = yield* service.synchronizeOrganization(
+						organizationRoster("org-a", true, "admin"),
+					);
+					yield* service.synchronizeOrganization(organizationRoster("org-b"));
+					const driver = yield* service.resolveActor(team.id, "driver");
+					const subscription = yield* service.subscribeAccessRevocations;
+					const now = new Date().toISOString();
+					yield* sql`INSERT INTO projects (id, path, name, created_at, updated_at) VALUES ('p', '/tmp/p', 'P', ${now}, ${now})`;
+					yield* sql`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES ('c', 'p', 'C', ${now}, ${now})`;
+					const chatId = "c" as ChatId;
+					yield* service
+						.shareWorkspace(actor, chatId)
+						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+					yield* service.setWorkspaceGrant(
+						actor,
+						chatId,
+						driver.memberId,
+						"viewer",
+					);
+					yield* service.applyOrganizationMembershipRestriction({
+						organizationId: "org-b",
+						memberId: "org-a-driver",
+						change: "removed",
+					});
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
+					expect(
+						yield* service.listWorkspaceGrants(actor, chatId),
+					).toHaveLength(1);
+					yield* service.applyOrganizationMembershipRestriction({
+						organizationId: "org-a",
+						memberId: "org-a-driver",
+						change: "demoted",
+					});
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([
+						{ kind: "member", memberId: driver.memberId },
+					]);
+					expect(
+						(yield* service.listMembers(actor)).find(
+							(member) => member.id === driver.memberId,
+						)?.role,
+					).toBe("driver");
+					expect(
+						yield* service.listWorkspaceGrants(actor, chatId),
+					).toHaveLength(0);
+					yield* service.setWorkspaceGrant(
+						actor,
+						chatId,
+						driver.memberId,
+						"viewer",
+					);
+					yield* service.applyOrganizationMembershipRestriction({
+						organizationId: "org-a",
+						memberId: "org-a-driver",
+						change: "demoted",
+					});
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
+					expect(
+						yield* service.listWorkspaceGrants(actor, chatId),
+					).toHaveLength(1);
+					yield* service.applyOrganizationMembershipRestriction({
+						organizationId: "org-a",
+						memberId: "org-a-driver",
+						change: "removed",
+					});
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([
+						{ kind: "member", memberId: driver.memberId },
+					]);
+					expect(
+						yield* service.resolveActor(team.id, "driver").pipe(Effect.flip),
+					).toMatchObject({ reason: "membership_not_active" });
+					expect(
+						yield* service.listWorkspaceGrants(actor, chatId),
+					).toHaveLength(0);
+					yield* service.applyOrganizationMembershipRestriction({
+						organizationId: "org-a",
+						memberId: "org-a-driver",
+						change: "removed",
+					});
 					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
 				}),
 			),

@@ -130,9 +130,35 @@ export const OrganizationHandlersLayer = Layer.mergeAll(
 		withOrganizations((service) => service.revokeOrganizationInvite(input)),
 	),
 	MemoizeRpcs.toLayerHandler("organizations.setRole", (input) =>
-		withOrganizations((service) => service.setOrganizationRole(input)),
+		Effect.uninterruptibleMask((restore) =>
+			Effect.gen(function* () {
+				yield* restore(
+					withOrganizations((service) => service.setOrganizationRole(input)),
+				);
+				if (input.role === "member") {
+					const collaboration = yield* CollaborationService;
+					yield* collaboration.applyOrganizationMembershipRestriction({
+						...input,
+						change: "demoted",
+					});
+				}
+			}),
+		),
 	),
 	MemoizeRpcs.toLayerHandler("organizations.removeMember", (input) =>
-		withOrganizations((service) => service.removeOrganizationMember(input)),
+		Effect.uninterruptibleMask((restore) =>
+			Effect.gen(function* () {
+				yield* restore(
+					withOrganizations((service) =>
+						service.removeOrganizationMember(input),
+					),
+				);
+				const collaboration = yield* CollaborationService;
+				yield* collaboration.applyOrganizationMembershipRestriction({
+					...input,
+					change: "removed",
+				});
+			}),
+		),
 	),
 );

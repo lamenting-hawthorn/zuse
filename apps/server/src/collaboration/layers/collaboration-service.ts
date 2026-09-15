@@ -1008,6 +1008,51 @@ export const CollaborationServiceLive = Layer.effect(
 			});
 
 		return CollaborationService.of({
+			applyOrganizationMembershipRestriction: (input) =>
+				sql
+					.withTransaction(
+						Effect.gen(function* () {
+							const rows =
+								yield* sql<MemberRow>`SELECT m.* FROM collaboration_members m
+						JOIN collaboration_teams t ON t.id = m.team_id
+						WHERE t.organization_id = ${input.organizationId}
+						AND m.organization_membership_id = ${input.memberId} AND m.status = 'active'`;
+							const member = rows[0];
+							// Repeating a member role assignment must not erase a driver's grants.
+							if (
+								member === undefined ||
+								(input.change === "demoted" && member.role !== "owner")
+							)
+								return null;
+							const now = new Date().toISOString();
+							yield* sql`UPDATE collaboration_members SET
+						status = ${input.change === "removed" ? "revoked" : "active"},
+						role = ${input.change === "demoted" ? "driver" : member.role}, updated_at = ${now}
+						WHERE id = ${member.id}`;
+							yield* sql`DELETE FROM collaboration_chat_grants WHERE member_id = ${member.id}`;
+							yield* appendAudit({
+								teamId: member.team_id as TeamId,
+								actorMemberId: null,
+								action: "organization.synchronized",
+								resourceKind: "organization",
+								resourceId: input.organizationId,
+								metadata: {
+									membershipId: input.memberId,
+									change: input.change,
+								},
+							});
+							return member.id as TeamMemberId;
+						}),
+					)
+					.pipe(
+						Effect.flatMap((memberId) =>
+							memberId === null
+								? Effect.void
+								: notifyRevocation({ kind: "member", memberId }),
+						),
+						Effect.uninterruptible,
+						Effect.catchTag("SqlError", Effect.die),
+					),
 			subscribeAccessRevocations: PubSub.subscribe(revocations),
 			synchronizeOrganization: (details) =>
 				synchronizeOrganization(details).pipe(

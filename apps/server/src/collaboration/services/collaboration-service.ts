@@ -41,6 +41,12 @@ export interface CollaborationProfile {
 }
 
 export interface CollaborationServiceShape {
+	/** Apply only after the trusted account API confirms this membership mutation. */
+	readonly applyOrganizationMembershipRestriction: (input: {
+		readonly organizationId: string;
+		readonly memberId: string;
+		readonly change: "removed" | "demoted";
+	}) => Effect.Effect<void>;
 	/** Subscribe before checking access so revocation cannot race subscription startup. */
 	readonly subscribeAccessRevocations: Effect.Effect<
 		PubSub.Subscription<CollaborationAccessRevocation>,
