@@ -272,6 +272,7 @@ import {
 	RepositorySettingsGetRpc,
 	RepositorySettingsUpdateRpc,
 } from "./repository-settings.ts";
+import { RpcAuthorization } from "./rpc-authorization.ts";
 import {
 	SelfHostedDiagnosticsRpc,
 	SelfHostedGithubLoginCancelRpc,
@@ -727,7 +728,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	KeybindingsReplaceRpc,
 	KeybindingsStreamRpc,
 	SessionSetWorktreeRpc,
-);
+).middleware(RpcAuthorization);
 export type MemoizeRpcs = typeof MemoizeRpcs;
 
 /**

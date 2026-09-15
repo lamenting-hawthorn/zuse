@@ -10652,12 +10652,22 @@
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
+	"errors:format_error_access_denied": {
+		"source": "Access denied. Sign in again or ask the workspace owner.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/format-error.ts",
+				"line": 26
+			}
+		],
+		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
 	"errors:format_error_the_agent_restarted_and_this_approval_expired_dismiss_it_and_send": {
 		"source": "The agent restarted and this approval expired. Dismiss it and send a message to continue.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 27
+				"line": 30
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10667,7 +10677,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 32
+				"line": 35
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10677,7 +10687,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 36
+				"line": 39
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10687,7 +10697,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 39
+				"line": 42
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10697,11 +10707,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 42
+				"line": 45
 			},
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 48
+				"line": 51
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10711,7 +10721,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 45
+				"line": 48
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10721,7 +10731,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 51
+				"line": 54
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10731,15 +10741,15 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 57
+				"line": 60
 			},
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 77
+				"line": 80
 			},
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 82
+				"line": 85
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10749,15 +10759,15 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 62
+				"line": 65
 			},
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 67
+				"line": 70
 			},
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 72
+				"line": 75
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10767,7 +10777,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 90
+				"line": 93
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10777,7 +10787,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 95
+				"line": 98
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10787,7 +10797,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 99
+				"line": 102
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10797,7 +10807,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 103
+				"line": 106
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10807,7 +10817,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 108
+				"line": 111
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10817,7 +10827,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 113
+				"line": 116
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10827,7 +10837,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 118
+				"line": 121
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10837,7 +10847,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 123
+				"line": 126
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10847,7 +10857,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 128
+				"line": 131
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10857,7 +10867,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 133
+				"line": 136
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10867,7 +10877,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 138
+				"line": 141
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10877,7 +10887,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 149
+				"line": 152
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10887,7 +10897,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 154
+				"line": 157
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10897,7 +10907,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 159
+				"line": 162
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10907,7 +10917,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/format-error.ts",
-				"line": 164
+				"line": 167
 			}
 		],
 		"context": "errors interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."

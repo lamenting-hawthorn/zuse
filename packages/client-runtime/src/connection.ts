@@ -1,4 +1,12 @@
-import { Data, Effect, type Layer, ManagedRuntime, Scope } from "effect";
+import { RpcAccessDeniedError } from "@zuse/contracts";
+import {
+	Data,
+	Effect,
+	type Layer,
+	ManagedRuntime,
+	Schema,
+	Scope,
+} from "effect";
 import type { Rpc } from "effect/unstable/rpc";
 import { RpcClient, type RpcGroup } from "effect/unstable/rpc";
 import type { RpcClientError } from "effect/unstable/rpc/RpcClientError";
@@ -8,6 +16,10 @@ export type ConnectionOptions = {
 	readonly endpoint: string;
 	readonly token?: string | null;
 };
+
+/** Expiry can recover with a fresh connection grant; permission denial cannot. */
+export const isRpcCredentialExpired = (cause: unknown): boolean =>
+	Schema.is(RpcAccessDeniedError)(cause) && cause.code === "credential-expired";
 
 export type ClientSession<Client> = {
 	readonly client: Client;

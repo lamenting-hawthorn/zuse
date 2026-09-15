@@ -48,6 +48,7 @@ import { FsServiceLive } from "./fs/layers/fs-service.ts";
 import { RepositoryLocatorLive } from "./git/repository-locator-live.ts";
 import { HandlersLayer } from "./handlers.ts";
 import { LanAuthServiceLive } from "./lan-auth/layers/lan-auth-service.ts";
+import { RpcAuthorizationLive } from "./lan-auth/layers/rpc-authorization.ts";
 import type { LanAuthPolicy } from "./lan-auth/policy.ts";
 import {
 	LanAuthConfig,
@@ -746,6 +747,13 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		>,
 	) =>
 		RpcServer.layer(MemoizeRpcs).pipe(
+			Layer.provide(
+				RpcAuthorizationLive.pipe(
+					Layer.provide(AuthLayer),
+					Layer.provide(CollaborationLayer),
+					Layer.provide(MigratedSqlite),
+				),
+			),
 			Layer.provide(Handlers),
 			Layer.provide(
 				serverProtocol.pipe(

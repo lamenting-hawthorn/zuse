@@ -3,6 +3,7 @@ import {
 	type CollaborationRole,
 } from "@zuse/contracts";
 import { Context, Effect, Layer } from "effect";
+import { ConnectionIdentity } from "../../lan-auth/services/connection-identity.ts";
 import { MachineControlService } from "../../machine/machine-control-service.ts";
 
 /** Live authority for WorkOS-backed teams; local SQLite membership is a projection. */
@@ -34,6 +35,9 @@ export const OrganizationAuthorityLive = Layer.effect(
 					const membership = yield* api
 						.organizationMembership(organizationId, subject)
 						.pipe(
+							// This narrow server-to-server membership check is performed
+							// by the host, not as a delegated guest account operation.
+							Effect.provideService(ConnectionIdentity, { kind: "local" }),
 							Effect.mapError(
 								() =>
 									new CollaborationAccessDeniedError({

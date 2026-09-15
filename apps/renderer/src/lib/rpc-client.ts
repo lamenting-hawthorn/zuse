@@ -1,5 +1,6 @@
 import type { CloudControlClient } from "@zuse/client-runtime/cloud-control-client";
 import {
+	isRpcCredentialExpired,
 	makeRpcClientSession,
 	withWireProtocolVersion,
 } from "@zuse/client-runtime/connection";
@@ -454,6 +455,7 @@ const getRendererEntry = (
 };
 
 export function isRpcClientTransportError(cause: unknown): boolean {
+	if (isRpcCredentialExpired(cause)) return true;
 	if (isIgnorableRendererFailure(cause)) return true;
 	if (
 		typeof cause !== "object" ||

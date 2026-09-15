@@ -1,3 +1,4 @@
+import { RpcAccessDeniedError } from "@zuse/contracts";
 import { describe, expect, it } from "vitest";
 
 const locationValue = {
@@ -5,6 +6,17 @@ const locationValue = {
 	pathname: "/",
 	protocol: "http:",
 };
+
+it("renews expired grants without reconnecting on workspace permission denial", () => {
+	const expired = new RpcAccessDeniedError({ code: "credential-expired" });
+	expect(isRpcClientTransportError(expired)).toBe(true);
+	expect(isAuthCodedConnectionError(expired)).toBe(false);
+	expect(
+		isRpcClientTransportError(
+			new RpcAccessDeniedError({ code: "access-denied" }),
+		),
+	).toBe(false);
+});
 
 Object.defineProperty(globalThis, "location", {
 	value: locationValue,

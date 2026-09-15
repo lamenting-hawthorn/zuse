@@ -1,4 +1,5 @@
 {
+	"format_error_access_denied": "Access denied. Sign in again or ask the workspace owner.",
 	"format_error_the_agent_restarted_and_this_approval_expired_dismiss_it_and_send": "L'agent a redémarré et cette approbation a expiré. Ignorez-le et envoyez un message pour continuer.",
 	"format_error_this_approval_is_no_longer_pending_it_may_have_been_resolved_on_a": "Cette approbation n'est plus en attente. Le problème a peut-être été résolu sur un autre appareil.",
 	"format_error_this_folder_isn_t_a_git_repository": "Ce dossier n'est pas un référentiel Git.",

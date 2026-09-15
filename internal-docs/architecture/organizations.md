@@ -65,7 +65,11 @@ attribution; it is not proof that an old access grant is still valid.
 Workspace binding is private by default and belongs to one team. A composite foreign
 key prevents grants from crossing that binding. Organization admins map to the local
 team's owner ceiling, members to driver, and unknown roles to viewer. A driver's team
-membership alone does not grant access to a private workspace.
+membership alone does not grant access to a private workspace. The workspace toolbar
+has a lazy-loaded access dialog for explicit sharing, viewer/driver grants, and stopping
+sharing. Initial opt-in requires host ownership as well as organization ownership.
+Stopping sharing clears grants without deleting chats or files; re-enabling it does
+not restore old grants.
 
 The collaboration service rechecks live WorkOS membership for protected operations
 through `OrganizationAuthority`. Effective authority cannot exceed either the cached
@@ -91,11 +95,25 @@ Identity alone does not grant workspace authority or turn a paired device ID int
 a human account. Existing access remains same-account/private; organization
 connections must not be enabled before the remaining authorization below exists.
 
-Before exposing a team environment, establish the authenticated human actor at the
-transport boundary and enforce workspace grants on **every** session, file, Git,
-terminal, subscription, and management operation. Account-management RPCs must not
-execute as the host owner for guest connections. Initial workspace sharing must also
-be authorized by the environment owner, not any organization admin.
+All public RPCs now carry `RpcAuthorization`. Native IPC and explicitly paired devices
+retain existing host authority. Verified same-account connections retain host access;
+other account identities are denied by default. The initial guest allowlist covers
+`chat.get`, `session.get`, `messages.list`, `session.events`, `session.events.head`, and
+`session.messages.page`, each checked against the actual session-to-chat binding and
+an explicit workspace grant (or that workspace's organization-owner role).
+
+Account streams recheck authority every 20 seconds and at credential expiry. This is
+bounded revalidation, **not immediate invalidation** on workspace revocation. Expired
+credentials have a distinct error code so the existing desktop/web/mobile connection
+supervisors can renew them; permission denials do not trigger retry loops. The narrow
+server-side WorkOS membership lookup uses host authority, while general guest RPCs
+cannot obtain or use the host's account token.
+
+Before enabling cross-account environment discovery, finish immediate local
+revocation, scoped environment/catalog views, HTTP attachment authorization, and
+workspace-scoped file/Git/terminal/agent operations. These remain denied to guests.
+Verify actual account-grant renewal across a long-lived deployed connection; classifier
+and in-memory stream tests are not proof of that complete workflow.
 
 The branch's presence, control-lease, notes, and collaborative-document contracts are
 foundation types only. They do not implement CRDT editing, transferable terminal
