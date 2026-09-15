@@ -3,6 +3,7 @@ import "@zuse/i18n/english/connections";
 import { type AuthState, CommandId, EnvironmentId } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 import { toastManager } from "../components/ui/toast.tsx";
+import { observeAttachmentAccount } from "../lib/attachments.ts";
 import { environmentAuthResourceKey } from "../lib/auth-client-bus.ts";
 import { LOCAL_ENVIRONMENT_KEY } from "../lib/rpc-client.ts";
 import { getRendererClientBus } from "../lib/session-timeline-client-bus.ts";
@@ -117,6 +118,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 				createdAt: Date.now(),
 			});
 			bus.overlay(key, { update: () => ({ state: receipt.result }) });
+			observeAttachmentAccount(
+				receipt.result._tag === "SignedIn"
+					? receipt.result.session.user.id
+					: null,
+			);
 			if (receipt.result._tag === "SignedIn") {
 				// Auth faults park cloud runtimes and their durable command outboxes.
 				// A successful sign-in is the shared recovery edge regardless of which
@@ -139,6 +145,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 		const bus = getRendererClientBus();
 		const previous = bus.snapshot(key)?.data ?? undefined;
 		bus.overlay(key, { update: () => ({ state: SIGNED_OUT }) });
+		observeAttachmentAccount(null);
 		try {
 			await bus.dispatch({
 				kind: "auth.signOut",

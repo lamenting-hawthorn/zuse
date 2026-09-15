@@ -6,7 +6,7 @@ import {
 	CommandId,
 	MAX_ATTACHMENT_BYTES,
 } from "@zuse/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { downloadBlob } from "./download-blob.ts";
 import { dispatchSessionCommand } from "./session-timeline-client-bus.ts";
 
@@ -17,8 +17,10 @@ export const downloadAttachment = async (
 	signal: AbortSignal,
 ): Promise<void> => {
 	signal.throwIfAborted();
+	const epoch = previewEpoch;
 	const attachment = await readAttachment(ref, id);
 	signal.throwIfAborted();
+	assertPreviewEpoch(epoch);
 	downloadBlob(
 		new Blob([new Uint8Array(attachment.bytes)], { type: attachment.mimeType }),
 		attachment.originalName,
@@ -52,6 +54,7 @@ export const uploadAttachmentBytes = async (
 		readonly rootPath?: string;
 	},
 ): Promise<AttachmentRef> => {
+	const epoch = previewEpoch;
 	const dispatchUpload = async (
 		kind: "attachments.upload" | "attachments.uploadChunk",
 		payload: unknown,
@@ -82,7 +85,7 @@ export const uploadAttachmentBytes = async (
 				)) as AttachmentUploadResult | null,
 		},
 	);
-	if (result.mimeType.startsWith("image/")) {
+	if (epoch === previewEpoch && result.mimeType.startsWith("image/")) {
 		cacheAttachmentPreview(
 			ref,
 			result.id,
@@ -151,6 +154,31 @@ const previewCache = new Map<string, string>();
 const previewRequests = new Map<string, Promise<string>>();
 const MAX_PREVIEW_CACHE_CHARS = 8 * 1024 * 1024;
 let previewCacheChars = 0;
+let previewEpoch = 0;
+let previewAccount: string | null | undefined;
+const previewListeners = new Set<() => void>();
+const subscribePreviewEpoch = (listener: () => void) => {
+	previewListeners.add(listener);
+	return () => {
+		previewListeners.delete(listener);
+	};
+};
+const getPreviewEpoch = () => previewEpoch;
+const assertPreviewEpoch = (epoch: number): void => {
+	if (epoch !== previewEpoch)
+		throw new DOMException("Attachment access changed", "AbortError");
+};
+
+/** Called at the existing account-state boundary, including optimistic logout. */
+export const observeAttachmentAccount = (subject: string | null): void => {
+	if (previewAccount === subject) return;
+	previewAccount = subject;
+	previewEpoch += 1;
+	previewCache.clear();
+	previewRequests.clear();
+	previewCacheChars = 0;
+	for (const listener of previewListeners) listener();
+};
 
 const previewKey = (ref: SessionRef, id: string) =>
 	JSON.stringify([ref.environmentId, ref.sessionId, id]);
@@ -189,23 +217,32 @@ export const resolveAttachmentUrl = (
 	ref: SessionRef,
 	id: string,
 ): Promise<string> => {
-	const key = JSON.stringify([ref.environmentId, ref.sessionId, id]);
+	const key = previewKey(ref, id);
+	const epoch = previewEpoch;
 	const cached = previewCache.get(key);
 	if (cached !== undefined) return Promise.resolve(cached);
 	const pending = previewRequests.get(key);
 	if (pending !== undefined) return pending;
 	const request = readAttachment(ref, id)
 		.then((attachment) => {
+			assertPreviewEpoch(epoch);
 			const src = attachmentDataUrl(attachment.bytes, attachment.mimeType);
 			cacheAttachmentPreview(ref, id, src);
 			return src;
 		})
-		.finally(() => previewRequests.delete(key));
+		.finally(() => {
+			if (previewRequests.get(key) === request) previewRequests.delete(key);
+		});
 	previewRequests.set(key, request);
 	return request;
 };
 
 export const useAttachmentUrl = (ref: SessionRef | null, id: string) => {
+	const epoch = useSyncExternalStore(
+		subscribePreviewEpoch,
+		getPreviewEpoch,
+		getPreviewEpoch,
+	);
 	const [attempt, setAttempt] = useState(0);
 	const environmentId = ref?.environmentId;
 	const sessionId = ref?.sessionId;
@@ -214,7 +251,7 @@ export const useAttachmentUrl = (ref: SessionRef | null, id: string) => {
 		src: string | null;
 		failed: boolean;
 	} | null>(null);
-	const key = JSON.stringify([environmentId, sessionId, id, attempt]);
+	const key = JSON.stringify([environmentId, sessionId, id, attempt, epoch]);
 	useEffect(() => {
 		if (
 			environmentId === undefined ||

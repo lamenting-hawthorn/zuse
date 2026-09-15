@@ -2,6 +2,7 @@ import { EnvironmentId, SessionId } from "@zuse/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	downloadAttachment,
+	observeAttachmentAccount,
 	resolveAttachmentUrl,
 	uploadAttachmentBytes,
 } from "../../src/lib/attachments.ts";
@@ -17,6 +18,87 @@ describe("workspace attachment previews", () => {
 	beforeEach(() => {
 		dispatch.mockReset();
 		download.mockReset();
+		observeAttachmentAccount(`test-${crypto.randomUUID()}`);
+	});
+	it("preserves previews on token refresh but clears them on account changes", async () => {
+		const ref = {
+			environmentId: EnvironmentId.make("account-preview"),
+			sessionId,
+		};
+		dispatch.mockResolvedValue({
+			result: {
+				bytes: new Uint8Array([1]),
+				mimeType: "image/png",
+				originalName: "image.png",
+			},
+		});
+		observeAttachmentAccount("first");
+		await resolveAttachmentUrl(ref, "image");
+		observeAttachmentAccount("first");
+		await resolveAttachmentUrl(ref, "image");
+		expect(dispatch).toHaveBeenCalledTimes(1);
+		observeAttachmentAccount(null);
+		await resolveAttachmentUrl(ref, "image");
+		observeAttachmentAccount("second");
+		await resolveAttachmentUrl(ref, "image");
+		expect(dispatch).toHaveBeenCalledTimes(3);
+	});
+	it("rejects previous-account results without deleting the new account's pending read", async () => {
+		const ref = {
+			environmentId: EnvironmentId.make("account-race"),
+			sessionId,
+		};
+		const result = {
+			result: {
+				bytes: new Uint8Array([1]),
+				mimeType: "image/png",
+				originalName: "image.png",
+			},
+		};
+		let resolveOld = () => {};
+		let resolveNew = () => {};
+		dispatch.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveOld = () => resolve(result);
+				}),
+		);
+		const old = resolveAttachmentUrl(ref, "image");
+		const rejected = expect(old).rejects.toMatchObject({ name: "AbortError" });
+		observeAttachmentAccount("next-account");
+		dispatch.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveNew = () => resolve(result);
+				}),
+		);
+		const next = resolveAttachmentUrl(ref, "image");
+		resolveOld();
+		await rejected;
+		expect(resolveAttachmentUrl(ref, "image")).toBe(next);
+		resolveNew();
+		await next;
+		expect(dispatch).toHaveBeenCalledTimes(2);
+	});
+	it("does not deliver a file download across an account change", async () => {
+		dispatch.mockImplementation(async () => {
+			observeAttachmentAccount("changed-during-download");
+			return {
+				result: {
+					bytes: new Uint8Array([1]),
+					mimeType: "text/plain",
+					originalName: "file.txt",
+				},
+			};
+		});
+		await expect(
+			downloadAttachment(
+				{ environmentId: EnvironmentId.make("account-download"), sessionId },
+				"file",
+				new AbortController().signal,
+			),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(download).not.toHaveBeenCalled();
 	});
 	it("downloads files from the scoped RPC without caching their authorization", async () => {
 		const ref = { environmentId: EnvironmentId.make("files"), sessionId };

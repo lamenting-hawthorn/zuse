@@ -5,6 +5,11 @@ const mocks = vi.hoisted(() => ({
 	overlay: vi.fn(),
 	retryRetainedConnections: vi.fn(),
 	toast: vi.fn(),
+	observeAccount: vi.fn(),
+}));
+
+vi.mock("../../src/lib/attachments.ts", () => ({
+	observeAttachmentAccount: mocks.observeAccount,
 }));
 
 vi.mock("../../src/components/ui/toast.tsx", () => ({
@@ -24,6 +29,7 @@ vi.mock("../../src/lib/rpc-client.ts", () => ({
 
 vi.mock("../../src/lib/session-timeline-client-bus.ts", () => ({
 	getRendererClientBus: () => ({
+		snapshot: () => undefined,
 		dispatch: mocks.dispatch,
 		overlay: mocks.overlay,
 		retryRetainedConnections: mocks.retryRetainedConnections,
@@ -38,6 +44,7 @@ describe("auth store cloud recovery", () => {
 		mocks.overlay.mockReset();
 		mocks.retryRetainedConnections.mockReset();
 		mocks.toast.mockReset();
+		mocks.observeAccount.mockReset();
 		useAuthStore.setState({ signingIn: false, error: null });
 	});
 
@@ -56,6 +63,7 @@ describe("auth store cloud recovery", () => {
 		await useAuthStore.getState().signIn();
 
 		expect(mocks.retryRetainedConnections).toHaveBeenCalledOnce();
+		expect(mocks.observeAccount).toHaveBeenCalledWith("user-1");
 		expect(useAuthStore.getState().error).toBeNull();
 	});
 
@@ -66,5 +74,20 @@ describe("auth store cloud recovery", () => {
 
 		expect(mocks.retryRetainedConnections).not.toHaveBeenCalled();
 		expect(useAuthStore.getState().error).toBe("sign-in failed");
+		expect(mocks.observeAccount).not.toHaveBeenCalled();
+	});
+
+	it("clears account-bound previews before the logout request finishes", async () => {
+		let finish = () => {};
+		mocks.dispatch.mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = () => resolve({});
+				}),
+		);
+		const logout = useAuthStore.getState().signOut();
+		expect(mocks.observeAccount).toHaveBeenCalledWith(null);
+		finish();
+		await logout;
 	});
 });

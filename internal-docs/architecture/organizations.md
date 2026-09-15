@@ -139,6 +139,12 @@ RPC, rechecking authority on every click. Unmounting the session cancels a pendi
 download before browser delivery. Only legacy attachment displays with no session
 reference retain host-only URLs.
 
+The renderer clears attachment previews at its account-state boundary (including
+optimistic logout), not on ordinary token refresh. Mounted preview hooks observe the
+new cache epoch; late reads cannot repopulate the cache or erase a newer pending read.
+File downloads likewise discard bytes if account identity changes during the request.
+This does not revoke files already downloaded or replace server authorization.
+
 The branch's presence, control-lease, notes, and collaborative-document contracts are
 foundation types only. They do not implement CRDT editing, transferable terminal
 control, or multiplayer session UI. Continue through the existing durable command
