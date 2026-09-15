@@ -20,9 +20,10 @@ import {
 	type TeamMemberId,
 	WorkspaceGrant,
 } from "@zuse/contracts";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, PubSub } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import {
+	type CollaborationAccessRevocation,
 	type CollaborationProfile,
 	CollaborationService,
 } from "../services/collaboration-service.ts";
@@ -190,6 +191,10 @@ export const CollaborationServiceLive = Layer.effect(
 	CollaborationService,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const revocations =
+			yield* PubSub.unbounded<CollaborationAccessRevocation>();
+		const notifyRevocation = (event: CollaborationAccessRevocation) =>
+			PubSub.publish(revocations, event).pipe(Effect.asVoid);
 		const sharingAuthority = yield* WorkspaceSharingAuthority;
 		const organizationAuthority = yield* Effect.serviceOption(
 			OrganizationAuthority,
@@ -376,6 +381,7 @@ export const CollaborationServiceLive = Layer.effect(
 						previous.map((member) => [member.subject, member]),
 					);
 					let changed = existing[0]?.name !== details.organization.name;
+					const revokedMemberIds: TeamMemberId[] = [];
 					const incoming = new Set(
 						details.members.map((member) => member.userId),
 					);
@@ -383,6 +389,7 @@ export const CollaborationServiceLive = Layer.effect(
 						if (incoming.has(member.subject) || member.status === "revoked")
 							continue;
 						changed = true;
+						revokedMemberIds.push(member.id as TeamMemberId);
 						yield* sql`UPDATE collaboration_members SET status = 'revoked', updated_at = ${now} WHERE id = ${member.id}`;
 						yield* sql`DELETE FROM collaboration_chat_grants WHERE member_id = ${member.id}`;
 					}
@@ -407,6 +414,7 @@ export const CollaborationServiceLive = Layer.effect(
 							(membershipChanged || roleRank[role] < roleRank[old.role])
 						) {
 							yield* sql`DELETE FROM collaboration_chat_grants WHERE member_id = ${memberId}`;
+							revokedMemberIds.push(memberId as TeamMemberId);
 						}
 					}
 					const actor = yield* resolveActor(teamId, details.currentUserId);
@@ -427,6 +435,7 @@ export const CollaborationServiceLive = Layer.effect(
 							updatedAt: new Date(now),
 						}),
 						actor,
+						revokedMemberIds,
 					};
 				}),
 			);
@@ -497,7 +506,14 @@ export const CollaborationServiceLive = Layer.effect(
 						resourceId: memberId,
 						metadata: { previousRole: target.role, role },
 					});
-					return TeamMember.make({ ...target, role, updatedAt: new Date(now) });
+					return {
+						member: TeamMember.make({
+							...target,
+							role,
+							updatedAt: new Date(now),
+						}),
+						downgraded: roleRank[role] < roleRank[target.role],
+					};
 				}),
 			);
 
@@ -992,8 +1008,18 @@ export const CollaborationServiceLive = Layer.effect(
 			});
 
 		return CollaborationService.of({
+			subscribeAccessRevocations: PubSub.subscribe(revocations),
 			synchronizeOrganization: (details) =>
 				synchronizeOrganization(details).pipe(
+					Effect.tap(({ revokedMemberIds }) =>
+						Effect.forEach(
+							revokedMemberIds,
+							(memberId) => notifyRevocation({ kind: "member", memberId }),
+							{ discard: true },
+						),
+					),
+					Effect.map(({ team, actor }) => ({ team, actor })),
+					Effect.uninterruptible,
 					Effect.catchTag("SqlError", Effect.die),
 				),
 			bootstrapTeam: (...args) =>
@@ -1003,9 +1029,24 @@ export const CollaborationServiceLive = Layer.effect(
 			listMembers: (...args) =>
 				listMembers(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			changeMemberRole: (...args) =>
-				changeMemberRole(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+				changeMemberRole(...args).pipe(
+					Effect.tap(({ member, downgraded }) =>
+						downgraded
+							? notifyRevocation({ kind: "member", memberId: member.id })
+							: Effect.void,
+					),
+					Effect.map(({ member }) => member),
+					Effect.uninterruptible,
+					Effect.catchTag("SqlError", Effect.die),
+				),
 			revokeMember: (...args) =>
-				revokeMember(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+				revokeMember(...args).pipe(
+					Effect.tap(() =>
+						notifyRevocation({ kind: "member", memberId: args[1] }),
+					),
+					Effect.uninterruptible,
+					Effect.catchTag("SqlError", Effect.die),
+				),
 			createInvite: (...args) =>
 				createInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			listInvites: (...args) =>
@@ -1022,10 +1063,24 @@ export const CollaborationServiceLive = Layer.effect(
 				shareWorkspace(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			removeWorkspaceGrant: (...args) =>
 				removeWorkspaceGrant(...args).pipe(
+					Effect.tap(() =>
+						notifyRevocation({
+							kind: "grant",
+							chatId: args[1],
+							memberId: args[2],
+						}),
+					),
+					Effect.uninterruptible,
 					Effect.catchTag("SqlError", Effect.die),
 				),
 			unshareWorkspace: (...args) =>
-				unshareWorkspace(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+				unshareWorkspace(...args).pipe(
+					Effect.tap(() =>
+						notifyRevocation({ kind: "workspace", chatId: args[1] }),
+					),
+					Effect.uninterruptible,
+					Effect.catchTag("SqlError", Effect.die),
+				),
 			listWorkspaceGrants: (...args) =>
 				listWorkspaceGrants(...args).pipe(
 					Effect.catchTag("SqlError", Effect.die),

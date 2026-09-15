@@ -16,7 +16,16 @@ import type {
 	TeamMemberId,
 	WorkspaceGrant,
 } from "@zuse/contracts";
-import { Context, type Effect } from "effect";
+import { Context, type Effect, type PubSub, type Scope } from "effect";
+
+export type CollaborationAccessRevocation =
+	| { readonly kind: "workspace"; readonly chatId: ChatId }
+	| { readonly kind: "member"; readonly memberId: TeamMemberId }
+	| {
+			readonly kind: "grant";
+			readonly chatId: ChatId;
+			readonly memberId: TeamMemberId;
+	  };
 
 export type CollaborationServiceError =
 	| CollaborationAccessDeniedError
@@ -32,6 +41,12 @@ export interface CollaborationProfile {
 }
 
 export interface CollaborationServiceShape {
+	/** Subscribe before checking access so revocation cannot race subscription startup. */
+	readonly subscribeAccessRevocations: Effect.Effect<
+		PubSub.Subscription<CollaborationAccessRevocation>,
+		never,
+		Scope.Scope
+	>;
 	/** Accepts a complete roster fetched by the trusted account API, never client-supplied claims. */
 	readonly synchronizeOrganization: (
 		details: OrganizationDetails,

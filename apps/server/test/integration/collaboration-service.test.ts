@@ -6,7 +6,7 @@ import {
 	OrganizationMember,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
-import { Effect, Layer, ManagedRuntime, Stream } from "effect";
+import { Effect, Layer, ManagedRuntime, PubSub, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { AuthTokenError } from "../../src/auth/errors.ts";
@@ -117,6 +117,33 @@ describe("CollaborationService", () => {
 
 	afterEach(async () => {
 		await runtime.dispose();
+	});
+
+	test("signals committed roster revocations without invalidating unchanged rosters", async () => {
+		await runtime.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const service = yield* CollaborationService;
+					const subscription = yield* service.subscribeAccessRevocations;
+					const { team } = yield* service.synchronizeOrganization(
+						organizationRoster("org-a"),
+					);
+					const driver = yield* service.resolveActor(team.id, "driver");
+					yield* service.synchronizeOrganization(organizationRoster("org-a"));
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
+					yield* service.synchronizeOrganization(
+						organizationRoster("org-a", false),
+					);
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([
+						{ kind: "member", memberId: driver.memberId },
+					]);
+					yield* service.synchronizeOrganization(
+						organizationRoster("org-a", false),
+					);
+					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
+				}),
+			),
+		);
 	});
 
 	test("rechecks live organization membership even when SQLite still records an owner", async () => {

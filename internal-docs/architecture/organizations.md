@@ -102,15 +102,19 @@ other account identities are denied by default. The initial guest allowlist cove
 `session.messages.page`, each checked against the actual session-to-chat binding and
 an explicit workspace grant (or that workspace's organization-owner role).
 
-Account streams recheck authority every 20 seconds and at credential expiry. This is
-bounded revalidation, **not immediate invalidation** on workspace revocation. Expired
+Account streams recheck external authority every 20 seconds and at credential expiry.
+Committed local workspace/grant/member revocations also signal affected active RPCs
+directly, without waiting for that timer or another provider call. Subscribers register
+before their initial authorization check; mutation and notification cannot be split by
+request cancellation. Unchanged WorkOS roster reads do not invalidate streams. Changes
+made directly in WorkOS still rely on synchronization or periodic revalidation. Expired
 credentials have a distinct error code so the existing desktop/web/mobile connection
 supervisors can renew them; permission denials do not trigger retry loops. The narrow
 server-side WorkOS membership lookup uses host authority, while general guest RPCs
 cannot obtain or use the host's account token.
 
-Before enabling cross-account environment discovery, finish immediate local
-revocation, scoped environment/catalog views, HTTP attachment authorization, and
+Before enabling cross-account environment discovery, finish scoped
+environment/catalog views, HTTP attachment authorization, and
 workspace-scoped file/Git/terminal/agent operations. These remain denied to guests.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.

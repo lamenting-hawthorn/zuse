@@ -32,7 +32,8 @@ const Rpcs = RpcGroup.make(
 ).middleware(RpcAuthorization);
 const handlers = Rpcs.toLayer({
 	"session.get": () => Effect.succeed("transcript"),
-	"session.events": () => Stream.never,
+	"session.events": () =>
+		Stream.concat(Stream.succeed("connected"), Stream.never),
 	"host.secret": () => Effect.succeed("host-only"),
 });
 const makeClient = RpcTest.makeClient(Rpcs, { flatten: true });
@@ -139,6 +140,24 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			subject: "guest",
 			expiresAt: Date.now() + 60_000,
 		} as const;
+		const startGuestStream = () => {
+			let markReady = () => {};
+			const ready = new Promise<void>((resolve) => {
+				markReady = resolve;
+			});
+			const result = call(guestIdentity, (client) =>
+				Stream.runForEach(
+					client("session.events", {
+						sessionId: SessionId.make("shared-session"),
+					}),
+					() => Effect.sync(markReady),
+				),
+			).then(
+				() => null,
+				(error: unknown) => error,
+			);
+			return { ready, result };
+		};
 		await expect(
 			call(guestIdentity, (client) =>
 				client("session.get", { sessionId: SessionId.make("shared-session") }),
@@ -169,6 +188,8 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			_tag: "RpcAccessDeniedError",
 			code: "credential-expired",
 		});
+		const grantedStream = startGuestStream();
+		await grantedStream.ready;
 		await runtime.runPromise(
 			Effect.flatMap(CollaborationService, (service) =>
 				service.removeWorkspaceGrant(
@@ -178,11 +199,70 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				),
 			),
 		);
+		await expect(grantedStream.result).resolves.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+			code: "access-denied",
+		});
 		await expect(
 			call(guestIdentity, (client) =>
 				client("session.get", { sessionId: SessionId.make("shared-session") }),
 			),
 		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		await runtime.runPromise(
+			Effect.flatMap(CollaborationService, (service) =>
+				service.setWorkspaceGrant(
+					owner,
+					ChatId.make("shared"),
+					guest.memberId,
+					"viewer",
+				),
+			),
+		);
+		const sharedStream = startGuestStream();
+		await sharedStream.ready;
+		await runtime.runPromise(
+			Effect.flatMap(CollaborationService, (service) =>
+				service.unshareWorkspace(owner, ChatId.make("shared")),
+			).pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
+		);
+		await expect(sharedStream.result).resolves.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+			code: "access-denied",
+		});
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const service = yield* CollaborationService;
+				yield* service
+					.shareWorkspace(owner, ChatId.make("shared"))
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				yield* service.changeMemberRole(owner, guest.memberId, "owner");
+			}),
+		);
+		const organizationOwnerStream = startGuestStream();
+		await organizationOwnerStream.ready;
+		let ownerStreamEnded = false;
+		void organizationOwnerStream.result.then(() => {
+			ownerStreamEnded = true;
+		});
+		await runtime.runPromise(
+			Effect.flatMap(CollaborationService, (service) =>
+				service.removeWorkspaceGrant(
+					owner,
+					ChatId.make("shared"),
+					guest.memberId,
+				),
+			),
+		);
+		expect(ownerStreamEnded).toBe(false);
+		await runtime.runPromise(
+			Effect.flatMap(CollaborationService, (service) =>
+				service.revokeMember(owner, guest.memberId),
+			),
+		);
+		await expect(organizationOwnerStream.result).resolves.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+			code: "access-denied",
+		});
 		signedIn = false;
 		await expect(
 			call({ ...guestIdentity, subject: "owner" }, (client) =>

@@ -4,8 +4,9 @@ import {
 	RpcAuthorization,
 	SessionId,
 	TeamId,
+	type TeamMemberId,
 } from "@zuse/contracts";
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, Layer, Option, PubSub, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { AuthService } from "../../auth/services/auth-service.ts";
 import { CollaborationService } from "../../collaboration/services/collaboration-service.ts";
@@ -25,6 +26,12 @@ export const RpcAuthorizationLive = Layer.effect(
 				if (Option.isNone(identity) || identity.value.kind !== "account")
 					return yield* effect;
 				const account = identity.value;
+				const revocations = yield* collaboration.subscribeAccessRevocations;
+				let guestScope: {
+					chatId: ChatId;
+					memberId: TeamMemberId;
+					owner: boolean;
+				} | null = null;
 				const authorize = Effect.gen(function* () {
 					if (account.expiresAt <= Date.now())
 						return yield* new RpcAccessDeniedError({
@@ -33,7 +40,10 @@ export const RpcAuthorizationLive = Layer.effect(
 					const session = yield* auth.getSession();
 					if (session._tag !== "SignedIn")
 						return yield* new RpcAccessDeniedError({ code: "access-denied" });
-					if (session.session.user.id === account.subject) return;
+					if (session.session.user.id === account.subject) {
+						guestScope = null;
+						return;
+					}
 					let chatId: ChatId;
 					if (rpc._tag === "chat.get") {
 						chatId = (yield* Schema.decodeUnknownEffect(
@@ -71,7 +81,16 @@ export const RpcAuthorizationLive = Layer.effect(
 						TeamId.make(workspaces[0].team_id),
 						account.subject,
 					);
-					yield* collaboration.requireWorkspaceRole(actor, chatId, "viewer");
+					const grant = yield* collaboration.requireWorkspaceRole(
+						actor,
+						chatId,
+						"viewer",
+					);
+					guestScope = {
+						chatId,
+						memberId: actor.memberId,
+						owner: grant === null,
+					};
 				}).pipe(
 					Effect.andThen(
 						Effect.suspend(() =>
@@ -89,16 +108,39 @@ export const RpcAuthorizationLive = Layer.effect(
 					),
 				);
 				yield* authorize;
+				const watchRevocations = Effect.forever(
+					PubSub.take(revocations).pipe(
+						Effect.flatMap((event) => {
+							if (guestScope === null) return Effect.void;
+							const affected =
+								event.kind === "workspace"
+									? event.chatId === guestScope.chatId
+									: event.kind === "member"
+										? event.memberId === guestScope.memberId
+										: !guestScope.owner &&
+											event.chatId === guestScope.chatId &&
+											event.memberId === guestScope.memberId;
+							return affected
+								? Effect.fail(
+										new RpcAccessDeniedError({ code: "access-denied" }),
+									)
+								: Effect.void;
+						}),
+					),
+				);
 				// Long-lived subscriptions must not retain authority after logout or
 				// credential expiry. Cancellation closes the existing RPC stream.
 				return yield* Effect.raceFirst(
 					effect,
-					Effect.forever(
-						Effect.suspend(() =>
-							Effect.sleep(
-								Math.max(0, Math.min(20_000, account.expiresAt - Date.now())),
-							),
-						).pipe(Effect.andThen(authorize)),
+					Effect.raceFirst(
+						watchRevocations,
+						Effect.forever(
+							Effect.suspend(() =>
+								Effect.sleep(
+									Math.max(0, Math.min(20_000, account.expiresAt - Date.now())),
+								),
+							).pipe(Effect.andThen(authorize)),
+						),
 					),
 				);
 			}),
