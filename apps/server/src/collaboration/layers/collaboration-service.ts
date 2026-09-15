@@ -13,6 +13,7 @@ import {
 	CollaborationNotFoundError,
 	type CollaborationRole,
 	CreatedCollaborationInvite,
+	FolderId,
 	type OrganizationDetails,
 	Team,
 	type TeamId,
@@ -1008,6 +1009,47 @@ export const CollaborationServiceLive = Layer.effect(
 			});
 
 		return CollaborationService.of({
+			visibleWorkspaces: (subject) =>
+				Effect.gen(function* () {
+					const members =
+						yield* sql<MemberRow>`SELECT DISTINCT m.* FROM collaboration_members m
+					JOIN collaboration_workspaces w ON w.team_id = m.team_id
+					WHERE m.subject = ${subject} AND m.status = 'active'`;
+					const groups = yield* Effect.forEach(
+						members,
+						(row) =>
+							Effect.gen(function* () {
+								const member = yield* validateActor(
+									asActor(asMember(row)),
+									"viewer",
+								);
+								// Recheck the projection after the network lookup; a concurrent
+								// local revocation or membership replacement must win.
+								const visible = yield* sql<{
+									readonly chat_id: string;
+									readonly project_id: string;
+								}>`
+						SELECT w.chat_id, c.project_id FROM collaboration_workspaces w
+						JOIN chats c ON c.id = w.chat_id
+						JOIN collaboration_members m ON m.team_id = w.team_id
+						LEFT JOIN collaboration_chat_grants g ON g.team_id = w.team_id AND g.chat_id = w.chat_id AND g.member_id = m.id
+						WHERE m.id = ${member.id} AND m.status = 'active'
+						AND m.organization_membership_id IS ${row.organization_membership_id}
+						AND ((${member.role === "owner"} AND m.role = 'owner') OR g.member_id IS NOT NULL)
+						ORDER BY w.chat_id`;
+								return visible.map((item) => ({
+									chatId: item.chat_id as ChatId,
+									projectId: FolderId.make(item.project_id),
+								}));
+							}).pipe(
+								Effect.catchTag("CollaborationAccessDeniedError", () =>
+									Effect.succeed([]),
+								),
+							),
+						{ concurrency: 4 },
+					);
+					return groups.flat();
+				}).pipe(Effect.catchTag("SqlError", Effect.die)),
 			applyOrganizationMembershipRestriction: (input) =>
 				sql
 					.withTransaction(

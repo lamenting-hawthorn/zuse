@@ -1,6 +1,7 @@
 import {
 	AuthState,
 	ChatId,
+	FolderId,
 	MemoizeRpcs,
 	RpcAuthorization,
 	SessionId,
@@ -12,6 +13,7 @@ import { SqlClient } from "effect/unstable/sql";
 import { expect, it } from "vitest";
 import { AuthService } from "../../src/auth/services/auth-service.ts";
 import { CollaborationServiceLive } from "../../src/collaboration/layers/collaboration-service.ts";
+import { filterCatalog } from "../../src/collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
 import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { RpcAuthorizationLive } from "../../src/lan-auth/layers/rpc-authorization.ts";
@@ -19,6 +21,15 @@ import { ConnectionIdentity } from "../../src/lan-auth/services/connection-ident
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
+	Rpc.make("chat.list", {
+		payload: { projectId: FolderId },
+		success: Schema.Array(Schema.String),
+	}),
+	Rpc.make("session.list", {
+		payload: { projectId: FolderId },
+		success: Schema.Array(Schema.String),
+	}),
+	Rpc.make("workspace.list", { success: Schema.Array(Schema.String) }),
 	Rpc.make("session.get", {
 		payload: { sessionId: SessionId },
 		success: Schema.String,
@@ -35,6 +46,18 @@ const Rpcs = RpcGroup.make(
 	Rpc.make("host.secret", { success: Schema.String }),
 ).middleware(RpcAuthorization);
 const handlers = Rpcs.toLayer({
+	"chat.list": () =>
+		filterCatalog(["shared", "private"], (scope, id) =>
+			scope.chats.has(ChatId.make(id)),
+		),
+	"session.list": () =>
+		filterCatalog(["shared", "private"], (scope, chatId) =>
+			scope.chats.has(ChatId.make(chatId)),
+		),
+	"workspace.list": () =>
+		filterCatalog(["project", "private-project"], (scope, id) =>
+			scope.projects.has(FolderId.make(id)),
+		),
 	"session.get": () => Effect.succeed("transcript"),
 	"attachments.read": () => Effect.succeed("attachment"),
 	"session.events": () =>
@@ -168,6 +191,27 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				client("session.get", { sessionId: SessionId.make("shared-session") }),
 			),
 		).resolves.toBe("transcript");
+		for (const list of [
+			(client: Effect.Success<typeof makeClient>) =>
+				client("chat.list", { projectId: FolderId.make("project") }),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("session.list", { projectId: FolderId.make("project") }),
+		]) {
+			await expect(
+				call(guestIdentity, (client) => list(client)),
+			).resolves.toEqual(["shared"]);
+			await expect(
+				call({ ...guestIdentity, subject: "owner" }, (client) => list(client)),
+			).resolves.toEqual(["shared", "private"]);
+			await expect(
+				call({ ...guestIdentity, subject: "stranger" }, (client) =>
+					list(client),
+				),
+			).resolves.toEqual([]);
+		}
+		await expect(
+			call(guestIdentity, (client) => client("workspace.list", undefined)),
+		).resolves.toEqual(["project"]);
 		await expect(
 			call(guestIdentity, (client) =>
 				client("attachments.read", {
@@ -224,6 +268,9 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			_tag: "RpcAccessDeniedError",
 			code: "access-denied",
 		});
+		await expect(
+			call(guestIdentity, (client) => client("workspace.list", undefined)),
+		).resolves.toEqual([]);
 		await expect(
 			call(guestIdentity, (client) =>
 				client("session.get", { sessionId: SessionId.make("shared-session") }),

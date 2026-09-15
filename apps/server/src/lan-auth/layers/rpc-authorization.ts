@@ -9,6 +9,7 @@ import {
 import { Effect, Layer, Option, PubSub, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { AuthService } from "../../auth/services/auth-service.ts";
+import { CatalogVisibility } from "../../collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../collaboration/services/collaboration-service.ts";
 import { ConnectionIdentity } from "../services/connection-identity.ts";
 
@@ -27,6 +28,7 @@ export const RpcAuthorizationLive = Layer.effect(
 					return yield* effect;
 				const account = identity.value;
 				const revocations = yield* collaboration.subscribeAccessRevocations;
+				let catalogScope: CatalogVisibility["Service"] | null = null;
 				let guestScope: {
 					chatId: ChatId;
 					memberId: TeamMemberId;
@@ -42,6 +44,21 @@ export const RpcAuthorizationLive = Layer.effect(
 						return yield* new RpcAccessDeniedError({ code: "access-denied" });
 					if (session.session.user.id === account.subject) {
 						guestScope = null;
+						catalogScope = null;
+						return;
+					}
+					if (
+						rpc._tag === "workspace.list" ||
+						rpc._tag === "chat.list" ||
+						rpc._tag === "session.list"
+					) {
+						const visible = yield* collaboration.visibleWorkspaces(
+							account.subject,
+						);
+						catalogScope = {
+							chats: new Set(visible.map((item) => item.chatId)),
+							projects: new Set(visible.map((item) => item.projectId)),
+						};
 						return;
 					}
 					let chatId: ChatId;
@@ -112,6 +129,10 @@ export const RpcAuthorizationLive = Layer.effect(
 				const watchRevocations = Effect.forever(
 					PubSub.take(revocations).pipe(
 						Effect.flatMap((event) => {
+							if (catalogScope !== null)
+								return Effect.fail(
+									new RpcAccessDeniedError({ code: "access-denied" }),
+								);
 							if (guestScope === null) return Effect.void;
 							const affected =
 								event.kind === "workspace"
@@ -132,7 +153,9 @@ export const RpcAuthorizationLive = Layer.effect(
 				// Long-lived subscriptions must not retain authority after logout or
 				// credential expiry. Cancellation closes the existing RPC stream.
 				return yield* Effect.raceFirst(
-					effect,
+					catalogScope === null
+						? effect
+						: Effect.provideService(effect, CatalogVisibility, catalogScope),
 					Effect.raceFirst(
 						watchRevocations,
 						Effect.forever(

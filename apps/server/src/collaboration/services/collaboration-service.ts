@@ -9,6 +9,7 @@ import type {
 	CollaborationNotFoundError,
 	CollaborationRole,
 	CreatedCollaborationInvite,
+	FolderId,
 	OrganizationDetails,
 	Team,
 	TeamId,
@@ -41,6 +42,13 @@ export interface CollaborationProfile {
 }
 
 export interface CollaborationServiceShape {
+	/** Verified account subject only; private/ungranted workspaces are excluded. */
+	readonly visibleWorkspaces: (subject: string) => Effect.Effect<
+		ReadonlyArray<{
+			readonly chatId: ChatId;
+			readonly projectId: FolderId;
+		}>
+	>;
 	/** Apply only after the trusted account API confirms this membership mutation. */
 	readonly applyOrganizationMembershipRestriction: (input: {
 		readonly organizationId: string;

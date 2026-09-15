@@ -230,6 +230,53 @@ describe("CollaborationService", () => {
 		);
 	});
 
+	test("lists only explicitly shared workspaces and rechecks live organization membership", async () => {
+		let authorized = true;
+		const isolated = makeRuntime(() => authorized);
+		try {
+			await isolated.runPromise(
+				Effect.gen(function* () {
+					const service = yield* CollaborationService;
+					const sql = yield* SqlClient.SqlClient;
+					const { team, actor } = yield* service.synchronizeOrganization(
+						organizationRoster("org-visible"),
+					);
+					const driver = yield* service.resolveActor(team.id, "driver");
+					const now = new Date().toISOString();
+					yield* sql`INSERT INTO projects (id, path, name, created_at, updated_at) VALUES ('p', '/tmp/p', 'P', ${now}, ${now})`;
+					yield* sql`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES ('shared', 'p', 'Shared', ${now}, ${now}), ('private', 'p', 'Private', ${now}, ${now})`;
+					const chatId = "shared" as ChatId;
+					expect(yield* service.visibleWorkspaces("owner")).toEqual([]);
+					yield* service
+						.shareWorkspace(actor, chatId)
+						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+					expect(yield* service.visibleWorkspaces("owner")).toEqual([
+						{ chatId: "shared", projectId: "p" },
+					]);
+					expect(yield* service.visibleWorkspaces("driver")).toEqual([]);
+					yield* service.setWorkspaceGrant(
+						actor,
+						chatId,
+						driver.memberId,
+						"viewer",
+					);
+					expect(yield* service.visibleWorkspaces("driver")).toEqual([
+						{ chatId: "shared", projectId: "p" },
+					]);
+					expect(yield* service.visibleWorkspaces("stranger")).toEqual([]);
+					authorized = false;
+					expect(yield* service.visibleWorkspaces("owner")).toEqual([]);
+					expect(yield* service.visibleWorkspaces("driver")).toEqual([]);
+					authorized = true;
+					yield* service.removeWorkspaceGrant(actor, chatId, driver.memberId);
+					expect(yield* service.visibleWorkspaces("driver")).toEqual([]);
+				}),
+			);
+		} finally {
+			await isolated.dispose();
+		}
+	});
+
 	test("applies confirmed membership restrictions by organization and membership ID without a roster refresh", async () => {
 		await runtime.runPromise(
 			Effect.scoped(

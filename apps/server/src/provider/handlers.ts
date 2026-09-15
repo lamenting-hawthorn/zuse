@@ -40,6 +40,7 @@ import { Effect, Layer, Result, Schedule, Stream } from "effect";
 import type { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
 import { SqlClient } from "effect/unstable/sql";
 import { AnalyticsService } from "../analytics/services/analytics-service.ts";
+import { filterCatalog } from "../collaboration/services/catalog-visibility.ts";
 import { ConfigStoreService } from "../config-store/services/config-store-service.ts";
 import {
 	decodeChatStartupIntent,
@@ -313,7 +314,13 @@ const SessionList = MemoizeRpcs.toLayerHandler(
 	"session.list",
 	({ projectId, includeArchived }) =>
 		Effect.flatMap(SessionService, (svc) =>
-			svc.listSessions(projectId, includeArchived ?? false),
+			svc
+				.listSessions(projectId, includeArchived ?? false)
+				.pipe(
+					Effect.flatMap((items) =>
+						filterCatalog(items, (scope, item) => scope.chats.has(item.chatId)),
+					),
+				),
 		),
 );
 
@@ -427,7 +434,13 @@ const ChatList = MemoizeRpcs.toLayerHandler(
 	"chat.list",
 	({ projectId, includeArchived }) =>
 		Effect.flatMap(ChatService, (svc) =>
-			svc.listChats(projectId, includeArchived ?? false),
+			svc
+				.listChats(projectId, includeArchived ?? false)
+				.pipe(
+					Effect.flatMap((items) =>
+						filterCatalog(items, (scope, item) => scope.chats.has(item.id)),
+					),
+				),
 		),
 );
 

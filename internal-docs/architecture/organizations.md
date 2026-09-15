@@ -124,10 +124,18 @@ are protected from request cancellation. Provider changes with an unconfirmed re
 still rely on live authorization and subsequent synchronization.
 
 Before enabling cross-account environment discovery, finish scoped
-environment/catalog views and
+streaming environment/catalog views and
 workspace-scoped file/Git/terminal/agent operations. These remain denied to guests.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
+
+The existing one-shot `workspace.list`, `chat.list`, and `session.list` RPCs now
+support guest visibility. Their handlers filter through a server-owned request scope,
+derived from live membership and explicit workspace bindings/grants. Validation is
+grouped by team (bounded concurrency), with a fresh local projection check after each
+provider lookup. Private chats in the same project remain hidden. Unknown accounts or
+accounts without visible workspaces receive empty lists. Host and paired behavior is
+unchanged. The shell's snapshot-plus-live streams are not enabled for guests yet.
 
 Legacy HTTP attachment URLs are deliberately host-only: verified account credentials
 must match the signed-in host account, while explicitly paired devices retain access.
