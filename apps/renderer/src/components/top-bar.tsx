@@ -3,6 +3,7 @@ import { useGitPrState } from "../lib/use-git-pr-state.ts";
 import { CopyButton } from "./copy-button.tsx";
 import { GitStackMenu } from "./git-stack-menu.tsx";
 import { PreviewPortsMenu } from "./preview-ports-menu.tsx";
+import { WorkspaceSharingButton } from "./workspace-sharing-button.tsx";
 import "@zuse/i18n/english/projects";
 import { isInputComposing } from "../lib/input-composition.ts";
 import { CreateBranchDialog } from "./create-branch-dialog.tsx";
@@ -503,6 +504,12 @@ export function TopBarMain() {
 					/>
 				</Suspense>
 			) : null}
+			{selectedChatRef !== null && (
+				<WorkspaceSharingButton
+					key={selectedChatKey}
+					chatRef={selectedChatRef}
+				/>
+			)}
 			{hasSession ? (
 				cloudSummary !== null ? (
 					<div className="flex items-center gap-1">

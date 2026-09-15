@@ -694,5 +694,6 @@
 	"fork_menu_new_tab_on_this_machine": "在此机器上打开新标签页，包含截至此消息的对话。",
 	"fork_menu_fork_in_new_machine": "分叉到新机器",
 	"fork_menu_new_machine_description": "克隆此机器，并在单独的聊天中继续对话。",
-	"fork_menu_forking_in_new_machine": "正在分叉到新机器"
+	"fork_menu_forking_in_new_machine": "正在分叉到新机器",
+	"workspace_sharing_button": "Share"
 }

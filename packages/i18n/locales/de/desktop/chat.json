@@ -694,5 +694,6 @@
 	"fork_menu_new_tab_on_this_machine": "Öffnen Sie auf diesem Rechner einen neuen Tab mit der Unterhaltung bis zu dieser Nachricht.",
 	"fork_menu_fork_in_new_machine": "In neuen Rechner forken",
 	"fork_menu_new_machine_description": "Klonen Sie diesen Rechner und setzen Sie die Unterhaltung in einem separaten Chat fort.",
-	"fork_menu_forking_in_new_machine": "Neuer Rechner wird geforkt"
+	"fork_menu_forking_in_new_machine": "Neuer Rechner wird geforkt",
+	"workspace_sharing_button": "Share"
 }
