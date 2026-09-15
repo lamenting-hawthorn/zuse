@@ -231,11 +231,13 @@ import { ModelCatalogRpc, ModelCatalogStreamRpc } from "./model-catalog/rpc.ts";
 import {
 	OrganizationsCreateRpc,
 	OrganizationsGetRpc,
+	OrganizationsGetWorkspaceSharingRpc,
 	OrganizationsInviteRpc,
 	OrganizationsListRpc,
 	OrganizationsRemoveMemberRpc,
 	OrganizationsRevokeInviteRpc,
 	OrganizationsSetRoleRpc,
+	OrganizationsSetWorkspaceGrantRpc,
 	OrganizationsSetWorkspaceSharingRpc,
 } from "./organizations.ts";
 import {
@@ -405,7 +407,9 @@ export const MemoizeRpcs = RpcGroup.make(
 	DeviceBridgeControlRpc,
 	OrganizationsSetWorkspaceSharingRpc,
 	CloudDeviceBridgeRpc,
+	OrganizationsGetWorkspaceSharingRpc,
 	PingRpc,
+	OrganizationsSetWorkspaceGrantRpc,
 	PreviewsListServersRpc,
 	AnalyticsGetContextRpc,
 	AnalyticsContextChangesRpc,

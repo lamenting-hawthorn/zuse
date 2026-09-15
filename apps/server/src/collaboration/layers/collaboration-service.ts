@@ -842,6 +842,30 @@ export const CollaborationServiceLive = Layer.effect(
 			},
 		);
 
+		const getWorkspaceSharing = Effect.fn(
+			"CollaborationService.getWorkspaceSharing",
+		)(function* (actor: ActorIdentity, chatId: ChatId) {
+			yield* sharingAuthority.authorize(actor.subject);
+			yield* validateActor(actor, "owner");
+			return yield* sql.withTransaction(
+				Effect.gen(function* () {
+					yield* validateActor(actor, "owner", false);
+					const chats = yield* sql`SELECT id FROM chats WHERE id = ${chatId}`;
+					if (chats.length === 0)
+						return yield* new CollaborationNotFoundError({ resource: "chat" });
+					const workspace = yield* sql<{
+						readonly team_id: string;
+					}>`SELECT team_id FROM collaboration_workspaces WHERE chat_id = ${chatId}`;
+					if (workspace[0] === undefined) return { shared: false, grants: [] };
+					if (workspace[0].team_id !== actor.teamId)
+						return yield* denied("workspace_belongs_to_another_team");
+					const grants =
+						yield* sql<GrantRow>`SELECT * FROM collaboration_chat_grants WHERE chat_id = ${chatId} AND team_id = ${actor.teamId} ORDER BY created_at, member_id`;
+					return { shared: true, grants: grants.map(asGrant) };
+				}),
+			);
+		});
+
 		const setWorkspaceGrant = (
 			actor: ActorIdentity,
 			chatId: ChatId,
@@ -1004,6 +1028,10 @@ export const CollaborationServiceLive = Layer.effect(
 				unshareWorkspace(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			listWorkspaceGrants: (...args) =>
 				listWorkspaceGrants(...args).pipe(
+					Effect.catchTag("SqlError", Effect.die),
+				),
+			getWorkspaceSharing: (...args) =>
+				getWorkspaceSharing(...args).pipe(
 					Effect.catchTag("SqlError", Effect.die),
 				),
 			requireWorkspaceRole: (...args) =>

@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Rpc } from "effect/unstable/rpc";
+import { TeamMember, WorkspaceGrant } from "./collaboration.ts";
 import { ChatId } from "./ids.ts";
 
 /** Organization administration is separate from private workspace permissions. */
@@ -110,6 +111,33 @@ export const OrganizationsCreateRpc = Rpc.make("organizations.create", {
 	success: Organization,
 	error: OrganizationError,
 });
+
+export const OrganizationsGetWorkspaceSharingRpc = Rpc.make(
+	"organizations.getWorkspaceSharing",
+	{
+		payload: Schema.Struct({ organizationId: Identifier, chatId: ChatId }),
+		success: Schema.Struct({
+			shared: Schema.Boolean,
+			grants: Schema.Array(WorkspaceGrant),
+			members: Schema.Array(TeamMember),
+		}),
+		error: OrganizationError,
+	},
+);
+
+export const OrganizationsSetWorkspaceGrantRpc = Rpc.make(
+	"organizations.setWorkspaceGrant",
+	{
+		payload: Schema.Struct({
+			organizationId: Identifier,
+			chatId: ChatId,
+			userId: Identifier,
+			role: Schema.NullOr(Schema.Literals(["driver", "viewer"])),
+		}),
+		success: Schema.Void,
+		error: OrganizationError,
+	},
+);
 export const OrganizationsGetRpc = Rpc.make("organizations.get", {
 	payload: Schema.Struct({ organizationId: Identifier }),
 	success: OrganizationDetails,

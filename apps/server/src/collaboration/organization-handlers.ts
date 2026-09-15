@@ -1,10 +1,17 @@
-import { MemoizeRpcs, OrganizationError } from "@zuse/contracts";
+import {
+	type ActorIdentity,
+	MemoizeRpcs,
+	OrganizationError,
+} from "@zuse/contracts";
 import { Effect, Layer } from "effect";
 import {
 	type MachineControlError,
 	MachineControlService,
 } from "../machine/machine-control-service.ts";
-import { CollaborationService } from "./services/collaboration-service.ts";
+import {
+	CollaborationService,
+	type CollaborationServiceError,
+} from "./services/collaboration-service.ts";
 
 const withOrganizations = <A>(
 	run: (
@@ -26,31 +33,74 @@ const withOrganizations = <A>(
 		),
 	);
 
+const withOrganizationActor = <A>(
+	organizationId: string,
+	run: (
+		service: CollaborationService["Service"],
+		actor: ActorIdentity,
+	) => Effect.Effect<A, CollaborationServiceError>,
+) =>
+	Effect.gen(function* () {
+		const details = yield* withOrganizations((service) =>
+			service.getOrganization(organizationId),
+		);
+		const collaboration = yield* CollaborationService;
+		const { actor } = yield* collaboration.synchronizeOrganization(details);
+		return yield* run(collaboration, actor);
+	}).pipe(
+		Effect.mapError((error) =>
+			error._tag === "OrganizationError"
+				? error
+				: new OrganizationError({
+						code:
+							error._tag === "CollaborationAccessDeniedError"
+								? "not-allowed"
+								: error._tag === "CollaborationNotFoundError"
+									? "not-found"
+									: "unavailable",
+					}),
+		),
+	);
+
 export const OrganizationHandlersLayer = Layer.mergeAll(
+	MemoizeRpcs.toLayerHandler(
+		"organizations.getWorkspaceSharing",
+		({ organizationId, chatId }) =>
+			withOrganizationActor(organizationId, (service, actor) =>
+				Effect.gen(function* () {
+					const state = yield* service.getWorkspaceSharing(actor, chatId);
+					const members = yield* service.listMembers(actor);
+					return { ...state, members };
+				}),
+			),
+	),
+	MemoizeRpcs.toLayerHandler(
+		"organizations.setWorkspaceGrant",
+		({ organizationId, chatId, userId, role }) =>
+			withOrganizationActor(organizationId, (service, actor) =>
+				Effect.gen(function* () {
+					// Requires host ownership, not just organization administrator status.
+					yield* service.getWorkspaceSharing(actor, chatId);
+					const target = yield* service.resolveActor(actor.teamId, userId);
+					if (role === null)
+						yield* service.removeWorkspaceGrant(actor, chatId, target.memberId);
+					else
+						yield* service.setWorkspaceGrant(
+							actor,
+							chatId,
+							target.memberId,
+							role,
+						);
+				}),
+			),
+	),
 	MemoizeRpcs.toLayerHandler(
 		"organizations.setWorkspaceSharing",
 		({ organizationId, chatId, shared }) =>
-			Effect.gen(function* () {
-				const details = yield* withOrganizations((service) =>
-					service.getOrganization(organizationId),
-				);
-				const collaboration = yield* CollaborationService;
-				const { actor } = yield* collaboration.synchronizeOrganization(details);
-				if (shared) yield* collaboration.shareWorkspace(actor, chatId);
-				else yield* collaboration.unshareWorkspace(actor, chatId);
-			}).pipe(
-				Effect.mapError((error) =>
-					error._tag === "OrganizationError"
-						? error
-						: new OrganizationError({
-								code:
-									error._tag === "CollaborationAccessDeniedError"
-										? "not-allowed"
-										: error._tag === "CollaborationNotFoundError"
-											? "not-found"
-											: "unavailable",
-							}),
-				),
+			withOrganizationActor(organizationId, (service, actor) =>
+				shared
+					? service.shareWorkspace(actor, chatId)
+					: service.unshareWorkspace(actor, chatId),
 			),
 	),
 	MemoizeRpcs.toLayerHandler("organizations.list", () =>

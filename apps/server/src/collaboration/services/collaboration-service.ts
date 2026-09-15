@@ -118,6 +118,16 @@ export interface CollaborationServiceShape {
 		actor: ActorIdentity,
 		chatId: ChatId,
 	) => Effect.Effect<ReadonlyArray<WorkspaceGrant>, CollaborationServiceError>;
+	readonly getWorkspaceSharing: (
+		actor: ActorIdentity,
+		chatId: ChatId,
+	) => Effect.Effect<
+		{
+			readonly shared: boolean;
+			readonly grants: ReadonlyArray<WorkspaceGrant>;
+		},
+		CollaborationServiceError
+	>;
 	readonly requireWorkspaceRole: (
 		actor: ActorIdentity,
 		chatId: ChatId,

@@ -188,6 +188,16 @@ describe("CollaborationService", () => {
 				const chatId = "chat-org" as ChatId;
 				expect(
 					yield* service
+						.getWorkspaceSharing(first.actor, chatId)
+						.pipe(Effect.flip),
+				).toMatchObject({ reason: "host_authorization_required" });
+				expect(
+					yield* service
+						.getWorkspaceSharing(first.actor, chatId)
+						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
+				).toEqual({ shared: false, grants: [] });
+				expect(
+					yield* service
 						.setWorkspaceGrant(first.actor, chatId, driver.memberId, "driver")
 						.pipe(Effect.flip),
 				).toMatchObject({ reason: "workspace_not_shared" });
@@ -241,6 +251,20 @@ describe("CollaborationService", () => {
 					Effect.flip,
 				);
 				expect(crossTeamInsert._tag).toBe("SqlError");
+				const sharing = yield* service
+					.getWorkspaceSharing(first.actor, chatId)
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				expect(sharing.shared).toBe(true);
+				expect(sharing.grants).toHaveLength(1);
+				expect(sharing.grants[0]?.memberId).toBe(driver.memberId);
+				expect(
+					yield* service
+						.getWorkspaceSharing(other.actor, chatId)
+						.pipe(
+							Effect.provideService(ConnectionIdentity, { kind: "local" }),
+							Effect.flip,
+						),
+				).toMatchObject({ reason: "workspace_belongs_to_another_team" });
 				expect(
 					yield* service
 						.unshareWorkspace(first.actor, chatId)
@@ -258,6 +282,11 @@ describe("CollaborationService", () => {
 				expect(
 					yield* sql`SELECT id FROM chats WHERE id = ${chatId}`,
 				).toHaveLength(1);
+				expect(
+					yield* service
+						.getWorkspaceSharing(first.actor, chatId)
+						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
+				).toEqual({ shared: false, grants: [] });
 				expect(
 					yield* service
 						.requireWorkspaceRole(first.actor, chatId, "viewer")
