@@ -20,10 +20,8 @@ import {
 	type TeamMemberId,
 	WorkspaceGrant,
 } from "@zuse/contracts";
-import { Effect, Layer, Option } from "effect";
+import { Effect, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
-import { ConnectionIdentity } from "../../lan-auth/services/connection-identity.ts";
-
 import {
 	type CollaborationProfile,
 	CollaborationService,
@@ -32,6 +30,7 @@ import {
 	OrganizationAuthority,
 	organizationCollaborationRole,
 } from "../services/organization-authority.ts";
+import { WorkspaceSharingAuthority } from "../services/workspace-sharing-authority.ts";
 
 interface MemberRow {
 	readonly id: string;
@@ -191,6 +190,7 @@ export const CollaborationServiceLive = Layer.effect(
 	CollaborationService,
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;
+		const sharingAuthority = yield* WorkspaceSharingAuthority;
 		const organizationAuthority = yield* Effect.serviceOption(
 			OrganizationAuthority,
 		);
@@ -785,9 +785,7 @@ export const CollaborationServiceLive = Layer.effect(
 
 		const shareWorkspace = Effect.fn("CollaborationService.shareWorkspace")(
 			function* (actor: ActorIdentity, chatId: ChatId) {
-				const identity = yield* Effect.serviceOption(ConnectionIdentity);
-				if (Option.isNone(identity) || identity.value.kind !== "local")
-					return yield* denied("host_authorization_required");
+				yield* sharingAuthority.authorize(actor.subject);
 				yield* validateActor(actor, "owner");
 				yield* sql.withTransaction(
 					Effect.gen(function* () {
@@ -810,6 +808,32 @@ export const CollaborationServiceLive = Layer.effect(
 							teamId: actor.teamId,
 							actorMemberId: actor.memberId,
 							action: "workspace.shared",
+							resourceKind: "chat",
+							resourceId: chatId,
+						});
+					}),
+				);
+			},
+		);
+
+		const unshareWorkspace = Effect.fn("CollaborationService.unshareWorkspace")(
+			function* (actor: ActorIdentity, chatId: ChatId) {
+				yield* sharingAuthority.authorize(actor.subject);
+				yield* validateActor(actor, "owner");
+				yield* sql.withTransaction(
+					Effect.gen(function* () {
+						yield* validateActor(actor, "owner", false);
+						const workspace = yield* sql<{
+							readonly team_id: string;
+						}>`SELECT team_id FROM collaboration_workspaces WHERE chat_id = ${chatId}`;
+						if (workspace[0] === undefined) return;
+						if (workspace[0].team_id !== actor.teamId)
+							return yield* denied("workspace_belongs_to_another_team");
+						yield* sql`DELETE FROM collaboration_workspaces WHERE chat_id = ${chatId} AND team_id = ${actor.teamId}`;
+						yield* appendAudit({
+							teamId: actor.teamId,
+							actorMemberId: actor.memberId,
+							action: "workspace.unshared",
 							resourceKind: "chat",
 							resourceId: chatId,
 						});
@@ -976,6 +1000,8 @@ export const CollaborationServiceLive = Layer.effect(
 				removeWorkspaceGrant(...args).pipe(
 					Effect.catchTag("SqlError", Effect.die),
 				),
+			unshareWorkspace: (...args) =>
+				unshareWorkspace(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			listWorkspaceGrants: (...args) =>
 				listWorkspaceGrants(...args).pipe(
 					Effect.catchTag("SqlError", Effect.die),

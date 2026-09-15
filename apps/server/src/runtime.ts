@@ -37,6 +37,7 @@ import { SessionStoreLive } from "./auth/layers/session-store.ts";
 import { AuthShell } from "./auth/services/auth-shell.ts";
 import { CollaborationServiceLive } from "./collaboration/layers/collaboration-service.ts";
 import { OrganizationAuthorityLive } from "./collaboration/services/organization-authority.ts";
+import { WorkspaceSharingAuthorityLive } from "./collaboration/services/workspace-sharing-authority.ts";
 import { ConfigStoreServiceLive } from "./config-store/layers/config-store-service.ts";
 import { ConversationState } from "./conversation/core/conversation-state.ts";
 import { ConversationServicesLive } from "./conversation/layers/conversation-services.ts";
@@ -530,6 +531,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(MachineRuntimeRoleLayer),
 	);
 	const CollaborationLayer = CollaborationServiceLive.pipe(
+		Layer.provide(WorkspaceSharingAuthorityLive.pipe(Layer.provide(AuthLayer))),
 		Layer.provide(MigratedSqlite),
 		Layer.provide(
 			OrganizationAuthorityLive.pipe(Layer.provide(MachineControlLayer)),

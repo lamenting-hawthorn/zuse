@@ -6,13 +6,15 @@ import {
 	OrganizationMember,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
-import { Effect, Layer, ManagedRuntime } from "effect";
+import { Effect, Layer, ManagedRuntime, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-
+import { AuthTokenError } from "../../src/auth/errors.ts";
+import { AuthService } from "../../src/auth/services/auth-service.ts";
 import { CollaborationServiceLive } from "../../src/collaboration/layers/collaboration-service.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
 import { OrganizationAuthority } from "../../src/collaboration/services/organization-authority.ts";
+import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
@@ -28,6 +30,20 @@ const makeRuntime = (
 	);
 	return ManagedRuntime.make(
 		CollaborationServiceLive.pipe(
+			Layer.provide(
+				WorkspaceSharingAuthorityLive.pipe(
+					Layer.provide(
+						Layer.succeed(AuthService, {
+							getSession: () => Effect.succeed({ _tag: "SignedOut" }),
+							signIn: () => Effect.succeed({ _tag: "SignedOut" }),
+							signOut: () => Effect.void,
+							sessionChanges: () => Stream.empty,
+							getAccessToken: () =>
+								Effect.fail(new AuthTokenError({ reason: "Not signed in." })),
+						}),
+					),
+				),
+			),
 			Layer.provideMerge(database),
 			Layer.provide(
 				Layer.succeed(OrganizationAuthority, {
@@ -225,6 +241,42 @@ describe("CollaborationService", () => {
 					Effect.flip,
 				);
 				expect(crossTeamInsert._tag).toBe("SqlError");
+				expect(
+					yield* service
+						.unshareWorkspace(first.actor, chatId)
+						.pipe(Effect.flip),
+				).toMatchObject({ reason: "host_authorization_required" });
+				yield* service
+					.unshareWorkspace(first.actor, chatId)
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				yield* service
+					.unshareWorkspace(first.actor, chatId)
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				expect(
+					yield* sql`SELECT id FROM collaboration_audit_events WHERE action = 'workspace.unshared' AND resource_id = ${chatId}`,
+				).toHaveLength(1);
+				expect(
+					yield* sql`SELECT id FROM chats WHERE id = ${chatId}`,
+				).toHaveLength(1);
+				expect(
+					yield* service
+						.requireWorkspaceRole(first.actor, chatId, "viewer")
+						.pipe(Effect.flip),
+				).toMatchObject({ reason: "workspace_role_required" });
+				yield* service
+					.shareWorkspace(first.actor, chatId)
+					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+				expect(
+					yield* service
+						.requireWorkspaceRole(driver, chatId, "viewer")
+						.pipe(Effect.flip),
+				).toMatchObject({ reason: "workspace_role_required" });
+				yield* service.setWorkspaceGrant(
+					first.actor,
+					chatId,
+					driver.memberId,
+					"driver",
+				);
 				expect(
 					(yield* service
 						.requireWorkspaceRole(other.actor, chatId, "viewer")

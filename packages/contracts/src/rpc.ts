@@ -236,6 +236,7 @@ import {
 	OrganizationsRemoveMemberRpc,
 	OrganizationsRevokeInviteRpc,
 	OrganizationsSetRoleRpc,
+	OrganizationsSetWorkspaceSharingRpc,
 } from "./organizations.ts";
 import {
 	PairingListNearbyRequestsRpc,
@@ -402,6 +403,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	OrganizationsSetRoleRpc,
 	OrganizationsRemoveMemberRpc,
 	DeviceBridgeControlRpc,
+	OrganizationsSetWorkspaceSharingRpc,
 	CloudDeviceBridgeRpc,
 	PingRpc,
 	PreviewsListServersRpc,

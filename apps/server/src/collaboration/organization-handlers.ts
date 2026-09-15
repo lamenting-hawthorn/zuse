@@ -27,6 +27,32 @@ const withOrganizations = <A>(
 	);
 
 export const OrganizationHandlersLayer = Layer.mergeAll(
+	MemoizeRpcs.toLayerHandler(
+		"organizations.setWorkspaceSharing",
+		({ organizationId, chatId, shared }) =>
+			Effect.gen(function* () {
+				const details = yield* withOrganizations((service) =>
+					service.getOrganization(organizationId),
+				);
+				const collaboration = yield* CollaborationService;
+				const { actor } = yield* collaboration.synchronizeOrganization(details);
+				if (shared) yield* collaboration.shareWorkspace(actor, chatId);
+				else yield* collaboration.unshareWorkspace(actor, chatId);
+			}).pipe(
+				Effect.mapError((error) =>
+					error._tag === "OrganizationError"
+						? error
+						: new OrganizationError({
+								code:
+									error._tag === "CollaborationAccessDeniedError"
+										? "not-allowed"
+										: error._tag === "CollaborationNotFoundError"
+											? "not-found"
+											: "unavailable",
+							}),
+				),
+			),
+	),
 	MemoizeRpcs.toLayerHandler("organizations.list", () =>
 		withOrganizations((service) => service.listOrganizations()),
 	),

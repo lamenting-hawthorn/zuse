@@ -100,8 +100,12 @@ export interface CollaborationServiceShape {
 		memberId: TeamMemberId,
 		role: CollaborationRole,
 	) => Effect.Effect<WorkspaceGrant, CollaborationServiceError>;
-	/** Explicit host-local opt-in. Organization ownership alone cannot claim a local chat. */
+	/** Explicit host-owner opt-in. Organization ownership alone cannot claim a local chat. */
 	readonly shareWorkspace: (
+		actor: ActorIdentity,
+		chatId: ChatId,
+	) => Effect.Effect<void, CollaborationServiceError>;
+	readonly unshareWorkspace: (
 		actor: ActorIdentity,
 		chatId: ChatId,
 	) => Effect.Effect<void, CollaborationServiceError>;

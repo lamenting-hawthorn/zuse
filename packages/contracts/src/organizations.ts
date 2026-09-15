@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { Rpc } from "effect/unstable/rpc";
+import { ChatId } from "./ids.ts";
 
 /** Organization administration is separate from private workspace permissions. */
 export const OrganizationRole = Schema.Literals(["admin", "member"]);
@@ -91,6 +92,19 @@ export const OrganizationsListRpc = Rpc.make("organizations.list", {
 	success: Schema.Array(Organization),
 	error: OrganizationError,
 });
+
+export const OrganizationsSetWorkspaceSharingRpc = Rpc.make(
+	"organizations.setWorkspaceSharing",
+	{
+		payload: Schema.Struct({
+			organizationId: Identifier,
+			chatId: ChatId,
+			shared: Schema.Boolean,
+		}),
+		success: Schema.Void,
+		error: OrganizationError,
+	},
+);
 export const OrganizationsCreateRpc = Rpc.make("organizations.create", {
 	payload: OrganizationCreateInput,
 	success: Organization,
