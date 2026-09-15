@@ -1,11 +1,14 @@
 import { EnvironmentId, SessionId } from "@zuse/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	downloadAttachment,
 	resolveAttachmentUrl,
 	uploadAttachmentBytes,
 } from "../../src/lib/attachments.ts";
 
 const dispatch = vi.hoisted(() => vi.fn());
+const download = vi.hoisted(() => vi.fn());
+vi.mock("../../src/lib/download-blob.ts", () => ({ downloadBlob: download }));
 vi.mock("../../src/lib/session-timeline-client-bus.ts", () => ({
 	dispatchSessionCommand: dispatch,
 }));
@@ -13,6 +16,63 @@ const sessionId = SessionId.make("image-session");
 describe("workspace attachment previews", () => {
 	beforeEach(() => {
 		dispatch.mockReset();
+		download.mockReset();
+	});
+	it("downloads files from the scoped RPC without caching their authorization", async () => {
+		const ref = { environmentId: EnvironmentId.make("files"), sessionId };
+		dispatch.mockResolvedValue({
+			result: {
+				bytes: new Uint8Array([1, 2]),
+				mimeType: "application/pdf",
+				originalName: "report.pdf",
+			},
+		});
+		await downloadAttachment(ref, "file", new AbortController().signal);
+		expect(dispatch).toHaveBeenCalledWith(
+			expect.objectContaining({
+				ref,
+				kind: "attachments.read",
+				payload: { sessionId, id: "file" },
+			}),
+		);
+		expect(download).toHaveBeenCalledWith(expect.any(Blob), "report.pdf");
+		const blob: unknown = download.mock.calls[0]?.[0];
+		if (!(blob instanceof Blob)) throw new Error("Expected a downloaded blob");
+		expect(blob.type).toBe("application/pdf");
+		expect(new Uint8Array(await blob.arrayBuffer())).toEqual(
+			new Uint8Array([1, 2]),
+		);
+		dispatch.mockRejectedValueOnce(new Error("access denied"));
+		await expect(
+			downloadAttachment(ref, "file", new AbortController().signal),
+		).rejects.toThrow("access denied");
+		expect(download).toHaveBeenCalledTimes(1);
+	});
+	it("does not start a stale download after its session UI is unmounted", async () => {
+		const controller = new AbortController();
+		dispatch.mockImplementation(async () => {
+			controller.abort();
+			return {
+				result: {
+					bytes: new Uint8Array([1]),
+					mimeType: "text/plain",
+					originalName: "file.txt",
+				},
+			};
+		});
+		const ref = {
+			environmentId: EnvironmentId.make("cancelled-file"),
+			sessionId,
+		};
+		await expect(
+			downloadAttachment(ref, "file", controller.signal),
+		).rejects.toThrow();
+		expect(download).not.toHaveBeenCalled();
+		dispatch.mockClear();
+		await expect(
+			downloadAttachment(ref, "file", controller.signal),
+		).rejects.toThrow();
+		expect(dispatch).not.toHaveBeenCalled();
 	});
 	it("routes every ZIP chunk to the owning cloud session", async () => {
 		const ref = { environmentId: EnvironmentId.make("cloud-zip"), sessionId };

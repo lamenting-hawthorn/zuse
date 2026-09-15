@@ -7,7 +7,23 @@ import {
 	MAX_ATTACHMENT_BYTES,
 } from "@zuse/contracts";
 import { useEffect, useState } from "react";
+import { downloadBlob } from "./download-blob.ts";
 import { dispatchSessionCommand } from "./session-timeline-client-bus.ts";
+
+/** Downloads are intentionally uncached: each request rechecks session authority. */
+export const downloadAttachment = async (
+	ref: SessionRef,
+	id: string,
+	signal: AbortSignal,
+): Promise<void> => {
+	signal.throwIfAborted();
+	const attachment = await readAttachment(ref, id);
+	signal.throwIfAborted();
+	downloadBlob(
+		new Blob([new Uint8Array(attachment.bytes)], { type: attachment.mimeType }),
+		attachment.originalName,
+	);
+};
 
 const fileToBytes = (file: File): Promise<Uint8Array> =>
 	new Promise((resolve, reject) => {

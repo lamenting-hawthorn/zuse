@@ -21,7 +21,7 @@ import {
 	Trash2,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
-
+import { downloadBlob } from "../../lib/download-blob.ts";
 import { runtimeOperationClient } from "../../lib/runtime-operation-client.ts";
 import { useEnvironmentCatalogStore } from "../../store/environment-catalog.ts";
 import { ProjectSetupDialog } from "../project-setup-dialog.tsx";
@@ -332,14 +332,10 @@ export function SelfHostedServersPane() {
 		try {
 			const client = await runtimeOperationClient(environmentId);
 			const bundle = await Effect.runPromise(client["host.diagnostics"]());
-			const url = URL.createObjectURL(
+			downloadBlob(
 				new Blob([bundle.content], { type: "application/json" }),
+				bundle.fileName,
 			);
-			const anchor = document.createElement("a");
-			anchor.href = url;
-			anchor.download = bundle.fileName;
-			anchor.click();
-			URL.revokeObjectURL(url);
 		} catch (cause) {
 			setError(errorText(cause));
 		}

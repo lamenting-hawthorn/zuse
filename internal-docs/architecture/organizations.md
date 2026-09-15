@@ -133,8 +133,11 @@ Legacy HTTP attachment URLs are deliberately host-only: verified account credent
 must match the signed-in host account, while explicitly paired devices retain access.
 Responses use `private, no-store` so browsers do not reuse authenticated downloads after
 revocation. Teammate attachment reads use the existing session-scoped RPC; its storage
-lookup matches both attachment ID and session ID. The browser's legacy URL consumers
-still need to use that scoped path before enabling teammate discovery.
+lookup matches both attachment ID and session ID. Session attachment images already
+use scoped previews; non-image attachments now download on demand through that same
+RPC, rechecking authority on every click. Unmounting the session cancels a pending
+download before browser delivery. Only legacy attachment displays with no session
+reference retain host-only URLs.
 
 The branch's presence, control-lease, notes, and collaborative-document contracts are
 foundation types only. They do not implement CRDT editing, transferable terminal
