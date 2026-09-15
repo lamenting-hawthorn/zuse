@@ -23825,7 +23825,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/settings-navigation.ts",
-				"line": 78
+				"line": 94
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -23835,7 +23835,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/settings-navigation.ts",
-				"line": 86
+				"line": 102
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -23845,7 +23845,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/settings-navigation.ts",
-				"line": 94
+				"line": 110
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -23855,7 +23855,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/settings-navigation.ts",
-				"line": 102
+				"line": 118
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -23865,7 +23865,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/settings-navigation.ts",
-				"line": 110
+				"line": 126
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -23875,7 +23875,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/settings-navigation.ts",
-				"line": 120
+				"line": 136
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -28020,5 +28020,976 @@
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_organizations": {
+		"source": "Organizations",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 136
+			},
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 386
+			},
+			{
+				"path": "apps/renderer/src/lib/settings-navigation.ts",
+				"line": 78
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_manage_team": {
+		"source": "Manage your team and invitations.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 387
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_sign_in_to_manage_your_team": {
+		"source": "Sign in to manage your team",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 139
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_use_your_zuse_account_to_create_an_organization_or_accept_an_invitation": {
+		"source": "Use your Zuse account to create an organization or accept an invitation.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 142
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_sign_in": {
+		"source": "Sign in",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 151
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_your_organizations": {
+		"source": "Your organizations",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 171
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_loading_organization": {
+		"source": "Loading organization…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 175
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_no_organizations_yet_create_one_below_or_accept_an_invitation_from_your_team": {
+		"source": "No organizations yet. Create one below, or accept an invitation from your team.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 181
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_organization": {
+		"source": "Organization",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 188
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_refresh": {
+		"source": "Refresh",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 212
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_members": {
+		"source": "Members",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 217
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_role_for": {
+		"source": "Role for {{email}}",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 231
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_current_member": {
+		"source": "{{name}} (you)",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 221
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_member": {
+		"source": "Member",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 254
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 278
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 337
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_admin": {
+		"source": "Admin",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 257
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 278
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 340
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_remove": {
+		"source": "Remove",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 271
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_directory_managed": {
+		"source": "Directory managed",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 277
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invite_people": {
+		"source": "Invite people",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 289
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invitations_are_sent_by_email_and_expire_after_seven_days": {
+		"source": "Invitations are sent by email and expire after seven days.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 291
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invitation_email": {
+		"source": "Invitation email",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 318
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_name_company_com": {
+		"source": "name@company.com",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 325
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invitation_role": {
+		"source": "Invitation role",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 329
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_send_invitation": {
+		"source": "Send invitation",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 349
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invitation_pending": {
+		"source": "Invitation pending",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 357
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_revoke": {
+		"source": "Revoke",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 377
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_create_an_organization": {
+		"source": "Create an organization",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 385
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_organization_name": {
+		"source": "Organization name",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 411
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 417
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_create": {
+		"source": "Create",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 425
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_remove_member": {
+		"source": "Remove member",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 438
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 479
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_remove_description": {
+		"source": "{{email}} will lose access to this organization.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 441
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_cancel": {
+		"source": "Cancel",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 457
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invitation_sent": {
+		"source": "Invitation sent.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 311
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_access_changed": {
+		"source": "Your access has changed. Sign in again or ask an organization administrator.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 32
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_conflict": {
+		"source": "This change could not be applied. Refresh the organization and try again.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 33
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_invalid": {
+		"source": "Check the name or email address and try again.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 35
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_not_found": {
+		"source": "This organization or invitation is no longer available.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 37
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:organizations_unavailable": {
+		"source": "Organizations are unavailable. Please try again.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organizations-pane.tsx",
+				"line": 38
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_servers": {
+		"source": "Self-hosted servers",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 391
+			},
+			{
+				"path": "apps/renderer/src/lib/settings-navigation.ts",
+				"line": 86
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_description": {
+		"source": "Connect your own server and access its workspaces on your devices.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 392
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_reconnect": {
+		"source": "Reconnect {{name}}",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 534
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_forget": {
+		"source": "Forget {{name}}",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 669
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_authorize_github_code": {
+		"source": "Authorize GitHub with {{code}}",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 444
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_resources": {
+		"source": "{{cores}} CPU · {{memory}} GB RAM",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 418
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_free_disk": {
+		"source": "{{disk}} GB disk free",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 426
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_available_gb": {
+		"source": "{{disk}} GB",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_setup_error": {
+		"source": "Setup stopped: {{code}}",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_your_vps_connected_to_zuse": {
+		"source": "Your VPS, connected to Zuse",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 353
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_zuse_manages_its_runtime_and_projects_your_vps_provider_keeps_control_of_power_snapshots_and_billing": {
+		"source": "Zuse manages its runtime and projects. Your VPS provider keeps control of power, snapshots, and billing.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 357
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_add_server": {
+		"source": "Add server",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 363
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_no_self_hosted_servers_yet": {
+		"source": "No self-hosted servers yet.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 380
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_cpu": {
+		"source": "CPU ·",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_gb_ram": {
+		"source": "GB RAM",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_gb_disk_free": {
+		"source": "GB disk free",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_zuse": {
+		"source": "Zuse",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 433
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_authorize_github": {
+		"source": "Authorize GitHub",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 448
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_copy": {
+		"source": "Copy",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 462
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_open": {
+		"source": "Open",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 476
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_open_server": {
+		"source": "Open server",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 488
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_clone_repository": {
+		"source": "Clone repository",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 501
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_add_existing_folder": {
+		"source": "Add existing folder",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 514
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_create_project": {
+		"source": "Create project",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 527
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_destructive": {
+		"source": "destructive",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_ghost": {
+		"source": "ghost",
+		"locations": [],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_confirm_remove": {
+		"source": "Confirm remove",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 559
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_remove_from_zuse": {
+		"source": "Remove from Zuse",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 560
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_download_diagnostics": {
+		"source": "Download diagnostics",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 571
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_disconnect_github": {
+		"source": "Disconnect GitHub",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 586
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_connect_github": {
+		"source": "Connect GitHub",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 587
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_confirm_update": {
+		"source": "Confirm update",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 607
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_update_zuse": {
+		"source": "Update Zuse",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 608
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_confirm_restart": {
+		"source": "Confirm restart",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 625
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_restart_runtime": {
+		"source": "Restart runtime",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 626
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_local_only_ssh_profiles": {
+		"source": "Local-only SSH profiles",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 641
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_these_stay_on_this_desktop_until_you_explicitly_enroll_them": {
+		"source": "These stay on this desktop until you explicitly enroll them.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 645
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_make_available_everywhere": {
+		"source": "Make available everywhere",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 664
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_add_a_self_hosted_server": {
+		"source": "Add a self-hosted server",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 698
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_zuse_uses_your_existing_openssh_config_keys_and_agent_password_login_is_not_supported": {
+		"source": "Zuse uses your existing OpenSSH config, keys, and agent. Password login is not supported.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 702
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_ssh_config": {
+		"source": "SSH config",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 713
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_host_or_ssh_alias": {
+		"source": "Host or SSH alias",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 741
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_display_name": {
+		"source": "Display name",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 758
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_ssh_user_optional": {
+		"source": "SSH user (optional)",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 771
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_port_optional": {
+		"source": "Port (optional)",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 787
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_cancel_setup": {
+		"source": "Cancel setup",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 828
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_verify_and_install": {
+		"source": "Verify and install",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 833
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_done": {
+		"source": "Done",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 852
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_try_again": {
+		"source": "Try again",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 853
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_starting_setup": {
+		"source": "Starting setup…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 887
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_system": {
+		"source": "System",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 904
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_architecture": {
+		"source": "Architecture",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 908
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_disk_available": {
+		"source": "Disk available",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 910
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_gb": {
+		"source": "GB",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 913
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_one_time_repair": {
+		"source": "One-time repair",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 917
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_copy_command": {
+		"source": "Copy command",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 927
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_authorize_this_server_with_code": {
+		"source": "Authorize this server with code",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 936
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_copy_code": {
+		"source": "Copy code",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 951
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_open_authorization": {
+		"source": "Open authorization",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 961
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_setup_stopped": {
+		"source": "Setup stopped:",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/self-hosted-servers-pane.tsx",
+				"line": 968
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	}
 }

@@ -49,6 +49,7 @@ import {
 } from "./machine-routes.ts";
 import { MachineStore } from "./machine-store.ts";
 import { ManagedTunnelProvider } from "./managed-tunnel.ts";
+import { routeOrganizationRequest } from "./organizations.ts";
 import { routePublicApiRequest } from "./public-api-routes.ts";
 import { PushDelivery } from "./push.ts";
 import type { SandboxOfferConfiguration } from "./sandbox-provider-module.ts";
@@ -308,6 +309,8 @@ const route = (
 		const accountIdentity = yield* AccountIdentity;
 		const workos = yield* WorkosVerifier;
 		const nowMs = yield* Clock.currentTimeMillis;
+		const organizationResponse = yield* routeOrganizationRequest(request);
+		if (organizationResponse !== null) return organizationResponse;
 		const machineResponse = yield* routeMachineRequest(request);
 		if (machineResponse !== null) return machineResponse;
 		const cloudBillingResponse = yield* routeCloudBillingRequest(request);

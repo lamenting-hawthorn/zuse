@@ -1,0 +1,955 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import {
+	ActorIdentity,
+	type AuditEventId,
+	type ChatId,
+	CollaborationAccessDeniedError,
+	type CollaborationAuditAction,
+	CollaborationAuditEvent,
+	CollaborationConflictError,
+	CollaborationInvite,
+	type CollaborationInviteId,
+	CollaborationInviteInvalidError,
+	CollaborationNotFoundError,
+	type CollaborationRole,
+	CreatedCollaborationInvite,
+	type OrganizationDetails,
+	Team,
+	type TeamId,
+	TeamMember,
+	type TeamMemberId,
+	WorkspaceGrant,
+} from "@zuse/contracts";
+import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
+
+import {
+	type CollaborationProfile,
+	CollaborationService,
+} from "../services/collaboration-service.ts";
+import {
+	OrganizationAuthority,
+	organizationCollaborationRole,
+} from "../services/organization-authority.ts";
+
+interface MemberRow {
+	readonly id: string;
+	readonly team_id: string;
+	readonly subject: string;
+	readonly organization_membership_id: string | null;
+	readonly email: string;
+	readonly display_name: string;
+	readonly avatar_url: string | null;
+	readonly role: CollaborationRole;
+	readonly status: "active" | "revoked";
+	readonly joined_at: string;
+	readonly updated_at: string;
+}
+
+interface InviteRow {
+	readonly id: string;
+	readonly team_id: string;
+	readonly email: string | null;
+	readonly role: "driver" | "viewer";
+	readonly status: "pending" | "accepted" | "revoked";
+	readonly created_by_member_id: string;
+	readonly expires_at: string;
+	readonly accepted_by_member_id: string | null;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
+interface GrantRow {
+	readonly team_id: string;
+	readonly chat_id: string;
+	readonly member_id: string;
+	readonly role: CollaborationRole;
+	readonly granted_by_member_id: string;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
+interface AuditRow {
+	readonly id: string;
+	readonly team_id: string;
+	readonly actor_member_id: string | null;
+	readonly action: CollaborationAuditAction;
+	readonly resource_kind: string;
+	readonly resource_id: string;
+	readonly metadata_json: string;
+	readonly created_at: string;
+}
+
+const asMember = (row: MemberRow): TeamMember =>
+	TeamMember.make({
+		id: row.id as TeamMemberId,
+		teamId: row.team_id as TeamId,
+		subject: row.subject,
+		email: row.email,
+		displayName: row.display_name,
+		avatarUrl: row.avatar_url,
+		role: row.role,
+		status: row.status,
+		joinedAt: new Date(row.joined_at),
+		updatedAt: new Date(row.updated_at),
+	});
+
+const asActor = (member: TeamMember): ActorIdentity =>
+	ActorIdentity.make({
+		memberId: member.id,
+		teamId: member.teamId,
+		subject: member.subject,
+		email: member.email,
+		displayName: member.displayName,
+		avatarUrl: member.avatarUrl,
+	});
+
+const inviteStatus = (
+	row: InviteRow,
+): "pending" | "accepted" | "revoked" | "expired" =>
+	row.status === "pending" && Date.parse(row.expires_at) <= Date.now()
+		? "expired"
+		: row.status;
+
+const asInvite = (row: InviteRow): CollaborationInvite =>
+	CollaborationInvite.make({
+		id: row.id as CollaborationInviteId,
+		teamId: row.team_id as TeamId,
+		email: row.email,
+		role: row.role,
+		status: inviteStatus(row),
+		createdByMemberId: row.created_by_member_id as TeamMemberId,
+		expiresAt: new Date(row.expires_at),
+		acceptedByMemberId:
+			row.accepted_by_member_id === null
+				? null
+				: (row.accepted_by_member_id as TeamMemberId),
+		createdAt: new Date(row.created_at),
+		updatedAt: new Date(row.updated_at),
+	});
+
+const asGrant = (row: GrantRow): WorkspaceGrant =>
+	WorkspaceGrant.make({
+		teamId: row.team_id as TeamId,
+		chatId: row.chat_id as ChatId,
+		memberId: row.member_id as TeamMemberId,
+		role: row.role,
+		grantedByMemberId: row.granted_by_member_id as TeamMemberId,
+		createdAt: new Date(row.created_at),
+		updatedAt: new Date(row.updated_at),
+	});
+
+const asAudit = (row: AuditRow): CollaborationAuditEvent => {
+	let metadata: Record<string, unknown> = {};
+	try {
+		const parsed = JSON.parse(row.metadata_json) as unknown;
+		if (
+			parsed !== null &&
+			typeof parsed === "object" &&
+			!Array.isArray(parsed)
+		) {
+			metadata = parsed as Record<string, unknown>;
+		}
+	} catch {
+		metadata = { decodeError: true };
+	}
+	return CollaborationAuditEvent.make({
+		id: row.id as AuditEventId,
+		teamId: row.team_id as TeamId,
+		actorMemberId:
+			row.actor_member_id === null
+				? null
+				: (row.actor_member_id as TeamMemberId),
+		action: row.action,
+		resourceKind: row.resource_kind,
+		resourceId: row.resource_id,
+		metadata,
+		createdAt: new Date(row.created_at),
+	});
+};
+
+const roleRank: Readonly<Record<CollaborationRole, number>> = {
+	viewer: 0,
+	driver: 1,
+	owner: 2,
+};
+
+const denied = (reason: string) =>
+	new CollaborationAccessDeniedError({ reason });
+
+const normalizedEmail = (email: string): string => email.trim().toLowerCase();
+const tokenHash = (token: string): string =>
+	createHash("sha256").update(token).digest("hex");
+
+const validateProfile = (profile: CollaborationProfile) =>
+	profile.subject.trim().length > 0 &&
+	normalizedEmail(profile.email).length > 0 &&
+	profile.displayName.trim().length > 0;
+
+export const CollaborationServiceLive = Layer.effect(
+	CollaborationService,
+	Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		const organizationAuthority = yield* Effect.serviceOption(
+			OrganizationAuthority,
+		);
+
+		const readMember = (memberId: TeamMemberId) =>
+			Effect.gen(function* () {
+				const rows = yield* sql<MemberRow>`
+					SELECT * FROM collaboration_members WHERE id = ${memberId} LIMIT 1
+				`;
+				return rows[0] === undefined ? null : asMember(rows[0]);
+			});
+
+		const validateActor = (
+			actor: ActorIdentity,
+			minimum: CollaborationRole,
+			verifyOrganization = true,
+		) =>
+			Effect.gen(function* () {
+				const member = yield* readMember(actor.memberId);
+				if (
+					member === null ||
+					member.status !== "active" ||
+					member.teamId !== actor.teamId ||
+					member.subject !== actor.subject ||
+					roleRank[member.role] < roleRank[minimum]
+				) {
+					return yield* Effect.fail(denied("actor_not_authorized"));
+				}
+				const teams = yield* sql<{
+					readonly organization_id: string | null;
+					readonly organization_membership_id: string | null;
+				}>`SELECT t.organization_id, m.organization_membership_id FROM collaboration_teams t
+					JOIN collaboration_members m ON m.team_id = t.id
+					WHERE t.id = ${actor.teamId} AND m.id = ${actor.memberId}`;
+				const organizationId = teams[0]?.organization_id;
+				if (
+					verifyOrganization &&
+					organizationId !== null &&
+					organizationId !== undefined
+				) {
+					if (organizationAuthority._tag === "None")
+						return yield* denied("organization_authority_unavailable");
+					const membership = yield* organizationAuthority.value.membership(
+						organizationId,
+						actor.subject,
+					);
+					if (membership.membershipId !== teams[0]?.organization_membership_id)
+						return yield* denied("organization_membership_changed");
+					const role = membership.role;
+					if (roleRank[role] < roleRank[minimum])
+						return yield* denied("actor_not_authorized");
+					return roleRank[role] < roleRank[member.role]
+						? TeamMember.make({ ...member, role })
+						: member;
+				}
+				return member;
+			});
+
+		const appendAudit = (input: {
+			readonly teamId: TeamId;
+			readonly actorMemberId: TeamMemberId | null;
+			readonly action: CollaborationAuditAction;
+			readonly resourceKind: string;
+			readonly resourceId: string;
+			readonly metadata?: Record<string, unknown>;
+		}) => {
+			const id = randomUUID() as AuditEventId;
+			const createdAt = new Date().toISOString();
+			return sql`
+				INSERT INTO collaboration_audit_events
+					(id, team_id, actor_member_id, action, resource_kind, resource_id,
+					 metadata_json, created_at)
+				VALUES (${id}, ${input.teamId}, ${input.actorMemberId}, ${input.action},
+					${input.resourceKind}, ${input.resourceId},
+					${JSON.stringify(input.metadata ?? {})}, ${createdAt})
+			`;
+		};
+
+		const bootstrapTeam = (name: string, profile: CollaborationProfile) =>
+			sql.withTransaction(
+				Effect.gen(function* () {
+					if (name.trim().length === 0 || !validateProfile(profile)) {
+						return yield* Effect.fail(
+							new CollaborationConflictError({
+								reason: "invalid_team_profile",
+							}),
+						);
+					}
+					const existing = yield* sql<{ readonly count: number }>`
+						SELECT COUNT(*) AS count FROM collaboration_teams WHERE organization_id IS NULL
+					`;
+					if (Number(existing[0]?.count ?? 0) !== 0) {
+						return yield* Effect.fail(
+							new CollaborationConflictError({
+								reason: "team_already_bootstrapped",
+							}),
+						);
+					}
+					const now = new Date().toISOString();
+					const teamId = randomUUID() as TeamId;
+					const memberId = randomUUID() as TeamMemberId;
+					yield* sql`
+						INSERT INTO collaboration_teams (id, name, created_at, updated_at)
+						VALUES (${teamId}, ${name.trim()}, ${now}, ${now})
+					`;
+					yield* sql`
+						INSERT INTO collaboration_members
+							(id, team_id, subject, email, display_name, avatar_url, role,
+							 status, joined_at, updated_at)
+						VALUES (${memberId}, ${teamId}, ${profile.subject},
+							${normalizedEmail(profile.email)}, ${profile.displayName.trim()},
+							${profile.avatarUrl ?? null}, 'owner', 'active', ${now}, ${now})
+					`;
+					yield* appendAudit({
+						teamId,
+						actorMemberId: memberId,
+						action: "team.created",
+						resourceKind: "team",
+						resourceId: teamId,
+					});
+					const team = Team.make({
+						id: teamId,
+						organizationId: null,
+						name: name.trim(),
+						createdAt: new Date(now),
+						updatedAt: new Date(now),
+					});
+					const member = TeamMember.make({
+						id: memberId,
+						teamId,
+						subject: profile.subject,
+						email: normalizedEmail(profile.email),
+						displayName: profile.displayName.trim(),
+						avatarUrl: profile.avatarUrl ?? null,
+						role: "owner",
+						status: "active",
+						joinedAt: new Date(now),
+						updatedAt: new Date(now),
+					});
+					return { team, member, actor: asActor(member) };
+				}),
+			);
+
+		const resolveActor = (teamId: TeamId, subject: string) =>
+			Effect.gen(function* () {
+				const rows = yield* sql<MemberRow>`
+					SELECT * FROM collaboration_members
+					WHERE team_id = ${teamId} AND subject = ${subject} AND status = 'active'
+					LIMIT 1
+				`;
+				if (rows[0] === undefined) {
+					return yield* Effect.fail(denied("membership_not_active"));
+				}
+				return asActor(asMember(rows[0]));
+			});
+
+		const synchronizeOrganization = (details: OrganizationDetails) =>
+			sql.withTransaction(
+				Effect.gen(function* () {
+					const current = details.members.find(
+						(member) => member.userId === details.currentUserId,
+					);
+					if (
+						current === undefined ||
+						new Set(details.members.map((member) => member.userId)).size !==
+							details.members.length
+					)
+						return yield* denied("organization_roster_invalid");
+					const now = new Date().toISOString();
+					const existing = yield* sql<{
+						readonly id: string;
+						readonly name: string;
+						readonly created_at: string;
+					}>`SELECT id, name, created_at FROM collaboration_teams WHERE organization_id = ${details.organization.id}`;
+					const teamId = (existing[0]?.id ?? randomUUID()) as TeamId;
+					const createdAt = existing[0]?.created_at ?? now;
+					yield* sql`INSERT INTO collaboration_teams (id, name, organization_id, created_at, updated_at)
+				VALUES (${teamId}, ${details.organization.name}, ${details.organization.id}, ${createdAt}, ${now})
+				ON CONFLICT (organization_id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`;
+					const previous =
+						yield* sql<MemberRow>`SELECT * FROM collaboration_members WHERE team_id = ${teamId}`;
+					const previousBySubject = new Map(
+						previous.map((member) => [member.subject, member]),
+					);
+					let changed = existing[0]?.name !== details.organization.name;
+					const incoming = new Set(
+						details.members.map((member) => member.userId),
+					);
+					for (const member of previous) {
+						if (incoming.has(member.subject) || member.status === "revoked")
+							continue;
+						changed = true;
+						yield* sql`UPDATE collaboration_members SET status = 'revoked', updated_at = ${now} WHERE id = ${member.id}`;
+						yield* sql`DELETE FROM collaboration_chat_grants WHERE member_id = ${member.id}`;
+					}
+					for (const member of details.members) {
+						const old = previousBySubject.get(member.userId);
+						const role = organizationCollaborationRole(member.role);
+						const memberId = old?.id ?? randomUUID();
+						const membershipChanged =
+							old?.organization_membership_id !== member.id;
+						changed ||=
+							old === undefined ||
+							old.status !== "active" ||
+							membershipChanged ||
+							old.role !== role ||
+							old.email !== normalizedEmail(member.email) ||
+							old.display_name !== member.displayName;
+						yield* sql`INSERT INTO collaboration_members (id, team_id, subject, organization_membership_id, email, display_name, avatar_url, role, status, joined_at, updated_at)
+					VALUES (${memberId}, ${teamId}, ${member.userId}, ${member.id}, ${normalizedEmail(member.email)}, ${member.displayName}, NULL, ${role}, 'active', ${membershipChanged ? now : (old?.joined_at ?? now)}, ${now})
+					ON CONFLICT (team_id, subject) DO UPDATE SET organization_membership_id = excluded.organization_membership_id, email = excluded.email, display_name = excluded.display_name, role = excluded.role, status = 'active', joined_at = excluded.joined_at, updated_at = excluded.updated_at`;
+						if (
+							old !== undefined &&
+							(membershipChanged || roleRank[role] < roleRank[old.role])
+						) {
+							yield* sql`DELETE FROM collaboration_chat_grants WHERE member_id = ${memberId}`;
+						}
+					}
+					const actor = yield* resolveActor(teamId, details.currentUserId);
+					if (changed)
+						yield* appendAudit({
+							teamId,
+							actorMemberId: actor.memberId,
+							action: "organization.synchronized",
+							resourceKind: "organization",
+							resourceId: details.organization.id,
+						});
+					return {
+						team: Team.make({
+							id: teamId,
+							organizationId: details.organization.id,
+							name: details.organization.name,
+							createdAt: new Date(createdAt),
+							updatedAt: new Date(now),
+						}),
+						actor,
+					};
+				}),
+			);
+
+		const requireLocalMembership = (teamId: TeamId) =>
+			Effect.gen(function* () {
+				const teams = yield* sql<{
+					readonly organization_id: string | null;
+				}>`SELECT organization_id FROM collaboration_teams WHERE id = ${teamId}`;
+				if (teams[0]?.organization_id !== null)
+					return yield* denied("membership_managed_by_workos");
+			});
+
+		const listMembers = (actor: ActorIdentity) =>
+			validateActor(actor, "viewer").pipe(
+				Effect.andThen(
+					sql<MemberRow>`
+						SELECT * FROM collaboration_members
+						WHERE team_id = ${actor.teamId}
+						ORDER BY status, display_name COLLATE NOCASE, id
+					`,
+				),
+				Effect.map((rows) => rows.map(asMember)),
+			);
+
+		const changeMemberRole = (
+			actor: ActorIdentity,
+			memberId: TeamMemberId,
+			role: CollaborationRole,
+		) =>
+			sql.withTransaction(
+				Effect.gen(function* () {
+					yield* requireLocalMembership(actor.teamId);
+					yield* validateActor(actor, "owner");
+					const target = yield* readMember(memberId);
+					if (
+						target === null ||
+						target.teamId !== actor.teamId ||
+						target.status !== "active"
+					) {
+						return yield* Effect.fail(
+							new CollaborationNotFoundError({ resource: "member" }),
+						);
+					}
+					if (target.role === "owner" && role !== "owner") {
+						const owners = yield* sql<{ readonly count: number }>`
+							SELECT COUNT(*) AS count FROM collaboration_members
+							WHERE team_id = ${actor.teamId} AND role = 'owner' AND status = 'active'
+						`;
+						if (Number(owners[0]?.count ?? 0) <= 1) {
+							return yield* Effect.fail(
+								new CollaborationConflictError({
+									reason: "last_owner_required",
+								}),
+							);
+						}
+					}
+					const now = new Date().toISOString();
+					yield* sql`
+						UPDATE collaboration_members SET role = ${role}, updated_at = ${now}
+						WHERE id = ${memberId}
+					`;
+					yield* appendAudit({
+						teamId: actor.teamId,
+						actorMemberId: actor.memberId,
+						action: "member.role_changed",
+						resourceKind: "member",
+						resourceId: memberId,
+						metadata: { previousRole: target.role, role },
+					});
+					return TeamMember.make({ ...target, role, updatedAt: new Date(now) });
+				}),
+			);
+
+		const revokeMember = (actor: ActorIdentity, memberId: TeamMemberId) =>
+			sql.withTransaction(
+				Effect.gen(function* () {
+					yield* requireLocalMembership(actor.teamId);
+					yield* validateActor(actor, "owner");
+					const target = yield* readMember(memberId);
+					if (
+						target === null ||
+						target.teamId !== actor.teamId ||
+						target.status !== "active"
+					) {
+						return yield* Effect.fail(
+							new CollaborationNotFoundError({ resource: "member" }),
+						);
+					}
+					if (target.role === "owner") {
+						const owners = yield* sql<{ readonly count: number }>`
+							SELECT COUNT(*) AS count FROM collaboration_members
+							WHERE team_id = ${actor.teamId} AND role = 'owner' AND status = 'active'
+						`;
+						if (Number(owners[0]?.count ?? 0) <= 1) {
+							return yield* Effect.fail(
+								new CollaborationConflictError({
+									reason: "last_owner_required",
+								}),
+							);
+						}
+					}
+					const now = new Date().toISOString();
+					yield* sql`
+						UPDATE collaboration_members SET status = 'revoked', updated_at = ${now}
+						WHERE id = ${memberId}
+					`;
+					yield* appendAudit({
+						teamId: actor.teamId,
+						actorMemberId: actor.memberId,
+						action: "member.revoked",
+						resourceKind: "member",
+						resourceId: memberId,
+					});
+					return TeamMember.make({
+						...target,
+						status: "revoked",
+						updatedAt: new Date(now),
+					});
+				}),
+			);
+
+		const createInvite = (
+			actor: ActorIdentity,
+			input: {
+				readonly email?: string | null;
+				readonly role: "driver" | "viewer";
+				readonly expiresInMs: number;
+			},
+		) =>
+			Effect.gen(function* () {
+				yield* validateActor(actor, "owner");
+				yield* requireLocalMembership(actor.teamId);
+				if (
+					!Number.isFinite(input.expiresInMs) ||
+					input.expiresInMs < 60_000 ||
+					input.expiresInMs > 30 * 24 * 60 * 60_000
+				) {
+					return yield* Effect.fail(
+						new CollaborationConflictError({ reason: "invalid_invite_expiry" }),
+					);
+				}
+				const id = randomUUID() as CollaborationInviteId;
+				const token = `zinv_${randomBytes(32).toString("base64url")}`;
+				const now = new Date();
+				const expiresAt = new Date(now.getTime() + input.expiresInMs);
+				const email = input.email ? normalizedEmail(input.email) : null;
+				yield* sql.withTransaction(
+					Effect.gen(function* () {
+						yield* sql`
+							INSERT INTO collaboration_invites
+								(id, team_id, token_hash, email, role, status,
+								 created_by_member_id, expires_at, accepted_by_member_id,
+								 created_at, updated_at)
+							VALUES (${id}, ${actor.teamId}, ${tokenHash(token)}, ${email},
+								${input.role}, 'pending', ${actor.memberId},
+								${expiresAt.toISOString()}, NULL, ${now.toISOString()},
+								${now.toISOString()})
+						`;
+						yield* appendAudit({
+							teamId: actor.teamId,
+							actorMemberId: actor.memberId,
+							action: "invite.created",
+							resourceKind: "invite",
+							resourceId: id,
+							metadata: { role: input.role, email },
+						});
+					}),
+				);
+				return CreatedCollaborationInvite.make({
+					invite: CollaborationInvite.make({
+						id,
+						teamId: actor.teamId,
+						email,
+						role: input.role,
+						status: "pending",
+						createdByMemberId: actor.memberId,
+						expiresAt,
+						acceptedByMemberId: null,
+						createdAt: now,
+						updatedAt: now,
+					}),
+					token,
+				});
+			});
+
+		const listInvites = (actor: ActorIdentity) =>
+			validateActor(actor, "owner").pipe(
+				Effect.andThen(
+					sql<InviteRow>`
+						SELECT * FROM collaboration_invites
+						WHERE team_id = ${actor.teamId}
+						ORDER BY created_at DESC
+					`,
+				),
+				Effect.map((rows) => rows.map(asInvite)),
+			);
+
+		const revokeInvite = (
+			actor: ActorIdentity,
+			inviteId: CollaborationInviteId,
+		) =>
+			sql.withTransaction(
+				Effect.gen(function* () {
+					yield* requireLocalMembership(actor.teamId);
+					yield* validateActor(actor, "owner");
+					const rows = yield* sql<InviteRow>`
+						SELECT * FROM collaboration_invites
+						WHERE id = ${inviteId} AND team_id = ${actor.teamId}
+						LIMIT 1
+					`;
+					const invite = rows[0];
+					if (invite === undefined) {
+						return yield* Effect.fail(
+							new CollaborationNotFoundError({ resource: "invite" }),
+						);
+					}
+					if (invite.status !== "pending") {
+						return yield* Effect.fail(
+							new CollaborationConflictError({ reason: "invite_not_pending" }),
+						);
+					}
+					const now = new Date().toISOString();
+					yield* sql`
+						UPDATE collaboration_invites SET status = 'revoked', updated_at = ${now}
+						WHERE id = ${inviteId} AND status = 'pending'
+					`;
+					yield* appendAudit({
+						teamId: actor.teamId,
+						actorMemberId: actor.memberId,
+						action: "invite.revoked",
+						resourceKind: "invite",
+						resourceId: inviteId,
+					});
+					return asInvite({ ...invite, status: "revoked", updated_at: now });
+				}),
+			);
+
+		const redeemInvite = (token: string, profile: CollaborationProfile) =>
+			sql.withTransaction(
+				Effect.gen(function* () {
+					if (token.length === 0 || !validateProfile(profile)) {
+						return yield* Effect.fail(
+							new CollaborationInviteInvalidError({
+								reason: "invite_profile_invalid",
+							}),
+						);
+					}
+					const rows = yield* sql<InviteRow>`
+						SELECT * FROM collaboration_invites
+						WHERE token_hash = ${tokenHash(token)}
+						LIMIT 1
+					`;
+					const invite = rows[0];
+					if (
+						invite === undefined ||
+						invite.status !== "pending" ||
+						Date.parse(invite.expires_at) <= Date.now()
+					) {
+						return yield* Effect.fail(
+							new CollaborationInviteInvalidError({
+								reason: "invite_invalid_or_expired",
+							}),
+						);
+					}
+					if (
+						invite.email !== null &&
+						normalizedEmail(profile.email) !== normalizedEmail(invite.email)
+					) {
+						return yield* Effect.fail(
+							new CollaborationInviteInvalidError({
+								reason: "invite_email_mismatch",
+							}),
+						);
+					}
+					const duplicate = yield* sql<MemberRow>`
+						SELECT * FROM collaboration_members
+						WHERE team_id = ${invite.team_id} AND subject = ${profile.subject}
+						LIMIT 1
+					`;
+					if (duplicate[0] !== undefined) {
+						return yield* Effect.fail(
+							new CollaborationConflictError({
+								reason: "membership_already_exists",
+							}),
+						);
+					}
+					const now = new Date().toISOString();
+					const memberId = randomUUID() as TeamMemberId;
+					yield* sql`
+						INSERT INTO collaboration_members
+							(id, team_id, subject, email, display_name, avatar_url, role,
+							 status, joined_at, updated_at)
+						VALUES (${memberId}, ${invite.team_id}, ${profile.subject},
+							${normalizedEmail(profile.email)}, ${profile.displayName.trim()},
+							${profile.avatarUrl ?? null}, ${invite.role}, 'active', ${now}, ${now})
+					`;
+					yield* sql`
+						UPDATE collaboration_invites
+						SET status = 'accepted', accepted_by_member_id = ${memberId},
+							updated_at = ${now}
+						WHERE id = ${invite.id} AND status = 'pending'
+					`;
+					yield* appendAudit({
+						teamId: invite.team_id as TeamId,
+						actorMemberId: memberId,
+						action: "invite.accepted",
+						resourceKind: "invite",
+						resourceId: invite.id,
+					});
+					const member = TeamMember.make({
+						id: memberId,
+						teamId: invite.team_id as TeamId,
+						subject: profile.subject,
+						email: normalizedEmail(profile.email),
+						displayName: profile.displayName.trim(),
+						avatarUrl: profile.avatarUrl ?? null,
+						role: invite.role,
+						status: "active",
+						joinedAt: new Date(now),
+						updatedAt: new Date(now),
+					});
+					return { member, actor: asActor(member) };
+				}),
+			);
+
+		const requireWorkspaceRole = (
+			actor: ActorIdentity,
+			chatId: ChatId,
+			minimumRole: CollaborationRole,
+		) =>
+			Effect.gen(function* () {
+				const member = yield* validateActor(actor, "viewer");
+				const workspace = yield* sql<{
+					readonly team_id: string;
+				}>`SELECT team_id FROM collaboration_workspaces WHERE chat_id = ${chatId}`;
+				if (workspace[0]?.team_id !== actor.teamId)
+					return yield* denied("workspace_role_required");
+				if (member.role === "owner") return null;
+				const rows = yield* sql<GrantRow>`
+					SELECT * FROM collaboration_chat_grants
+					WHERE team_id = ${actor.teamId} AND chat_id = ${chatId}
+						AND member_id = ${actor.memberId}
+					LIMIT 1
+				`;
+				const row = rows[0];
+				if (
+					row === undefined ||
+					roleRank[row.role] < roleRank[minimumRole] ||
+					roleRank[member.role] < roleRank[minimumRole]
+				) {
+					return yield* Effect.fail(denied("workspace_role_required"));
+				}
+				return asGrant(row);
+			});
+
+		const setWorkspaceGrant = (
+			actor: ActorIdentity,
+			chatId: ChatId,
+			memberId: TeamMemberId,
+			role: CollaborationRole,
+		) =>
+			Effect.gen(function* () {
+				yield* validateActor(actor, "owner");
+				const chats = yield* sql<{ readonly id: string }>`
+					SELECT id FROM chats WHERE id = ${chatId} LIMIT 1
+				`;
+				if (chats[0] === undefined) {
+					return yield* Effect.fail(
+						new CollaborationNotFoundError({ resource: "chat" }),
+					);
+				}
+				const now = new Date().toISOString();
+				yield* sql.withTransaction(
+					Effect.gen(function* () {
+						yield* validateActor(actor, "owner", false);
+						const target = yield* readMember(memberId);
+						if (
+							target === null ||
+							target.teamId !== actor.teamId ||
+							target.status !== "active"
+						) {
+							return yield* denied("grant_target_not_active");
+						}
+						if (roleRank[role] > roleRank[target.role]) {
+							return yield* denied("grant_exceeds_team_role");
+						}
+						const workspace = yield* sql<{
+							readonly team_id: string;
+						}>`SELECT team_id FROM collaboration_workspaces WHERE chat_id = ${chatId}`;
+						if (
+							workspace[0] !== undefined &&
+							workspace[0].team_id !== actor.teamId
+						)
+							return yield* denied("workspace_belongs_to_another_team");
+						yield* sql`INSERT INTO collaboration_workspaces (chat_id, team_id) VALUES (${chatId}, ${actor.teamId}) ON CONFLICT (chat_id) DO NOTHING`;
+						yield* sql`
+							INSERT INTO collaboration_chat_grants
+								(team_id, chat_id, member_id, role, granted_by_member_id,
+								 created_at, updated_at)
+							VALUES (${actor.teamId}, ${chatId}, ${memberId}, ${role},
+								${actor.memberId}, ${now}, ${now})
+							ON CONFLICT (chat_id, member_id) DO UPDATE SET
+								role = excluded.role,
+								granted_by_member_id = excluded.granted_by_member_id,
+								updated_at = excluded.updated_at
+						`;
+						yield* appendAudit({
+							teamId: actor.teamId,
+							actorMemberId: actor.memberId,
+							action: "workspace.grant_set",
+							resourceKind: "chat",
+							resourceId: chatId,
+							metadata: { memberId, role },
+						});
+					}),
+				);
+				const rows = yield* sql<GrantRow>`
+					SELECT * FROM collaboration_chat_grants
+					WHERE team_id = ${actor.teamId} AND chat_id = ${chatId}
+						AND member_id = ${memberId}
+					LIMIT 1
+				`;
+				const saved = rows[0];
+				if (saved === undefined) {
+					return yield* Effect.fail(
+						new CollaborationNotFoundError({ resource: "workspace_grant" }),
+					);
+				}
+				return asGrant(saved);
+			});
+
+		const removeWorkspaceGrant = (
+			actor: ActorIdentity,
+			chatId: ChatId,
+			memberId: TeamMemberId,
+		) =>
+			Effect.gen(function* () {
+				yield* validateActor(actor, "owner");
+				yield* sql.withTransaction(
+					Effect.gen(function* () {
+						yield* validateActor(actor, "owner", false);
+						yield* sql`
+							DELETE FROM collaboration_chat_grants
+							WHERE team_id = ${actor.teamId} AND chat_id = ${chatId}
+								AND member_id = ${memberId}
+						`;
+						yield* appendAudit({
+							teamId: actor.teamId,
+							actorMemberId: actor.memberId,
+							action: "workspace.grant_removed",
+							resourceKind: "chat",
+							resourceId: chatId,
+							metadata: { memberId },
+						});
+					}),
+				);
+			});
+
+		const listWorkspaceGrants = (actor: ActorIdentity, chatId: ChatId) =>
+			Effect.gen(function* () {
+				yield* requireWorkspaceRole(actor, chatId, "viewer");
+				const rows = yield* sql<GrantRow>`
+					SELECT * FROM collaboration_chat_grants
+					WHERE team_id = ${actor.teamId} AND chat_id = ${chatId}
+					ORDER BY created_at, member_id
+				`;
+				return rows.map(asGrant);
+			});
+
+		const listAuditEvents = (actor: ActorIdentity, limit = 100) =>
+			Effect.gen(function* () {
+				yield* validateActor(actor, "owner");
+				const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+				const rows = yield* sql<AuditRow>`
+					SELECT * FROM collaboration_audit_events
+					WHERE team_id = ${actor.teamId}
+					ORDER BY created_at DESC, id DESC
+					LIMIT ${safeLimit}
+				`;
+				return rows.map(asAudit);
+			});
+
+		return CollaborationService.of({
+			synchronizeOrganization: (details) =>
+				synchronizeOrganization(details).pipe(
+					Effect.catchTag("SqlError", Effect.die),
+				),
+			bootstrapTeam: (...args) =>
+				bootstrapTeam(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			resolveActor: (...args) =>
+				resolveActor(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			listMembers: (...args) =>
+				listMembers(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			changeMemberRole: (...args) =>
+				changeMemberRole(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			revokeMember: (...args) =>
+				revokeMember(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			createInvite: (...args) =>
+				createInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			listInvites: (...args) =>
+				listInvites(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			revokeInvite: (...args) =>
+				revokeInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			redeemInvite: (...args) =>
+				redeemInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+			setWorkspaceGrant: (...args) =>
+				setWorkspaceGrant(...args).pipe(
+					Effect.catchTag("SqlError", Effect.die),
+				),
+			removeWorkspaceGrant: (...args) =>
+				removeWorkspaceGrant(...args).pipe(
+					Effect.catchTag("SqlError", Effect.die),
+				),
+			listWorkspaceGrants: (...args) =>
+				listWorkspaceGrants(...args).pipe(
+					Effect.catchTag("SqlError", Effect.die),
+				),
+			requireWorkspaceRole: (...args) =>
+				requireWorkspaceRole(...args).pipe(
+					Effect.catchTag("SqlError", Effect.die),
+				),
+			listAuditEvents: (...args) =>
+				listAuditEvents(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+		});
+	}),
+);

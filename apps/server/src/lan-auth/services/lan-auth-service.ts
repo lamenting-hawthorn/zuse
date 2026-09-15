@@ -3,6 +3,7 @@ import type {
 	AuthTokenSummary,
 	EnvironmentEndpoint,
 	EnvironmentId,
+	ProviderKind,
 } from "@zuse/contracts";
 import { Context, type Effect, Schema } from "effect";
 
@@ -16,6 +17,8 @@ export interface LanAuthConfigShape {
 	readonly icloudTrustRecordId?: string;
 	readonly icloudTrustSecret?: string;
 	readonly transportCertificatePin?: string;
+	/** Account catalog classification for this runtime. */
+	readonly providerKind?: ProviderKind;
 	readonly onNearbyPairingRequest?: (request: NearbyPairingRequest) => void;
 	readonly openHostSession?: (
 		sessionId: string,

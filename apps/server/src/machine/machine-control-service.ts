@@ -56,6 +56,14 @@ import {
 	MachineList,
 	MachineOfferList,
 	MachineRecord,
+	Organization,
+	type OrganizationCreateInput,
+	OrganizationDetails,
+	OrganizationInvitation,
+	type OrganizationInviteInput,
+	type OrganizationMemberInput,
+	type OrganizationRevokeInviteInput,
+	type OrganizationRoleInput,
 	PRODUCTION_API_URL,
 	WIRE_PROTOCOL_VERSION,
 } from "@zuse/contracts";
@@ -66,6 +74,35 @@ import { AuthService } from "../auth/services/auth-service.ts";
 import { MachineRuntimeRole } from "./machine-runtime-role.ts";
 
 export interface MachineControlServiceShape {
+	readonly organizationMembership: (
+		organizationId: string,
+		subject: string,
+	) => Effect.Effect<
+		{ readonly role: string; readonly membershipId: string },
+		MachineControlError
+	>;
+	readonly listOrganizations: () => Effect.Effect<
+		ReadonlyArray<Organization>,
+		MachineControlError
+	>;
+	readonly createOrganization: (
+		input: typeof OrganizationCreateInput.Type,
+	) => Effect.Effect<Organization, MachineControlError>;
+	readonly getOrganization: (
+		organizationId: string,
+	) => Effect.Effect<OrganizationDetails, MachineControlError>;
+	readonly inviteOrganizationMember: (
+		input: typeof OrganizationInviteInput.Type,
+	) => Effect.Effect<OrganizationInvitation, MachineControlError>;
+	readonly revokeOrganizationInvite: (
+		input: typeof OrganizationRevokeInviteInput.Type,
+	) => Effect.Effect<void, MachineControlError>;
+	readonly setOrganizationRole: (
+		input: typeof OrganizationRoleInput.Type,
+	) => Effect.Effect<void, MachineControlError>;
+	readonly removeOrganizationMember: (
+		input: typeof OrganizationMemberInput.Type,
+	) => Effect.Effect<void, MachineControlError>;
 	readonly cloudAccountImage: (
 		providerId?: string,
 	) => Effect.Effect<CloudAccountImage, MachineControlError>;
@@ -413,6 +450,49 @@ export const MachineControlServiceLive: Layer.Layer<
 			});
 
 		return MachineControlService.of({
+			organizationMembership: (organizationId, subject) =>
+				request(
+					"/v1/organizations/authorize",
+					Schema.Struct({ role: Schema.String, membershipId: Schema.String }),
+					"POST",
+					{ organizationId, subject },
+				),
+			listOrganizations: () =>
+				request("/v1/organizations", Schema.Array(Organization)),
+			createOrganization: (input) =>
+				request("/v1/organizations", Organization, "POST", input),
+			getOrganization: (organizationId) =>
+				request("/v1/organizations/details", OrganizationDetails, "POST", {
+					organizationId,
+				}),
+			inviteOrganizationMember: (input) =>
+				request(
+					"/v1/organizations/invite",
+					OrganizationInvitation,
+					"POST",
+					input,
+				),
+			revokeOrganizationInvite: (input) =>
+				request(
+					"/v1/organizations/revoke-invite",
+					Schema.Struct({ ok: Schema.Boolean }),
+					"POST",
+					input,
+				).pipe(Effect.asVoid),
+			setOrganizationRole: (input) =>
+				request(
+					"/v1/organizations/set-role",
+					Schema.Struct({ ok: Schema.Boolean }),
+					"POST",
+					input,
+				).pipe(Effect.asVoid),
+			removeOrganizationMember: (input) =>
+				request(
+					"/v1/organizations/remove-member",
+					Schema.Struct({ ok: Schema.Boolean }),
+					"POST",
+					input,
+				).pipe(Effect.asVoid),
 			cloudAccountImage: (providerId) =>
 				request(
 					providerId === undefined

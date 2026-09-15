@@ -43,3 +43,24 @@ export type CommandId = typeof CommandId.Type;
 
 export const EventId = makeEntityId("EventId");
 export type EventId = typeof EventId.Type;
+
+export const TeamId = makeEntityId("TeamId");
+export type TeamId = typeof TeamId.Type;
+
+export const TeamMemberId = makeEntityId("TeamMemberId");
+export type TeamMemberId = typeof TeamMemberId.Type;
+
+export const CollaborationInviteId = makeEntityId("CollaborationInviteId");
+export type CollaborationInviteId = typeof CollaborationInviteId.Type;
+
+export const CollaborationNoteId = makeEntityId("CollaborationNoteId");
+export type CollaborationNoteId = typeof CollaborationNoteId.Type;
+
+export const CollaborationLeaseId = makeEntityId("CollaborationLeaseId");
+export type CollaborationLeaseId = typeof CollaborationLeaseId.Type;
+
+export const CollaborativeDocumentId = makeEntityId("CollaborativeDocumentId");
+export type CollaborativeDocumentId = typeof CollaborativeDocumentId.Type;
+
+export const AuditEventId = makeEntityId("AuditEventId");
+export type AuditEventId = typeof AuditEventId.Type;

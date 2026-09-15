@@ -229,6 +229,15 @@ import {
 } from "./mcp.ts";
 import { ModelCatalogRpc, ModelCatalogStreamRpc } from "./model-catalog/rpc.ts";
 import {
+	OrganizationsCreateRpc,
+	OrganizationsGetRpc,
+	OrganizationsInviteRpc,
+	OrganizationsListRpc,
+	OrganizationsRemoveMemberRpc,
+	OrganizationsRevokeInviteRpc,
+	OrganizationsSetRoleRpc,
+} from "./organizations.ts";
+import {
 	PairingListNearbyRequestsRpc,
 	PairingListTokensRpc,
 	PairingResolveNearbyRequestRpc,
@@ -260,6 +269,18 @@ import {
 	RepositorySettingsGetRpc,
 	RepositorySettingsUpdateRpc,
 } from "./repository-settings.ts";
+import {
+	SelfHostedDiagnosticsRpc,
+	SelfHostedGithubLoginCancelRpc,
+	SelfHostedGithubLoginPollRpc,
+	SelfHostedGithubLoginStartRpc,
+	SelfHostedGithubLogoutRpc,
+	SelfHostedGithubStatusRpc,
+	SelfHostedHostDetachRpc,
+	SelfHostedHostStatusRpc,
+	SelfHostedRuntimeRestartRpc,
+	SelfHostedRuntimeUpdateRpc,
+} from "./self-hosted.ts";
 import {
 	ChatArchiveJobsRpc,
 	ChatArchivePreviewRpc,
@@ -373,6 +394,13 @@ import {
  * Add new RPCs by importing them here and including them in the group.
  */
 export const MemoizeRpcs = RpcGroup.make(
+	OrganizationsListRpc,
+	OrganizationsCreateRpc,
+	OrganizationsGetRpc,
+	OrganizationsInviteRpc,
+	OrganizationsRevokeInviteRpc,
+	OrganizationsSetRoleRpc,
+	OrganizationsRemoveMemberRpc,
 	DeviceBridgeControlRpc,
 	CloudDeviceBridgeRpc,
 	PingRpc,
@@ -401,6 +429,16 @@ export const MemoizeRpcs = RpcGroup.make(
 	ApiStatusRpc,
 	ApiUnlinkRpc,
 	EnvironmentsListRpc,
+	SelfHostedHostStatusRpc,
+	SelfHostedHostDetachRpc,
+	SelfHostedDiagnosticsRpc,
+	SelfHostedRuntimeRestartRpc,
+	SelfHostedRuntimeUpdateRpc,
+	SelfHostedGithubStatusRpc,
+	SelfHostedGithubLoginStartRpc,
+	SelfHostedGithubLoginPollRpc,
+	SelfHostedGithubLoginCancelRpc,
+	SelfHostedGithubLogoutRpc,
 	EnvironmentConnectRpc,
 	CloudBillingSummaryRpc,
 	CloudBillingUsageRpc,

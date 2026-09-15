@@ -1,0 +1,52 @@
+import {
+	CollaborationAccessDeniedError,
+	type CollaborationRole,
+} from "@zuse/contracts";
+import { Context, Effect, Layer } from "effect";
+import { MachineControlService } from "../../machine/machine-control-service.ts";
+
+/** Live authority for WorkOS-backed teams; local SQLite membership is a projection. */
+export class OrganizationAuthority extends Context.Service<
+	OrganizationAuthority,
+	{
+		readonly membership: (
+			organizationId: string,
+			subject: string,
+		) => Effect.Effect<
+			{ readonly role: CollaborationRole; readonly membershipId: string },
+			CollaborationAccessDeniedError
+		>;
+	}
+>()("zuse/collaboration/OrganizationAuthority") {}
+
+export const organizationCollaborationRole = (
+	role: string,
+): CollaborationRole =>
+	role === "admin" ? "owner" : role === "member" ? "driver" : "viewer";
+
+export const OrganizationAuthorityLive = Layer.effect(
+	OrganizationAuthority,
+	Effect.gen(function* () {
+		const api = yield* MachineControlService;
+		return OrganizationAuthority.of({
+			membership: Effect.fn("OrganizationAuthority.membership")(
+				function* (organizationId, subject) {
+					const membership = yield* api
+						.organizationMembership(organizationId, subject)
+						.pipe(
+							Effect.mapError(
+								() =>
+									new CollaborationAccessDeniedError({
+										reason: "organization_authority_unavailable",
+									}),
+							),
+						);
+					return {
+						membershipId: membership.membershipId,
+						role: organizationCollaborationRole(membership.role),
+					};
+				},
+			),
+		});
+	}),
+);

@@ -35,7 +35,7 @@ export interface ApiConfig {
 	readonly publicApiOrigin?: string;
 	readonly workosJwksUrl: string;
 	readonly workosIssuer: string;
-	/** Server-side key used only for permanent identity deletion. */
+	/** Server-side key for organization management and permanent identity deletion. */
 	readonly workosApiKey?: Redacted.Redacted<string>;
 	readonly mintPrivateKey: Redacted.Redacted<string>;
 	readonly mintPublicKey: string;

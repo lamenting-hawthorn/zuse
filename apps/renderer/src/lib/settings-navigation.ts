@@ -73,6 +73,22 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		section: { kind: "devices" },
 	},
 	{
+		id: "organizations",
+		get label() {
+			return uiMessage("settings:organizations_organizations");
+		},
+		Icon: ConnectIcon,
+		section: { kind: "organizations" },
+	},
+	{
+		id: "self-hosted",
+		get label() {
+			return uiMessage("settings:self_hosted_servers");
+		},
+		Icon: ConnectIcon,
+		section: { kind: "self-hosted" },
+	},
+	{
 		id: "machines",
 		get label() {
 			return uiMessage("settings:settings_navigation_cloud_workspaces_beta");

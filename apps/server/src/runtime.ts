@@ -35,6 +35,8 @@ import { AttachmentServiceLive } from "./attachment/layers/attachment-service.ts
 import { AuthServiceLive } from "./auth/layers/auth-service.ts";
 import { SessionStoreLive } from "./auth/layers/session-store.ts";
 import { AuthShell } from "./auth/services/auth-shell.ts";
+import { CollaborationServiceLive } from "./collaboration/layers/collaboration-service.ts";
+import { OrganizationAuthorityLive } from "./collaboration/services/organization-authority.ts";
 import { ConfigStoreServiceLive } from "./config-store/layers/config-store-service.ts";
 import { ConversationState } from "./conversation/core/conversation-state.ts";
 import { ConversationServicesLive } from "./conversation/layers/conversation-services.ts";
@@ -142,6 +144,7 @@ export interface MainLayerDeps {
 		readonly icloudTrustRecordId?: string;
 		readonly icloudTrustSecret?: string;
 		readonly transportCertificatePin?: string;
+		readonly providerKind?: import("@zuse/contracts").ProviderKind;
 		readonly onNearbyPairingRequest?: (
 			request: import("./lan-auth/services/lan-auth-service.ts").NearbyPairingRequest,
 		) => void;
@@ -193,6 +196,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		icloudTrustRecordId: deps.lanAuth?.icloudTrustRecordId,
 		icloudTrustSecret: deps.lanAuth?.icloudTrustSecret,
 		transportCertificatePin: deps.lanAuth?.transportCertificatePin,
+		providerKind: deps.lanAuth?.providerKind ?? "desktop",
 		onNearbyPairingRequest: deps.lanAuth?.onNearbyPairingRequest,
 		openHostSession: deps.openHostSession,
 	};
@@ -525,6 +529,12 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(AuthLayer),
 		Layer.provide(MachineRuntimeRoleLayer),
 	);
+	const CollaborationLayer = CollaborationServiceLive.pipe(
+		Layer.provide(MigratedSqlite),
+		Layer.provide(
+			OrganizationAuthorityLive.pipe(Layer.provide(MachineControlLayer)),
+		),
+	);
 	const MachineHostLayer = MachineHostServiceLive.pipe(
 		Layer.provide(AppPathsLayer),
 		Layer.provide(
@@ -706,6 +716,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		ExternalThreadLayer,
 		LinearLayer,
 		MachineControlLayer,
+		CollaborationLayer,
 		MachineHostLayer,
 		MachineResourceServiceLive,
 		AccountAccessLayer,
