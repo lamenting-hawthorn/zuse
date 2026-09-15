@@ -10,6 +10,7 @@ import {
 	Deferred,
 	Effect,
 	Layer,
+	Option,
 	PubSub,
 	Ref,
 	Schedule,
@@ -17,6 +18,7 @@ import {
 	Stream,
 } from "effect";
 
+import { ConnectionIdentity } from "../../lan-auth/services/connection-identity.ts";
 import { CredentialsService } from "../../provider/services/credentials-service.ts";
 import { AuthTokenError, type SessionStoreError } from "../errors.ts";
 import { AuthService } from "../services/auth-service.ts";
@@ -189,16 +191,34 @@ export const AuthServiceLive = Layer.effect(
 
 		const getAccessToken = (): Effect.Effect<string, AuthTokenError> =>
 			Effect.gen(function* () {
+				// Read request context here, not when constructing the shared service.
+				// Workspace access never delegates the host owner's account credentials.
+				const identity = yield* Effect.serviceOption(ConnectionIdentity);
+				const authorize = (candidate: SessionBundle) =>
+					Option.isSome(identity) &&
+					identity.value.kind === "account" &&
+					(identity.value.subject !== candidate.user.id ||
+						identity.value.expiresAt <= Date.now())
+						? Effect.fail(
+								new AuthTokenError({
+									reason: "This connection cannot use the host account.",
+								}),
+							)
+						: Effect.void;
 				const bundle = yield* readBundle();
 				if (bundle === null) {
 					return yield* Effect.fail(
 						new AuthTokenError({ reason: "Not signed in." }),
 					);
 				}
+				yield* authorize(bundle);
 				if (bundle.expiresAt - Date.now() > REFRESH_SKEW_MS) {
 					return bundle.accessToken;
 				}
 				const fresh = yield* doRefresh(bundle);
+				// Refresh re-reads under the cross-process lock and may observe a
+				// different signed-in account, or outlive the connection credential.
+				yield* authorize(fresh);
 				return fresh.accessToken;
 			});
 

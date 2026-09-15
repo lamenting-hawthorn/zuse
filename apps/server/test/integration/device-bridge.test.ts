@@ -16,7 +16,11 @@ import {
 	DeviceBridgeServiceLive,
 } from "../../src/device-bridge/service.ts";
 import { LanAuthService } from "../../src/lan-auth/services/lan-auth-service.ts";
-import { MigrationsLive } from "../../src/persistence/migrations.ts";
+import { Migration0056DeviceBridge } from "../../src/persistence/migrations/0056_device_bridge.ts";
+import {
+	MigrationsLive,
+	MigrationsThrough0054Live,
+} from "../../src/persistence/migrations.ts";
 
 it.each([
 	"fresh",
@@ -40,21 +44,18 @@ it.each([
 		Layer.provideMerge(MigrationsLive.pipe(Layer.provide(sql))),
 	);
 	if (databaseState !== "fresh") {
-		const setup = ManagedRuntime.make(migratedSql);
+		const setup = ManagedRuntime.make(
+			sql.pipe(
+				Layer.provideMerge(MigrationsThrough0054Live.pipe(Layer.provide(sql))),
+			),
+		);
 		try {
 			await setup.runPromise(
 				Effect.gen(function* () {
 					const client = yield* SqlClient.SqlClient;
-					if (databaseState === "other-branch") {
-						yield* client`DROP TABLE device_commands`;
-						yield* client`DROP TABLE device_command_grants`;
-						yield* client`DROP TABLE device_bridge_config`;
+					if (databaseState === "previous-bridge") {
+						yield* Migration0056DeviceBridge;
 					}
-					// The simulated pre-bridge schema predates question delivery receipts.
-					yield* client`DROP TABLE question_answer_deliveries`;
-					yield* client`DROP INDEX idx_events_kind_sequence`;
-					yield* client`ALTER TABLE chats DROP COLUMN last_user_message_at`;
-					yield* client`DELETE FROM effect_sql_migrations WHERE migration_id >= 55`;
 					const name =
 						databaseState === "other-branch"
 							? "staging_api_origin"

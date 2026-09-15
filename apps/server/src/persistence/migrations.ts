@@ -125,7 +125,7 @@ const MigrationDefinitionsThrough0045 = {
 	"0045_chat_catalog_revision": Migration0045ChatCatalogRevision,
 } as const;
 
-const MigrationDefinitions = {
+const MigrationDefinitionsThrough0054 = {
 	...MigrationDefinitionsThrough0045,
 	"0046_session_timeline_head": Migration0046SessionTimelineHead,
 	"0047_message_checkpoints": Migration0047MessageCheckpoints,
@@ -137,6 +137,10 @@ const MigrationDefinitions = {
 	"0052_api_config": Migration0052ApiConfig,
 	"0053_cloud_command_receipts": Migration0053CloudCommandReceipts,
 	"0054_provider_effect_outcomes": Migration0054ProviderEffectOutcomes,
+} as const;
+
+const MigrationDefinitions = {
+	...MigrationDefinitionsThrough0054,
 	"0055_staging_api_origin": Migration0055StagingApiOrigin,
 	"0056_device_bridge": Migration0056DeviceBridge,
 	"0057_device_bridge_default_access": Migration0057DeviceBridgeDefaultAccess,
@@ -150,6 +154,13 @@ const MigrationDefinitions = {
 export const MigrationsThrough0045Live = Layer.effectDiscard(
 	Migrator.make({})({
 		loader: Migrator.fromRecord(MigrationDefinitionsThrough0045),
+	}),
+);
+
+/** Pre-device-bridge schema boundary for upgrade compatibility tests. */
+export const MigrationsThrough0054Live = Layer.effectDiscard(
+	Migrator.make({})({
+		loader: Migrator.fromRecord(MigrationDefinitionsThrough0054),
 	}),
 );
 
