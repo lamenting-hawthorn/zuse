@@ -302,6 +302,11 @@ translations. No new language is enabled by this change.
 Release validation still needs live AuthKit invitations, real two-account authorization,
 and eventual multi-client session tests once the sharing transport is implemented.
 
+Chromium native IndexedDB checks also exercise the production timeline and reading-
+position adapters with synthetic device/Alice/Bob namespaces: independent round trips,
+page-reload persistence, rejection of older checkpoints, and owner-scoped removal pass.
+This is storage verification, not evidence of live WorkOS or team-session integration.
+
 ### Branch verification on 2026-09-15
 
 - Based on `origin/main` at `512f0f77`, including its auth-lock, installer, and deployment changes.
