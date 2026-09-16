@@ -10,6 +10,7 @@ import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../hooks/use-auth.ts";
 import { runControlPlane } from "../../lib/control-plane-client.ts";
+import { rendererAccountSnapshot } from "../../lib/renderer-account.ts";
 import {
 	AlertDialog,
 	AlertDialogClose,
@@ -64,6 +65,9 @@ export function OrganizationsPane() {
 
 	const refresh = useCallback(async (preferId?: string) => {
 		const epoch = ++generation.current;
+		const account = rendererAccountSnapshot();
+		const stillCurrent = () =>
+			epoch === generation.current && account === rendererAccountSnapshot();
 		setLoading(true);
 		setError(null);
 		setDetails(null);
@@ -71,7 +75,7 @@ export function OrganizationsPane() {
 			const list = await runControlPlane((client) =>
 				client["organizations.list"]({}),
 			);
-			if (epoch !== generation.current) return;
+			if (!stillCurrent()) return;
 			setOrganizations(list);
 			const id =
 				list.find((org) => org.id === preferId)?.id ?? list[0]?.id ?? "";
@@ -80,13 +84,12 @@ export function OrganizationsPane() {
 				const next = await runControlPlane((client) =>
 					client["organizations.get"]({ organizationId: id }),
 				);
-				if (epoch === generation.current) setDetails(next);
+				if (stillCurrent()) setDetails(next);
 			}
 		} catch (cause) {
-			if (epoch === generation.current)
-				setError(organizationErrorMessage(cause));
+			if (stillCurrent()) setError(organizationErrorMessage(cause));
 		} finally {
-			if (epoch === generation.current) setLoading(false);
+			if (stillCurrent()) setLoading(false);
 		}
 	}, []);
 
@@ -117,7 +120,10 @@ export function OrganizationsPane() {
 		const marker = {};
 		mutationInFlight.current = marker;
 		const epoch = accountGeneration.current;
-		const stillCurrent = () => epoch === accountGeneration.current;
+		const account = rendererAccountSnapshot();
+		const stillCurrent = () =>
+			epoch === accountGeneration.current &&
+			account === rendererAccountSnapshot();
 		setBusy(true);
 		setError(null);
 		setNotice(null);

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { assertRendererAccountCurrent, rendererAccountSnapshot } from "./renderer-account.ts";
 
 import {
 	type ControlPlaneClient,
@@ -9,8 +10,14 @@ import {
 export const runControlPlane = async <Result>(
 	effect: (client: ControlPlaneClient) => Effect.Effect<Result, unknown>,
 ): Promise<Result> => {
+	const account = rendererAccountSnapshot();
 	const client = await getControlPlaneRpcClient();
-	return Effect.runPromise(effect(client));
+	assertRendererAccountCurrent(account);
+	try {
+		return await Effect.runPromise(effect(client));
+	} finally {
+		assertRendererAccountCurrent(account);
+	}
 };
 
 type SessionCacheEntry = {
