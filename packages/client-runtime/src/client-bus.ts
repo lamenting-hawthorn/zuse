@@ -177,6 +177,7 @@ export type ClientBusOptions<Client> = Readonly<{
 }>;
 
 type ResourceEntry = {
+	cacheNamespace: string | null | undefined;
 	deniedGeneration: number | null;
 	readonly id: string;
 	readonly key: ResourceKey<unknown>;
@@ -1099,6 +1100,7 @@ export class ClientBus<Client> {
 		let entry = this.entries.get(id);
 		if (entry === undefined) {
 			entry = {
+				cacheNamespace: this.options.resourceCacheNamespaceFor?.(key),
 				deniedGeneration: null,
 				id,
 				key,
@@ -1120,7 +1122,35 @@ export class ClientBus<Client> {
 			};
 			this.entries.set(id, entry);
 		}
+		this.refreshResourceNamespace(entry);
 		return entry;
+	}
+
+	/** Clear old projections in place so existing subscribers remain attached. */
+	refreshResourceNamespaces(): void {
+		if (this.disposed) return;
+		for (const entry of this.entries.values())
+			this.refreshResourceNamespace(entry);
+	}
+
+	private refreshResourceNamespace(entry: ResourceEntry): void {
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		if (namespace === entry.cacheNamespace) return;
+		entry.cacheNamespace = namespace;
+		entry.runtimeUpdates++;
+		entry.synchronizationEpoch++;
+		entry.synchronization = null;
+		entry.hydration = null;
+		entry.hydrated = this.options.persistence === undefined;
+		// A new cache owner must not reuse the previous owner's live client.
+		entry.deniedGeneration = entry.view.generation;
+		this.stopDriver(entry);
+		this.setView(entry, {
+			...emptyResourceView(),
+			connection: entry.view.connection,
+			generation: entry.view.generation,
+		});
+		if (entry.activations.size > 0) this.hydrate(entry);
 	}
 
 	private withResourceReflectionFence<Result>(
@@ -1230,6 +1260,7 @@ export class ClientBus<Client> {
 		for (const id of binding.resourceIds) {
 			const entry = this.entries.get(id);
 			if (entry === undefined) continue;
+			this.refreshResourceNamespace(entry);
 			this.setView(entry, {
 				...entry.view,
 				connection: connection.phase,
@@ -1281,6 +1312,7 @@ export class ClientBus<Client> {
 		const hydration = persistence
 			.loadResource(entry.key, namespace)
 			.then((cached) => {
+				if (entry.hydration !== hydration) return;
 				if (
 					this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace ||
 					cached === null ||
@@ -1304,11 +1336,13 @@ export class ClientBus<Client> {
 				restartDriverFromCache = entry.driverGeneration !== 0;
 			})
 			.catch(() => {
+				if (entry.hydration !== hydration) return;
 				if (entry.view.sync === "hydrating-cache") {
 					this.setView(entry, { ...entry.view, sync: "empty" });
 				}
 			})
 			.then(() => {
+				if (entry.hydration !== hydration) return;
 				entry.hydrated = true;
 				entry.hydration = null;
 				if (entry.activations.size === 0) return;

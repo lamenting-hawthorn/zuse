@@ -51,6 +51,7 @@ import { isPlatformOnline } from "./network-status.ts";
 import {
 	type RendererAccountSnapshot,
 	rendererAccountSnapshot,
+	subscribeRendererAccount,
 } from "./renderer-account.ts";
 import { createRendererCommandAuthority } from "./renderer-command-authority.ts";
 import {
@@ -1323,6 +1324,10 @@ const createBus = (): ClientBus<MemoizeClient> => {
 };
 
 let rendererClientBus = createBus();
+const unsubscribeResourceAccount = subscribeRendererAccount(() =>
+	rendererClientBus.refreshResourceNamespaces(),
+);
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeResourceAccount);
 const optimisticRestorationByResource = new Map<string, Promise<void>>();
 reportPassiveSessionFault = (environmentId, fault, expectedGeneration) =>
 	rendererClientBus.reportConnectionFault(

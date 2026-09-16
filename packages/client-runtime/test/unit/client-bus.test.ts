@@ -220,10 +220,49 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("clears retained account views in place and fences old hydration across A -> B -> A", async () => {
+		const persistence = new MemoryPersistence();
+		const oldLoad = deferred<PersistedResource<unknown> | null>();
+		const first = { data: { text: "first" }, cursor: null, storedAt: 1 };
+		const second = { data: { text: "second" }, cursor: null, storedAt: 2 };
+		await persistence.saveResource(timelineKey, first, "first");
+		await persistence.saveResource(timelineKey, second, "second");
+		await persistence.saveResource(otherTimelineKey, first);
+		vi.spyOn(persistence, "loadResource").mockImplementationOnce(
+			() => oldLoad.promise,
+		);
+		let namespace = "first";
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			resourceCacheNamespaceFor: (key) =>
+				key === timelineKey ? namespace : undefined,
+		});
+		const seen: Array<string | null> = [];
+		bus.subscribe(timelineKey, (view) => seen.push(view.data?.text ?? null));
+		bus.retain(timelineKey, { activation: "cache-only" });
+		bus.retain(otherTimelineKey, { activation: "cache-only" });
+		await waitUntil(() => bus.snapshot(otherTimelineKey).data !== null);
+		namespace = "second";
+		bus.refreshResourceNamespaces();
+		await waitUntil(() => bus.snapshot(timelineKey).data?.text === "second");
+		namespace = "first";
+		bus.refreshResourceNamespaces();
+		expect(bus.snapshot(timelineKey).data).toBeNull();
+		expect(bus.snapshot(otherTimelineKey).data).toEqual(first.data);
+		oldLoad.resolve({ ...first, data: { text: "stale first load" } });
+		await waitUntil(() => bus.snapshot(timelineKey).data?.text === "first");
+		expect(seen).not.toContain("stale first load");
+		expect(seen).toContain("second");
+		expect(seen.at(-1)).toBe("first");
+		await bus.dispose();
+	});
 	it("captures cache ownership before queued writes and rejects stale hydration", async () => {
 		const persistence = new MemoryPersistence();
 		const loaded = deferred<PersistedResource<unknown> | null>();
-		vi.spyOn(persistence, "loadResource").mockReturnValue(loaded.promise);
+		vi.spyOn(persistence, "loadResource").mockImplementationOnce(
+			() => loaded.promise,
+		);
 		const save = vi.spyOn(persistence, "saveResource");
 		let namespace: string | null = "account:first";
 		const contexts: ResourceDriverContext<Client, unknown>[] = [];
@@ -240,6 +279,7 @@ describe("ClientBus", () => {
 		});
 		bus.retain(timelineKey, { activation: "connect" });
 		namespace = "account:second";
+		bus.refreshResourceNamespaces();
 		loaded.resolve({
 			data: { text: "private first account" },
 			cursor: null,
