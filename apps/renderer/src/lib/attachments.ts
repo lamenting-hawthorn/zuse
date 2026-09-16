@@ -8,6 +8,7 @@ import {
 } from "@zuse/contracts";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { downloadBlob } from "./download-blob.ts";
+import { subscribeRendererAccount } from "./renderer-account.ts";
 import { dispatchSessionCommand } from "./session-timeline-client-bus.ts";
 
 /** Downloads are intentionally uncached: each request rechecks session authority. */
@@ -155,7 +156,6 @@ const previewRequests = new Map<string, Promise<string>>();
 const MAX_PREVIEW_CACHE_CHARS = 8 * 1024 * 1024;
 let previewCacheChars = 0;
 let previewEpoch = 0;
-let previewAccount: string | null | undefined;
 const previewListeners = new Set<() => void>();
 const subscribePreviewEpoch = (listener: () => void) => {
 	previewListeners.add(listener);
@@ -169,16 +169,14 @@ const assertPreviewEpoch = (epoch: number): void => {
 		throw new DOMException("Attachment access changed", "AbortError");
 };
 
-/** Called at the existing account-state boundary, including optimistic logout. */
-export const observeAttachmentAccount = (subject: string | null): void => {
-	if (previewAccount === subject) return;
-	previewAccount = subject;
+const unsubscribeAccount = subscribeRendererAccount(() => {
 	previewEpoch += 1;
 	previewCache.clear();
 	previewRequests.clear();
 	previewCacheChars = 0;
 	for (const listener of previewListeners) listener();
-};
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeAccount);
 
 const previewKey = (ref: SessionRef, id: string) =>
 	JSON.stringify([ref.environmentId, ref.sessionId, id]);

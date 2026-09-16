@@ -6,10 +6,13 @@ const mocks = vi.hoisted(() => ({
 	retryRetainedConnections: vi.fn(),
 	toast: vi.fn(),
 	observeAccount: vi.fn(),
+	accountSnapshot: vi.fn(),
+	restart: vi.fn(),
 }));
 
-vi.mock("../../src/lib/attachments.ts", () => ({
-	observeAttachmentAccount: mocks.observeAccount,
+vi.mock("../../src/lib/renderer-account.ts", () => ({
+	observeRendererAccount: mocks.observeAccount,
+	rendererAccountSnapshot: mocks.accountSnapshot,
 }));
 
 vi.mock("../../src/components/ui/toast.tsx", () => ({
@@ -33,6 +36,7 @@ vi.mock("../../src/lib/session-timeline-client-bus.ts", () => ({
 		dispatch: mocks.dispatch,
 		overlay: mocks.overlay,
 		retryRetainedConnections: mocks.retryRetainedConnections,
+		restart: mocks.restart,
 	}),
 }));
 
@@ -45,6 +49,10 @@ describe("auth store cloud recovery", () => {
 		mocks.retryRetainedConnections.mockReset();
 		mocks.toast.mockReset();
 		mocks.observeAccount.mockReset();
+		mocks.accountSnapshot
+			.mockReset()
+			.mockReturnValue({ subject: null, epoch: 1 });
+		mocks.restart.mockReset();
 		useAuthStore.setState({ signingIn: false, error: null });
 	});
 
@@ -89,5 +97,31 @@ describe("auth store cloud recovery", () => {
 		expect(mocks.observeAccount).toHaveBeenCalledWith(null);
 		finish();
 		await logout;
+	});
+
+	it("rechecks authoritative auth after an uncertain logout instead of restoring old state", async () => {
+		mocks.dispatch.mockRejectedValue(new Error("connection lost"));
+		await useAuthStore.getState().signOut();
+		expect(mocks.overlay).toHaveBeenCalledOnce();
+		expect(mocks.observeAccount.mock.calls).toEqual([[null]]);
+		expect(mocks.restart).toHaveBeenCalledOnce();
+		expect(useAuthStore.getState().error).toBe("connection lost");
+	});
+
+	it("does not let a failed old logout disturb a newer account", async () => {
+		let reject = (_cause: unknown) => {};
+		mocks.dispatch.mockImplementation(
+			() =>
+				new Promise((_resolve, onReject) => {
+					reject = onReject;
+				}),
+		);
+		const logout = useAuthStore.getState().signOut();
+		mocks.accountSnapshot.mockReturnValue({ subject: "new-account", epoch: 2 });
+		reject(new Error("late logout failure"));
+		await logout;
+		expect(mocks.restart).not.toHaveBeenCalled();
+		expect(mocks.overlay).toHaveBeenCalledOnce();
+		expect(useAuthStore.getState().error).toBeNull();
 	});
 });

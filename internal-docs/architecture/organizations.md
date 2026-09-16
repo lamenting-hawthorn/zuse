@@ -156,6 +156,15 @@ Before enabling cross-account environment discovery, finish scoped file mutation
 and Git/terminal/agent operations. These remain denied to guests. Account-partitioned
 client caches and bootstrap behavior still need verification before any cached data
 is shown under a different account; clearing on a later denial is not sufficient.
+
+The renderer now has one account-change boundary (`renderer-account.ts`), fed by
+the existing auth resource and auth actions. It distinguishes unknown startup state
+from signed-out, keeps same-account token refresh stable, and changes its epoch on
+identity transitions (including A -> B -> A). Attachment invalidation subscribes to
+this boundary. Failed sign-out recovery reopens the canonical auth stream rather
+than restoring a cached previous account, and ignores a late failure after a newer
+account transition. Account-scoping the remaining catalogs, caches, and outbox is
+still required; the boundary itself does not provide that isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 

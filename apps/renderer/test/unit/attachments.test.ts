@@ -2,10 +2,10 @@ import { EnvironmentId, SessionId } from "@zuse/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	downloadAttachment,
-	observeAttachmentAccount,
 	resolveAttachmentUrl,
 	uploadAttachmentBytes,
 } from "../../src/lib/attachments.ts";
+import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 
 const dispatch = vi.hoisted(() => vi.fn());
 const download = vi.hoisted(() => vi.fn());
@@ -18,7 +18,7 @@ describe("workspace attachment previews", () => {
 	beforeEach(() => {
 		dispatch.mockReset();
 		download.mockReset();
-		observeAttachmentAccount(`test-${crypto.randomUUID()}`);
+		observeRendererAccount(`test-${crypto.randomUUID()}`);
 	});
 	it("preserves previews on token refresh but clears them on account changes", async () => {
 		const ref = {
@@ -32,14 +32,14 @@ describe("workspace attachment previews", () => {
 				originalName: "image.png",
 			},
 		});
-		observeAttachmentAccount("first");
+		observeRendererAccount("first");
 		await resolveAttachmentUrl(ref, "image");
-		observeAttachmentAccount("first");
+		observeRendererAccount("first");
 		await resolveAttachmentUrl(ref, "image");
 		expect(dispatch).toHaveBeenCalledTimes(1);
-		observeAttachmentAccount(null);
+		observeRendererAccount(null);
 		await resolveAttachmentUrl(ref, "image");
-		observeAttachmentAccount("second");
+		observeRendererAccount("second");
 		await resolveAttachmentUrl(ref, "image");
 		expect(dispatch).toHaveBeenCalledTimes(3);
 	});
@@ -65,7 +65,7 @@ describe("workspace attachment previews", () => {
 		);
 		const old = resolveAttachmentUrl(ref, "image");
 		const rejected = expect(old).rejects.toMatchObject({ name: "AbortError" });
-		observeAttachmentAccount("next-account");
+		observeRendererAccount("next-account");
 		dispatch.mockImplementationOnce(
 			() =>
 				new Promise((resolve) => {
@@ -82,7 +82,7 @@ describe("workspace attachment previews", () => {
 	});
 	it("does not deliver a file download across an account change", async () => {
 		dispatch.mockImplementation(async () => {
-			observeAttachmentAccount("changed-during-download");
+			observeRendererAccount("changed-during-download");
 			return {
 				result: {
 					bytes: new Uint8Array([1]),

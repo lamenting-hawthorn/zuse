@@ -10,7 +10,7 @@ import {
 import { type AuthState, EnvironmentId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useMemo } from "react";
-import { observeAttachmentAccount } from "./attachments.ts";
+import { observeRendererAccount } from "./renderer-account.ts";
 import type { MemoizeClient } from "./rpc-client.ts";
 import { LOCAL_ENVIRONMENT_KEY } from "./rpc-client.ts";
 import {
@@ -48,7 +48,7 @@ const makeDriver = (): ResourceDriver<MemoizeClient, EnvironmentAuthData> => {
 					Effect.sync(() => {
 						if (!active || !context.isCurrent()) return;
 						if (environmentId === LOCAL_ENVIRONMENT_KEY) {
-							observeAttachmentAccount(
+							observeRendererAccount(
 								state._tag === "SignedIn" ? state.session.user.id : null,
 							);
 						}
