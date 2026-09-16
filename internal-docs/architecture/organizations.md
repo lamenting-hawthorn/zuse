@@ -75,8 +75,9 @@ The collaboration service rechecks live WorkOS membership for protected operatio
 through `OrganizationAuthority`. Effective authority cannot exceed either the cached
 role or the live role. Revocation and provider failure deny access. Remote lookups run
 outside SQLite write transactions; writes recheck local membership within the
-transaction. WorkOS-backed teams cannot use the local invitation/role-mutation path
-as a competing source of membership truth.
+transaction. Invitations and organization role changes go through WorkOS only;
+there is no parallel local bootstrap, invitation, or member-management API.
+The unused invitation table remains dormant to preserve migration history.
 
 ## Remaining session-sharing work
 
@@ -280,9 +281,9 @@ new cache epoch; late reads cannot repopulate the cache or erase a newer pending
 File downloads likewise discard bytes if account identity changes during the request.
 This does not revoke files already downloaded or replace server authorization.
 
-The branch's presence, control-lease, notes, and collaborative-document contracts are
-foundation types only. They do not implement CRDT editing, transferable terminal
-control, or multiplayer session UI. Continue through the existing durable command
+Presence, control leases, notes, CRDT editing, and multiplayer session UI are not
+implemented; speculative contracts for them are intentionally omitted.
+Continue through the existing durable command
 receipts and event cursors described in [realtime-runtime.md](./realtime-runtime.md),
 not a parallel chat synchronization protocol.
 

@@ -75,12 +75,6 @@ const makeRuntime = (
 
 type TestRuntime = ReturnType<typeof makeRuntime>;
 
-const ownerProfile = {
-	subject: "oidc|owner",
-	email: "OWNER@example.com",
-	displayName: "Owner",
-} as const;
-
 const organizationRoster = (
 	id: string,
 	includeDriver = true,
@@ -410,10 +404,6 @@ describe("CollaborationService", () => {
 						(event) => event.action === "organization.synchronized",
 					),
 				).toHaveLength(1);
-				const denied = yield* service
-					.createInvite(first.actor, { role: "driver", expiresInMs: 60_000 })
-					.pipe(Effect.flip);
-				expect(denied.reason).toBe("membership_managed_by_workos");
 			}),
 		);
 	});
@@ -680,190 +670,17 @@ describe("CollaborationService", () => {
 		);
 	});
 
-	test("bootstraps exactly one team and normalizes the owner identity", async () => {
-		const result = await runtime.runPromise(
-			Effect.gen(function* () {
-				const collaboration = yield* CollaborationService;
-				return yield* collaboration.bootstrapTeam("  Acme  ", ownerProfile);
-			}),
-		);
-
-		expect(result.team.name).toBe("Acme");
-		expect(result.member.role).toBe("owner");
-		expect(result.member.email).toBe("owner@example.com");
-
-		await expect(
-			runtime.runPromise(
-				Effect.gen(function* () {
-					const collaboration = yield* CollaborationService;
-					return yield* collaboration.bootstrapTeam("Other", {
-						subject: "oidc|other",
-						email: "other@example.com",
-						displayName: "Other",
-					});
-				}),
-			),
-		).rejects.toMatchObject({
-			_tag: "CollaborationConflictError",
-			reason: "team_already_bootstrapped",
-		});
-	});
-
-	test("stores only an invite hash, binds email, and rejects replay", async () => {
-		const { owner, invitation, storedToken } = await runtime.runPromise(
-			Effect.gen(function* () {
-				const collaboration = yield* CollaborationService;
-				const sql = yield* SqlClient.SqlClient;
-				const { actor: owner } = yield* collaboration.bootstrapTeam(
-					"Acme",
-					ownerProfile,
-				);
-				const invitation = yield* collaboration.createInvite(owner, {
-					email: "DRIVER@example.com",
-					role: "driver",
-					expiresInMs: 60_000,
-				});
-				const rows = yield* sql<{ readonly token_hash: string }>`
-					SELECT token_hash FROM collaboration_invites WHERE id = ${invitation.invite.id}
-				`;
-				return { owner, invitation, storedToken: rows[0]?.token_hash };
-			}),
-		);
-
-		expect(invitation.token).toMatch(/^zinv_/);
-		expect(storedToken).toHaveLength(64);
-		expect(storedToken).not.toContain(invitation.token);
-
-		await expect(
-			runtime.runPromise(
-				Effect.gen(function* () {
-					const collaboration = yield* CollaborationService;
-					return yield* collaboration.redeemInvite(invitation.token, {
-						subject: "oidc|wrong-email",
-						email: "wrong@example.com",
-						displayName: "Wrong",
-					});
-				}),
-			),
-		).rejects.toMatchObject({
-			_tag: "CollaborationInviteInvalidError",
-			reason: "invite_email_mismatch",
-		});
-
-		const accepted = await runtime.runPromise(
-			Effect.gen(function* () {
-				const collaboration = yield* CollaborationService;
-				return yield* collaboration.redeemInvite(invitation.token, {
-					subject: "oidc|driver",
-					email: "driver@example.com",
-					displayName: "Driver",
-				});
-			}),
-		);
-		expect(accepted.member.role).toBe("driver");
-
-		await expect(
-			runtime.runPromise(
-				Effect.gen(function* () {
-					const collaboration = yield* CollaborationService;
-					return yield* collaboration.redeemInvite(invitation.token, {
-						subject: "oidc|replay",
-						email: "driver@example.com",
-						displayName: "Replay",
-					});
-				}),
-			),
-		).rejects.toMatchObject({
-			_tag: "CollaborationInviteInvalidError",
-			reason: "invite_invalid_or_expired",
-		});
-
-		const audit = await runtime.runPromise(
-			Effect.gen(function* () {
-				const collaboration = yield* CollaborationService;
-				return yield* collaboration.listAuditEvents(owner);
-			}),
-		);
-		expect(audit.map((event) => event.action)).toEqual(
-			expect.arrayContaining([
-				"team.created",
-				"invite.created",
-				"invite.accepted",
-			]),
-		);
-	});
-
-	test("preserves an active owner while allowing explicit ownership transfer", async () => {
-		const { collaboration, owner, second, secondMember } =
-			await runtime.runPromise(
-				Effect.gen(function* () {
-					const collaboration = yield* CollaborationService;
-					const { actor: owner } = yield* collaboration.bootstrapTeam(
-						"Acme",
-						ownerProfile,
-					);
-					const invite = yield* collaboration.createInvite(owner, {
-						role: "driver",
-						expiresInMs: 60_000,
-					});
-					const { actor: second, member: secondMember } =
-						yield* collaboration.redeemInvite(invite.token, {
-							subject: "oidc|second-owner",
-							email: "second@example.com",
-							displayName: "Second Owner",
-						});
-					return { collaboration, owner, second, secondMember };
-				}),
-			);
-
-		await expect(
-			runtime.runPromise(
-				collaboration.changeMemberRole(owner, owner.memberId, "driver"),
-			),
-		).rejects.toMatchObject({
-			_tag: "CollaborationConflictError",
-			reason: "last_owner_required",
-		});
-
-		await runtime.runPromise(
-			collaboration.changeMemberRole(owner, secondMember.id, "owner"),
-		);
-		await runtime.runPromise(
-			collaboration.changeMemberRole(second, owner.memberId, "driver"),
-		);
-		const revoked = await runtime.runPromise(
-			collaboration.revokeMember(second, owner.memberId),
-		);
-		expect(revoked.status).toBe("revoked");
-		await expect(
-			runtime.runPromise(collaboration.listMembers(owner)),
-		).rejects.toMatchObject({
-			_tag: "CollaborationAccessDeniedError",
-			reason: "actor_not_authorized",
-		});
-	});
-
 	test("enforces team role ceilings, private grants, and revocation", async () => {
 		const result = await runtime.runPromise(
 			Effect.gen(function* () {
 				const collaboration = yield* CollaborationService;
 				const sql = yield* SqlClient.SqlClient;
-				const { actor: owner } = yield* collaboration.bootstrapTeam(
-					"Acme",
-					ownerProfile,
-				);
-				const invitation = yield* collaboration.createInvite(owner, {
-					role: "driver",
-					expiresInMs: 60_000,
-				});
-				const { actor: driver, member } = yield* collaboration.redeemInvite(
-					invitation.token,
-					{
-						subject: "oidc|driver",
-						email: "driver@example.com",
-						displayName: "Driver",
-					},
-				);
+				const { team, actor: owner } =
+					yield* collaboration.synchronizeOrganization(
+						organizationRoster("org-a"),
+					);
+				const driver = yield* collaboration.resolveActor(team.id, "driver");
+				const member = { id: driver.memberId };
 				const now = new Date().toISOString();
 				yield* sql`
 					INSERT INTO projects (id, path, name, created_at, updated_at)

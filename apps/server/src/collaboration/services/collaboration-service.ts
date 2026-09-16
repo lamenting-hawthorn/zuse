@@ -4,11 +4,8 @@ import type {
 	CollaborationAccessDeniedError,
 	CollaborationAuditEvent,
 	CollaborationConflictError,
-	CollaborationInvite,
-	CollaborationInviteInvalidError,
 	CollaborationNotFoundError,
 	CollaborationRole,
-	CreatedCollaborationInvite,
 	FolderId,
 	OrganizationDetails,
 	Team,
@@ -31,15 +28,7 @@ export type CollaborationAccessRevocation =
 export type CollaborationServiceError =
 	| CollaborationAccessDeniedError
 	| CollaborationConflictError
-	| CollaborationInviteInvalidError
 	| CollaborationNotFoundError;
-
-export interface CollaborationProfile {
-	readonly subject: string;
-	readonly email: string;
-	readonly displayName: string;
-	readonly avatarUrl?: string | null;
-}
 
 export interface CollaborationServiceShape {
 	/** Wake catalog subscriptions after committed grants, sharing, or membership changes. */
@@ -74,17 +63,6 @@ export interface CollaborationServiceShape {
 		{ readonly team: Team; readonly actor: ActorIdentity },
 		CollaborationServiceError
 	>;
-	readonly bootstrapTeam: (
-		name: string,
-		profile: CollaborationProfile,
-	) => Effect.Effect<
-		{
-			readonly team: Team;
-			readonly member: TeamMember;
-			readonly actor: ActorIdentity;
-		},
-		CollaborationConflictError
-	>;
 	readonly resolveActor: (
 		teamId: TeamId,
 		subject: string,
@@ -92,43 +70,6 @@ export interface CollaborationServiceShape {
 	readonly listMembers: (
 		actor: ActorIdentity,
 	) => Effect.Effect<ReadonlyArray<TeamMember>, CollaborationAccessDeniedError>;
-	readonly changeMemberRole: (
-		actor: ActorIdentity,
-		memberId: TeamMemberId,
-		role: CollaborationRole,
-	) => Effect.Effect<TeamMember, CollaborationServiceError>;
-	readonly revokeMember: (
-		actor: ActorIdentity,
-		memberId: TeamMemberId,
-	) => Effect.Effect<TeamMember, CollaborationServiceError>;
-	readonly createInvite: (
-		actor: ActorIdentity,
-		input: {
-			readonly email?: string | null;
-			readonly role: "driver" | "viewer";
-			readonly expiresInMs: number;
-		},
-	) => Effect.Effect<
-		CreatedCollaborationInvite,
-		CollaborationAccessDeniedError | CollaborationConflictError
-	>;
-	readonly listInvites: (
-		actor: ActorIdentity,
-	) => Effect.Effect<
-		ReadonlyArray<CollaborationInvite>,
-		CollaborationAccessDeniedError
-	>;
-	readonly revokeInvite: (
-		actor: ActorIdentity,
-		inviteId: CollaborationInvite["id"],
-	) => Effect.Effect<CollaborationInvite, CollaborationServiceError>;
-	readonly redeemInvite: (
-		token: string,
-		profile: CollaborationProfile,
-	) => Effect.Effect<
-		{ readonly member: TeamMember; readonly actor: ActorIdentity },
-		CollaborationInviteInvalidError | CollaborationConflictError
-	>;
 	readonly setWorkspaceGrant: (
 		actor: ActorIdentity,
 		chatId: ChatId,

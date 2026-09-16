@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
 	ActorIdentity,
 	type AuditEventId,
@@ -6,13 +6,8 @@ import {
 	CollaborationAccessDeniedError,
 	type CollaborationAuditAction,
 	CollaborationAuditEvent,
-	CollaborationConflictError,
-	CollaborationInvite,
-	type CollaborationInviteId,
-	CollaborationInviteInvalidError,
 	CollaborationNotFoundError,
 	type CollaborationRole,
-	CreatedCollaborationInvite,
 	FolderId,
 	type OrganizationDetails,
 	Team,
@@ -25,7 +20,6 @@ import { Effect, Layer, PubSub } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import {
 	type CollaborationAccessRevocation,
-	type CollaborationProfile,
 	CollaborationService,
 } from "../services/collaboration-service.ts";
 import {
@@ -45,19 +39,6 @@ interface MemberRow {
 	readonly role: CollaborationRole;
 	readonly status: "active" | "revoked";
 	readonly joined_at: string;
-	readonly updated_at: string;
-}
-
-interface InviteRow {
-	readonly id: string;
-	readonly team_id: string;
-	readonly email: string | null;
-	readonly role: "driver" | "viewer";
-	readonly status: "pending" | "accepted" | "revoked";
-	readonly created_by_member_id: string;
-	readonly expires_at: string;
-	readonly accepted_by_member_id: string | null;
-	readonly created_at: string;
 	readonly updated_at: string;
 }
 
@@ -104,30 +85,6 @@ const asActor = (member: TeamMember): ActorIdentity =>
 		email: member.email,
 		displayName: member.displayName,
 		avatarUrl: member.avatarUrl,
-	});
-
-const inviteStatus = (
-	row: InviteRow,
-): "pending" | "accepted" | "revoked" | "expired" =>
-	row.status === "pending" && Date.parse(row.expires_at) <= Date.now()
-		? "expired"
-		: row.status;
-
-const asInvite = (row: InviteRow): CollaborationInvite =>
-	CollaborationInvite.make({
-		id: row.id as CollaborationInviteId,
-		teamId: row.team_id as TeamId,
-		email: row.email,
-		role: row.role,
-		status: inviteStatus(row),
-		createdByMemberId: row.created_by_member_id as TeamMemberId,
-		expiresAt: new Date(row.expires_at),
-		acceptedByMemberId:
-			row.accepted_by_member_id === null
-				? null
-				: (row.accepted_by_member_id as TeamMemberId),
-		createdAt: new Date(row.created_at),
-		updatedAt: new Date(row.updated_at),
 	});
 
 const asGrant = (row: GrantRow): WorkspaceGrant =>
@@ -180,14 +137,6 @@ const denied = (reason: string) =>
 	new CollaborationAccessDeniedError({ reason });
 
 const normalizedEmail = (email: string): string => email.trim().toLowerCase();
-const tokenHash = (token: string): string =>
-	createHash("sha256").update(token).digest("hex");
-
-const validateProfile = (profile: CollaborationProfile) =>
-	profile.subject.trim().length > 0 &&
-	normalizedEmail(profile.email).length > 0 &&
-	profile.displayName.trim().length > 0;
-
 export const CollaborationServiceLive = Layer.effect(
 	CollaborationService,
 	Effect.gen(function* () {
@@ -280,71 +229,6 @@ export const CollaborationServiceLive = Layer.effect(
 					${JSON.stringify(input.metadata ?? {})}, ${createdAt})
 			`;
 		};
-
-		const bootstrapTeam = (name: string, profile: CollaborationProfile) =>
-			sql.withTransaction(
-				Effect.gen(function* () {
-					if (name.trim().length === 0 || !validateProfile(profile)) {
-						return yield* Effect.fail(
-							new CollaborationConflictError({
-								reason: "invalid_team_profile",
-							}),
-						);
-					}
-					const existing = yield* sql<{ readonly count: number }>`
-						SELECT COUNT(*) AS count FROM collaboration_teams WHERE organization_id IS NULL
-					`;
-					if (Number(existing[0]?.count ?? 0) !== 0) {
-						return yield* Effect.fail(
-							new CollaborationConflictError({
-								reason: "team_already_bootstrapped",
-							}),
-						);
-					}
-					const now = new Date().toISOString();
-					const teamId = randomUUID() as TeamId;
-					const memberId = randomUUID() as TeamMemberId;
-					yield* sql`
-						INSERT INTO collaboration_teams (id, name, created_at, updated_at)
-						VALUES (${teamId}, ${name.trim()}, ${now}, ${now})
-					`;
-					yield* sql`
-						INSERT INTO collaboration_members
-							(id, team_id, subject, email, display_name, avatar_url, role,
-							 status, joined_at, updated_at)
-						VALUES (${memberId}, ${teamId}, ${profile.subject},
-							${normalizedEmail(profile.email)}, ${profile.displayName.trim()},
-							${profile.avatarUrl ?? null}, 'owner', 'active', ${now}, ${now})
-					`;
-					yield* appendAudit({
-						teamId,
-						actorMemberId: memberId,
-						action: "team.created",
-						resourceKind: "team",
-						resourceId: teamId,
-					});
-					const team = Team.make({
-						id: teamId,
-						organizationId: null,
-						name: name.trim(),
-						createdAt: new Date(now),
-						updatedAt: new Date(now),
-					});
-					const member = TeamMember.make({
-						id: memberId,
-						teamId,
-						subject: profile.subject,
-						email: normalizedEmail(profile.email),
-						displayName: profile.displayName.trim(),
-						avatarUrl: profile.avatarUrl ?? null,
-						role: "owner",
-						status: "active",
-						joinedAt: new Date(now),
-						updatedAt: new Date(now),
-					});
-					return { team, member, actor: asActor(member) };
-				}),
-			);
 
 		const resolveActor = (teamId: TeamId, subject: string) =>
 			Effect.gen(function* () {
@@ -448,15 +332,6 @@ export const CollaborationServiceLive = Layer.effect(
 				}),
 			);
 
-		const requireLocalMembership = (teamId: TeamId) =>
-			Effect.gen(function* () {
-				const teams = yield* sql<{
-					readonly organization_id: string | null;
-				}>`SELECT organization_id FROM collaboration_teams WHERE id = ${teamId}`;
-				if (teams[0]?.organization_id !== null)
-					return yield* denied("membership_managed_by_workos");
-			});
-
 		const listMembers = (actor: ActorIdentity) =>
 			validateActor(actor, "viewer").pipe(
 				Effect.andThen(
@@ -467,314 +342,6 @@ export const CollaborationServiceLive = Layer.effect(
 					`,
 				),
 				Effect.map((rows) => rows.map(asMember)),
-			);
-
-		const changeMemberRole = (
-			actor: ActorIdentity,
-			memberId: TeamMemberId,
-			role: CollaborationRole,
-		) =>
-			sql.withTransaction(
-				Effect.gen(function* () {
-					yield* requireLocalMembership(actor.teamId);
-					yield* validateActor(actor, "owner");
-					const target = yield* readMember(memberId);
-					if (
-						target === null ||
-						target.teamId !== actor.teamId ||
-						target.status !== "active"
-					) {
-						return yield* Effect.fail(
-							new CollaborationNotFoundError({ resource: "member" }),
-						);
-					}
-					if (target.role === "owner" && role !== "owner") {
-						const owners = yield* sql<{ readonly count: number }>`
-							SELECT COUNT(*) AS count FROM collaboration_members
-							WHERE team_id = ${actor.teamId} AND role = 'owner' AND status = 'active'
-						`;
-						if (Number(owners[0]?.count ?? 0) <= 1) {
-							return yield* Effect.fail(
-								new CollaborationConflictError({
-									reason: "last_owner_required",
-								}),
-							);
-						}
-					}
-					const now = new Date().toISOString();
-					yield* sql`
-						UPDATE collaboration_members SET role = ${role}, updated_at = ${now}
-						WHERE id = ${memberId}
-					`;
-					yield* appendAudit({
-						teamId: actor.teamId,
-						actorMemberId: actor.memberId,
-						action: "member.role_changed",
-						resourceKind: "member",
-						resourceId: memberId,
-						metadata: { previousRole: target.role, role },
-					});
-					return {
-						member: TeamMember.make({
-							...target,
-							role,
-							updatedAt: new Date(now),
-						}),
-						downgraded: roleRank[role] < roleRank[target.role],
-					};
-				}),
-			);
-
-		const revokeMember = (actor: ActorIdentity, memberId: TeamMemberId) =>
-			sql.withTransaction(
-				Effect.gen(function* () {
-					yield* requireLocalMembership(actor.teamId);
-					yield* validateActor(actor, "owner");
-					const target = yield* readMember(memberId);
-					if (
-						target === null ||
-						target.teamId !== actor.teamId ||
-						target.status !== "active"
-					) {
-						return yield* Effect.fail(
-							new CollaborationNotFoundError({ resource: "member" }),
-						);
-					}
-					if (target.role === "owner") {
-						const owners = yield* sql<{ readonly count: number }>`
-							SELECT COUNT(*) AS count FROM collaboration_members
-							WHERE team_id = ${actor.teamId} AND role = 'owner' AND status = 'active'
-						`;
-						if (Number(owners[0]?.count ?? 0) <= 1) {
-							return yield* Effect.fail(
-								new CollaborationConflictError({
-									reason: "last_owner_required",
-								}),
-							);
-						}
-					}
-					const now = new Date().toISOString();
-					yield* sql`
-						UPDATE collaboration_members SET status = 'revoked', updated_at = ${now}
-						WHERE id = ${memberId}
-					`;
-					yield* appendAudit({
-						teamId: actor.teamId,
-						actorMemberId: actor.memberId,
-						action: "member.revoked",
-						resourceKind: "member",
-						resourceId: memberId,
-					});
-					return TeamMember.make({
-						...target,
-						status: "revoked",
-						updatedAt: new Date(now),
-					});
-				}),
-			);
-
-		const createInvite = (
-			actor: ActorIdentity,
-			input: {
-				readonly email?: string | null;
-				readonly role: "driver" | "viewer";
-				readonly expiresInMs: number;
-			},
-		) =>
-			Effect.gen(function* () {
-				yield* validateActor(actor, "owner");
-				yield* requireLocalMembership(actor.teamId);
-				if (
-					!Number.isFinite(input.expiresInMs) ||
-					input.expiresInMs < 60_000 ||
-					input.expiresInMs > 30 * 24 * 60 * 60_000
-				) {
-					return yield* Effect.fail(
-						new CollaborationConflictError({ reason: "invalid_invite_expiry" }),
-					);
-				}
-				const id = randomUUID() as CollaborationInviteId;
-				const token = `zinv_${randomBytes(32).toString("base64url")}`;
-				const now = new Date();
-				const expiresAt = new Date(now.getTime() + input.expiresInMs);
-				const email = input.email ? normalizedEmail(input.email) : null;
-				yield* sql.withTransaction(
-					Effect.gen(function* () {
-						yield* sql`
-							INSERT INTO collaboration_invites
-								(id, team_id, token_hash, email, role, status,
-								 created_by_member_id, expires_at, accepted_by_member_id,
-								 created_at, updated_at)
-							VALUES (${id}, ${actor.teamId}, ${tokenHash(token)}, ${email},
-								${input.role}, 'pending', ${actor.memberId},
-								${expiresAt.toISOString()}, NULL, ${now.toISOString()},
-								${now.toISOString()})
-						`;
-						yield* appendAudit({
-							teamId: actor.teamId,
-							actorMemberId: actor.memberId,
-							action: "invite.created",
-							resourceKind: "invite",
-							resourceId: id,
-							metadata: { role: input.role, email },
-						});
-					}),
-				);
-				return CreatedCollaborationInvite.make({
-					invite: CollaborationInvite.make({
-						id,
-						teamId: actor.teamId,
-						email,
-						role: input.role,
-						status: "pending",
-						createdByMemberId: actor.memberId,
-						expiresAt,
-						acceptedByMemberId: null,
-						createdAt: now,
-						updatedAt: now,
-					}),
-					token,
-				});
-			});
-
-		const listInvites = (actor: ActorIdentity) =>
-			validateActor(actor, "owner").pipe(
-				Effect.andThen(
-					sql<InviteRow>`
-						SELECT * FROM collaboration_invites
-						WHERE team_id = ${actor.teamId}
-						ORDER BY created_at DESC
-					`,
-				),
-				Effect.map((rows) => rows.map(asInvite)),
-			);
-
-		const revokeInvite = (
-			actor: ActorIdentity,
-			inviteId: CollaborationInviteId,
-		) =>
-			sql.withTransaction(
-				Effect.gen(function* () {
-					yield* requireLocalMembership(actor.teamId);
-					yield* validateActor(actor, "owner");
-					const rows = yield* sql<InviteRow>`
-						SELECT * FROM collaboration_invites
-						WHERE id = ${inviteId} AND team_id = ${actor.teamId}
-						LIMIT 1
-					`;
-					const invite = rows[0];
-					if (invite === undefined) {
-						return yield* Effect.fail(
-							new CollaborationNotFoundError({ resource: "invite" }),
-						);
-					}
-					if (invite.status !== "pending") {
-						return yield* Effect.fail(
-							new CollaborationConflictError({ reason: "invite_not_pending" }),
-						);
-					}
-					const now = new Date().toISOString();
-					yield* sql`
-						UPDATE collaboration_invites SET status = 'revoked', updated_at = ${now}
-						WHERE id = ${inviteId} AND status = 'pending'
-					`;
-					yield* appendAudit({
-						teamId: actor.teamId,
-						actorMemberId: actor.memberId,
-						action: "invite.revoked",
-						resourceKind: "invite",
-						resourceId: inviteId,
-					});
-					return asInvite({ ...invite, status: "revoked", updated_at: now });
-				}),
-			);
-
-		const redeemInvite = (token: string, profile: CollaborationProfile) =>
-			sql.withTransaction(
-				Effect.gen(function* () {
-					if (token.length === 0 || !validateProfile(profile)) {
-						return yield* Effect.fail(
-							new CollaborationInviteInvalidError({
-								reason: "invite_profile_invalid",
-							}),
-						);
-					}
-					const rows = yield* sql<InviteRow>`
-						SELECT * FROM collaboration_invites
-						WHERE token_hash = ${tokenHash(token)}
-						LIMIT 1
-					`;
-					const invite = rows[0];
-					if (
-						invite === undefined ||
-						invite.status !== "pending" ||
-						Date.parse(invite.expires_at) <= Date.now()
-					) {
-						return yield* Effect.fail(
-							new CollaborationInviteInvalidError({
-								reason: "invite_invalid_or_expired",
-							}),
-						);
-					}
-					if (
-						invite.email !== null &&
-						normalizedEmail(profile.email) !== normalizedEmail(invite.email)
-					) {
-						return yield* Effect.fail(
-							new CollaborationInviteInvalidError({
-								reason: "invite_email_mismatch",
-							}),
-						);
-					}
-					const duplicate = yield* sql<MemberRow>`
-						SELECT * FROM collaboration_members
-						WHERE team_id = ${invite.team_id} AND subject = ${profile.subject}
-						LIMIT 1
-					`;
-					if (duplicate[0] !== undefined) {
-						return yield* Effect.fail(
-							new CollaborationConflictError({
-								reason: "membership_already_exists",
-							}),
-						);
-					}
-					const now = new Date().toISOString();
-					const memberId = randomUUID() as TeamMemberId;
-					yield* sql`
-						INSERT INTO collaboration_members
-							(id, team_id, subject, email, display_name, avatar_url, role,
-							 status, joined_at, updated_at)
-						VALUES (${memberId}, ${invite.team_id}, ${profile.subject},
-							${normalizedEmail(profile.email)}, ${profile.displayName.trim()},
-							${profile.avatarUrl ?? null}, ${invite.role}, 'active', ${now}, ${now})
-					`;
-					yield* sql`
-						UPDATE collaboration_invites
-						SET status = 'accepted', accepted_by_member_id = ${memberId},
-							updated_at = ${now}
-						WHERE id = ${invite.id} AND status = 'pending'
-					`;
-					yield* appendAudit({
-						teamId: invite.team_id as TeamId,
-						actorMemberId: memberId,
-						action: "invite.accepted",
-						resourceKind: "invite",
-						resourceId: invite.id,
-					});
-					const member = TeamMember.make({
-						id: memberId,
-						teamId: invite.team_id as TeamId,
-						subject: profile.subject,
-						email: normalizedEmail(profile.email),
-						displayName: profile.displayName.trim(),
-						avatarUrl: profile.avatarUrl ?? null,
-						role: invite.role,
-						status: "active",
-						joinedAt: new Date(now),
-						updatedAt: new Date(now),
-					});
-					return { member, actor: asActor(member) };
-				}),
 			);
 
 		const requireWorkspaceRole = (
@@ -1120,40 +687,10 @@ export const CollaborationServiceLive = Layer.effect(
 					Effect.uninterruptible,
 					Effect.catchTag("SqlError", Effect.die),
 				),
-			bootstrapTeam: (...args) =>
-				bootstrapTeam(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			resolveActor: (...args) =>
 				resolveActor(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			listMembers: (...args) =>
 				listMembers(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
-			changeMemberRole: (...args) =>
-				changeMemberRole(...args).pipe(
-					Effect.tap(() => notifyCatalogChange),
-					Effect.tap(({ member, downgraded }) =>
-						downgraded
-							? notifyRevocation({ kind: "member", memberId: member.id })
-							: Effect.void,
-					),
-					Effect.map(({ member }) => member),
-					Effect.uninterruptible,
-					Effect.catchTag("SqlError", Effect.die),
-				),
-			revokeMember: (...args) =>
-				revokeMember(...args).pipe(
-					Effect.tap(() =>
-						notifyRevocation({ kind: "member", memberId: args[1] }),
-					),
-					Effect.uninterruptible,
-					Effect.catchTag("SqlError", Effect.die),
-				),
-			createInvite: (...args) =>
-				createInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
-			listInvites: (...args) =>
-				listInvites(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
-			revokeInvite: (...args) =>
-				revokeInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
-			redeemInvite: (...args) =>
-				redeemInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			setWorkspaceGrant: (...args) =>
 				setWorkspaceGrant(...args).pipe(
 					Effect.tap(() => notifyCatalogChange),

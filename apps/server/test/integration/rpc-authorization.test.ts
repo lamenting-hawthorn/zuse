@@ -3,6 +3,9 @@ import {
 	ChatId,
 	FolderId,
 	MemoizeRpcs,
+	Organization,
+	OrganizationDetails,
+	OrganizationMember,
 	RpcAuthorization,
 	SessionId,
 	WorktreeId,
@@ -26,6 +29,7 @@ import {
 	withCatalogChanges,
 } from "../../src/collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
+import { OrganizationAuthority } from "../../src/collaboration/services/organization-authority.ts";
 import { WorkspaceFileAccess } from "../../src/collaboration/services/workspace-file-access.ts";
 import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { RpcAuthorizationLive } from "../../src/lan-auth/layers/rpc-authorization.ts";
@@ -207,9 +211,40 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 	const database = sqlLayer.pipe(
 		Layer.provideMerge(MigrationsLive.pipe(Layer.provide(sqlLayer))),
 	);
+	let guestRole: "viewer" | "owner" = "viewer";
+	const roster = () =>
+		OrganizationDetails.make({
+			organization: Organization.make({
+				id: "org",
+				name: "Team",
+				role: "admin",
+			}),
+			currentUserId: "owner",
+			members: ["owner", "guest"].map((userId) =>
+				OrganizationMember.make({
+					id: `org-${userId}`,
+					userId,
+					email: `${userId}@example.com`,
+					displayName: userId,
+					role:
+						userId === "owner" || guestRole === "owner" ? "admin" : "viewer",
+					directoryManaged: false,
+				}),
+			),
+			invitations: [],
+		});
 	const collaboration = CollaborationServiceLive.pipe(
 		Layer.provide(database),
 		Layer.provide(WorkspaceSharingAuthorityLive.pipe(Layer.provide(auth))),
+		Layer.provide(
+			Layer.succeed(OrganizationAuthority, {
+				membership: (_, subject) =>
+					Effect.succeed({
+						role: subject === "owner" ? ("owner" as const) : guestRole,
+						membershipId: `org-${subject}`,
+					}),
+			}),
+		),
 	);
 	const runtime = ManagedRuntime.make(
 		Layer.mergeAll(
@@ -237,20 +272,10 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			Effect.gen(function* () {
 				const service = yield* CollaborationService;
 				const sql = yield* SqlClient.SqlClient;
-				const { actor: owner } = yield* service.bootstrapTeam("Team", {
-					subject: "owner",
-					email: "owner@example.com",
-					displayName: "Owner",
-				});
-				const invite = yield* service.createInvite(owner, {
-					role: "viewer",
-					expiresInMs: 60_000,
-				});
-				const { actor: guest } = yield* service.redeemInvite(invite.token, {
-					subject: "guest",
-					email: "guest@example.com",
-					displayName: "Guest",
-				});
+				const { team, actor: owner } = yield* service.synchronizeOrganization(
+					roster(),
+				);
+				const guest = yield* service.resolveActor(team.id, "guest");
 				const now = new Date().toISOString();
 				yield* sql`INSERT INTO projects (id,path,name,created_at,updated_at) VALUES ('project','/tmp/rpc-test','Project',${now},${now})`;
 				yield* sql`INSERT INTO chats (id,project_id,title,created_at,updated_at) VALUES ('shared','project','Shared',${now},${now}), ('private','project','Private',${now},${now})`;
@@ -646,7 +671,8 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				yield* service
 					.shareWorkspace(owner, ChatId.make("shared"))
 					.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
-				yield* service.changeMemberRole(owner, guest.memberId, "owner");
+				guestRole = "owner";
+				yield* service.synchronizeOrganization(roster());
 			}),
 		);
 		const organizationOwnerStream = startGuestStream();
@@ -667,7 +693,11 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 		expect(ownerStreamEnded).toBe(false);
 		await runtime.runPromise(
 			Effect.flatMap(CollaborationService, (service) =>
-				service.revokeMember(owner, guest.memberId),
+				service.applyOrganizationMembershipRestriction({
+					organizationId: "org",
+					memberId: "org-guest",
+					change: "removed",
+				}),
 			),
 		);
 		await expect(organizationOwnerStream.result).resolves.toMatchObject({
