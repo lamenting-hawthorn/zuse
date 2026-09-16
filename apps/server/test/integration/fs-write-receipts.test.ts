@@ -15,7 +15,7 @@ import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
+import { WorkspaceFileAccess } from "../../src/collaboration/services/workspace-file-access.ts";
 import { FsServiceLive } from "../../src/fs/layers/fs-service.ts";
 import { FsService } from "../../src/fs/services/fs-service.ts";
 import { Migration0048FsWriteReceipts } from "../../src/persistence/migrations/0048_fs_write_receipts.ts";
@@ -81,7 +81,7 @@ const makeRuntime = (
 	);
 };
 
-describe("filesystem write receipts", () => {
+describe("filesystem service", () => {
 	let root: string;
 	let runtime: ReturnType<typeof makeRuntime>;
 
@@ -94,6 +94,70 @@ describe("filesystem write receipts", () => {
 	afterEach(async () => {
 		await runtime.dispose();
 		await nodeFs.rm(root, { recursive: true, force: true });
+	});
+
+	it("contains teammate reads without changing local symlink behavior", async () => {
+		const project = nodePath.join(root, "project");
+		await nodeFs.mkdir(project);
+		await nodeFs.writeFile(nodePath.join(root, "private.txt"), "private");
+		await nodeFs.writeFile(nodePath.join(project, "shared.txt"), "shared");
+		await nodeFs.symlink(
+			"../private.txt",
+			nodePath.join(project, "escape.txt"),
+		);
+		await nodeFs.symlink("shared.txt", nodePath.join(project, "inside.txt"));
+		await nodeFs.symlink("..", nodePath.join(project, "outside"));
+		const isolated = makeRuntime(project);
+		const read = (path: string, shared = true, requestedId = folderId) => {
+			const effect = Effect.flatMap(FsService, (service) =>
+				service.readFile(requestedId, path),
+			);
+			return isolated.runPromise(
+				shared
+					? effect.pipe(
+							Effect.provideService(WorkspaceFileAccess, {
+								folderId,
+								worktreeId: null,
+							}),
+						)
+					: effect,
+			);
+		};
+		try {
+			await expect(read("shared.txt")).resolves.toMatchObject({
+				kind: "text",
+				content: "shared",
+			});
+			await expect(read("inside.txt")).resolves.toMatchObject({
+				kind: "text",
+				content: "shared",
+			});
+			await expect(read("escape.txt", false)).resolves.toMatchObject({
+				kind: "text",
+				content: "private",
+			});
+			for (const path of [
+				"escape.txt",
+				"outside/private.txt",
+				"../private.txt",
+				nodePath.join(root, "private.txt"),
+			]) {
+				await expect(read(path)).rejects.toMatchObject({
+					_tag: "FsPathOutsideError",
+				});
+			}
+			await expect(
+				read("shared.txt", true, FolderId.make("other")),
+			).rejects.toMatchObject({ _tag: "FsPathOutsideError" });
+			for (const path of ["missing.txt", "."]) {
+				await expect(read(path)).rejects.toMatchObject({
+					_tag: "FsReadError",
+					reason: "File is unavailable",
+				});
+			}
+		} finally {
+			await isolated.dispose();
+		}
 	});
 
 	it("reports change batches before continuous editing stops", async () => {

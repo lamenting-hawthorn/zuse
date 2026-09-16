@@ -1,10 +1,12 @@
 import {
 	ChatId,
+	FolderId,
 	RpcAccessDeniedError,
 	RpcAuthorization,
 	SessionId,
 	TeamId,
 	type TeamMemberId,
+	WorktreeId,
 } from "@zuse/contracts";
 import {
 	Effect,
@@ -23,6 +25,7 @@ import {
 	CatalogVisibilityChanges,
 } from "../../collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../collaboration/services/collaboration-service.ts";
+import { WorkspaceFileAccess } from "../../collaboration/services/workspace-file-access.ts";
 import { ConnectionIdentity } from "../services/connection-identity.ts";
 
 export const RpcAuthorizationLive = Layer.effect(
@@ -51,6 +54,7 @@ export const RpcAuthorizationLive = Layer.effect(
 				let catalogRevision = 0;
 				let authorityClass: "host" | "guest" | null = null;
 				let catalogScope: CatalogVisibility["Service"] | null = null;
+				let fileScope: WorkspaceFileAccess["Service"] | null = null;
 				let guestScope: {
 					chatId: ChatId;
 					memberId: TeamMemberId;
@@ -95,7 +99,30 @@ export const RpcAuthorizationLive = Layer.effect(
 						return;
 					}
 					let chatId: ChatId;
-					if (rpc._tag === "chat.get") {
+					if (rpc._tag === "fs.readFile") {
+						const { folderId, worktreeId } = yield* Schema.decodeUnknownEffect(
+							Schema.Struct({
+								folderId: FolderId,
+								worktreeId: Schema.optional(Schema.NullOr(WorktreeId)),
+							}),
+						)(payload);
+						const visible = yield* collaboration.visibleWorkspaces(
+							account.subject,
+						);
+						const allowed = new Set(visible.map((item) => item.chatId));
+						// Project visibility alone does not grant access to its main
+						// checkout or another session's isolated worktree.
+						const candidates = yield* sql<{ readonly id: string }>`
+							SELECT id FROM chats WHERE project_id = ${folderId}
+							AND worktree_id IS ${worktreeId ?? null} ORDER BY id`;
+						const selected = candidates.find((row) =>
+							allowed.has(ChatId.make(row.id)),
+						);
+						if (selected === undefined)
+							return yield* new RpcAccessDeniedError({ code: "access-denied" });
+						chatId = ChatId.make(selected.id);
+						fileScope = { folderId, worktreeId: worktreeId ?? null };
+					} else if (rpc._tag === "chat.get") {
 						chatId = (yield* Schema.decodeUnknownEffect(
 							Schema.Struct({ chatId: ChatId }),
 						)(payload)).chatId;
@@ -255,10 +282,18 @@ export const RpcAuthorizationLive = Layer.effect(
 				);
 				// Long-lived subscriptions must not retain authority after logout or
 				// credential expiry. Cancellation closes the existing RPC stream.
+				const scopedEffect =
+					fileScope === null
+						? effect
+						: Effect.provideService(effect, WorkspaceFileAccess, fileScope);
 				return yield* Effect.raceFirst(
 					catalogScope === null
-						? effect
-						: Effect.provideService(effect, CatalogVisibility, catalogScope),
+						? scopedEffect
+						: Effect.provideService(
+								scopedEffect,
+								CatalogVisibility,
+								catalogScope,
+							),
 					Effect.raceFirst(
 						Effect.raceFirst(
 							watchRevocations,

@@ -5,6 +5,7 @@ import {
 	MemoizeRpcs,
 	RpcAuthorization,
 	SessionId,
+	WorktreeId,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
 import {
@@ -25,12 +26,21 @@ import {
 	withCatalogChanges,
 } from "../../src/collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
+import { WorkspaceFileAccess } from "../../src/collaboration/services/workspace-file-access.ts";
 import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { RpcAuthorizationLive } from "../../src/lan-auth/layers/rpc-authorization.ts";
 import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
+	Rpc.make("fs.readFile", {
+		payload: {
+			folderId: FolderId,
+			path: Schema.String,
+			worktreeId: Schema.optional(Schema.NullOr(WorktreeId)),
+		},
+		success: Schema.String,
+	}),
 	Rpc.make("chat.streamChanges", {
 		payload: { projectId: FolderId },
 		success: Schema.Array(Schema.String),
@@ -88,6 +98,14 @@ const chatCatalogStream = () =>
 		Stream.never,
 	).pipe(withCatalogChanges);
 const handlers = Rpcs.toLayer({
+	"fs.readFile": () =>
+		Effect.serviceOption(WorkspaceFileAccess).pipe(
+			Effect.map((scope) =>
+				scope._tag === "Some"
+					? `${scope.value.folderId}:${scope.value.worktreeId ?? "main"}`
+					: "host",
+			),
+		),
 	"chat.streamChanges": chatCatalogStream,
 	"session.streamChanges": chatCatalogStream,
 	"chat.creation.stream": chatCatalogStream,
@@ -227,6 +245,75 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			subject: "guest",
 			expiresAt: Date.now() + 60_000,
 		} as const;
+		await expect(
+			call(guestIdentity, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).resolves.toBe("project:main");
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				yield* sql`INSERT INTO worktrees (id,project_id,path,name,branch,base_branch,created_at)
+				VALUES ('shared-worktree','project','/tmp/rpc-test-worktree','shared','shared','main',${new Date().toISOString()})`;
+				yield* sql`UPDATE chats SET worktree_id = 'shared-worktree' WHERE id = 'shared'`;
+			}),
+		);
+		await expect(
+			call(guestIdentity, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+					worktreeId: WorktreeId.make("shared-worktree"),
+				}),
+			),
+		).resolves.toBe("project:shared-worktree");
+		// A private chat still uses the main checkout, but the guest has only
+		// the isolated shared worktree: project visibility cannot widen it.
+		await expect(
+			call(guestIdentity, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const sql = yield* SqlClient.SqlClient;
+				yield* sql`UPDATE chats SET worktree_id = NULL WHERE id = 'shared'`;
+			}),
+		);
+		for (const request of [
+			{ folderId: FolderId.make("private-project"), path: "file.txt" },
+			{
+				folderId: FolderId.make("project"),
+				path: "file.txt",
+				worktreeId: WorktreeId.make("private-worktree"),
+			},
+		]) {
+			await expect(
+				call(guestIdentity, (client) => client("fs.readFile", request)),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		}
+		await expect(
+			call({ ...guestIdentity, subject: "stranger" }, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		await expect(
+			call({ ...guestIdentity, subject: "owner" }, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).resolves.toBe("host");
 		const startGuestStream = () => {
 			let markReady = () => {};
 			const ready = new Promise<void>((resolve) => {
@@ -351,6 +438,14 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 		await Effect.runPromise(Deferred.await(rechecked));
 		expect(frames).toEqual([["project"], []]);
 		lookup.mockRestore();
+		await expect(
+			call(guestIdentity, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
 		await runtime.runPromise(
 			Effect.flatMap(CollaborationService, (service) =>
 				service.setWorkspaceGrant(

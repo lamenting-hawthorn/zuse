@@ -22,6 +22,7 @@ import { WorktreeService } from "@zuse/git/worktree-service";
 import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
 import { Effect, FileSystem, Layer, Option, Path, Queue, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
+import { WorkspaceFileAccess } from "../../collaboration/services/workspace-file-access.ts";
 import { WorkspaceService } from "../../workspace/services/workspace-service.ts";
 import { watchDirectoryTree } from "../directory-tree-watcher.ts";
 import { FsService } from "../services/fs-service.ts";
@@ -116,6 +117,13 @@ export const FsServiceLive = Layer.effect(
 			worktreeId?: WorktreeId | null,
 		) =>
 			Effect.gen(function* () {
+				const access = yield* Effect.serviceOption(WorkspaceFileAccess);
+				if (
+					Option.isSome(access) &&
+					(access.value.folderId !== folderId ||
+						access.value.worktreeId !== (worktreeId ?? null))
+				)
+					return yield* new FsPathOutsideError({ folderId, path: relPath });
 				const folder = yield* workspace.findById(folderId);
 				if (folder === null) {
 					return yield* Effect.fail(new FsFolderNotFoundError({ folderId }));
@@ -153,6 +161,33 @@ export const FsServiceLive = Layer.effect(
 					return yield* Effect.fail(
 						new FsPathOutsideError({ folderId, path: relPath }),
 					);
+				}
+				if (Option.isSome(access)) {
+					const canonical = yield* Effect.all({
+						root: fs.realPath(rootAbs),
+						requested: fs.realPath(requestedAbs),
+					}).pipe(
+						Effect.mapError(
+							() =>
+								new FsReadError({
+									folderId,
+									path: relPath,
+									reason: "File is unavailable",
+								}),
+						),
+					);
+					const relative = pathSvc.relative(
+						canonical.root,
+						canonical.requested,
+					);
+					if (
+						relative === ".." ||
+						relative.startsWith(`..${pathSvc.sep}`) ||
+						pathSvc.isAbsolute(relative)
+					)
+						return yield* new FsPathOutsideError({ folderId, path: relPath });
+					// Read the resolved path, not the symlink we just inspected.
+					return { rootAbs: canonical.root, requestedAbs: canonical.requested };
 				}
 				return { rootAbs, requestedAbs } as const;
 			});
@@ -484,6 +519,7 @@ export const FsServiceLive = Layer.effect(
 			worktreeId,
 		) =>
 			Effect.gen(function* () {
+				const access = yield* Effect.serviceOption(WorkspaceFileAccess);
 				const { requestedAbs } = yield* resolveInsideFolder(
 					folderId,
 					relPath,
@@ -500,6 +536,12 @@ export const FsServiceLive = Layer.effect(
 							}),
 					),
 				);
+				if (Option.isSome(access) && stat.type !== "File")
+					return yield* new FsReadError({
+						folderId,
+						path: relPath,
+						reason: "Not a regular file",
+					});
 				const size = Number(stat.size);
 				if (size > MAX_FILE_BYTES) {
 					return yield* Effect.fail(
@@ -538,7 +580,23 @@ export const FsServiceLive = Layer.effect(
 				} catch {
 					return { kind: "binary" as const, bytes, size };
 				}
-			});
+			}).pipe(
+				Effect.catchTag("FsReadError", (error) =>
+					Effect.serviceOption(WorkspaceFileAccess).pipe(
+						Effect.flatMap((access) =>
+							Effect.fail(
+								Option.isNone(access)
+									? error
+									: new FsReadError({
+											folderId,
+											path: relPath,
+											reason: "File is unavailable",
+										}),
+							),
+						),
+					),
+				),
+			);
 
 		const writeFile: FsService["Service"]["writeFile"] = (
 			commandId,

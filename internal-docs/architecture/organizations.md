@@ -123,8 +123,18 @@ calls remain interruptible; once success is observed, the local commit and notif
 are protected from request cancellation. Provider changes with an unconfirmed response
 still rely on live authorization and subsequent synchronization.
 
-Before enabling cross-account environment discovery, finish workspace-scoped
-file/Git/terminal/agent operations. These remain denied to guests.
+`fs.readFile` also accepts guest requests for a checkout used by an explicitly
+shared, authorized chat. The project and nullable worktree ID must match exactly;
+seeing a project does not expose its main checkout or other isolated worktrees.
+The RPC boundary installs a server-only file scope. The existing filesystem service
+verifies that scope, resolves symlinks against the canonical checkout root, rejects
+outside targets and non-regular files, and returns generic filesystem errors to guests.
+Local/paired and same-account reads preserve their existing symlink behavior.
+This is a trusted-host boundary, not OS-level isolation from a hostile process that
+can concurrently replace directory entries on the host.
+
+Before enabling cross-account environment discovery, finish scoped file browsing,
+file mutations, and Git/terminal/agent operations. These remain denied to guests.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 
