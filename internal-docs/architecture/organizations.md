@@ -170,8 +170,15 @@ owner, and delayed cache loads and catalog refresh/archive responses must match
 the initiating account epoch before publishing. Unowned legacy cloud history is
 left dormant rather than assigned to the next account that signs in. Tests cover
 delayed loads/writes, A -> B -> A, and overlapping refresh completion/failure.
-Account-scoping the remaining timeline/file caches, connections, and command outbox
-is still required; this catalog boundary alone does not provide complete isolation.
+API/cloud transport registrations also capture that account epoch. Account changes
+remove their credentials and supervisor registrations, close open physical sessions,
+and reject delayed refresh/handshake completion, including A -> B -> A. Local and
+manually configured SSH/tailnet transports remain device-owned. Tests exercise the
+real registration/acquisition path with mocked physical handshakes; they do not
+establish deployed socket behavior. Discovery and other asynchronous registration
+callers still need their own initiating-account fence, so stale results cannot be
+registered as belonging to a newer account. Account-scoping the remaining timeline/
+file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 
