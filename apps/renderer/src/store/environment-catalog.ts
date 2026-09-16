@@ -36,6 +36,7 @@ import { markRendererStartupMilestone } from "../lib/performance-marks.ts";
 import {
 	assertRendererAccountCurrent,
 	rendererAccountSnapshot,
+	subscribeRendererAccount,
 } from "../lib/renderer-account.ts";
 import {
 	LOCAL_ENVIRONMENT_KEY,
@@ -401,6 +402,7 @@ type EnvironmentCatalogState = {
 };
 
 type EnvironmentShellRuntime = {
+	readonly lifetime: AbortController;
 	readonly ref: { readonly environmentId: EnvironmentId };
 	readonly lease: ResourceLease;
 	readonly unsubscribe: () => void;
@@ -645,6 +647,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			const ref = { environmentId: EnvironmentId.make(environmentId) };
 			const retained = retainEnvironmentShell(ref, activation);
 			const runtime: EnvironmentShellRuntime = {
+				lifetime: new AbortController(),
 				ref,
 				lease: retained.lease,
 				unsubscribe: subscribeEnvironmentShell(ref, (view) =>
@@ -660,21 +663,117 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			const runtime = shellRuntimes.get(catalogKey);
 			if (runtime === undefined) return;
 			if (activeShellKey === catalogKey) activeShellKey = null;
+			runtime.lifetime.abort();
 			runtime.unsubscribe();
 			runtime.lease.release();
 			shellRuntimes.delete(catalogKey);
 		};
+		const accountEnvironmentIds = (): Set<string> =>
+			new Set([
+				...apiRecords.keys(),
+				...get()
+					.entries.filter((entry) => entry.connectionKind === "api")
+					.map((entry) => entry.environmentId),
+			]);
+		const removeAccountEnvironments = (
+			environmentIds: ReadonlySet<string>,
+		): void => {
+			if (environmentIds.size === 0) return;
+			const state = get();
+			const removed = state.entries.filter(
+				(entry) =>
+					entry.connectionKind === "api" &&
+					environmentIds.has(entry.environmentId),
+			);
+			for (const id of environmentIds) apiRecords.delete(id);
+			for (const entry of removed) {
+				stopEntryRuntime(entryKey(entry));
+				void removeRendererEnvironment(entry.environmentId).catch(
+					() => undefined,
+				);
+			}
+			const activeRemoved = removed.some(
+				(entry) => entry.environmentId === state.activeEnvironmentId,
+			);
+			const local = state.entries.find(
+				(entry) => entry.connectionKind === "local",
+			);
+			set({
+				entries: state.entries.filter(
+					(entry) =>
+						entry.connectionKind !== "api" ||
+						!environmentIds.has(entry.environmentId),
+				),
+				...(activeRemoved
+					? {
+							activeEnvironmentId:
+								local?.environmentId ?? LOCAL_ENVIRONMENT_KEY,
+						}
+					: {}),
+			});
+			if (activeRemoved) {
+				setActiveEnvironment(local?.environmentId ?? LOCAL_ENVIRONMENT_KEY);
+				const localRuntime =
+					local === undefined ? undefined : shellRuntimes.get(entryKey(local));
+				if (localRuntime !== undefined && local !== undefined) {
+					activeShellKey = entryKey(local);
+					localRuntime.requestedActivation = "connect";
+					void Promise.resolve(localRuntime.lease.activate("connect")).catch(
+						() => undefined,
+					);
+				}
+				activateAnnotationsEnvironment();
+				useUiStore.getState().clearRevealedAnnotation();
+				projectEnvironmentShell(
+					(localRuntime === undefined
+						? null
+						: environmentShellSnapshot(localRuntime.ref).data) ?? {
+						folders: [],
+						originsByFolder: {},
+						chatsByProject: {},
+						sessionsByProject: {},
+						creationOperationsByProject: {},
+					},
+					{ resetOptimisticState: true },
+				);
+			}
+		};
+		const unsubscribeAccount = subscribeRendererAccount(() => {
+			discoveryRevision++;
+			removeAccountEnvironments(accountEnvironmentIds());
+			set({ accountDiscoveryError: null });
+			const account = rendererAccountSnapshot();
+			if (get().initialized && typeof account.subject === "string") {
+				void get()
+					.syncAccountEnvironments()
+					.catch((cause) => {
+						if (rendererAccountSnapshot() === account)
+							set({ accountDiscoveryError: errorMessage(cause) });
+					});
+			}
+		});
+		if (import.meta.hot) import.meta.hot.dispose(unsubscribeAccount);
 		const waitForShellData = (
 			runtime: EnvironmentShellRuntime,
 		): Promise<EnvironmentShellData> => {
 			return new Promise((resolve, reject) => {
 				let settled = false;
 				let unsubscribe = (): void => undefined;
+				const abort = (): void => {
+					if (settled) return;
+					settled = true;
+					cleanup();
+					reject(new Error("Environment subscription was removed."));
+				};
+				const cleanup = (): void => {
+					unsubscribe();
+					runtime.lifetime.signal.removeEventListener("abort", abort);
+				};
 				const finish = (view: ResourceView<EnvironmentShellData>): void => {
 					if (settled) return;
 					if (view.data !== null) {
 						settled = true;
-						unsubscribe();
+						cleanup();
 						resolve(normalizeEnvironmentShellData(view.data));
 						return;
 					}
@@ -685,7 +784,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						view.connection === "revoked"
 					) {
 						settled = true;
-						unsubscribe();
+						cleanup();
 						reject(
 							new Error(
 								getRendererClientBus().connection(runtime.ref.environmentId)
@@ -694,9 +793,17 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						);
 					}
 				};
+				if (runtime.lifetime.signal.aborted) {
+					abort();
+					return;
+				}
+				runtime.lifetime.signal.addEventListener("abort", abort, {
+					once: true,
+				});
 				unsubscribe = subscribeEnvironmentShell(runtime.ref, (view) => {
 					finish(view);
 				});
+				if (settled) cleanup();
 				finish(environmentShellSnapshot(runtime.ref));
 			});
 		};
@@ -717,6 +824,8 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			// Connection work can finish after the user has opened another draft.
 			// Check before changing either the active environment or its selection.
 			if (selection?.isCurrent?.() === false) return null;
+			if (shellRuntimes.get(catalogKey) !== runtime)
+				throw new Error("Environment activation was superseded.");
 			if (activeShellKey !== null && activeShellKey !== catalogKey) {
 				const previous = shellRuntimes.get(activeShellKey);
 				if (previous !== undefined) {
@@ -1079,6 +1188,14 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 					(environment) =>
 						environment.environmentId !== local.environmentId &&
 						!profileEnvironmentIds.has(environment.environmentId),
+				);
+				const available = new Set<string>(
+					accountEnvironments.map((environment) => environment.environmentId),
+				);
+				removeAccountEnvironments(
+					new Set(
+						[...accountEnvironmentIds()].filter((id) => !available.has(id)),
+					),
 				);
 				for (const environment of accountEnvironments) {
 					apiRecords.set(environment.environmentId, environment);

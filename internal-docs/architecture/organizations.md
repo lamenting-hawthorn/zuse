@@ -183,8 +183,16 @@ follow-up commands or publishing workspace state. Initial and refreshed environm
 discovery discard results from an older account or superseded request. A stale
 initial account lookup still allows local SSH/tailnet profiles to load and preserves
 a newer account discovery result. Explicit refresh tests cover stale success/failure
-and overlapping same-account requests. Existing catalog projections still need
-clearing on account transitions and reconciliation when grants disappear. Other
+and overlapping same-account requests. Account changes now remove API catalog
+records/entries, release shell subscriptions, and cancel pending shell activation.
+A successful refresh also reconciles servers no longer returned by discovery;
+failed refreshes retain the existing catalog. Removing the active API environment
+clears its projection and restores the local shell, without removing manually
+configured SSH/tailnet profiles. Initialized catalogs refresh after sign-in, but not
+sign-out. Tests cover removal, idempotent refresh, device-profile preservation, and
+pending activation cancellation. Account-owned ClientBus caches and transient cloud
+shells still require separate isolation; releasing a catalog subscription is not
+proof that all cached state is inaccessible. Other
 asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
