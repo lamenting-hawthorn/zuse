@@ -21,6 +21,10 @@ export type ConnectionOptions = {
 export const isRpcCredentialExpired = (cause: unknown): boolean =>
 	Schema.is(RpcAccessDeniedError)(cause) && cause.code === "credential-expired";
 
+/** A confirmed permission denial invalidates cached data, unlike transport loss. */
+export const isRpcAccessDenied = (cause: unknown): boolean =>
+	Schema.is(RpcAccessDeniedError)(cause) && cause.code === "access-denied";
+
 export type ClientSession<Client> = {
 	readonly client: Client;
 	readonly dispose: () => Promise<void>;

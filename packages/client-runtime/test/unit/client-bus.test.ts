@@ -330,6 +330,171 @@ describe("ClientBus", () => {
 		await bus.dispose();
 	});
 
+	it("clears revoked resources after pending writes and fences cleanup and overlays", async () => {
+		const persistence = new MemoryPersistence();
+		const saveGate = deferred<void>();
+		const save = vi
+			.spyOn(persistence, "saveResource")
+			.mockImplementation(async (key, value) => {
+				await saveGate.promise;
+				persistence.resources.set(resourceKeyId(key), value);
+			});
+		const remove = vi.spyOn(persistence, "removeResource");
+		const contexts: ResourceDriverContext<Client, unknown>[] = [];
+		const cleanupWrites: boolean[] = [];
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			driverFor: () => {
+				let context: ResourceDriverContext<Client, unknown> | null = null;
+				return {
+					start: (next) => {
+						context = next;
+						contexts.push(next);
+					},
+					stop: () => {
+						if (context !== null)
+							cleanupWrites.push(
+								context.emit({ data: { text: "old cleanup" }, persist: true }),
+							);
+					},
+				};
+			},
+		});
+		const lease = bus.retain(timelineKey, { activation: "connect" });
+		try {
+			await waitUntil(() => contexts.length === 1);
+			const first = contexts[0];
+			if (first === undefined) throw new Error("missing driver");
+			first.emit({
+				data: { text: "private" },
+				cursor: { epoch: "old", version: 1 },
+				sync: "live",
+				persist: true,
+			});
+			await waitUntil(() => save.mock.calls.length === 1);
+			expect(first.emit({ accessDenied: true })).toBe(true);
+			expect(bus.snapshot(timelineKey)).toMatchObject({
+				data: null,
+				cursor: null,
+				origin: "none",
+				sync: "failed",
+			});
+			expect(cleanupWrites).toEqual([false]);
+			expect(first.emit({ data: { text: "late" } })).toBe(false);
+			expect(
+				bus.overlay(timelineKey, {
+					initialData: { text: "draft" },
+					update: (data) => data,
+				}),
+			).toBe(false);
+			saveGate.resolve();
+			await waitUntil(() => remove.mock.calls.length === 1);
+			expect(persistence.resources.has(resourceKeyId(timelineKey))).toBe(false);
+			expect(bus.restart(timelineKey)).toBe(true);
+			await waitUntil(() => contexts.length === 2);
+			expect(contexts[1]?.data).toBeNull();
+			contexts[1]?.emit({
+				data: { text: "authorized again" },
+				cursor: { epoch: "new", version: 1 },
+				sync: "live",
+			});
+			expect(bus.snapshot(timelineKey).data).toEqual({
+				text: "authorized again",
+			});
+		} finally {
+			saveGate.resolve();
+			lease.release();
+			await bus.dispose();
+		}
+	});
+
+	it("does not restore a late checkpoint after a permission denial", async () => {
+		const persistence = new MemoryPersistence();
+		const cache = deferred<ResourceSynchronization<Timeline> | null>();
+		let starts = 0;
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			synchronizer: {
+				synchronize: <Data>() =>
+					cache.promise as Promise<ResourceSynchronization<Data> | null>,
+			},
+			driverFor: () => ({
+				start: (context) => {
+					starts += 1;
+					context.emit({ accessDenied: true });
+				},
+				stop: () => undefined,
+			}),
+		});
+		const lease = bus.retain(timelineKey, { activation: "connect" });
+		await waitUntil(() => starts === 1);
+		cache.resolve({
+			data: { text: "private cache" },
+			cursor: { epoch: "old", version: 1 },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(bus.snapshot(timelineKey)).toMatchObject({
+			data: null,
+			sync: "failed",
+		});
+		expect(starts).toBe(1);
+		lease.release();
+		// Keep the denial marker until an authorized runtime frame replaces it.
+		expect(bus.forget(timelineKey)).toBe(false);
+		await bus.dispose();
+	});
+
+	it("orders revocation deletion after an in-flight checkpoint save", async () => {
+		const persistence = new MemoryPersistence();
+		const checkpoint = deferred<ResourceSynchronization<Timeline> | null>();
+		const saving = deferred<void>();
+		const release = deferred<void>();
+		vi.spyOn(persistence, "saveResource").mockImplementation(
+			async (key, value) => {
+				saving.resolve();
+				await release.promise;
+				persistence.resources.set(resourceKeyId(key), value);
+			},
+		);
+		const removed = vi.spyOn(persistence, "removeResource");
+		const contexts: ResourceDriverContext<Client, unknown>[] = [];
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			synchronizer: {
+				synchronize: <Data>() =>
+					checkpoint.promise as Promise<ResourceSynchronization<Data> | null>,
+			},
+			driverFor: () => ({
+				start: (context) => {
+					contexts.push(context);
+				},
+				stop: () => undefined,
+			}),
+		});
+		const lease = bus.retain(timelineKey, { activation: "connect" });
+		try {
+			await waitUntil(() => contexts.length === 1);
+			checkpoint.resolve({
+				data: { text: "private checkpoint" },
+				cursor: { epoch: "old", version: 1 },
+			});
+			await saving.promise;
+			contexts[0]?.emit({ accessDenied: true });
+			release.resolve();
+			await waitUntil(() => removed.mock.calls.length === 1);
+			expect(persistence.resources.has(resourceKeyId(timelineKey))).toBe(false);
+			expect(bus.snapshot(timelineKey).data).toBeNull();
+		} finally {
+			checkpoint.resolve(null);
+			release.resolve();
+			lease.release();
+			await bus.dispose();
+		}
+	});
+
 	it("restarts a retained resource after its provisional subscription fails", async () => {
 		let starts = 0;
 		let stops = 0;

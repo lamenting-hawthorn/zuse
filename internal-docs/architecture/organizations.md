@@ -143,8 +143,19 @@ names below unresolved links are not forwarded. Filtered streams keep contiguous
 per-subscription watcher sequences without changing durable session cursors. The
 existing RPC revocation and credential-expiry handling closes affected watches.
 
+Session-timeline and file-tree drivers distinguish confirmed `access-denied` from
+credential expiry and transport failures. A denial clears the ClientBus cell, fences
+late driver/checkpoint updates, and serializes cache deletion after pending saves.
+The denial marker survives inactive-cell eviction; optimistic overlays cannot restore
+its data. An explicit resource restart or a new connection may reauthorize it, but
+cached/checkpoint state stays blocked until a runtime data frame is accepted. Ordinary
+offline recovery retains its existing cached-data behavior. This does not retract
+data a user previously exported or copied.
+
 Before enabling cross-account environment discovery, finish scoped file mutations
-and Git/terminal/agent operations. These remain denied to guests.
+and Git/terminal/agent operations. These remain denied to guests. Account-partitioned
+client caches and bootstrap behavior still need verification before any cached data
+is shown under a different account; clearing on a later denial is not sufficient.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 

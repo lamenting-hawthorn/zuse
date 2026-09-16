@@ -8,6 +8,7 @@ import type {
 	PersistedResource,
 	ResourcePersistence,
 } from "@zuse/client-runtime/client-persistence";
+import { isRpcAccessDenied } from "@zuse/client-runtime/connection";
 import {
 	type ExecutionRef,
 	makeResourceKey,
@@ -284,6 +285,10 @@ export const makeFileTreeResourceDriver = (options: {
 				Effect.catchCause((cause) =>
 					Effect.sync(() => {
 						if (!active || Cause.hasInterruptsOnly(cause)) return;
+						if (isRpcAccessDenied(Cause.squash(cause))) {
+							context.emit({ accessDenied: true });
+							return;
+						}
 						options.reportConnectionFailure(
 							ref.environmentId,
 							context.generation,

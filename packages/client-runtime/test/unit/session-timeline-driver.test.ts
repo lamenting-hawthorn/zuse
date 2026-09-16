@@ -4,6 +4,7 @@ import {
 	Message,
 	MessageId,
 	QueueState,
+	RpcAccessDeniedError,
 	SessionId,
 	type SessionTimelineFrame,
 	SessionTimelineProjection,
@@ -120,6 +121,36 @@ describe("shared session timeline resource driver", () => {
 		} finally {
 			driver.stop();
 		}
+	});
+	it.each([
+		"access-denied",
+		"credential-expired",
+	] as const)("distinguishes %s from offline recovery", async (code) => {
+		const failures: unknown[] = [];
+		const test = harness({
+			key,
+			client: {
+				"session.events": () => Stream.fail(new RpcAccessDeniedError({ code })),
+			},
+			data: projection,
+			cursor: { epoch: "old", version: 1 },
+		});
+		const driver = makeSessionTimelineResourceDriver({
+			reportFailure: (_environmentId, _generation, cause) => {
+				failures.push(cause);
+			},
+		});
+		driver.start(test.context);
+		await waitUntil(() =>
+			test.updates.some(
+				(update) => update.accessDenied === true || update.sync === "failed",
+			),
+		);
+		expect(test.updates.some((update) => update.accessDenied === true)).toBe(
+			code === "access-denied",
+		);
+		expect(failures.length).toBe(code === "access-denied" ? 0 : 1);
+		driver.stop();
 	});
 	it("renders the recent tail immediately while automatic history chunks complete", async () => {
 		const frames = Effect.runSync(Queue.unbounded<SessionTimelineFrame>());

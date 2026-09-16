@@ -67,6 +67,8 @@ const pendingCommandWithDeliveryStatus = (
 });
 
 export type ResourceDriverUpdate<Data> = Readonly<{
+	/** Discard this resource and its cache after a confirmed authorization denial. */
+	accessDenied?: true;
 	data?: Data;
 	cursor?: ResourceCursor;
 	sync?: SyncPhase;
@@ -163,6 +165,7 @@ export type ClientBusOptions<Client> = Readonly<{
 }>;
 
 type ResourceEntry = {
+	deniedGeneration: number | null;
 	readonly id: string;
 	readonly key: ResourceKey<unknown>;
 	view: ResourceView<unknown>;
@@ -479,12 +482,18 @@ export class ClientBus<Client> {
 	/**
 	 * Drops an inactive resource cell so a future surface performs a fresh replay.
 	 * Active leases fence this operation; callers must release and unsubscribe first.
+	 * Revoked cells retain their denial marker until an authorized runtime retry.
 	 */
 	forget(key: ResourceKey<unknown>): boolean {
 		if (this.disposed) return false;
 		const id = resourceKeyId(key);
 		const entry = this.entries.get(id);
-		if (entry === undefined || entry.activations.size > 0) return false;
+		if (
+			entry === undefined ||
+			entry.activations.size > 0 ||
+			entry.deniedGeneration !== null
+		)
+			return false;
 		this.stopDriver(entry);
 		entry.synchronizationEpoch += 1;
 		this.entries.delete(id);
@@ -537,7 +546,7 @@ export class ClientBus<Client> {
 	): boolean {
 		if (this.disposed) return false;
 		const entry = this.entries.get(resourceKeyId(key));
-		if (entry === undefined) return false;
+		if (entry === undefined || entry.deniedGeneration !== null) return false;
 		const current = entry.view.data ?? options.initialData;
 		if (current === undefined) return false;
 		const data = options.update(current as ResourceData<Key>);
@@ -592,7 +601,7 @@ export class ClientBus<Client> {
 	/**
 	 * Restarts one retained resource driver without reconnecting its environment.
 	 * This is used when a provisional resource becomes durable after an earlier
-	 * subscription was rejected by the server.
+	 * subscription was rejected by the server, or to explicitly retry denied access.
 	 */
 	restart<Key extends ResourceKey<unknown>>(key: Key): boolean {
 		if (this.disposed) return false;
@@ -608,7 +617,7 @@ export class ClientBus<Client> {
 			return false;
 		}
 		this.stopDriver(entry);
-		this.startDriver(entry, binding);
+		this.startDriver(entry, binding, true);
 		return true;
 	}
 
@@ -1014,6 +1023,7 @@ export class ClientBus<Client> {
 		let entry = this.entries.get(id);
 		if (entry === undefined) {
 			entry = {
+				deniedGeneration: null,
 				id,
 				key,
 				view: emptyResourceView(),
@@ -1234,6 +1244,7 @@ export class ClientBus<Client> {
 		const synchronizer = this.options.synchronizer;
 		if (
 			synchronizer === undefined ||
+			entry.deniedGeneration !== null ||
 			entry.synchronization !== null ||
 			!requestsSynchronization(entry)
 		)
@@ -1290,13 +1301,7 @@ export class ClientBus<Client> {
 					cursor: result.cursor,
 					sync: requestsRuntime(entry) ? "synchronizing" : "cached",
 				};
-				if (this.options.persistence !== undefined) {
-					await this.options.persistence.saveResource(entry.key, {
-						data: next.data,
-						cursor: next.cursor,
-						storedAt: Date.now(),
-					});
-				}
+				await this.persist(entry, next);
 				if (
 					epoch === entry.synchronizationEpoch &&
 					entry.runtimeUpdates === runtimeUpdates
@@ -1320,7 +1325,13 @@ export class ClientBus<Client> {
 	private startDriver(
 		entry: ResourceEntry,
 		binding: EnvironmentBinding<Client>,
+		retryDenied = false,
 	): void {
+		if (
+			!retryDenied &&
+			entry.deniedGeneration === binding.runtime.snapshot().generation
+		)
+			return;
 		if (
 			entry.activations.size === 0 ||
 			!entry.hydrated ||
@@ -1410,6 +1421,27 @@ export class ClientBus<Client> {
 			return false;
 		}
 		entry.runtimeUpdates += 1;
+		if (update.accessDenied === true) {
+			entry.deniedGeneration = generation;
+			entry.synchronizationEpoch += 1;
+			// Fence cleanup checkpoints and late callbacks before stopping the driver.
+			entry.driverEpoch += 1;
+			this.stopDriver(entry);
+			this.setView(entry, {
+				...entry.view,
+				data: null,
+				cursor: null,
+				origin: "none",
+				sync: "failed",
+			});
+			// Delete after any queued writes, so an older checkpoint cannot restore it.
+			entry.persistenceTail = entry.persistenceTail
+				.then(() => this.options.persistence?.removeResource(entry.key))
+				.then(() => undefined)
+				.catch(() => undefined);
+			return true;
+		}
+		if (update.data !== undefined) entry.deniedGeneration = null;
 		const next: ResourceView<unknown> = {
 			...entry.view,
 			data: update.data === undefined ? entry.view.data : update.data,
@@ -1425,12 +1457,12 @@ export class ClientBus<Client> {
 		return true;
 	}
 
-	private persist(entry: ResourceEntry, view: ResourceView<unknown>): void {
-		if (view.data === null) return;
+	private persist(entry: ResourceEntry, view: ResourceView<unknown>): Promise<void> {
+		if (view.data === null) return Promise.resolve();
 		if (this.options.coalescePersistence?.(entry.key)) {
 			const pending = entry.pendingPersistence !== null;
 			entry.pendingPersistence = view;
-			if (pending) return;
+			if (pending) return entry.persistenceTail;
 			entry.persistenceTail = entry.persistenceTail
 				.then(async () => {
 					const latest = entry.pendingPersistence;
@@ -1443,9 +1475,9 @@ export class ClientBus<Client> {
 						});
 				})
 				.catch(() => undefined);
-			return;
+			return entry.persistenceTail;
 		}
-		entry.persistenceTail = entry.persistenceTail
+		const pending = entry.persistenceTail
 			.then(() =>
 				this.options.persistence?.saveResource(entry.key, {
 					data: view.data,
@@ -1453,8 +1485,9 @@ export class ClientBus<Client> {
 					storedAt: Date.now(),
 				}),
 			)
-			.then(() => undefined)
-			.catch(() => undefined);
+			.then(() => undefined);
+		entry.persistenceTail = pending.catch(() => undefined);
+		return pending;
 	}
 
 	private prepareAndExecute<Result>(
