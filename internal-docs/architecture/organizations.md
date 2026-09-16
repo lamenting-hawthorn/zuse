@@ -4,9 +4,12 @@
 
 Settings → Organizations supports listing and creating organizations, viewing members,
 email invitations, revoking pending invitations, changing roles, and removing members.
-The renderer uses the existing control-plane RPC connection. The server calls the
-existing authenticated API client; no second account registry or connection transport
-is introduced. The feature is not gated by the Cloud Workspace beta flag.
+The settings panel uses one organization client. Desktop retains the existing
+control-plane RPC connection and local permission projection; hosted browsers call
+the existing authenticated account endpoints directly, without borrowing the selected
+server's credentials. Endpoint paths and response schemas are shared. No second
+account registry or connection transport is introduced. The feature is not gated by
+the Cloud Workspace beta flag.
 
 WorkOS is authoritative for account organization membership. Only the API holds its
 server API key. Organization administration uses `admin` and `member` role slugs;

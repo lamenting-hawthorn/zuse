@@ -1,4 +1,5 @@
 import {
+	ApiPaths,
 	Organization,
 	OrganizationCreateInput,
 	OrganizationDetails,
@@ -154,12 +155,15 @@ const invitation = (value: typeof WorkosInvitation.Type) =>
 export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 	function* (request: Request) {
 		const path = new URL(request.url).pathname;
-		if (path !== "/v1/organizations" && !path.startsWith("/v1/organizations/"))
+		if (
+			path !== ApiPaths.organizations &&
+			!path.startsWith(`${ApiPaths.organizations}/`)
+		)
 			return null;
 		const principal = yield* requireWorkos(request);
 		const userId = principal.accountId;
 		const method = request.method;
-		if (path === "/v1/organizations/authorize" && method === "POST") {
+		if (path === ApiPaths.organizationAuthorize && method === "POST") {
 			const input = yield* decodeBody(
 				Schema.Struct({
 					organizationId: Organization.fields.id,
@@ -180,7 +184,7 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 						);
 			return json({ membershipId: target.id, role: target.role.slug });
 		}
-		if (path === "/v1/organizations" && method === "GET") {
+		if (path === ApiPaths.organizations && method === "GET") {
 			const memberships = yield* listWorkos(
 				`/user_management/organization_memberships?user_id=${encodeURIComponent(userId)}`,
 				WorkosMember,
@@ -206,7 +210,7 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 			);
 			return json(organizations);
 		}
-		if (path === "/v1/organizations" && method === "POST") {
+		if (path === ApiPaths.organizations && method === "POST") {
 			const input = yield* decodeBody(OrganizationCreateInput, request);
 			if (input.name.trim().length === 0)
 				return yield* badRequest("organization_name_required");
@@ -275,7 +279,7 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 				}),
 			);
 		}
-		if (path === "/v1/organizations/details" && method === "POST") {
+		if (path === ApiPaths.organizationDetails && method === "POST") {
 			const { organizationId } = yield* decodeBody(
 				Schema.Struct({ organizationId: Organization.fields.id }),
 				request,
@@ -337,7 +341,7 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 				}),
 			);
 		}
-		if (path === "/v1/organizations/invite" && method === "POST") {
+		if (path === ApiPaths.organizationInvite && method === "POST") {
 			const input = yield* decodeBody(OrganizationInviteInput, request);
 			yield* requireOrganizationMember(userId, input.organizationId, true);
 			const result = yield* requestWorkos(
@@ -354,7 +358,7 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 			);
 			return json(invitation(result));
 		}
-		if (path === "/v1/organizations/revoke-invite" && method === "POST") {
+		if (path === ApiPaths.organizationRevokeInvite && method === "POST") {
 			const input = yield* decodeBody(OrganizationRevokeInviteInput, request);
 			yield* requireOrganizationMember(userId, input.organizationId, true);
 			const target = yield* requestWorkos(
@@ -372,11 +376,11 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 			return json({ ok: true });
 		}
 		if (
-			(path === "/v1/organizations/set-role" ||
-				path === "/v1/organizations/remove-member") &&
+			(path === ApiPaths.organizationSetRole ||
+				path === ApiPaths.organizationRemoveMember) &&
 			method === "POST"
 		) {
-			const removing = path.endsWith("remove-member");
+			const removing = path === ApiPaths.organizationRemoveMember;
 			const input = yield* decodeBody(
 				removing ? OrganizationMemberInput : OrganizationRoleInput,
 				request,

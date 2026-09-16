@@ -23,7 +23,11 @@ import {
 	SESSION_KEY,
 	writeSession,
 } from "./hosted-session.ts";
-import { subscribeRendererAccount } from "./renderer-account.ts";
+import {
+	assertRendererAccountCurrent,
+	rendererAccountSnapshot,
+	subscribeRendererAccount,
+} from "./renderer-account.ts";
 
 export {
 	hostedAccountId,
@@ -505,13 +509,29 @@ export const hostedSignedIn = async (): Promise<boolean> => {
 	return signedIn && hostedAuthState()._tag === "SignedIn";
 };
 
-export const listHostedEnvironments = async (): Promise<ApiEnvironmentList> => {
+export const hostedAccountRequest = async (
+	path: string,
+	body?: unknown,
+): Promise<Response> => {
+	const account = rendererAccountSnapshot();
 	const token = await hostedAccessToken();
+	assertRendererAccountCurrent(account);
 	if (token === null) throw new Error("hosted_signed_out");
-	const response = await fetch(`${rendererApiUrl()}${ApiPaths.environments}`, {
+	const response = await fetch(`${rendererApiUrl()}${path}`, {
+		method: body === undefined ? "GET" : "POST",
+		headers: {
+			authorization: `Bearer ${token}`,
+			...(body === undefined ? {} : { "content-type": "application/json" }),
+		},
+		body: body === undefined ? undefined : JSON.stringify(body),
 		signal: AbortSignal.timeout(15_000),
-		headers: { authorization: `Bearer ${token}` },
 	});
+	assertRendererAccountCurrent(account);
+	return response;
+};
+
+export const listHostedEnvironments = async (): Promise<ApiEnvironmentList> => {
+	const response = await hostedAccountRequest(ApiPaths.environments);
 	if (!response.ok) throw new Error(`api_environments_${response.status}`);
 	return (await response.json()) as ApiEnvironmentList;
 };

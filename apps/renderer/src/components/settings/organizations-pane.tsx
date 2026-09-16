@@ -9,7 +9,7 @@ import { message as uiMessage } from "@zuse/i18n";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../hooks/use-auth.ts";
-import { runControlPlane } from "../../lib/control-plane-client.ts";
+import { runOrganizations } from "../../lib/organization-client.ts";
 import { rendererAccountSnapshot } from "../../lib/renderer-account.ts";
 import {
 	AlertDialog,
@@ -72,7 +72,7 @@ export function OrganizationsPane() {
 		setError(null);
 		setDetails(null);
 		try {
-			const list = await runControlPlane((client) =>
+			const list = await runOrganizations((client) =>
 				client["organizations.list"]({}),
 			);
 			if (!stillCurrent()) return;
@@ -81,7 +81,7 @@ export function OrganizationsPane() {
 				list.find((org) => org.id === preferId)?.id ?? list[0]?.id ?? "";
 			setSelectedId(id);
 			if (id) {
-				const next = await runControlPlane((client) =>
+				const next = await runOrganizations((client) =>
 					client["organizations.get"]({ organizationId: id }),
 				);
 				if (stillCurrent()) setDetails(next);
@@ -251,7 +251,7 @@ export function OrganizationsPane() {
 													if (nextRole !== "admin" && nextRole !== "member")
 														return;
 													void mutate(async (stillCurrent) => {
-														await runControlPlane((client) =>
+														await runOrganizations((client) =>
 															client["organizations.setRole"]({
 																organizationId: selectedId,
 																memberId: member.id,
@@ -312,7 +312,7 @@ export function OrganizationsPane() {
 						onSubmit={(event) => {
 							event.preventDefault();
 							void mutate(async (stillCurrent) => {
-								await runControlPlane((client) =>
+								await runOrganizations((client) =>
 									client["organizations.invite"]({
 										organizationId: selectedId,
 										email: email.trim(),
@@ -380,7 +380,7 @@ export function OrganizationsPane() {
 									disabled={busy || loading}
 									onClick={() =>
 										void mutate(async (stillCurrent) => {
-											await runControlPlane((client) =>
+											await runOrganizations((client) =>
 												client["organizations.revokeInvite"]({
 													organizationId: selectedId,
 													invitationId: invite.id,
@@ -412,7 +412,7 @@ export function OrganizationsPane() {
 									operationId: crypto.randomUUID(),
 								};
 							const attempt = createAttempt.current;
-							const created = await runControlPlane((client) =>
+							const created = await runOrganizations((client) =>
 								client["organizations.create"](attempt),
 							);
 							if (!stillCurrent()) return;
@@ -480,7 +480,7 @@ export function OrganizationsPane() {
 								if (!removing) return;
 								const memberId = removing.id;
 								void mutate(async (stillCurrent) => {
-									await runControlPlane((client) =>
+									await runOrganizations((client) =>
 										client["organizations.removeMember"]({
 											organizationId: selectedId,
 											memberId,

@@ -452,43 +452,43 @@ export const MachineControlServiceLive: Layer.Layer<
 		return MachineControlService.of({
 			organizationMembership: (organizationId, subject) =>
 				request(
-					"/v1/organizations/authorize",
+					ApiPaths.organizationAuthorize,
 					Schema.Struct({ role: Schema.String, membershipId: Schema.String }),
 					"POST",
 					{ organizationId, subject },
 				),
 			listOrganizations: () =>
-				request("/v1/organizations", Schema.Array(Organization)),
+				request(ApiPaths.organizations, Schema.Array(Organization)),
 			createOrganization: (input) =>
-				request("/v1/organizations", Organization, "POST", input),
+				request(ApiPaths.organizations, Organization, "POST", input),
 			getOrganization: (organizationId) =>
-				request("/v1/organizations/details", OrganizationDetails, "POST", {
+				request(ApiPaths.organizationDetails, OrganizationDetails, "POST", {
 					organizationId,
 				}),
 			inviteOrganizationMember: (input) =>
 				request(
-					"/v1/organizations/invite",
+					ApiPaths.organizationInvite,
 					OrganizationInvitation,
 					"POST",
 					input,
 				),
 			revokeOrganizationInvite: (input) =>
 				request(
-					"/v1/organizations/revoke-invite",
+					ApiPaths.organizationRevokeInvite,
 					Schema.Struct({ ok: Schema.Boolean }),
 					"POST",
 					input,
 				).pipe(Effect.asVoid),
 			setOrganizationRole: (input) =>
 				request(
-					"/v1/organizations/set-role",
+					ApiPaths.organizationSetRole,
 					Schema.Struct({ ok: Schema.Boolean }),
 					"POST",
 					input,
 				).pipe(Effect.asVoid),
 			removeOrganizationMember: (input) =>
 				request(
-					"/v1/organizations/remove-member",
+					ApiPaths.organizationRemoveMember,
 					Schema.Struct({ ok: Schema.Boolean }),
 					"POST",
 					input,
