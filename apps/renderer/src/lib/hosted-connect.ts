@@ -4,32 +4,47 @@ import {
 	type ApiEnvironmentList,
 	type ApiEnvironmentStatus,
 	ApiPaths,
-	type AuthUser,
-	HOSTED_APP_URL,
+	AuthUser,
 	WIRE_PROTOCOL_VERSION,
 	WORKOS_PUBLIC_CLIENT_ID,
 	WORKOS_STAGING_PUBLIC_CLIENT_ID,
 } from "@zuse/contracts";
+import { Schema } from "effect";
 
 import { rendererApiUrl } from "./api-url.ts";
+import {
+	type HostedSession,
+	hostedAccountId,
+	decodeHostedJwtPayload,
+	hostedAuthState,
+	jwtExpiry,
+	publishHostedAuth,
+	readSession,
+	SESSION_KEY,
+	writeSession,
+} from "./hosted-session.ts";
+import { subscribeRendererAccount } from "./renderer-account.ts";
+
+export {
+	hostedAccountId,
+	hostedAuthState,
+	subscribeHostedAuth,
+} from "./hosted-session.ts";
+export { isHostedProduct } from "./platform-capabilities.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
+export const hostedAccountUser = (): AuthUser | null => readSession()?.user ?? null;
+export const hostedCacheDatabaseName = (base: string): string =>
+	isHostedProduct() ? `${base}:hosted:${hostedAccountId()}` : base;
 
 let sessionEpoch = 0;
 export const hostedSessionEpoch = (): number => sessionEpoch;
 
 const WORKOS_API = "https://api.workos.com";
-const SESSION_KEY = "zuse.hosted.session.v1";
 const PKCE_KEY = "zuse.hosted.pkce.v1";
 const DEVICE_ID_KEY = "zuse.hosted.device-id.v1";
 const DPOP_DATABASE = "zuse-hosted-device";
 const DPOP_STORE = "keys";
 const DPOP_KEY = "account";
-
-type HostedSession = {
-	readonly user?: AuthUser | null;
-	readonly accessToken: string;
-	readonly refreshToken: string;
-	readonly expiresAt: number;
-};
 
 type StoredDpopKey = {
 	readonly privateKey: CryptoKey;
@@ -73,15 +88,15 @@ export const createHostedEndpointLease = (): HostedEndpointLease => {
 };
 
 const rpcEndpointLease = createHostedEndpointLease();
+const unsubscribeAccount = subscribeRendererAccount(() => {
+	apiAccess = null;
+	rpcEndpointLease.clear();
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeAccount);
 
 const environment = (): Record<string, string | undefined> =>
 	(import.meta as { readonly env?: Record<string, string | undefined> }).env ??
 	{};
-
-export const isHostedProduct = (
-	locationOrigin = globalThis.window?.location?.origin ?? "",
-): boolean =>
-	environment().VITE_ZUSE_HOSTED === "1" || locationOrigin === HOSTED_APP_URL;
 
 export const resolveHostedWorkosClientId = (
 	configuredClientId: string | undefined,
@@ -116,71 +131,6 @@ const sha256 = async (value: string): Promise<string> =>
 			await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
 		),
 	);
-
-export const decodeHostedJwtPayload = (
-	token: string,
-): { readonly exp?: unknown; readonly sub?: unknown } | null => {
-	try {
-		const encoded = token.split(".")[1];
-		if (encoded === undefined) return null;
-		const normalized = encoded.replaceAll("-", "+").replaceAll("_", "/");
-		return JSON.parse(atob(normalized)) as {
-			readonly exp?: unknown;
-			readonly sub?: unknown;
-		};
-	} catch {
-		return null;
-	}
-};
-
-const jwtExpiry = (token: string): number => {
-	const payload = decodeHostedJwtPayload(token);
-	return typeof payload?.exp === "number"
-		? payload.exp * 1_000
-		: Date.now() + 5 * 60_000;
-};
-
-const readSession = (): HostedSession | null => {
-	try {
-		let raw = localStorage.getItem(SESSION_KEY);
-		if (raw === null) {
-			raw = sessionStorage.getItem(SESSION_KEY);
-			if (raw !== null) {
-				localStorage.setItem(SESSION_KEY, raw);
-				sessionStorage.removeItem(SESSION_KEY);
-			}
-		}
-		if (raw === null) return null;
-		const value = JSON.parse(raw) as Partial<HostedSession>;
-		return value !== null &&
-			typeof value.accessToken === "string" &&
-			typeof value.refreshToken === "string" &&
-			typeof value.expiresAt === "number"
-			? (value as HostedSession)
-			: null;
-	} catch {
-		return null;
-	}
-};
-
-export const hostedAccountId = (): string | null => {
-	const token = readSession()?.accessToken;
-	if (token === undefined) return null;
-	const payload = decodeHostedJwtPayload(token);
-	return typeof payload?.sub === "string" ? payload.sub : null;
-};
-
-export const hostedAccountUser = (): AuthUser | null =>
-	readSession()?.user ?? null;
-
-export const hostedCacheDatabaseName = (base: string): string =>
-	isHostedProduct() ? `${base}:hosted:${hostedAccountId()}` : base;
-
-const writeSession = (session: HostedSession): HostedSession => {
-	localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-	sessionStorage.removeItem(SESSION_KEY);
-	return session;
-};
 
 export const hostedAuthTokenEndpoint = (baseUrl = rendererApiUrl()): string =>
 	`${baseUrl.replace(/\/$/u, "")}${ApiPaths.authToken}`;
@@ -246,8 +196,8 @@ const authenticate = async (
 	const value = (await response.json().catch(() => ({}))) as {
 		readonly access_token?: unknown;
 		readonly refresh_token?: unknown;
+		readonly user?: unknown;
 		readonly error?: unknown;
-		readonly user?: AuthUser;
 	};
 	if (
 		!response.ok ||
@@ -261,14 +211,20 @@ const authenticate = async (
 				: `workos_auth_${response.status}`,
 		);
 	}
+	let user: AuthUser;
+	try {
+		user = Schema.decodeUnknownSync(AuthUser)(value.user);
+	} catch {
+		throw new Error("hosted_auth_profile_missing");
+	}
 	if (
 		epoch !== sessionEpoch ||
 		(grant.grantType === "refresh_token" &&
-			readSession()?.refreshToken !== grant.refreshToken)
+		readSession()?.refreshToken !== grant.refreshToken)
 	)
-		throw new Error("hosted_signed_out");
+		throw new Error("hosted_auth_changed");
 	return writeSession({
-		user: value.user ?? null,
+		user,
 		accessToken: value.access_token,
 		refreshToken: value.refresh_token,
 		expiresAt: jwtExpiry(value.access_token),
@@ -543,8 +499,11 @@ const ensureApiAccess = async (): Promise<string> => {
 	return apiAccess.token;
 };
 
-export const hostedSignedIn = async (): Promise<boolean> =>
-	(await hostedAccessToken()) !== null && hostedAccountId() !== null;
+export const hostedSignedIn = async (): Promise<boolean> => {
+	const signedIn = (await hostedAccessToken()) !== null;
+	publishHostedAuth();
+	return signedIn && hostedAuthState()._tag === "SignedIn";
+};
 
 export const listHostedEnvironments = async (): Promise<ApiEnvironmentList> => {
 	const token = await hostedAccessToken();
@@ -672,6 +631,8 @@ export const signOutHostedProduct = async (): Promise<void> => {
 	}
 
 	const deviceId = localStorage.getItem(DEVICE_ID_KEY);
+	sessionStorage.removeItem(SESSION_KEY);
+	publishHostedAuth();
 	if (token !== null && deviceId !== null) {
 		await fetch(`${rendererApiUrl()}${ApiPaths.client(deviceId)}`, {
 			method: "DELETE",
@@ -679,7 +640,6 @@ export const signOutHostedProduct = async (): Promise<void> => {
 			headers: { authorization: `Bearer ${token}` },
 		}).catch(() => undefined);
 	}
-	sessionStorage.removeItem(SESSION_KEY);
 	sessionStorage.removeItem(PKCE_KEY);
 	localStorage.removeItem(DEVICE_ID_KEY);
 	apiAccess = null;

@@ -199,6 +199,7 @@ export const ApiAuthTokenResponse = Schema.Struct({
 	user: Schema.optional(AuthUser),
 	access_token: Schema.String,
 	refresh_token: Schema.String,
+	user: Schema.optional(AuthUser),
 });
 export type ApiAuthTokenResponse = typeof ApiAuthTokenResponse.Type;
 

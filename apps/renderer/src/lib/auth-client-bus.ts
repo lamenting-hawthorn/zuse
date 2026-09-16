@@ -9,7 +9,9 @@ import {
 } from "@zuse/client-runtime/resource-state";
 import { type AuthState, EnvironmentId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import { hostedAuthState, subscribeHostedAuth } from "./hosted-session.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
 import { observeRendererAccount } from "./renderer-account.ts";
 import type { MemoizeClient } from "./rpc-client.ts";
 import { LOCAL_ENVIRONMENT_KEY } from "./rpc-client.ts";
@@ -96,10 +98,27 @@ registerRendererResourceDriver("environment-auth", (key) =>
 const EMPTY = emptyResourceView<EnvironmentAuthData>();
 
 export const useEnvironmentAuth = (): ResourceView<EnvironmentAuthData> => {
+	const hosted = isHostedProduct();
 	const environmentId = EnvironmentId.make(LOCAL_ENVIRONMENT_KEY);
 	const key = useMemo(
-		() => environmentAuthResourceKey(environmentId),
-		[environmentId],
+		() => (hosted ? null : environmentAuthResourceKey(environmentId)),
+		[environmentId, hosted],
 	);
-	return useClientBusResource(key, EMPTY, "connect");
+	const remote = useClientBusResource(key, EMPTY, "connect");
+	const state = useSyncExternalStore(
+		hosted ? subscribeHostedAuth : () => () => {},
+		hosted ? hostedAuthState : () => null,
+	);
+	return useMemo(
+		() =>
+			state === null
+				? remote
+				: {
+						...EMPTY,
+						data: { state },
+						connection: "connected",
+						sync: "live",
+					},
+		[remote, state],
+	);
 };

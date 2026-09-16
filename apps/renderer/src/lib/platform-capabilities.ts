@@ -1,3 +1,11 @@
+import { HOSTED_APP_URL } from "@zuse/contracts";
+
+export const isHostedProduct = (
+	locationOrigin = globalThis.window?.location?.origin ?? "",
+): boolean =>
+	import.meta.env?.VITE_ZUSE_HOSTED === "1" ||
+	locationOrigin === HOSTED_APP_URL;
+
 export type RendererPlatformCapabilities = {
 	readonly desktop: boolean;
 	readonly copyServerFile: boolean;

@@ -1,12 +1,71 @@
+import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 import { exportJWK, generateKeyPair, jwtVerify, SignJWT } from "jose";
 import { describe, expect, test, vi } from "vitest";
+import { layer } from "../../src/config.ts";
 
 import {
 	acceptedWorkosIssuers,
 	expectedWorkosClientId,
 	isAcceptedWorkosIssuer,
 	workosVerificationKeys,
+	WorkosVerifier,
+	WorkosVerifierLive,
 } from "../../src/workos.ts";
+
+test("token exchange returns only the authenticated user's normalized profile", async () => {
+	const runtime = ManagedRuntime.make(
+		WorkosVerifierLive.pipe(
+			Layer.provide(
+				layer({
+					apiIssuer: "https://api.test",
+					workosIssuer: "https://api.workos.com",
+					workosJwksUrl: "https://api.workos.com/sso/jwks/client_test",
+					mintPrivateKey: Redacted.make("unused"),
+					mintPublicKey: "unused",
+				}),
+			),
+		),
+	);
+	const provider = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+		Response.json({
+			access_token: "access",
+			refresh_token: "refresh",
+			user: {
+				id: "guest",
+				email: "guest@example.test",
+				first_name: "Guest",
+				last_name: null,
+				profile_picture_url: null,
+				metadata: { secret: "not-for-client" },
+			},
+		}),
+	);
+	try {
+		const exchange = Effect.flatMap(WorkosVerifier, (workos) =>
+			workos.exchangeToken({ grantType: "refresh_token", refreshToken: "old" }),
+		);
+		await expect(runtime.runPromise(exchange)).resolves.toEqual({
+			access_token: "access",
+			refresh_token: "refresh",
+			user: {
+				id: "guest",
+				email: "guest@example.test",
+				firstName: "Guest",
+				lastName: null,
+				profilePictureUrl: null,
+			},
+		});
+		provider.mockResolvedValue(
+			Response.json({ access_token: "access", refresh_token: "refresh" }),
+		);
+		await expect(runtime.runPromise(exchange)).rejects.toMatchObject({
+			code: "workos_auth_invalid_response",
+		});
+	} finally {
+		provider.mockRestore();
+		await runtime.dispose();
+	}
+});
 
 describe("acceptedWorkosIssuers", () => {
 	test("accepts WorkOS issuer with and without trailing slash", () => {

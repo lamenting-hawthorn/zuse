@@ -31,6 +31,7 @@ import { recordDiagnosticEvent } from "./diagnostics-recorder.ts";
 import { electronClientProtocolLayer } from "./electron-client-protocol.ts";
 import { isHostedProduct } from "./hosted-connect.ts";
 import { isPlatformOnline, subscribePlatformOnline } from "./network-status.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
 import {
 	assertRendererAccountCurrent,
 	type RendererAccountSnapshot,
@@ -245,6 +246,7 @@ const connectionOptions = (): RendererConnectionOptions => {
 		: {
 				key: rendererConnectionKey(),
 				kind: "websocket",
+				...(isHostedProduct() ? { account: rendererAccountSnapshot() } : {}),
 				...browserWebSocketOptions(),
 			};
 };
@@ -474,6 +476,7 @@ export function shouldReconnectRendererConnection(
 	if (previous.kind !== next.kind) return true;
 	if (previous.kind !== "websocket" || next.kind !== "websocket") return false;
 	return (
+		previous.account !== next.account ||
 		previous.wsUrl !== next.wsUrl ||
 		previous.protocols?.join("\u0000") !== next.protocols?.join("\u0000") ||
 		previous.refreshConnection !== next.refreshConnection
@@ -765,7 +768,11 @@ export const rendererEnvironmentCommandAuthority = (
 		return options.kind === "websocket" && options.account !== undefined
 			? options.account
 			: "device";
-	return environmentId === LOCAL_ENVIRONMENT_KEY ? "device" : undefined;
+	return environmentId === LOCAL_ENVIRONMENT_KEY
+		? isHostedProduct()
+			? rendererAccountSnapshot()
+			: "device"
+		: undefined;
 };
 
 /** Whether this environment id belongs to a registered cloud workspace. */

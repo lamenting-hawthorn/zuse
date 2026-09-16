@@ -4,11 +4,15 @@ import {
 	createHostedEndpointLease,
 	hostedAccessToken,
 	hostedAccountUser,
+	hostedAuthState,
 	hostedAuthTokenEndpoint,
+	hostedSignedIn,
 	isHostedProduct,
 	removeHostedComputer,
 	resolveHostedWorkosClientId,
+	subscribeHostedAuth,
 } from "../../src/lib/hosted-connect.ts";
+import { rendererAccountSnapshot } from "../../src/lib/renderer-account.ts";
 
 const sessionKey = "zuse.hosted.session.v1";
 const storageMock = (entries: [string, string][] = []) => {
@@ -29,6 +33,105 @@ beforeEach(() => {
 });
 const STAGING_CLIENT_ID = "client_01KW6ZEZKVMZ0G429A89XZD83Q";
 const PRODUCTION_CLIENT_ID = "client_01KWGQ818571ARFATQ3G9AR2Y2";
+
+describe("hosted account ownership", () => {
+	const key = "zuse.hosted.session.v1";
+	const user = {
+		id: "guest",
+		email: "guest@example.test",
+		firstName: "Guest",
+		lastName: null,
+		profilePictureUrl: null,
+	};
+	const token = `header.${btoa(JSON.stringify({ sub: user.id, exp: 9_999_999_999 }))}.signature`;
+	beforeEach(() => {
+		const items = new Map<string, string>();
+		vi.stubGlobal("sessionStorage", {
+			getItem: (key: string) => items.get(key) ?? null,
+			setItem: (key: string, value: string) => items.set(key, value),
+			removeItem: (key: string) => items.delete(key),
+		});
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+	it("uses the browser profile and publishes its identity without asking the host", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		const fetch = vi.spyOn(globalThis, "fetch");
+		const listener = vi.fn();
+		const unsubscribe = subscribeHostedAuth(listener);
+		await expect(hostedSignedIn()).resolves.toBe(true);
+		expect(rendererAccountSnapshot().subject).toBe("guest");
+		expect(hostedAuthState()).toMatchObject({
+			_tag: "SignedIn",
+			session: { user },
+		});
+		expect(hostedAuthState()).toBe(hostedAuthState());
+		expect(fetch).not.toHaveBeenCalled();
+		expect(listener).toHaveBeenCalledOnce();
+		unsubscribe();
+	});
+	it("refreshes legacy token-only sessions through the existing account endpoint", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				Response.json({ access_token: token, refresh_token: "rotated", user }),
+			);
+		await expect(hostedSignedIn()).resolves.toBe(true);
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(hostedAuthState()).toMatchObject({ session: { user } });
+	});
+	it("does not adopt a cached host profile for a different token subject", () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user: { ...user, id: "owner" },
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		expect(hostedAuthState()).toEqual({ _tag: "SignedOut" });
+	});
+	it("does not resurrect a session cleared during refresh", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 0,
+			}),
+		);
+		const response = Promise.withResolvers<Response>();
+		vi.spyOn(globalThis, "fetch").mockReturnValue(response.promise);
+		const pending = hostedSignedIn();
+		sessionStorage.removeItem(key);
+		response.resolve(
+			Response.json({ access_token: token, refresh_token: "rotated", user }),
+		);
+		await expect(pending).resolves.toBe(false);
+		expect(sessionStorage.getItem(key)).toBeNull();
+		expect(rendererAccountSnapshot().subject).toBeNull();
+	});
+});
 
 describe("hosted authentication", () => {
 	it("exchanges browser tokens through the configured api", () => {

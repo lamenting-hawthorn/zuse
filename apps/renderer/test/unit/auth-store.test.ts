@@ -8,6 +8,17 @@ const mocks = vi.hoisted(() => ({
 	observeAccount: vi.fn(),
 	accountSnapshot: vi.fn(),
 	restart: vi.fn(),
+	hosted: false,
+	hostedSignIn: vi.fn(),
+	hostedSignOut: vi.fn(),
+}));
+
+vi.mock("../../src/lib/hosted-connect.ts", () => ({
+	beginHostedSignIn: mocks.hostedSignIn,
+	signOutHostedProduct: mocks.hostedSignOut,
+}));
+vi.mock("../../src/lib/platform-capabilities.ts", () => ({
+	isHostedProduct: () => mocks.hosted,
 }));
 
 vi.mock("../../src/lib/renderer-account.ts", () => ({
@@ -44,6 +55,9 @@ const { useAuthStore } = await import("../../src/store/auth.ts");
 
 describe("auth store cloud recovery", () => {
 	beforeEach(() => {
+		mocks.hosted = false;
+		mocks.hostedSignIn.mockReset().mockResolvedValue(undefined);
+		mocks.hostedSignOut.mockReset().mockResolvedValue(undefined);
 		mocks.dispatch.mockReset();
 		mocks.overlay.mockReset();
 		mocks.retryRetainedConnections.mockReset();
@@ -54,6 +68,16 @@ describe("auth store cloud recovery", () => {
 			.mockReturnValue({ subject: null, epoch: 1 });
 		mocks.restart.mockReset();
 		useAuthStore.setState({ signingIn: false, error: null });
+	});
+
+	it("keeps hosted sign-in and logout out of the selected server's account RPCs", async () => {
+		mocks.hosted = true;
+		await useAuthStore.getState().signIn();
+		await useAuthStore.getState().signOut();
+		expect(mocks.hostedSignIn).toHaveBeenCalledOnce();
+		expect(mocks.hostedSignOut).toHaveBeenCalledOnce();
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+		expect(mocks.overlay).not.toHaveBeenCalled();
 	});
 
 	it("retries retained cloud connections after a successful sign-in", async () => {

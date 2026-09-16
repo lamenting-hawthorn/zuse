@@ -4,6 +4,7 @@ import { type AuthState, CommandId, EnvironmentId } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 import { toastManager } from "../components/ui/toast.tsx";
 import { environmentAuthResourceKey } from "../lib/auth-client-bus.ts";
+import { isHostedProduct } from "../lib/platform-capabilities.ts";
 import {
 	observeRendererAccount,
 	rendererAccountSnapshot,
@@ -109,6 +110,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 			),
 		});
 		try {
+			if (isHostedProduct()) {
+				const { beginHostedSignIn } = await import("../lib/hosted-connect.ts");
+				await beginHostedSignIn();
+				set({ signingIn: false });
+				return;
+			}
 			const { environmentId, key } = activeAuthResource();
 			const bus = getRendererClientBus();
 			const receipt = await bus.dispatch<AuthState>({
@@ -144,6 +151,10 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 		}
 	},
 	signOut: async () => {
+		if (isHostedProduct()) {
+			const { signOutHostedProduct } = await import("../lib/hosted-connect.ts");
+			return signOutHostedProduct();
+		}
 		const { environmentId, key } = activeAuthResource();
 		const bus = getRendererClientBus();
 		bus.overlay(key, { update: () => ({ state: SIGNED_OUT }) });

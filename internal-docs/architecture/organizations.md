@@ -169,7 +169,13 @@ caches have automated coverage, but real multi-account bootstrap and UI acceptan
 are still required before release; clearing data on a later denial is not sufficient.
 
 The renderer now has one account-change boundary (`renderer-account.ts`), fed by
-the existing auth resource and auth actions. It distinguishes unknown startup state
+the desktop auth resource/actions or the hosted browser's own session. Hosted auth
+does not subscribe to the selected server's account stream or send sign-in/logout
+commands to it. The account token exchange returns the authenticated user's profile;
+legacy token-only browser sessions refresh to obtain it. Hosted connections and cache
+ownership use this browser identity, not the server owner's identity. Browser-only
+login/network actions remain lazy-loaded to preserve the desktop bundle budget.
+The shared account boundary distinguishes unknown startup state
 from signed-out, keeps same-account token refresh stable, and changes its epoch on
 identity transitions (including A -> B -> A). Attachment invalidation subscribes to
 this boundary. Failed sign-out recovery reopens the canonical auth stream rather
