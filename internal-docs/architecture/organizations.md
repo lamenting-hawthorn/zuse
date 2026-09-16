@@ -136,8 +136,15 @@ Local/paired and same-account reads preserve their existing symlink behavior.
 This is a trusted-host boundary, not OS-level isolation from a hostile process that
 can concurrently replace directory entries on the host.
 
-Before enabling cross-account environment discovery, finish scoped file watching,
-file mutations, and Git/terminal/agent operations. These remain denied to guests.
+`fs.watchTree` uses the same checkout authorization and scoped filesystem resolver.
+Guest streams verify each changed path, omit outside targets, and sanitize watcher
+errors. Deleted paths invalidate only the first missing child of a verified parent;
+names below unresolved links are not forwarded. Filtered streams keep contiguous
+per-subscription watcher sequences without changing durable session cursors. The
+existing RPC revocation and credential-expiry handling closes affected watches.
+
+Before enabling cross-account environment discovery, finish scoped file mutations
+and Git/terminal/agent operations. These remain denied to guests.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 

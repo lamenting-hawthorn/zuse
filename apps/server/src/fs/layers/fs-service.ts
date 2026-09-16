@@ -148,6 +148,37 @@ export const FsServiceLive = Layer.effect(
 				return null;
 			return { abs: resolved.value, stat: stat.value };
 		});
+		const visibleWatchPath = Effect.fn("FsService.visibleWatchPath")(function* (
+			root: string,
+			rel: string,
+		) {
+			if (pathSvc.isAbsolute(rel)) return null;
+			let candidate = pathSvc.resolve(root, rel);
+			if (!isInsideRoot(root, candidate)) return null;
+			let changed = candidate;
+			while (true) {
+				const canonical = yield* fs.realPath(candidate).pipe(
+					Effect.map((value) => ({ kind: "found" as const, value })),
+					Effect.catch((error) =>
+						Effect.succeed({
+							kind:
+								error.reason._tag === "NotFound"
+									? ("missing" as const)
+									: ("denied" as const),
+						}),
+					),
+				);
+				if (canonical.kind === "found")
+					return isInsideRoot(root, canonical.value)
+						? toForwardSlash(pathSvc.relative(root, changed))
+						: null;
+				if (canonical.kind === "denied" || candidate === root) return null;
+				// Deleted paths no longer resolve. Invalidate only the first missing
+				// child of a verified parent, never names below an unresolved link.
+				changed = candidate;
+				candidate = pathSvc.dirname(candidate);
+			}
+		});
 
 		// Resolve a project-root-relative request path to an absolute path,
 		// failing with the appropriate wire error if the folder is unknown or
@@ -311,6 +342,9 @@ export const FsServiceLive = Layer.effect(
 		) =>
 			Stream.unwrap(
 				Effect.gen(function* () {
+					const scoped = Option.isSome(
+						yield* Effect.serviceOption(WorkspaceFileAccess),
+					);
 					const { rootAbs } = yield* resolveInsideFolder(
 						folderId,
 						"",
@@ -325,6 +359,21 @@ export const FsServiceLive = Layer.effect(
 					let timer: ReturnType<typeof setTimeout> | null = null;
 					const pending = new Set<string>();
 					let ignoredDirs = yield* ignoredDirectories(folderId, worktreeId);
+					let handle: Awaited<ReturnType<typeof watchDirectoryTree>> | null = null;
+					// Register cleanup before acquiring native resources so failed
+					// attachment and request cancellation also release the queue.
+					yield* Effect.addFinalizer(() =>
+						Effect.andThen(
+							Effect.sync(() => {
+								if (timer !== null) {
+									clearTimeout(timer);
+									timer = null;
+								}
+								handle?.close();
+							}),
+							Queue.shutdown(queue),
+						),
+					);
 
 					const flush = () => {
 						timer = null;
@@ -394,7 +443,7 @@ export const FsServiceLive = Layer.effect(
 							}),
 						);
 					}
-					const handle = attached.success;
+					handle = attached.success;
 					Queue.offerUnsafe(
 						queue,
 						FsTreeWatchEvent.make({
@@ -404,21 +453,44 @@ export const FsServiceLive = Layer.effect(
 						}),
 					);
 
-					yield* Effect.addFinalizer(() =>
-						Effect.andThen(
-							Effect.sync(() => {
-								if (timer !== null) {
-									clearTimeout(timer);
-									timer = null;
-								}
-								handle.close();
-							}),
-							Queue.shutdown(queue),
+					const events = Stream.fromQueue(queue);
+					if (!scoped) return events;
+					let visibleSequence = 0;
+					return events.pipe(
+						Stream.mapEffect((event): Effect.Effect<FsTreeWatchEvent> => {
+							if (event._tag === "ready") return Effect.succeed(event);
+							if (event._tag === "gap")
+								return Effect.succeed({
+									...event,
+									reason: "File watcher continuity lost",
+								});
+							return Effect.forEach(
+								event.paths,
+								(rel) => visibleWatchPath(rootAbs, rel),
+								{ concurrency: 8 },
+							).pipe(
+								Effect.map((paths) => ({
+									...event,
+									paths: [
+										...new Set(
+											paths.filter((path): path is string => path !== null),
+										),
+									],
+								})),
+							);
+						}),
+						Stream.filter(
+							(event) => event._tag !== "changed" || event.paths.length > 0,
 						),
+						// Hidden activity must neither disclose paths nor cause a false
+						// continuity gap in the existing watcher consumer.
+						Stream.map((event) => ({
+							...event,
+							sequence:
+								event._tag === "ready" ? visibleSequence : ++visibleSequence,
+						})),
 					);
-
-					return Stream.fromQueue(queue);
-				}),
+				}).pipe(Effect.catchTag("FsReadError", redactReadError)),
 			);
 
 		// Full recursive path listing for the `@pierre/trees` file tree. DFS with

@@ -8,6 +8,7 @@ import {
 	Folder,
 	FolderId,
 	FsCommandReuseError,
+	type FsTreeWatchEvent,
 } from "@zuse/contracts";
 import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
@@ -214,6 +215,66 @@ describe("filesystem service", () => {
 				});
 			}
 		} finally {
+			await isolated.dispose();
+		}
+	});
+
+	it("keeps shared watcher paths contained and reports deletions with contiguous cursors", async () => {
+		const project = nodePath.join(root, "project");
+		const outside = nodePath.join(root, "private");
+		await nodeFs.mkdir(project);
+		await nodeFs.mkdir(outside);
+		await nodeFs.writeFile(nodePath.join(project, "delete.txt"), "before");
+		await nodeFs.symlink(outside, nodePath.join(project, "outside"));
+		const isolated = makeRuntime(project);
+		const events: FsTreeWatchEvent[] = [];
+		const fiber = isolated.runFork(
+			Effect.gen(function* () {
+				const service = yield* FsService;
+				yield* Stream.runForEach(service.watchTree(folderId), (event) =>
+					Effect.sync(() => {
+						events.push(event);
+					}),
+				);
+			}).pipe(
+				Effect.provideService(WorkspaceFileAccess, {
+					folderId,
+					worktreeId: null,
+				}),
+			),
+		);
+		const changed = () =>
+			events.flatMap((event) => (event._tag === "changed" ? event.paths : []));
+		try {
+			await expect.poll(() => events[0]?._tag).toBe("ready");
+			await nodeFs.writeFile(nodePath.join(outside, "secret.txt"), "private");
+			await nodeFs.writeFile(nodePath.join(project, "shared.txt"), "shared");
+			await expect.poll(changed).toContain("shared.txt");
+			await nodeFs.unlink(nodePath.join(project, "delete.txt"));
+			await expect.poll(changed).toContain("delete.txt");
+			expect(changed().some((path) => path.includes("secret"))).toBe(false);
+			expect(events.map((event) => event.sequence)).toEqual(
+				events.map((_, index) => index),
+			);
+			expect(new Set(events.map((event) => event.epoch)).size).toBe(1);
+			await isolated.runPromise(Fiber.interrupt(fiber));
+			const restarted = await isolated.runPromise(
+				Effect.flatMap(FsService, (service) =>
+					Stream.runCollect(
+						service.watchTree(folderId).pipe(
+							Stream.take(1),
+							Stream.provideService(WorkspaceFileAccess, {
+								folderId,
+								worktreeId: null,
+							}),
+						),
+					),
+				),
+			);
+			expect(restarted[0]).toMatchObject({ _tag: "ready", sequence: 0 });
+			expect(restarted[0]?.epoch).not.toBe(events[0]?.epoch);
+		} finally {
+			await isolated.runPromise(Fiber.interrupt(fiber));
 			await isolated.dispose();
 		}
 	});

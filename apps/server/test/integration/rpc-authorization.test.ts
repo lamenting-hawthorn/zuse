@@ -33,6 +33,14 @@ import { ConnectionIdentity } from "../../src/lan-auth/services/connection-ident
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
+	Rpc.make("fs.watchTree", {
+		payload: {
+			folderId: FolderId,
+			worktreeId: Schema.optional(Schema.NullOr(WorktreeId)),
+		},
+		success: Schema.String,
+		stream: true,
+	}),
 	Rpc.make("fs.tree", {
 		payload: {
 			folderId: FolderId,
@@ -120,6 +128,8 @@ const fileScopeResult = () =>
 		),
 	);
 const handlers = Rpcs.toLayer({
+	"fs.watchTree": () =>
+		Stream.concat(Stream.fromEffect(fileScopeResult()), Stream.never),
 	"fs.readFile": fileScopeResult,
 	"fs.tree": fileScopeResult,
 	"fs.listPaths": fileScopeResult,
@@ -262,6 +272,21 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			subject: "guest",
 			expiresAt: Date.now() + 60_000,
 		} as const;
+		for (const request of [
+			{ folderId: FolderId.make("private-project") },
+			{
+				folderId: FolderId.make("project"),
+				worktreeId: WorktreeId.make("private-worktree"),
+			},
+		]) {
+			await expect(
+				call(guestIdentity, (client) =>
+					Stream.runCollect(
+						client("fs.watchTree", request).pipe(Stream.take(1)),
+					),
+				),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		}
 		await expect(
 			call(guestIdentity, (client) =>
 				client("fs.readFile", {
@@ -354,16 +379,18 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				}),
 			),
 		).resolves.toBe("host");
-		const startGuestStream = () => {
+		const startGuestStream = (fileWatch = false) => {
 			let markReady = () => {};
 			const ready = new Promise<void>((resolve) => {
 				markReady = resolve;
 			});
 			const result = call(guestIdentity, (client) =>
 				Stream.runForEach(
-					client("session.events", {
-						sessionId: SessionId.make("shared-session"),
-					}),
+					fileWatch
+						? client("fs.watchTree", { folderId: FolderId.make("project") })
+						: client("session.events", {
+								sessionId: SessionId.make("shared-session"),
+							}),
 					() => Effect.sync(markReady),
 				),
 			).then(
@@ -564,7 +591,9 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			code: "credential-expired",
 		});
 		const grantedStream = startGuestStream();
+		const grantedFileStream = startGuestStream(true);
 		await grantedStream.ready;
+		await grantedFileStream.ready;
 		await runtime.runPromise(
 			Effect.flatMap(CollaborationService, (service) =>
 				service.removeWorkspaceGrant(
@@ -575,6 +604,10 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			),
 		);
 		await expect(grantedStream.result).resolves.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+			code: "access-denied",
+		});
+		await expect(grantedFileStream.result).resolves.toMatchObject({
 			_tag: "RpcAccessDeniedError",
 			code: "access-denied",
 		});

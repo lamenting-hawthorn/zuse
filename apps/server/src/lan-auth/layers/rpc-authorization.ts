@@ -102,7 +102,8 @@ export const RpcAuthorizationLive = Layer.effect(
 					if (
 						rpc._tag === "fs.readFile" ||
 						rpc._tag === "fs.tree" ||
-						rpc._tag === "fs.listPaths"
+						rpc._tag === "fs.listPaths" ||
+						rpc._tag === "fs.watchTree"
 					) {
 						const { folderId, worktreeId } = yield* Schema.decodeUnknownEffect(
 							Schema.Struct({
