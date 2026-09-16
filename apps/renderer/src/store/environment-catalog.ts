@@ -1091,9 +1091,10 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 									window.zuse?.ssh?.listProfiles() ?? Promise.resolve([]),
 								tailnetProfiles:
 									window.zuse?.tailnet?.listProfiles() ?? Promise.resolve([]),
-								apiEnvironments: Effect.runPromise(
-									localClient["environments.list"](),
-								),
+								apiEnvironments:
+									typeof account.subject === "string"
+										? Effect.runPromise(localClient["environments.list"]())
+										: Promise.resolve({ environments: [] }),
 							});
 						const profileEnvironmentIds = new Set<string>(
 							[...profiles, ...tailnetProfiles].map(
@@ -1101,6 +1102,9 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 							),
 						);
 						const hiddenApiIds = new Set(hiddenApiEnvironmentIds);
+						// A sign-in refresh can finish before saved device profiles load.
+						// Retire any API route before the same host becomes device-owned.
+						removeAccountEnvironments(profileEnvironmentIds);
 						const currentDiscovery =
 							rendererAccountSnapshot() === account &&
 							discoveryRevision === revision;
@@ -1152,6 +1156,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			},
 			syncAccountEnvironments: async () => {
 				const account = rendererAccountSnapshot();
+				if (typeof account.subject !== "string") return;
 				const revision = ++discoveryRevision;
 				const isCurrent = () =>
 					rendererAccountSnapshot() === account &&

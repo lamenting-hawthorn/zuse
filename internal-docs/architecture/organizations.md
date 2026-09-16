@@ -189,7 +189,11 @@ A successful refresh also reconciles servers no longer returned by discovery;
 failed refreshes retain the existing catalog. Removing the active API environment
 clears its projection and restores the local shell, without removing manually
 configured SSH/tailnet profiles. Initialized catalogs refresh after sign-in, but not
-sign-out. Tests cover removal, idempotent refresh, device-profile preservation, and
+sign-out. Startup and explicit discovery skip account lookups while identity is
+unknown or signed out. When sign-in discovery races saved device-profile loading,
+the saved profile takes precedence and the duplicate API route/subscription is
+retired before publishing that profile. Tests cover signed-out startup, that race,
+removal, idempotent refresh, device-profile preservation, and
 pending activation cancellation. Account-owned ClientBus caches and transient cloud
 shells still require separate isolation; releasing a catalog subscription is not
 proof that all cached state is inaccessible. Other

@@ -1,9 +1,11 @@
 import { Effect } from "effect";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	list: vi.fn(),
 	connect: vi.fn(),
+	describe: vi.fn(),
+	snapshot: vi.fn(),
 	subscribe: vi.fn(),
 	remove: vi.fn(async () => undefined),
 	setActive: vi.fn(),
@@ -23,12 +25,13 @@ vi.mock("../../src/lib/environment-shell-client-bus.ts", async (original) => ({
 		lease: { release: mocks.release, activate: () => undefined },
 	}),
 	subscribeEnvironmentShell: mocks.subscribe,
-	environmentShellSnapshot: () => ({ data: null, connection: "dormant" }),
+	environmentShellSnapshot: mocks.snapshot,
 }));
 vi.mock("../../src/lib/runtime-operation-client.ts", () => ({
 	runtimeOperationClient: async () => ({
 		"environments.list": mocks.list,
 		"environments.connect": mocks.connect,
+		"connect.describe": mocks.describe,
 	}),
 }));
 
@@ -83,6 +86,14 @@ beforeEach(() => {
 	mocks.setActive.mockClear();
 	mocks.release.mockClear();
 	mocks.unsubscribe.mockClear();
+	mocks.snapshot
+		.mockReset()
+		.mockReturnValue({ data: null, connection: "dormant" });
+	mocks.describe
+		.mockReset()
+		.mockImplementation(() =>
+			Effect.succeed({ environmentId: "local", label: "Local" }),
+		);
 	mocks.subscribe.mockReset().mockImplementation(() => mocks.unsubscribe);
 	mocks.connect.mockReset().mockImplementation(() =>
 		Effect.succeed({
@@ -93,6 +104,74 @@ beforeEach(() => {
 	mocks.list
 		.mockReset()
 		.mockImplementation(() => Effect.succeed({ environments: [] }));
+});
+
+afterEach(() => vi.unstubAllGlobals());
+
+it("does not discover account servers while signed out", async () => {
+	observeRendererAccount(null);
+	await useEnvironmentCatalogStore.getState().syncAccountEnvironments();
+	expect(mocks.list).not.toHaveBeenCalled();
+	expect(useEnvironmentCatalogStore.getState().entries).toEqual([local, ssh]);
+});
+
+it("keeps startup device profiles and retires a duplicate API route discovered during sign-in", async () => {
+	observeRendererAccount(null);
+	const profiles = [
+		{
+			profileId: "saved-ssh",
+			environmentId: "same-host",
+			label: "Saved SSH",
+			target: { hostname: "host", user: null, port: null },
+		},
+	];
+	let resolve!: (value: typeof profiles) => void;
+	const pendingProfiles = new Promise<typeof profiles>((done) => {
+		resolve = done;
+	});
+	vi.stubGlobal("window", {
+		zuse: { ssh: { listProfiles: () => pendingProfiles } },
+	});
+	mocks.snapshot.mockReturnValue({
+		connection: "connected",
+		data: {
+			folders: [],
+			originsByFolder: {},
+			chatsByProject: {},
+			sessionsByProject: {},
+			creationOperationsByProject: {},
+		},
+	});
+	const initialized = useEnvironmentCatalogStore.getState().initialize();
+	await vi.waitFor(() =>
+		expect(useEnvironmentCatalogStore.getState().initialized).toBe(true),
+	);
+	expect(mocks.list).not.toHaveBeenCalled();
+	mocks.list.mockImplementationOnce(() =>
+		Effect.succeed({
+			environments: [{ environmentId: "same-host", label: "Account route" }],
+		}),
+	);
+	observeRendererAccount("signed-in");
+	await vi.waitFor(() =>
+		expect(
+			useEnvironmentCatalogStore
+				.getState()
+				.entries.some((entry) => entry.connectionKind === "api"),
+		).toBe(true),
+	);
+	resolve(profiles);
+	await initialized;
+	expect(
+		useEnvironmentCatalogStore
+			.getState()
+			.entries.map((entry) => entry.connectionKind),
+	).toEqual(["local", "ssh"]);
+	expect(mocks.remove).toHaveBeenCalledExactlyOnceWith("same-host");
+	expect(mocks.release).toHaveBeenCalledOnce();
+	expect(useEnvironmentCatalogStore.getState().entries[1]?.profileId).toBe(
+		"saved-ssh",
+	);
 });
 
 it("clears account entries and releases their subscriptions without removing device profiles", async () => {
