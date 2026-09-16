@@ -92,7 +92,10 @@ type CloudChatsState = {
 	readonly archive: (summary: CloudChatSummary) => Promise<void>;
 };
 
-const opening = new Map<string, Promise<void>>();
+const opening = new Map<
+	string,
+	{ account: RendererAccountSnapshot; promise: Promise<void> }
+>();
 type CloudAttachment = {
 	account: RendererAccountSnapshot;
 	activation: "connect" | "wake";
@@ -100,6 +103,7 @@ type CloudAttachment = {
 };
 const attaching = new Map<string, CloudAttachment>();
 const registeredCloudEnvironments = new Map<string, CloudChatSummary>();
+const cloudResolverCleanups = new Set<() => void>();
 const rearmedClientByWorkspace = new Map<string, string>();
 let hydration: Promise<void> | null = null;
 let catalogGeneration = 0;
@@ -137,15 +141,17 @@ export const rearmReadyCloudConnection = (
 export const rearmRegisteredCloudConnection = (
 	summary: CloudChatSummary,
 ): void => {
+	const account = rendererAccountSnapshot();
 	const environmentId = EnvironmentId.make(summary.workspaceId);
 	rearmReadyCloudConnection(
 		summary,
 		getRendererClientBus().connection(environmentId),
 		rearmedClientByWorkspace,
 		(retryEnvironmentId) =>
-			queueMicrotask(() =>
-				retryRendererEnvironmentConnection(retryEnvironmentId),
-			),
+			queueMicrotask(() => {
+				if (rendererAccountSnapshot() === account)
+					retryRendererEnvironmentConnection(retryEnvironmentId);
+			}),
 	);
 };
 
@@ -171,6 +177,7 @@ const trackCloudAttachment = (
  * teaching feature stores how to resume a workspace.
  */
 const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
+	const account = rendererAccountSnapshot();
 	const previous = registeredCloudEnvironments.get(summary.workspaceId);
 	if (previous !== undefined) {
 		if (compareCloudChatSummaryVersion(summary, previous) < 0) return;
@@ -180,11 +187,13 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 	}
 	registeredCloudEnvironments.set(summary.workspaceId, summary);
 	let rootPrepared = false;
-	registerSessionTimelineCheckpointSynchronizer(
+	const releaseCheckpoint = registerSessionTimelineCheckpointSynchronizer(
 		EnvironmentId.make(summary.workspaceId),
 		async (ref, current: ResourceView<SessionTimelineProjection>) => {
 			markCloudFetch(ref, "request-start");
+			if (rendererAccountSnapshot() !== account) return null;
 			const control = await getControlPlaneRpcClient();
+			if (rendererAccountSnapshot() !== account) return null;
 			markCloudFetch(ref, "control-ready");
 			const result = await Effect.runPromise(
 				control["cloud.transcript.get"]({
@@ -201,8 +210,10 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 			);
 			markCloudFetch(ref, "downloaded");
 			const checkpoint = result.checkpoint;
+			if (rendererAccountSnapshot() !== account) return null;
 			if (checkpoint === null) return null;
 			const payload = await openCloudTranscriptCheckpoint(ref, checkpoint);
+			if (rendererAccountSnapshot() !== account) return null;
 			markCloudFetch(ref, "decrypted");
 			rememberCloudTimelineHead(ref, payload.projection, payload.cursor);
 
@@ -215,10 +226,12 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 			};
 		},
 	);
-	registerSessionTimelineOlderPageSynchronizer(
+	const releaseOlderPages = registerSessionTimelineOlderPageSynchronizer(
 		EnvironmentId.make(summary.workspaceId),
 		async (ref, cursor, beforeSequence) => {
+			if (rendererAccountSnapshot() !== account) return null;
 			const control = await getControlPlaneRpcClient();
+			if (rendererAccountSnapshot() !== account) return null;
 			const result = await Effect.runPromise(
 				control["cloud.transcript.messages.page"]({
 					workspaceId: summary.workspaceId,
@@ -228,13 +241,21 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 				}),
 			);
 			const encrypted = result.page;
+			if (rendererAccountSnapshot() !== account) return null;
 			if (encrypted === null) return null;
-			return openCloudTranscriptPage(ref, cursor, beforeSequence, encrypted);
+			const page = await openCloudTranscriptPage(
+				ref,
+				cursor,
+				beforeSequence,
+				encrypted,
+			);
+			return rendererAccountSnapshot() === account ? page : null;
 		},
 	);
-	registerEnvironmentActivation(
+	const releaseActivation = registerEnvironmentActivation(
 		EnvironmentId.make(summary.workspaceId),
 		async (activation) => {
+			assertRendererAccountCurrent(account);
 			const fallback =
 				registeredCloudEnvironments.get(summary.workspaceId) ?? summary;
 			const current =
@@ -248,14 +269,21 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 			await ensureCloudWorkspaceEnvironment(current, activation);
 		},
 		async (client) => {
+			assertRendererAccountCurrent(account);
 			if (rootPrepared) return;
 			const folders = await Effect.runPromise(client["workspace.list"]({}));
+			assertRendererAccountCurrent(account);
 			// The cloud runtime registers the selected checkout before API marks the
 			// sandbox repository-ready. Never manufacture a second, placeholder root.
 			rootPrepared = folders.length > 0;
 		},
 		"cloud-workspace",
 	);
+	cloudResolverCleanups.add(() => {
+		releaseCheckpoint();
+		releaseOlderPages();
+		releaseActivation();
+	});
 	rearmRegisteredCloudConnection(summary);
 };
 
@@ -386,9 +414,11 @@ export const openCloudChat = (
 	summary: CloudChatSummary,
 	projectId: FolderId,
 ): Promise<void> => {
+	const account = rendererAccountSnapshot();
 	const existing = opening.get(summary.workspaceId);
-	if (existing !== undefined) return existing;
+	if (existing?.account === account) return existing.promise;
 	const operation = Promise.resolve().then(() => {
+		assertRendererAccountCurrent(account);
 		stageCloudChat(summary, projectId);
 		const activeSessionId = cloudSummaryActiveSessionId(summary);
 		if (activeSessionId !== null)
@@ -419,8 +449,11 @@ export const openCloudChat = (
 		// The retained timeline hydrates cache first. EnvironmentRuntime then
 		// prepares the gateway and attaches in one ordered background operation.
 	});
-	const tracked = operation.finally(() => opening.delete(summary.workspaceId));
-	opening.set(summary.workspaceId, tracked);
+	const tracked = operation.finally(() => {
+		if (opening.get(summary.workspaceId)?.promise === tracked)
+			opening.delete(summary.workspaceId);
+	});
+	opening.set(summary.workspaceId, { account, promise: tracked });
 	return tracked;
 };
 
@@ -736,6 +769,11 @@ const unsubscribeCatalogAccount = useCloudChatCatalogStore.subscribe(
 	},
 );
 const unsubscribeAccount = subscribeRendererAccount(() => {
+	for (const cleanup of cloudResolverCleanups) cleanup();
+	cloudResolverCleanups.clear();
+	registeredCloudEnvironments.clear();
+	rearmedClientByWorkspace.clear();
+	opening.clear();
 	hydration = null;
 	useCloudChatsStore.setState({ loading: false, error: null });
 	if (

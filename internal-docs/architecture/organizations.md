@@ -196,7 +196,14 @@ retired before publishing that profile. Tests cover signed-out startup, that rac
 removal, idempotent refresh, device-profile preservation, and
 pending activation cancellation. Account-owned ClientBus caches and transient cloud
 shells still require separate isolation; releasing a catalog subscription is not
-proof that all cached state is inaccessible. Other
+proof that all cached state is inaccessible. Cloud account transitions also unregister
+checkpoint, older-page, and activation callbacks, and clear their summary/retry
+bookkeeping. Those callbacks capture their initiating account and discard delayed
+transcript results; stale activation callbacks reject before accessing the runtime.
+Queued chat selection and reconnect work also check identity before running.
+Mocked callback tests cover cleanup, fresh registration, delayed checkpoint results,
+and opening a chat immediately before sign-out. Durable outbox replay and retained
+ClientBus resource state remain separate unfinished boundaries. Other
 asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
