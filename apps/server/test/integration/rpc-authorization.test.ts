@@ -1,13 +1,17 @@
 import {
 	AuthState,
 	ChatId,
+	ConnectHandshakeRpc,
 	FolderId,
 	MemoizeRpcs,
 	Organization,
 	OrganizationDetails,
 	OrganizationMember,
+	PingResult,
+	PingRpc,
 	RpcAuthorization,
 	SessionId,
+	WireWelcome,
 	WorktreeId,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
@@ -37,6 +41,8 @@ import { ConnectionIdentity } from "../../src/lan-auth/services/connection-ident
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
+	ConnectHandshakeRpc,
+	PingRpc,
 	Rpc.make("fs.watchTree", {
 		payload: {
 			folderId: FolderId,
@@ -132,6 +138,12 @@ const fileScopeResult = () =>
 		),
 	);
 const handlers = Rpcs.toLayer({
+	"connect.handshake": ({ protocolVersion }) =>
+		Effect.succeed(WireWelcome.make({ protocolVersion })),
+	"ping.ping": () =>
+		Effect.succeed(
+			PingResult.make({ message: "pong", receivedAt: new Date() }),
+		),
 	"fs.watchTree": () =>
 		Stream.concat(Stream.fromEffect(fileScopeResult()), Stream.never),
 	"fs.readFile": fileScopeResult,
@@ -297,6 +309,22 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			subject: "guest",
 			expiresAt: Date.now() + 60_000,
 		} as const;
+		const handshake = (client: Effect.Success<typeof makeClient>) =>
+			client("connect.handshake", { protocolVersion: 5 });
+		await expect(call(guestIdentity, handshake)).resolves.toMatchObject({
+			protocolVersion: 5,
+		});
+		await expect(
+			call(guestIdentity, (client) => client("ping.ping", {})),
+		).resolves.toMatchObject({ message: "pong" });
+		for (const identity of [
+			{ ...guestIdentity, subject: "stranger" },
+			{ ...guestIdentity, expiresAt: Date.now() - 1 },
+		]) {
+			await expect(call(identity, handshake)).rejects.toMatchObject({
+				_tag: "RpcAccessDeniedError",
+			});
+		}
 		for (const request of [
 			{ folderId: FolderId.make("private-project") },
 			{
@@ -662,6 +690,10 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			).pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
 		);
 		await expect(sharedStream.result).resolves.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+			code: "access-denied",
+		});
+		await expect(call(guestIdentity, handshake)).rejects.toMatchObject({
 			_tag: "RpcAccessDeniedError",
 			code: "access-denied",
 		});

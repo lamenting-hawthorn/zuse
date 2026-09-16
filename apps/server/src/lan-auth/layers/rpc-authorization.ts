@@ -80,6 +80,14 @@ export const RpcAuthorizationLive = Layer.effect(
 						catalogScope = null;
 						return;
 					}
+					if (rpc._tag === "connect.handshake" || rpc._tag === "ping.ping") {
+						const visible = yield* collaboration.visibleWorkspaces(
+							account.subject,
+						);
+						if (visible.length === 0)
+							return yield* new RpcAccessDeniedError({ code: "access-denied" });
+						return;
+					}
 					if (
 						rpc._tag === "workspace.list" ||
 						isCatalogStream ||
