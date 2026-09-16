@@ -21,6 +21,7 @@ import type {
 import {
 	CloudCommandTerminalError,
 	CloudCommandTransportUnavailableError,
+	CommandAuthorityLostError,
 	CommandIdentityCollisionError,
 	commandFingerprint,
 	terminalErrorFromReceipt,
@@ -206,6 +207,104 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("leaves another owner's durable intent untouched and resumes it when authorized", async () => {
+		const persistence = new MemoryPersistence();
+		let subject = "second";
+		const command: ClientCommand = {
+			kind: "test",
+			commandId: CommandId.make("owned-replay"),
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+			owner: { kind: "account", subject: "first" },
+		};
+		await persistence.putOutbox({
+			command,
+			fingerprint: commandFingerprint(command),
+			attempts: 0,
+			lastAttemptAt: null,
+		});
+		const execute = vi.fn(async (_client: Client, intent: ClientCommand) => ({
+			commandId: intent.commandId,
+			receivedAt: 2,
+			result: "done",
+		}));
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandExecutor: { execute },
+			commandScopeFor: (intent) => {
+				const captured = subject;
+				return () =>
+					subject === captured &&
+					intent.owner?.kind === "account" &&
+					intent.owner.subject === captured;
+			},
+		});
+		await bus.flushOutbox();
+		expect(execute).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(command.commandId)?.command).toEqual(command);
+		subject = "first";
+		await bus.flushOutbox();
+		expect(execute).toHaveBeenCalledOnce();
+		expect(persistence.outbox.size).toBe(0);
+		subject = "second";
+		await expect(bus.dispatch(command)).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		await bus.dispose();
+	});
+
+	it("preserves a newly persisted command if authority changes before network delivery", async () => {
+		const persistence = new MemoryPersistence();
+		const persisted = deferred<void>();
+		const releaseWrite = deferred<void>();
+		const put = persistence.putOutbox.bind(persistence);
+		vi.spyOn(persistence, "putOutbox").mockImplementation(async (entry) => {
+			await put(entry);
+			persisted.resolve();
+			await releaseWrite.promise;
+		});
+		let epoch = 0;
+		const execute = vi.fn(async (_client: Client, intent: ClientCommand) => ({
+			commandId: intent.commandId,
+			receivedAt: 2,
+			result: "done",
+		}));
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandExecutor: { execute },
+			commandScopeFor: () => {
+				const captured = epoch;
+				return () => epoch === captured;
+			},
+		});
+		const command: ClientCommand = {
+			kind: "test",
+			commandId: CommandId.make("owned-write"),
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+			owner: { kind: "account", subject: "first" },
+		};
+		const pending = bus.dispatch(command);
+		const rejected = expect(pending).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		await persisted.promise;
+		epoch++;
+		releaseWrite.resolve();
+		await rejected;
+		expect(execute).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(command.commandId)?.command).toEqual(command);
+		expect(bus.snapshot(timelineKey).failedCommands).toEqual([]);
+		await bus.dispose();
+	});
 	it("preserves the shipped v1 fingerprint for unowned durable commands", () => {
 		expect(
 			commandFingerprint({

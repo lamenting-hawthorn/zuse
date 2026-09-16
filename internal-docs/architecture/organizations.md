@@ -210,7 +210,16 @@ by a fixed compatibility vector). Outbox round-trip/collision tests verify owner
 is preserved and a command ID cannot be rebound to another owner. This metadata is
 not server authorization: dispatch-time capture, replay eligibility, account-scoped
 receipt access, and in-flight ownership changes still require implementation.
-No legacy pending command is assigned to the next account or deleted by this change. Other
+No legacy pending command is assigned to the next account or deleted by this change.
+ClientBus now accepts an optional `commandScopeFor` hook that captures a currentness
+check before command admission/cache lookup. It checks that scope again after
+receipt lookup, across queued/retry attempts, after outbox persistence, before live
+execution/mailbox start, and before returning completed delivery. Losing authority
+before delivery preserves the pending outbox row and raises `CommandAuthorityLostError`
+without treating it as a definitive server rejection. Tests cover denied replay,
+resuming as the permitted owner, cached receipt denial, and revocation during a local
+write. Renderer ownership policy/capture is not wired yet; authority loss during
+long-lived waits/cancellation and receipt/cache isolation still require verification. Other
 asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier

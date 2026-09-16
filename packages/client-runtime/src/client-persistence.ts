@@ -34,6 +34,13 @@ export type ClientCommandOwner =
 	| Readonly<{ kind: "account"; subject: string }>
 	| Readonly<{ kind: "device" }>;
 
+export class CommandAuthorityLostError extends Error {
+	override readonly name = "CommandAuthorityLostError";
+	constructor() {
+		super("Command delivery paused because its authority changed.");
+	}
+}
+
 export type ClientCommand<Payload = unknown, Result = unknown> = Readonly<{
 	/** Stable renderer command kind understood by the platform executor. */
 	kind: string;

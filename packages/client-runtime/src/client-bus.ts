@@ -22,6 +22,7 @@ import {
 	assertCommandFingerprint,
 	CloudCommandTerminalError,
 	CloudCommandTransportUnavailableError,
+	CommandAuthorityLostError,
 	commandFingerprint,
 	terminalCommandReceipt,
 	terminalErrorFromReceipt,
@@ -144,6 +145,8 @@ export type ClientBusOptions<Client> = Readonly<{
 	coalescePersistence?: (key: ResourceKey<unknown>) => boolean;
 	outbox?: CommandOutbox;
 	commandExecutor?: ClientCommandExecutor<Client>;
+	/** Capture an authority scope before cache lookup, queueing, or replay. */
+	commandScopeFor?: (command: ClientCommand) => () => boolean;
 	/** Stable control-plane transport for eligible cloud environments. */
 	commandTransportFor?: (
 		environmentId: EnvironmentId,
@@ -641,6 +644,16 @@ export class ClientBus<Client> {
 		command: ClientCommand<unknown, Result>,
 	): Promise<CommandReceipt<Result>> {
 		this.assertActive();
+		let assertAuthority: () => void;
+		try {
+			const current = this.options.commandScopeFor?.(command);
+			assertAuthority = () => {
+				if (current?.() === false) throw new CommandAuthorityLostError();
+			};
+			assertAuthority();
+		} catch (cause) {
+			return Promise.reject(cause);
+		}
 		const effectiveCommand = this.withResourceReflectionFence(command);
 		if (
 			effectiveCommand.resource !== null &&
@@ -696,9 +709,10 @@ export class ClientBus<Client> {
 			? this.dispatchWithPersistedReceipt(
 					effectiveCommand,
 					fingerprint,
+					assertAuthority,
 					liveFallbackReservation?.waitForTurn,
 				)
-			: this.enqueueCommand(effectiveCommand, fingerprint);
+			: this.enqueueCommand(effectiveCommand, fingerprint, assertAuthority);
 		const pending = this.untilDisposed(execution);
 		if (liveFallbackReservation !== undefined) {
 			void pending.then(
@@ -823,10 +837,11 @@ export class ClientBus<Client> {
 	private enqueueCommand<Result>(
 		command: ClientCommand<unknown, Result>,
 		fingerprint: CommandFingerprint,
+		assertAuthority: () => void,
 	): Promise<CommandReceipt<Result>> {
 		const reservation = this.reserveCommandLane(command);
 		const pending = reservation.waitForTurn.then(() =>
-			this.dispatchWithPersistedReceipt(command, fingerprint),
+			this.dispatchWithPersistedReceipt(command, fingerprint, assertAuthority),
 		);
 		void pending.then(reservation.release, reservation.release);
 		return pending;
@@ -862,15 +877,18 @@ export class ClientBus<Client> {
 	private async dispatchWithPersistedReceipt<Result>(
 		command: ClientCommand<unknown, Result>,
 		fingerprint: CommandFingerprint,
+		assertAuthority: () => void,
 		liveFallbackTurn?: Promise<void>,
 	): Promise<CommandReceipt<Result>> {
 		for (;;) {
 			this.assertActive();
+			assertAuthority();
 			const persisted =
 				command.retry === "safe"
 					? await this.commandOutbox()?.findReceipt(command.commandId)
 					: null;
 			this.assertActive();
+			assertAuthority();
 			if (persisted !== null && persisted !== undefined) {
 				assertCommandFingerprint(
 					command.commandId,
@@ -886,6 +904,7 @@ export class ClientBus<Client> {
 				return await this.prepareAndExecute(
 					command,
 					fingerprint,
+					assertAuthority,
 					liveFallbackTurn,
 				);
 			} catch (cause) {
@@ -1493,8 +1512,10 @@ export class ClientBus<Client> {
 	private prepareAndExecute<Result>(
 		command: ClientCommand<unknown, Result>,
 		fingerprint: CommandFingerprint,
+		assertAuthority: () => void,
 		liveFallbackTurn?: Promise<void>,
 	): Promise<CommandReceipt<Result>> {
+		assertAuthority();
 		const executor = this.options.commandExecutor;
 		if (executor === undefined) {
 			return Promise.reject(new Error("ClientBus has no command executor"));
@@ -1557,6 +1578,7 @@ export class ClientBus<Client> {
 					retainForRetry = true;
 				}
 				mailboxEnvelopePersisted = previous?.encryptedEnvelope !== undefined;
+				assertAuthority();
 				const hasPersistedMailboxIdentity =
 					mailboxEnvelopePersisted || previous?.acceptance !== undefined;
 				const durableTransport = hasPersistedMailboxIdentity
@@ -1630,6 +1652,7 @@ export class ClientBus<Client> {
 						// Fresh commands cannot leave the client until their opaque envelope is
 						// durable. Resumed commands use the same gate but never enqueue again.
 						this.assertActive();
+						assertAuthority();
 						handle.start();
 						acceptance = await handle.accepted;
 					} catch (cause) {
@@ -1681,6 +1704,7 @@ export class ClientBus<Client> {
 						}
 						// The UI may clear its draft only after both sides have recorded the
 						// durable acceptance.
+						assertAuthority();
 						this.commandAcceptances
 							.get(command.commandId)
 							?.resolveAccepted(acceptance);
@@ -1697,6 +1721,11 @@ export class ClientBus<Client> {
 						let statusPersistence = Promise.resolve();
 						const unsubscribeStatus = handle.subscribeStatus?.((status) => {
 							if (this.disposed) return;
+							try {
+								assertAuthority();
+							} catch {
+								return;
+							}
 							if (status.everLeased)
 								this.commandCancels.delete(command.commandId);
 							this.updateCommandResource(command, (view) => ({
@@ -1742,6 +1771,7 @@ export class ClientBus<Client> {
 						}
 						await this.waitForResourceReflection(command);
 						await outbox?.completeOutbox(receipt);
+						assertAuthority();
 						this.updateCommandResource(command, (view) => ({
 							...view,
 							pendingCommands: view.pendingCommands.filter(
@@ -1752,6 +1782,7 @@ export class ClientBus<Client> {
 					}
 				}
 				if (serializeLiveFallback) await liveFallbackTurn;
+				assertAuthority();
 				this.assertActive();
 				const binding = this.environment(command.environmentId);
 				const commandLease = binding.runtime.retain("wake");
@@ -1761,6 +1792,7 @@ export class ClientBus<Client> {
 				try {
 					const client = await commandLease.activate("wake");
 					if (client === null) throw new Error("environment did not connect");
+					assertAuthority();
 					this.assertActive();
 					const generation = binding.runtime.snapshot().generation;
 					assertCommandFingerprint(
@@ -1799,6 +1831,7 @@ export class ClientBus<Client> {
 				if (command.retry === "safe") {
 					await outbox?.completeOutbox(receipt);
 				}
+				assertAuthority();
 				this.updateCommandResource(command, (view) => ({
 					...view,
 					pendingCommands: view.pendingCommands.filter(
@@ -1807,6 +1840,15 @@ export class ClientBus<Client> {
 				}));
 				return receipt;
 			} catch (cause) {
+				if (cause instanceof CommandAuthorityLostError) {
+					this.updateCommandResource(command, (view) => ({
+						...view,
+						pendingCommands: view.pendingCommands.filter(
+							(item) => item.commandId !== command.commandId,
+						),
+					}));
+					throw cause;
+				}
 				let terminalPersisted = false;
 				if (
 					cause instanceof CloudCommandTerminalError &&
