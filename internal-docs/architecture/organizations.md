@@ -179,8 +179,13 @@ establish deployed socket behavior. Registration requires an explicit initiating
 account snapshot. API grant acquisition/activation and cloud attachment pass that
 snapshot; account changes invalidate completion and separate in-flight attachment
 and connection deduplication. Cloud wake/recovery also checks identity before
-follow-up commands or publishing workspace state. Discovery/catalog projections
-and other asynchronous cloud actions still need account isolation, as do timeline/
+follow-up commands or publishing workspace state. Initial and refreshed environment
+discovery discard results from an older account or superseded request. A stale
+initial account lookup still allows local SSH/tailnet profiles to load and preserves
+a newer account discovery result. Explicit refresh tests cover stale success/failure
+and overlapping same-account requests. Existing catalog projections still need
+clearing on account transitions and reconciliation when grants disappear. Other
+asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.

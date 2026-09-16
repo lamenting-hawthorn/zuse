@@ -585,6 +585,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 		const shellRuntimes = new Map<string, EnvironmentShellRuntime>();
 		let activeShellKey: string | null = null;
 		const initializeOnce = createInitializationGate();
+		let discoveryRevision = 0;
 		const patchEntry = (
 			key: string,
 			patch: Partial<EnvironmentCatalogEntry>,
@@ -973,6 +974,8 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 
 						// Remote catalogs are optional. A corrupt saved profile or an
 						// unavailable account service must never hide the local workspace.
+						const account = rendererAccountSnapshot();
+						const revision = ++discoveryRevision;
 						const { profiles, tailnetProfiles, apiEnvironments, apiError } =
 							await loadOptionalEnvironmentSources({
 								sshProfiles:
@@ -983,14 +986,18 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 									localClient["environments.list"](),
 								),
 							});
-						const profileEnvironmentIds = new Set(
+						const profileEnvironmentIds = new Set<string>(
 							[...profiles, ...tailnetProfiles].map(
 								(profile) => profile.environmentId,
 							),
 						);
 						const hiddenApiIds = new Set(hiddenApiEnvironmentIds);
+						const currentDiscovery =
+							rendererAccountSnapshot() === account &&
+							discoveryRevision === revision;
 						const accountApiEnvironments = apiEnvironments.filter(
 							(environment) =>
+								currentDiscovery &&
 								environment.environmentId !== descriptor.environmentId &&
 								!profileEnvironmentIds.has(environment.environmentId),
 						);
@@ -1007,10 +1014,16 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 							...tailnetProfiles.map(tailnetProfileEntry),
 						];
 						set((state) => ({
-							accountDiscoveryError: apiError,
+							accountDiscoveryError: currentDiscovery
+								? apiError
+								: state.accountDiscoveryError,
 							entries: orderEnvironmentCatalog([
 								...state.entries.filter(
-									(entry) => entry.connectionKind === "local",
+									(entry) =>
+										entry.connectionKind === "local" ||
+										(!currentDiscovery &&
+											entry.connectionKind === "api" &&
+											!profileEnvironmentIds.has(entry.environmentId)),
 								),
 								...optionalEntries,
 							]),
@@ -1029,6 +1042,11 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				});
 			},
 			syncAccountEnvironments: async () => {
+				const account = rendererAccountSnapshot();
+				const revision = ++discoveryRevision;
+				const isCurrent = () =>
+					rendererAccountSnapshot() === account &&
+					discoveryRevision === revision;
 				const local = get().entries.find(
 					(entry) => entry.connectionKind === "local",
 				);
@@ -1038,9 +1056,14 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				}
 
 				const localClient = await runtimeOperationClient(local.environmentId);
+				if (!isCurrent()) return;
 				const result = await Effect.runPromise(
 					localClient["environments.list"](),
-				);
+				).catch((cause) => {
+					if (isCurrent()) throw cause;
+					return null;
+				});
+				if (result === null || !isCurrent()) return;
 				set({ accountDiscoveryError: null });
 				const profileEnvironmentIds = new Set(
 					get()
