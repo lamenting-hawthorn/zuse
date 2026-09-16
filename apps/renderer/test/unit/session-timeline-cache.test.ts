@@ -8,6 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+	cloudCatalogCacheKey,
 	environmentSessionCacheKey,
 	resolveReadingPositionKeysToPrune,
 	shouldPersistTimelineCheckpoint,
@@ -22,6 +23,15 @@ const position = (sessionId: string, updatedAt: number) => ({
 });
 
 describe("session timeline reading-position cache", () => {
+	it("keeps cloud catalog account keys distinct from each other and legacy history", () => {
+		expect(cloudCatalogCacheKey("first")).not.toBe(
+			cloudCatalogCacheKey("second"),
+		);
+		expect(cloudCatalogCacheKey("catalog")).not.toBe("catalog");
+		expect(JSON.parse(cloudCatalogCacheKey('account:with"separators'))).toEqual(
+			["account", 'account:with"separators'],
+		);
+	});
 	it("prunes corrupt and least-recently-updated records", () => {
 		expect(
 			resolveReadingPositionKeysToPrune(

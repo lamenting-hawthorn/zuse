@@ -163,8 +163,15 @@ from signed-out, keeps same-account token refresh stable, and changes its epoch 
 identity transitions (including A -> B -> A). Attachment invalidation subscribes to
 this boundary. Failed sign-out recovery reopens the canonical auth stream rather
 than restoring a cached previous account, and ignores a late failure after a newer
-account transition. Account-scoping the remaining catalogs, caches, and outbox is
-still required; the boundary itself does not provide that isolation.
+account transition. The persisted cloud chat catalog now uses account-owned keys;
+unknown and signed-out clients do not hydrate it. Identity transitions clear its
+projection and staged cloud placeholders. Pending writes retain their captured
+owner, and delayed cache loads and catalog refresh/archive responses must match
+the initiating account epoch before publishing. Unowned legacy cloud history is
+left dormant rather than assigned to the next account that signs in. Tests cover
+delayed loads/writes, A -> B -> A, and overlapping refresh completion/failure.
+Account-scoping the remaining timeline/file caches, connections, and command outbox
+is still required; this catalog boundary alone does not provide complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 

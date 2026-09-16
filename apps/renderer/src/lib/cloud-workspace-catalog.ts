@@ -10,6 +10,10 @@ import {
 import { Schema } from "effect";
 import { createAtomStore as create } from "../state/atom-store.ts";
 import { isHostedProduct } from "./hosted-connect.ts";
+import {
+	rendererAccountSnapshot,
+	subscribeRendererAccount,
+} from "./renderer-account.ts";
 import { cloudChatCatalogPersistence } from "./session-timeline-cache.ts";
 
 export type CloudSyncPrefs = Readonly<{
@@ -36,7 +40,6 @@ const EMPTY_CATALOG: CloudChatCatalogState = {
 	archiveIntents: {},
 	syncPrefs: {},
 };
-const LEGACY_CLOUD_CATALOG_STORAGE_KEY = "zuse:cloud-chat-catalog:v1";
 
 const decodePersistedCatalog = (value: unknown): CloudChatCatalogState => {
 	try {
@@ -170,25 +173,21 @@ export const useCloudChatCatalogStore = create<CloudChatCatalogState>(
 
 let catalogPersistenceReady = false;
 let catalogHydration: Promise<void> | null = null;
+let catalogWriteTail = Promise.resolve();
 export const hydrateCloudChatCatalogPersistence = async (): Promise<void> => {
-	if (catalogPersistenceReady || cloudChatCatalogPersistence === null) return;
+	const account = rendererAccountSnapshot();
+	const subject = account.subject;
+	if (typeof subject !== "string") return;
+	const persistence = cloudChatCatalogPersistence;
+	if (catalogPersistenceReady || persistence === null) return;
 	catalogHydration ??= (async () => {
-		let stored = await cloudChatCatalogPersistence.load().catch(() => null);
-		if (
-			!isHostedProduct() &&
-			stored === null &&
-			typeof window !== "undefined"
-		) {
-			try {
-				const legacy = window.localStorage.getItem(
-					LEGACY_CLOUD_CATALOG_STORAGE_KEY,
-				);
-				stored = legacy === null ? null : JSON.parse(legacy);
-				window.localStorage.removeItem(LEGACY_CLOUD_CATALOG_STORAGE_KEY);
-			} catch {
-				// A malformed or unavailable prototype catalog is safe to ignore.
-			}
-		}
+		// Old account writes retain their captured owner and must finish before
+		// that account is rehydrated, including an A -> B -> A transition.
+		await catalogWriteTail;
+		if (rendererAccountSnapshot() !== account) return;
+		const stored = await persistence.load(subject).catch(() => null);
+		if (rendererAccountSnapshot() !== account) return;
+		// Unowned legacy cloud history cannot safely be assigned to this account.
 		const persisted = decodePersistedCatalog(stored);
 		useCloudChatCatalogStore.setState((current) => ({
 			summaries: mergeCloudChatSummaries(
@@ -209,19 +208,29 @@ export const hydrateCloudChatCatalogPersistence = async (): Promise<void> => {
 			},
 		}));
 		catalogPersistenceReady = true;
-		await cloudChatCatalogPersistence
-			.save(useCloudChatCatalogStore.getState())
+		const state = useCloudChatCatalogStore.getState();
+		catalogWriteTail = catalogWriteTail
+			.then(() => persistence.save(subject, state))
 			.catch(() => undefined);
+		await catalogWriteTail;
 	})();
 	await catalogHydration;
 };
 
 void hydrateCloudChatCatalogPersistence();
-let catalogWriteTail = Promise.resolve();
+const unsubscribeAccount = subscribeRendererAccount(() => {
+	catalogPersistenceReady = false;
+	catalogHydration = null;
+	useCloudChatCatalogStore.setState(EMPTY_CATALOG);
+	void hydrateCloudChatCatalogPersistence();
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeAccount);
 useCloudChatCatalogStore.subscribe((state) => {
 	if (!catalogPersistenceReady) return;
+	const subject = rendererAccountSnapshot().subject;
+	if (typeof subject !== "string") return;
 	catalogWriteTail = catalogWriteTail
-		.then(() => cloudChatCatalogPersistence?.save(state))
+		.then(() => cloudChatCatalogPersistence?.save(subject, state))
 		.then(() => undefined)
 		.catch(() => undefined);
 });

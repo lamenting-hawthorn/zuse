@@ -30,7 +30,8 @@ const STORE_NAME = "timelines";
 const METADATA_STORE_NAME = "timeline-metadata";
 const READING_POSITION_STORE_NAME = "reading-positions";
 const CLOUD_CATALOG_STORE_NAME = "cloud-catalog";
-const CLOUD_CATALOG_KEY = "catalog";
+export const cloudCatalogCacheKey = (subject: string): string =>
+	JSON.stringify(["account", subject]);
 const DEFAULT_MAX_ENTRIES = 128;
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 const DEFAULT_MAX_READING_POSITIONS = 256;
@@ -447,7 +448,7 @@ export const cloudChatCatalogPersistence =
 	typeof indexedDB === "undefined"
 		? null
 		: {
-				load: async (): Promise<unknown | null> => {
+				load: async (subject: string): Promise<unknown | null> => {
 					const database = await openDatabase();
 					const transaction = database.transaction(
 						CLOUD_CATALOG_STORE_NAME,
@@ -456,12 +457,12 @@ export const cloudChatCatalogPersistence =
 					const value = await requestResult(
 						transaction
 							.objectStore(CLOUD_CATALOG_STORE_NAME)
-							.get(CLOUD_CATALOG_KEY),
+							.get(cloudCatalogCacheKey(subject)),
 					);
 					await transactionComplete(transaction);
 					return value ?? null;
 				},
-				save: async (value: unknown): Promise<void> => {
+				save: async (subject: string, value: unknown): Promise<void> => {
 					const database = await openDatabase();
 					const transaction = database.transaction(
 						CLOUD_CATALOG_STORE_NAME,
@@ -469,7 +470,7 @@ export const cloudChatCatalogPersistence =
 					);
 					transaction
 						.objectStore(CLOUD_CATALOG_STORE_NAME)
-						.put(value, CLOUD_CATALOG_KEY);
+						.put(value, cloudCatalogCacheKey(subject));
 					await transactionComplete(transaction);
 				},
 			};

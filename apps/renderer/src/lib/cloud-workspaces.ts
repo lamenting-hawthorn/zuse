@@ -78,6 +78,10 @@ import {
 } from "./cloud-workspace-catalog.ts";
 import { isHostedProduct } from "./hosted-connect.ts";
 import { hostedProjectFolderId } from "./hosted-workspace.ts";
+import {
+	rendererAccountSnapshot,
+	subscribeRendererAccount,
+} from "./renderer-account.ts";
 
 type CloudChatsState = {
 	readonly loading: boolean;
@@ -96,6 +100,7 @@ const registeredCloudEnvironments = new Map<string, CloudChatSummary>();
 const rearmedClientByWorkspace = new Map<string, string>();
 let hydration: Promise<void> | null = null;
 let catalogGeneration = 0;
+let hydrationRequested = false;
 
 /**
  * An authoritative ready runtime is a new recovery signal for a client whose
@@ -597,13 +602,16 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 	loading: false,
 	error: null,
 	hydrate: async () => {
+		hydrationRequested = true;
+		const account = rendererAccountSnapshot();
+		if (typeof account.subject !== "string") return;
 		if (hydration !== null) return hydration;
 		const generation = catalogGeneration;
-		hydration = (async () => {
+		const pending = (async () => {
 			set({ loading: true, error: null });
 			try {
 				await hydrateCloudChatCatalogPersistence();
-				if (generation !== catalogGeneration) return;
+				if (rendererAccountSnapshot() !== account) return;
 				for (const cached of useCloudChatCatalogStore.getState().summaries) {
 					registerCloudEnvironmentResolver(cached);
 					const cachedProject = projectForSummary(cached);
@@ -614,7 +622,7 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 				const result = await Effect.runPromise(
 					client["cloud.chats.list"]({ scope: "all" }),
 				);
-				if (generation !== catalogGeneration) return;
+				if (generation !== catalogGeneration || rendererAccountSnapshot() !== account) return;
 				removeDeletedCloudPlaceholders(reconcileCloudChatCatalog(result.chats));
 				for (const summary of result.chats) {
 					const accepted =
@@ -649,14 +657,17 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 				})().catch(() => undefined);
 				set({ loading: false });
 			} catch (cause) {
-				set({ error: formatError(cause), loading: false });
+				if (rendererAccountSnapshot() === account)
+					set({ error: formatError(cause), loading: false });
 			}
 		})().finally(() => {
-			hydration = null;
+			if (hydration === pending) hydration = null;
 		});
-		return hydration;
+		hydration = pending;
+		return pending;
 	},
 	archive: async (summary) => {
+		const account = rendererAccountSnapshot();
 		const archivedAt = Date.now();
 		const commandId = crypto.randomUUID();
 		const optimistic = optimisticallyArchiveCloudChat(
@@ -668,18 +679,21 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 		if (projectId !== null) stageCloudChat(optimistic, projectId);
 		try {
 			const client = await getControlPlaneRpcClient();
+			if (rendererAccountSnapshot() !== account) return;
 			const workspace = await Effect.runPromise(
 				client["cloud.workspaces.archive"]({
 					workspaceId: summary.workspaceId,
 					commandId,
 				}),
 			);
+			if (rendererAccountSnapshot() !== account) return;
 			updateSummary({
 				...refreshSummaryFromWorkspace(summary, workspace),
 				archivedAt,
 			});
 		} catch (cause) {
-			set({ error: formatError(cause) });
+			if (rendererAccountSnapshot() === account)
+				set({ error: formatError(cause) });
 			// A response can be lost after API durably accepts the command. Keep
 			// the persisted intent as the authoritative optimistic fence and retry
 			// it during catalog hydration instead of flashing the row back into the
@@ -688,6 +702,30 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 		}
 	},
 }));
+
+let catalogAccount = rendererAccountSnapshot();
+const unsubscribeCatalogAccount = useCloudChatCatalogStore.subscribe(
+	(_state, previous) => {
+		const current = rendererAccountSnapshot();
+		if (current === catalogAccount) return;
+		catalogAccount = current;
+		removeDeletedCloudPlaceholders(previous.summaries);
+	},
+);
+const unsubscribeAccount = subscribeRendererAccount(() => {
+	hydration = null;
+	useCloudChatsStore.setState({ loading: false, error: null });
+	if (
+		hydrationRequested &&
+		typeof rendererAccountSnapshot().subject === "string"
+	)
+		void useCloudChatsStore.getState().hydrate();
+});
+if (import.meta.hot)
+	import.meta.hot.dispose(() => {
+		unsubscribeCatalogAccount();
+		unsubscribeAccount();
+	});
 
 registerCloudChatCatalogRefresh(() => useCloudChatsStore.getState().hydrate());
 
