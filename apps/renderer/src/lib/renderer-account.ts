@@ -28,3 +28,12 @@ const account = createRendererAccountState();
 export const rendererAccountSnapshot = account.snapshot;
 export const observeRendererAccount = account.observe;
 export const subscribeRendererAccount = account.subscribe;
+
+export const assertRendererAccountCurrent = (
+	expected: RendererAccountSnapshot,
+): void => {
+	if (expected !== rendererAccountSnapshot())
+		throw new Error(
+			"The connection account changed. Reconnect this environment.",
+		);
+};

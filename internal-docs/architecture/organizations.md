@@ -175,9 +175,12 @@ remove their credentials and supervisor registrations, close open physical sessi
 and reject delayed refresh/handshake completion, including A -> B -> A. Local and
 manually configured SSH/tailnet transports remain device-owned. Tests exercise the
 real registration/acquisition path with mocked physical handshakes; they do not
-establish deployed socket behavior. Discovery and other asynchronous registration
-callers still need their own initiating-account fence, so stale results cannot be
-registered as belonging to a newer account. Account-scoping the remaining timeline/
+establish deployed socket behavior. Registration requires an explicit initiating
+account snapshot. API grant acquisition/activation and cloud attachment pass that
+snapshot; account changes invalidate completion and separate in-flight attachment
+and connection deduplication. Cloud wake/recovery also checks identity before
+follow-up commands or publishing workspace state. Discovery/catalog projections
+and other asynchronous cloud actions still need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.

@@ -9,7 +9,10 @@ vi.mock("../../src/lib/ws-client-protocol.ts", () => ({
 	wsClientProtocolLayer: mocks.protocol,
 }));
 
-import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
+import {
+	observeRendererAccount,
+	rendererAccountSnapshot,
+} from "../../src/lib/renderer-account.ts";
 import {
 	acquireRendererRpcSession,
 	isCloudWorkspaceEnvironment,
@@ -23,6 +26,43 @@ beforeEach(() => {
 	observeRendererAccount(null);
 	mocks.create.mockReset();
 	mocks.protocol.mockReset();
+});
+
+it("rejects late registrations using the initiating account, including A -> B -> A", async () => {
+	observeRendererAccount("first");
+	const account = rendererAccountSnapshot();
+	observeRendererAccount("second");
+	observeRendererAccount("first");
+	expect(() =>
+		registerApiEnvironment(
+			"late-api",
+			"wss://example.test/rpc",
+			async () => "unused",
+			account,
+		),
+	).toThrow("connection account changed");
+	const ticket = {
+		workspaceId: "late-cloud",
+		wsUrl: "wss://example.test/cloud",
+		protocol: "zuse-workspace-v1",
+		role: "client" as const,
+		generation: 1,
+		gatewayEpoch: 1,
+		credential: "test-ticket",
+		expiresAt: Date.now() + 60_000,
+	};
+	expect(() =>
+		registerCloudWorkspace(
+			ticket.workspaceId,
+			ticket,
+			async () => ticket,
+			account,
+		),
+	).toThrow("connection account changed");
+	expect(isCloudWorkspaceEnvironment(ticket.workspaceId)).toBe(false);
+	await expect(acquireRendererRpcSession("late-api")).rejects.toThrow(
+		"not connected",
+	);
 });
 
 it("reports account closure once even when disposing also closes the socket", async () => {
@@ -43,6 +83,7 @@ it("reports account closure once even when disposing also closes the socket", as
 		"close-once",
 		"wss://example.test/rpc",
 		async () => "unused",
+		rendererAccountSnapshot(),
 	);
 	const onClose = vi.fn();
 	await acquireRendererRpcSession("close-once", { onClose });
@@ -63,6 +104,7 @@ it("closes account sessions once while retaining a manually configured SSH sessi
 		"owned",
 		"wss://example.test/rpc",
 		async () => "unused",
+		rendererAccountSnapshot(),
 	);
 	registerWebSocketEnvironment("manual", "wss://example.test/ssh");
 	const onClose = vi.fn();
@@ -94,7 +136,12 @@ it("rejects a grant refresh that finishes after switching away and back", async 
 				resolve = done;
 			}),
 	);
-	registerApiEnvironment("refreshing", "wss://example.test/rpc", refresh);
+	registerApiEnvironment(
+		"refreshing",
+		"wss://example.test/rpc",
+		refresh,
+		rendererAccountSnapshot(),
+	);
 	const initial = await acquireRendererRpcSession("refreshing");
 	await initial.dispose();
 	const pending = acquireRendererRpcSession("refreshing");
@@ -123,6 +170,7 @@ it("disposes a handshake that completes after its account was removed", async ()
 		"opening",
 		"wss://example.test/rpc",
 		async () => "unused",
+		rendererAccountSnapshot(),
 	);
 	const pending = acquireRendererRpcSession("opening");
 	const rejected = expect(pending).rejects.toThrow(
@@ -154,7 +202,12 @@ it("removes cloud tickets without letting a delayed old refresh replace a new re
 				resolve = done;
 			}),
 	);
-	registerCloudWorkspace(ticket.workspaceId, ticket, refresh);
+	registerCloudWorkspace(
+		ticket.workspaceId,
+		ticket,
+		refresh,
+		rendererAccountSnapshot(),
+	);
 	const pending = acquireRendererRpcSession(ticket.workspaceId);
 	const rejected = expect(pending).rejects.toThrow(
 		"connection account changed",
@@ -166,7 +219,12 @@ it("removes cloud tickets without letting a delayed old refresh replace a new re
 		...ticket,
 		credential: "current-test-ticket",
 	}));
-	registerCloudWorkspace(ticket.workspaceId, ticket, currentRefresh);
+	registerCloudWorkspace(
+		ticket.workspaceId,
+		ticket,
+		currentRefresh,
+		rendererAccountSnapshot(),
+	);
 	resolve({ ...ticket, expiresAt: Date.now() + 60_000 });
 	await rejected;
 	const dispose = vi.fn(async () => undefined);

@@ -32,6 +32,7 @@ import { electronClientProtocolLayer } from "./electron-client-protocol.ts";
 import { isHostedProduct } from "./hosted-connect.ts";
 import { isPlatformOnline, subscribePlatformOnline } from "./network-status.ts";
 import {
+	assertRendererAccountCurrent,
 	type RendererAccountSnapshot,
 	rendererAccountSnapshot,
 	subscribeRendererAccount,
@@ -294,14 +295,8 @@ const prepareRendererConnectionOptions = async (
 };
 
 const assertConnectionAccount = (options: RendererConnectionOptions): void => {
-	if (
-		options.kind === "websocket" &&
-		options.account !== undefined &&
-		options.account !== rendererAccountSnapshot()
-	)
-		throw new Error(
-			"The connection account changed. Reconnect this environment.",
-		);
+	if (options.kind === "websocket" && options.account !== undefined)
+		assertRendererAccountCurrent(options.account);
 };
 
 export const RENDERER_WEBSOCKET_OPEN_TIMEOUT = "3 seconds" as const;
@@ -658,13 +653,15 @@ export const registerApiEnvironment = (
 	environmentId: string,
 	initialWsUrl: string,
 	refreshWsUrl: () => Promise<string>,
+	account: RendererAccountSnapshot,
 ): void => {
+	assertRendererAccountCurrent(account);
 	let initial: string | null = initialWsUrl;
 	environmentConnections.set(environmentId, {
 		key: `environment:${environmentId}`,
 		kind: "websocket",
 		wsUrl: initialWsUrl,
-		account: rendererAccountSnapshot(),
+		account,
 		refreshWsUrl: async () => {
 			if (initial !== null) {
 				const value = initial;
@@ -681,7 +678,9 @@ export const registerCloudWorkspace = (
 	workspaceId: string,
 	initial: CloudWorkspaceConnection,
 	refreshConnection: () => Promise<CloudWorkspaceConnection>,
+	account: RendererAccountSnapshot,
 ): void => {
+	assertRendererAccountCurrent(account);
 	const existingEntry = rendererEntries.get(workspaceId);
 	let registration = cloudWorkspaceRegistrations.get(workspaceId);
 	if (registration === undefined) {
@@ -705,7 +704,7 @@ export const registerCloudWorkspace = (
 			key: `workspace:${workspaceId}`,
 			kind: "websocket",
 			wsUrl: initial.wsUrl,
-			account: rendererAccountSnapshot(),
+			account,
 			protocols: [initial.protocol, initial.credential],
 			refreshConnection: created.refreshStable,
 		});

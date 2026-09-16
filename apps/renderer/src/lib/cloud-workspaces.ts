@@ -79,6 +79,8 @@ import {
 import { isHostedProduct } from "./hosted-connect.ts";
 import { hostedProjectFolderId } from "./hosted-workspace.ts";
 import {
+	assertRendererAccountCurrent,
+	type RendererAccountSnapshot,
 	rendererAccountSnapshot,
 	subscribeRendererAccount,
 } from "./renderer-account.ts";
@@ -92,6 +94,7 @@ type CloudChatsState = {
 
 const opening = new Map<string, Promise<void>>();
 type CloudAttachment = {
+	account: RendererAccountSnapshot;
 	activation: "connect" | "wake";
 	promise: Promise<void>;
 };
@@ -150,6 +153,7 @@ const trackCloudAttachment = (
 	workspaceId: string,
 	activation: CloudAttachment["activation"],
 	operation: Promise<void>,
+	account: RendererAccountSnapshot,
 ): Promise<void> => {
 	let tracked: Promise<void>;
 	tracked = operation.finally(() => {
@@ -157,7 +161,7 @@ const trackCloudAttachment = (
 			attaching.delete(workspaceId);
 		}
 	});
-	attaching.set(workspaceId, { activation, promise: tracked });
+	attaching.set(workspaceId, { activation, promise: tracked, account });
 	return tracked;
 };
 
@@ -429,8 +433,9 @@ export const ensureCloudWorkspaceAttached = (
 	summary: CloudChatSummary,
 	activation: "connect" | "wake" = "wake",
 ): Promise<void> => {
+	const account = rendererAccountSnapshot();
 	const existing = attaching.get(summary.workspaceId);
-	if (existing !== undefined) {
+	if (existing !== undefined && existing.account === account) {
 		if (existing.activation === "wake" || activation === "connect") {
 			return existing.promise;
 		}
@@ -439,24 +444,38 @@ export const ensureCloudWorkspaceAttached = (
 		// passive request's failure (for example when API has just paused compute).
 		const escalated = existing.promise
 			.catch(() => undefined)
-			.then(() => attachCloudWorkspace(summary, "wake"));
-		return trackCloudAttachment(summary.workspaceId, "wake", escalated);
+			.then(() => attachCloudWorkspace(summary, "wake", account));
+		return trackCloudAttachment(
+			summary.workspaceId,
+			"wake",
+			escalated,
+			account,
+		);
 	}
 	return trackCloudAttachment(
 		summary.workspaceId,
 		activation,
-		attachCloudWorkspace(summary, activation),
+		attachCloudWorkspace(summary, activation, account),
+		account,
 	);
 };
 
 const attachCloudWorkspace = async (
 	summary: CloudChatSummary,
 	activation: "connect" | "wake",
+	account: RendererAccountSnapshot,
 ): Promise<void> => {
+	assertRendererAccountCurrent(account);
+	const publish = (workspace: CloudWorkspace): void => {
+		assertRendererAccountCurrent(account);
+		updateSummary(refreshSummaryFromWorkspace(summary, workspace));
+	};
 	const control = await getControlPlaneRpcClient();
+	assertRendererAccountCurrent(account);
 	let workspace = await Effect.runPromise(
 		control["cloud.workspaces.get"]({ workspaceId: summary.workspaceId }),
 	);
+	assertRendererAccountCurrent(account);
 	if (workspaceNeedsWake(workspace) && activation === "wake") {
 		workspace = await Effect.runPromise(
 			control["cloud.workspaces.resume"]({
@@ -464,7 +483,7 @@ const attachCloudWorkspace = async (
 			}),
 		);
 	}
-	updateSummary(refreshSummaryFromWorkspace(summary, workspace));
+	publish(workspace);
 	if (activation === "connect" && !isCloudWorkspaceReady(workspace)) {
 		throw new Error(
 			workspace.state === "paused"
@@ -480,13 +499,14 @@ const attachCloudWorkspace = async (
 				workspaceId: summary.workspaceId,
 				afterRevision: workspace.revision,
 			}),
-			(next) => updateSummary(refreshSummaryFromWorkspace(summary, next)),
+			publish,
 		);
 	}
 	const connectionForWorkspace = () =>
 		refreshCloudWorkspaceConnectionWithRecovery(
 			summary.workspaceId,
 			async (recoveryCommandId) => {
+				assertRendererAccountCurrent(account);
 				let recovered = await Effect.runPromise(
 					control["cloud.workspaces.resume"]({
 						workspaceId: summary.workspaceId,
@@ -494,7 +514,7 @@ const attachCloudWorkspace = async (
 						commandId: recoveryCommandId,
 					}),
 				);
-				updateSummary(refreshSummaryFromWorkspace(summary, recovered));
+				publish(recovered);
 				if (!isCloudWorkspaceReady(recovered)) {
 					const error = cloudWorkspaceStartupError(recovered);
 					if (error !== null) throw error;
@@ -503,21 +523,24 @@ const attachCloudWorkspace = async (
 							workspaceId: summary.workspaceId,
 							afterRevision: recovered.revision,
 						}),
-						(next) => updateSummary(refreshSummaryFromWorkspace(summary, next)),
+						publish,
 					);
 				}
 			},
-			() =>
-				Effect.runPromise(
+			() => {
+				assertRendererAccountCurrent(account);
+				return Effect.runPromise(
 					control["cloud.workspaces.connect"]({
 						workspaceId: summary.workspaceId,
 					}),
-				),
+				);
+			},
 		);
 	registerCloudWorkspace(
 		summary.workspaceId,
 		await connectionForWorkspace(),
 		connectionForWorkspace,
+		account,
 	);
 };
 

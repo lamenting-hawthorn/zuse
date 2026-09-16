@@ -34,6 +34,10 @@ import { createInitializationGate } from "../lib/initialization-gate.ts";
 import { upsertLatestEntity } from "../lib/latest-entity.ts";
 import { markRendererStartupMilestone } from "../lib/performance-marks.ts";
 import {
+	assertRendererAccountCurrent,
+	rendererAccountSnapshot,
+} from "../lib/renderer-account.ts";
+import {
 	LOCAL_ENVIRONMENT_KEY,
 	registerApiEnvironment,
 	registerLocalEnvironment,
@@ -850,15 +854,19 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			localEnvironmentId: string,
 			replace = false,
 		): Promise<void> => {
+			const account = rendererAccountSnapshot();
 			const catalogKey = `api:${environment.environmentId}`;
 			return connectionAttempts.run(
-				catalogKey,
-				async (isCurrent) => {
+				`${catalogKey}:account:${account.epoch}`,
+				async (isAttemptCurrent) => {
+					const isCurrent = () =>
+						isAttemptCurrent() && rendererAccountSnapshot() === account;
 					try {
 						const { grant, localClient } = await (async () => {
 							try {
 								const localClient =
 									await runtimeOperationClient(localEnvironmentId);
+								assertRendererAccountCurrent(account);
 								const grant = await Effect.runPromise(
 									localClient["environments.connect"]({
 										environmentId: environment.environmentId,
@@ -881,6 +889,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 										}),
 									),
 								),
+							account,
 						);
 						try {
 							await completeConnection({
@@ -1387,6 +1396,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				}
 			},
 			activate: async (environmentId, selection) => {
+				const account = rendererAccountSnapshot();
 				let entry = get().entries.find(
 					(item) => item.environmentId === environmentId,
 				);
@@ -1407,6 +1417,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						throw new Error("API environment is unavailable.");
 					}
 					await connectApi(api, local.environmentId);
+					assertRendererAccountCurrent(account);
 				}
 				entry = get().entries.find(
 					(item) => item.environmentId === environmentId,
