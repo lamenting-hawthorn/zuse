@@ -208,6 +208,101 @@ class MemoryPersistence implements ClientPersistence {
 
 describe("ClientBus", () => {
 	it.each([
+		"acceptance",
+		"result",
+		"reflection",
+	] as const)("releases a pending mailbox %s on account change without cancelling durable work", async (phase) => {
+		const persistence = new MemoryPersistence();
+		const listeners = new Set<() => void>();
+		let epoch = 0;
+		const command: ClientCommand = {
+			kind: "messages.send",
+			commandId: CommandId.make("pending-authority"),
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+			awaitResourceReflection: true,
+			owner: { kind: "account", subject: "first" },
+		};
+		const cancel = vi.fn();
+		const dispose = vi.fn();
+		const started = deferred<void>();
+		const reflected = vi.fn(() => false);
+		const transport = testCloudTransport(() => ({
+			accepted:
+				phase === "acceptance"
+					? new Promise(() => undefined)
+					: Promise.resolve({
+							commandId: command.commandId,
+							workspaceSequence: 1,
+							revision: 2,
+							acceptedAt: 3,
+							state: "accepted",
+						}),
+			result:
+				phase === "reflection"
+					? Promise.resolve({
+							commandId: command.commandId,
+							fingerprint: commandFingerprint(command),
+							receivedAt: 4,
+							result: null,
+						})
+					: new Promise(() => undefined),
+			cancel,
+		}));
+		const observedTransport: CloudCommandTransport = {
+			...transport,
+			dispatch: (input) => ({
+				...transport.dispatch(input),
+				start: () => started.resolve(),
+				dispose,
+			}),
+		};
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandExecutor: {
+				execute: async () => {
+					throw new Error("unexpected live execution");
+				},
+			},
+			commandTransportFor: () => observedTransport,
+			commandReflected: reflected,
+			commandScopeFor: () => {
+				const captured = epoch;
+				return () => captured === epoch;
+			},
+			subscribeCommandAuthority: (listener) => {
+				listeners.add(listener);
+				return () => {
+					listeners.delete(listener);
+				};
+			},
+		});
+		const handle = bus.dispatchHandle(command);
+		const rejected = expect(handle.result).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		await started.promise;
+		if (phase !== "acceptance") await handle.accepted;
+		if (phase === "reflection")
+			await waitUntil(() => reflected.mock.calls.length > 0);
+		epoch++;
+		for (const listener of listeners) listener();
+		await rejected;
+		expect(listeners.size).toBe(0);
+		expect(dispose).toHaveBeenCalledOnce();
+		expect(cancel).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(command.commandId)?.command.owner).toEqual(
+			command.owner,
+		);
+		expect(bus.snapshot(timelineKey).pendingCommands).toEqual([]);
+		expect(bus.snapshot(timelineKey).failedCommands).toEqual([]);
+		await bus.dispose();
+	});
+	it.each([
 		false,
 		true,
 	])("fences mailbox cancellation before sending and after completion (in flight: %s)", async (inFlight) => {

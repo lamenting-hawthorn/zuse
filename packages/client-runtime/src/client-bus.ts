@@ -150,6 +150,8 @@ export type ClientBusOptions<Client> = Readonly<{
 	commandOwnerFor?: (command: ClientCommand) => ClientCommandOwner;
 	/** Capture an authority scope before cache lookup, queueing, or replay. */
 	commandScopeFor?: (command: ClientCommand) => () => boolean;
+	/** Wake pending delivery waits when the captured authority may have changed. */
+	subscribeCommandAuthority?: (listener: () => void) => () => void;
 	/** Stable control-plane transport for eligible cloud environments. */
 	commandTransportFor?: (
 		environmentId: EnvironmentId,
@@ -934,38 +936,58 @@ export class ClientBus<Client> {
 				);
 			} catch (cause) {
 				if (!(cause instanceof DurableCommandRetrySignal)) throw cause;
-				await this.waitForDurableRetry(2_000);
+				await this.waitForDurableRetry(2_000, assertAuthority);
 			}
 		}
 	}
 
-	private untilDisposed<Value>(promise: Promise<Value>): Promise<Value> {
+	private untilDisposed<Value>(
+		promise: Promise<Value>,
+		assertAuthority?: () => void,
+	): Promise<Value> {
 		if (this.disposed) return Promise.reject(new Error("ClientBus disposed"));
+		let unsubscribe: (() => void) | undefined;
 		return new Promise<Value>((resolve, reject) => {
-			const onDisposed = (cause: Error) => {
+			const onDisposed = (cause: unknown) => {
 				this.disposalListeners.delete(onDisposed);
 				reject(cause);
 			};
 			this.disposalListeners.add(onDisposed);
+			const checkAuthority = () => {
+				try {
+					assertAuthority?.();
+				} catch (cause) {
+					onDisposed(cause);
+				}
+			};
+			if (assertAuthority !== undefined) {
+				unsubscribe = this.options.subscribeCommandAuthority?.(checkAuthority);
+				checkAuthority();
+			}
 			void promise.then(
 				(value) => {
+					checkAuthority();
 					if (!this.disposalListeners.delete(onDisposed)) return;
 					resolve(value);
 				},
 				(cause) => {
+					checkAuthority();
 					if (!this.disposalListeners.delete(onDisposed)) return;
 					reject(cause);
 				},
 			);
-		});
+		}).finally(() => unsubscribe?.());
 	}
 
-	private waitForDurableRetry(delayMs: number): Promise<void> {
+	private waitForDurableRetry(
+		delayMs: number,
+		assertAuthority: () => void,
+	): Promise<void> {
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		const delay = new Promise<void>((resolve) => {
 			timeout = setTimeout(resolve, delayMs);
 		});
-		return this.untilDisposed(delay).finally(() => {
+		return this.untilDisposed(delay, assertAuthority).finally(() => {
 			if (timeout !== undefined) clearTimeout(timeout);
 		});
 	}
@@ -1108,7 +1130,11 @@ export class ClientBus<Client> {
 		};
 	}
 
-	private waitForResourceReflection(command: ClientCommand): Promise<void> {
+	private waitForResourceReflection(
+		command: ClientCommand,
+		assertAuthority: () => void,
+	): Promise<void> {
+		assertAuthority();
 		if (
 			command.awaitResourceReflection !== true ||
 			command.resource === null ||
@@ -1145,7 +1171,13 @@ export class ClientBus<Client> {
 					: pending,
 			),
 		}));
-		return promise;
+		return this.untilDisposed(promise, assertAuthority).finally(() => {
+			if (
+				this.commandReflectionWaiters.get(command.commandId)?.promise ===
+				promise
+			)
+				this.commandReflectionWaiters.delete(command.commandId);
+		});
 	}
 
 	private commandIsReflected(
@@ -1679,7 +1711,10 @@ export class ClientBus<Client> {
 						this.assertActive();
 						assertAuthority();
 						handle.start();
-						acceptance = await handle.accepted;
+						acceptance = await this.untilDisposed(
+							handle.accepted,
+							assertAuthority,
+						);
 					} catch (cause) {
 						if (cause instanceof CloudCommandTerminalError) {
 							retainForRetry = false;
@@ -1788,7 +1823,10 @@ export class ClientBus<Client> {
 						});
 						let receipt: CommandReceipt<Result>;
 						try {
-							receipt = await handle.result;
+							receipt = await this.untilDisposed(
+								handle.result,
+								assertAuthority,
+							);
 						} catch (cause) {
 							if (cause instanceof CloudCommandTerminalError)
 								retainForRetry = false;
@@ -1801,7 +1839,7 @@ export class ClientBus<Client> {
 							// resurrect a command that is already terminal.
 							await statusPersistence;
 						}
-						await this.waitForResourceReflection(command);
+						await this.waitForResourceReflection(command, assertAuthority);
 						await outbox?.completeOutbox(receipt);
 						assertAuthority();
 						this.updateCommandResource(command, (view) => ({
@@ -1813,7 +1851,8 @@ export class ClientBus<Client> {
 						return receipt;
 					}
 				}
-				if (serializeLiveFallback) await liveFallbackTurn;
+				if (serializeLiveFallback && liveFallbackTurn !== undefined)
+					await this.untilDisposed(liveFallbackTurn, assertAuthority);
 				assertAuthority();
 				this.assertActive();
 				const binding = this.environment(command.environmentId);
@@ -1822,7 +1861,10 @@ export class ClientBus<Client> {
 					ReturnType<ClientCommandExecutor<Client>["execute"]>
 				>;
 				try {
-					const client = await commandLease.activate("wake");
+					const client = await this.untilDisposed(
+						commandLease.activate("wake"),
+						assertAuthority,
+					);
 					if (client === null) throw new Error("environment did not connect");
 					assertAuthority();
 					this.assertActive();
@@ -1833,8 +1875,13 @@ export class ClientBus<Client> {
 						commandFingerprint(command),
 					);
 					try {
-						executionReceipt = await executor.execute(client, command);
+						executionReceipt = await this.untilDisposed(
+							executor.execute(client, command),
+							assertAuthority,
+						);
 					} catch (cause) {
+						assertAuthority();
+						this.assertActive();
 						const fault =
 							this.options.commandFaultFor?.(cause, command.environmentId) ??
 							null;
@@ -1859,7 +1906,7 @@ export class ClientBus<Client> {
 					receivedAt: executionReceipt.receivedAt,
 					result: executionReceipt.result as Result,
 				};
-				await this.waitForResourceReflection(command);
+				await this.waitForResourceReflection(command, assertAuthority);
 				if (command.retry === "safe") {
 					await outbox?.completeOutbox(receipt);
 				}
@@ -1872,7 +1919,7 @@ export class ClientBus<Client> {
 				}));
 				return receipt;
 			} catch (cause) {
-				if (cause instanceof CommandAuthorityLostError) {
+				if (this.disposed || cause instanceof CommandAuthorityLostError) {
 					this.updateCommandResource(command, (view) => ({
 						...view,
 						pendingCommands: view.pendingCommands.filter(

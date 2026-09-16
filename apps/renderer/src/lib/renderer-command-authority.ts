@@ -7,6 +7,7 @@ import type { EnvironmentId } from "@zuse/contracts";
 import {
 	type RendererAccountSnapshot,
 	rendererAccountSnapshot,
+	subscribeRendererAccount,
 } from "./renderer-account.ts";
 
 export const createRendererCommandAuthority = (
@@ -14,6 +15,7 @@ export const createRendererCommandAuthority = (
 		environmentId: EnvironmentId,
 	) => "device" | RendererAccountSnapshot | undefined,
 ) => ({
+	subscribeCommandAuthority: subscribeRendererAccount,
 	commandOwnerFor(command: ClientCommand): ClientCommandOwner {
 		const authority = resolve(command.environmentId);
 		if (authority === "device") return { kind: "device" };

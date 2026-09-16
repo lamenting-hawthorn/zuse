@@ -108,6 +108,30 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+it("releases transient cloud shells and clears their projection on account change", async () => {
+	const data = {
+		folders: [],
+		originsByFolder: {},
+		chatsByProject: {},
+		sessionsByProject: {},
+		creationOperationsByProject: {},
+	};
+	mocks.snapshot.mockReturnValue({ data, connection: "connected" });
+	await useEnvironmentCatalogStore
+		.getState()
+		.activateTransient("cloud-only", data);
+	expect(useEnvironmentCatalogStore.getState().activeEnvironmentId).toBe(
+		"cloud-only",
+	);
+	observeRendererAccount("second");
+	expect(mocks.release).toHaveBeenCalledOnce();
+	expect(mocks.remove).toHaveBeenCalledWith("cloud-only");
+	expect(useEnvironmentCatalogStore.getState().activeEnvironmentId).toBe(
+		"local",
+	);
+	expect(useEnvironmentCatalogStore.getState().entries).toEqual([local, ssh]);
+});
+
 it("does not discover account servers while signed out", async () => {
 	observeRendererAccount(null);
 	await useEnvironmentCatalogStore.getState().syncAccountEnvironments();

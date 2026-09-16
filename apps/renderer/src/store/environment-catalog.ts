@@ -685,16 +685,25 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 					entry.connectionKind === "api" &&
 					environmentIds.has(entry.environmentId),
 			);
-			for (const id of environmentIds) apiRecords.delete(id);
+			const activeTransientRemoved =
+				environmentIds.has(state.activeEnvironmentId) &&
+				shellRuntimes.has(`transient:${state.activeEnvironmentId}`);
+			for (const id of environmentIds) {
+				const key = `transient:${id}`;
+				const transient = shellRuntimes.has(key);
+				stopEntryRuntime(key);
+				apiRecords.delete(id);
+				if (transient || removed.some((entry) => entry.environmentId === id))
+					void removeRendererEnvironment(id).catch(() => undefined);
+			}
 			for (const entry of removed) {
 				stopEntryRuntime(entryKey(entry));
-				void removeRendererEnvironment(entry.environmentId).catch(
-					() => undefined,
-				);
 			}
-			const activeRemoved = removed.some(
-				(entry) => entry.environmentId === state.activeEnvironmentId,
-			);
+			const activeRemoved =
+				activeTransientRemoved ||
+				removed.some(
+					(entry) => entry.environmentId === state.activeEnvironmentId,
+				);
 			const local = state.entries.find(
 				(entry) => entry.connectionKind === "local",
 			);
@@ -740,7 +749,12 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 		};
 		const unsubscribeAccount = subscribeRendererAccount(() => {
 			discoveryRevision++;
-			removeAccountEnvironments(accountEnvironmentIds());
+			const removed = accountEnvironmentIds();
+			for (const [key, runtime] of shellRuntimes) {
+				if (key.startsWith("transient:"))
+					removed.add(runtime.ref.environmentId);
+			}
+			removeAccountEnvironments(removed);
 			set({ accountDiscoveryError: null });
 			const account = rendererAccountSnapshot();
 			if (get().initialized && typeof account.subject === "string") {
