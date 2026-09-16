@@ -300,6 +300,15 @@ describe("ClientBus", () => {
 		);
 		expect(bus.snapshot(timelineKey).pendingCommands).toEqual([]);
 		expect(bus.snapshot(timelineKey).failedCommands).toEqual([]);
+		if (phase === "result") {
+			const resumed = bus.dispatchHandle(command);
+			void resumed.result.catch(() => undefined);
+			await resumed.accepted;
+			await expect(handle.cancel()).rejects.toBeInstanceOf(
+				CommandAuthorityLostError,
+			);
+			expect(cancel).not.toHaveBeenCalled();
+		}
 		await bus.dispose();
 	});
 	it.each([

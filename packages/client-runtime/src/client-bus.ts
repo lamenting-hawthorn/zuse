@@ -666,16 +666,20 @@ export class ClientBus<Client> {
 		return { ...command, owner: this.options.commandOwnerFor(command) };
 	}
 
+	private commandAuthority(command: ClientCommand): () => void {
+		const current = this.options.commandScopeFor?.(command);
+		return () => {
+			if (current?.() === false) throw new CommandAuthorityLostError();
+		};
+	}
+
 	private dispatchCommand<Result>(
 		command: ClientCommand<unknown, Result>,
 	): Promise<CommandReceipt<Result>> {
 		this.assertActive();
 		let assertAuthority: () => void;
 		try {
-			const current = this.options.commandScopeFor?.(command);
-			assertAuthority = () => {
-				if (current?.() === false) throw new CommandAuthorityLostError();
-			};
+			assertAuthority = this.commandAuthority(command);
 			assertAuthority();
 		} catch (cause) {
 			return Promise.reject(cause);
@@ -767,6 +771,7 @@ export class ClientBus<Client> {
 	): CommandDispatchHandle<Result> {
 		this.assertActive();
 		command = this.withCommandOwner(command);
+		const assertAuthority = this.commandAuthority(command);
 		const fingerprint = commandFingerprint(command);
 		let acceptance = this.commandAcceptances.get(command.commandId);
 		if (acceptance === undefined) {
@@ -801,11 +806,12 @@ export class ClientBus<Client> {
 		return {
 			accepted: acceptance.accepted,
 			result,
-			cancel: () => {
+			cancel: async () => {
+				assertAuthority();
 				const cancel = this.commandCancels.get(command.commandId);
 				return cancel === undefined
 					? Promise.reject(new Error("This command can no longer be cancelled"))
-					: cancel();
+					: this.untilDisposed(cancel(), assertAuthority);
 			},
 		};
 	}
