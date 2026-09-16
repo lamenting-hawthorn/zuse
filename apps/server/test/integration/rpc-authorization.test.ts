@@ -7,13 +7,23 @@ import {
 	SessionId,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
-import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect";
+import {
+	Deferred,
+	Effect,
+	Layer,
+	ManagedRuntime,
+	Schema,
+	Stream,
+} from "effect";
 import { Rpc, RpcGroup, RpcTest } from "effect/unstable/rpc";
 import { SqlClient } from "effect/unstable/sql";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { AuthService } from "../../src/auth/services/auth-service.ts";
 import { CollaborationServiceLive } from "../../src/collaboration/layers/collaboration-service.ts";
-import { filterCatalog } from "../../src/collaboration/services/catalog-visibility.ts";
+import {
+	filterCatalog,
+	withCatalogChanges,
+} from "../../src/collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../src/collaboration/services/collaboration-service.ts";
 import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { RpcAuthorizationLive } from "../../src/lan-auth/layers/rpc-authorization.ts";
@@ -30,6 +40,10 @@ const Rpcs = RpcGroup.make(
 		success: Schema.Array(Schema.String),
 	}),
 	Rpc.make("workspace.list", { success: Schema.Array(Schema.String) }),
+	Rpc.make("workspace.streamChanges", {
+		success: Schema.Array(Schema.String),
+		stream: true,
+	}),
 	Rpc.make("session.get", {
 		payload: { sessionId: SessionId },
 		success: Schema.String,
@@ -46,6 +60,15 @@ const Rpcs = RpcGroup.make(
 	Rpc.make("host.secret", { success: Schema.String }),
 ).middleware(RpcAuthorization);
 const handlers = Rpcs.toLayer({
+	"workspace.streamChanges": () =>
+		Stream.concat(
+			Stream.fromEffect(
+				filterCatalog(["project", "private-project"], (scope, id) =>
+					scope.projects.has(FolderId.make(id)),
+				),
+			),
+			Stream.never,
+		).pipe(withCatalogChanges),
 	"chat.list": () =>
 		filterCatalog(["shared", "private"], (scope, id) =>
 			scope.chats.has(ChatId.make(id)),
@@ -212,6 +235,72 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 		await expect(
 			call(guestIdentity, (client) => client("workspace.list", undefined)),
 		).resolves.toEqual(["project"]);
+		const frames: ReadonlyArray<string>[] = [];
+		const watching = call(guestIdentity, (client) =>
+			client("workspace.streamChanges", undefined).pipe(
+				Stream.take(3),
+				Stream.runForEach((frame) =>
+					Effect.sync(() => {
+						frames.push(frame);
+					}),
+				),
+			),
+		);
+		await expect.poll(() => frames).toEqual([["project"]]);
+		const service = await runtime.runPromise(CollaborationService);
+		const originalLookup = service.visibleWorkspaces;
+		const entered = await Effect.runPromise(Deferred.make<void>());
+		const release = await Effect.runPromise(Deferred.make<void>());
+		const rechecked = await Effect.runPromise(Deferred.make<void>());
+		const lookup = vi
+			.spyOn(service, "visibleWorkspaces")
+			.mockImplementationOnce((subject) =>
+				originalLookup(subject).pipe(
+					Effect.flatMap((result) =>
+						Deferred.succeed(entered, undefined).pipe(
+							Effect.andThen(Deferred.await(release)),
+							Effect.as(result),
+						),
+					),
+				),
+			)
+			.mockImplementationOnce((subject) =>
+				originalLookup(subject).pipe(
+					Effect.tap(() => Deferred.succeed(rechecked, undefined)),
+				),
+			);
+		await runtime.runPromise(
+			service
+				.shareWorkspace(owner, ChatId.make("shared"))
+				.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
+		);
+		await Effect.runPromise(Deferred.await(entered));
+		await runtime.runPromise(
+			Effect.flatMap(CollaborationService, (service) =>
+				service.removeWorkspaceGrant(
+					owner,
+					ChatId.make("shared"),
+					guest.memberId,
+				),
+			),
+		);
+		await expect.poll(() => frames).toEqual([["project"], []]);
+		await Effect.runPromise(Deferred.succeed(release, undefined));
+		await Effect.runPromise(Deferred.await(rechecked));
+		expect(frames).toEqual([["project"], []]);
+		lookup.mockRestore();
+		await runtime.runPromise(
+			Effect.flatMap(CollaborationService, (service) =>
+				service.setWorkspaceGrant(
+					owner,
+					ChatId.make("shared"),
+					guest.memberId,
+					"viewer",
+				),
+			),
+		);
+		await watching;
+		expect(frames).toEqual([["project"], [], ["project"]]);
 		await expect(
 			call(guestIdentity, (client) =>
 				client("attachments.read", {

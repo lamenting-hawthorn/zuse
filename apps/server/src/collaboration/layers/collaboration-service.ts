@@ -194,8 +194,14 @@ export const CollaborationServiceLive = Layer.effect(
 		const sql = yield* SqlClient.SqlClient;
 		const revocations =
 			yield* PubSub.unbounded<CollaborationAccessRevocation>();
+		const catalogChanges = yield* PubSub.unbounded<void>();
+		const notifyCatalogChange = PubSub.publish(catalogChanges, undefined).pipe(
+			Effect.asVoid,
+		);
 		const notifyRevocation = (event: CollaborationAccessRevocation) =>
-			PubSub.publish(revocations, event).pipe(Effect.asVoid);
+			PubSub.publish(revocations, event).pipe(
+				Effect.andThen(notifyCatalogChange),
+			);
 		const sharingAuthority = yield* WorkspaceSharingAuthority;
 		const organizationAuthority = yield* Effect.serviceOption(
 			OrganizationAuthority,
@@ -437,6 +443,7 @@ export const CollaborationServiceLive = Layer.effect(
 						}),
 						actor,
 						revokedMemberIds,
+						changed,
 					};
 				}),
 			);
@@ -1009,6 +1016,7 @@ export const CollaborationServiceLive = Layer.effect(
 			});
 
 		return CollaborationService.of({
+			subscribeCatalogChanges: PubSub.subscribe(catalogChanges),
 			visibleWorkspaces: (subject) =>
 				Effect.gen(function* () {
 					const members =
@@ -1098,6 +1106,9 @@ export const CollaborationServiceLive = Layer.effect(
 			subscribeAccessRevocations: PubSub.subscribe(revocations),
 			synchronizeOrganization: (details) =>
 				synchronizeOrganization(details).pipe(
+					Effect.tap(({ changed }) =>
+						changed ? notifyCatalogChange : Effect.void,
+					),
 					Effect.tap(({ revokedMemberIds }) =>
 						Effect.forEach(
 							revokedMemberIds,
@@ -1117,6 +1128,7 @@ export const CollaborationServiceLive = Layer.effect(
 				listMembers(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			changeMemberRole: (...args) =>
 				changeMemberRole(...args).pipe(
+					Effect.tap(() => notifyCatalogChange),
 					Effect.tap(({ member, downgraded }) =>
 						downgraded
 							? notifyRevocation({ kind: "member", memberId: member.id })
@@ -1144,10 +1156,16 @@ export const CollaborationServiceLive = Layer.effect(
 				redeemInvite(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
 			setWorkspaceGrant: (...args) =>
 				setWorkspaceGrant(...args).pipe(
+					Effect.tap(() => notifyCatalogChange),
+					Effect.uninterruptible,
 					Effect.catchTag("SqlError", Effect.die),
 				),
 			shareWorkspace: (...args) =>
-				shareWorkspace(...args).pipe(Effect.catchTag("SqlError", Effect.die)),
+				shareWorkspace(...args).pipe(
+					Effect.tap(() => notifyCatalogChange),
+					Effect.uninterruptible,
+					Effect.catchTag("SqlError", Effect.die),
+				),
 			removeWorkspaceGrant: (...args) =>
 				removeWorkspaceGrant(...args).pipe(
 					Effect.tap(() =>

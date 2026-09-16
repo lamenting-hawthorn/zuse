@@ -135,7 +135,17 @@ derived from live membership and explicit workspace bindings/grants. Validation 
 grouped by team (bounded concurrency), with a fresh local projection check after each
 provider lookup. Private chats in the same project remain hidden. Unknown accounts or
 accounts without visible workspaces receive empty lists. Host and paired behavior is
-unchanged. The shell's snapshot-plus-live streams are not enabled for guests yet.
+unchanged.
+
+`workspace.streamChanges` now also supports guest visibility. Committed sharing,
+grant, and membership changes wake its authorization refresh; unchanged selections
+do not restart the feed. Each new selection reopens the existing workspace snapshot
+and live stream under the new request scope. Local revocations clear the selection
+before any network recheck, and a revision fence rejects pre-revocation lookup results.
+A coalescing queue bounds refresh work; external WorkOS changes are checked every
+20 seconds and credential expiry independently ends the stream. The RPC test covers
+grant/revoke/regrant on one connection, including a delayed stale authorization read.
+The shell's chat/session/creation streams remain denied to guests until similarly scoped.
 
 Legacy HTTP attachment URLs are deliberately host-only: verified account credentials
 must match the signed-in host account, while explicitly paired devices retain access.

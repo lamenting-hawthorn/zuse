@@ -42,6 +42,12 @@ export interface CollaborationProfile {
 }
 
 export interface CollaborationServiceShape {
+	/** Wake catalog subscriptions after committed grants, sharing, or membership changes. */
+	readonly subscribeCatalogChanges: Effect.Effect<
+		PubSub.Subscription<void>,
+		never,
+		Scope.Scope
+	>;
 	/** Verified account subject only; private/ungranted workspaces are excluded. */
 	readonly visibleWorkspaces: (subject: string) => Effect.Effect<
 		ReadonlyArray<{

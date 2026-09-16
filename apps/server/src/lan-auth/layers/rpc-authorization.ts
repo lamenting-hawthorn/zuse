@@ -6,10 +6,22 @@ import {
 	TeamId,
 	type TeamMemberId,
 } from "@zuse/contracts";
-import { Effect, Layer, Option, PubSub, Schema } from "effect";
+import {
+	Effect,
+	Layer,
+	Option,
+	PubSub,
+	Queue,
+	Schema,
+	Stream,
+	SubscriptionRef,
+} from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { AuthService } from "../../auth/services/auth-service.ts";
-import { CatalogVisibility } from "../../collaboration/services/catalog-visibility.ts";
+import {
+	CatalogVisibility,
+	CatalogVisibilityChanges,
+} from "../../collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../collaboration/services/collaboration-service.ts";
 import { ConnectionIdentity } from "../services/connection-identity.ts";
 
@@ -28,6 +40,11 @@ export const RpcAuthorizationLive = Layer.effect(
 					return yield* effect;
 				const account = identity.value;
 				const revocations = yield* collaboration.subscribeAccessRevocations;
+				const catalogChanges =
+					rpc._tag === "workspace.streamChanges"
+						? yield* collaboration.subscribeCatalogChanges
+						: null;
+				let catalogRevision = 0;
 				let catalogScope: CatalogVisibility["Service"] | null = null;
 				let guestScope: {
 					chatId: ChatId;
@@ -49,12 +66,15 @@ export const RpcAuthorizationLive = Layer.effect(
 					}
 					if (
 						rpc._tag === "workspace.list" ||
+						rpc._tag === "workspace.streamChanges" ||
 						rpc._tag === "chat.list" ||
 						rpc._tag === "session.list"
 					) {
+						const revision = catalogRevision;
 						const visible = yield* collaboration.visibleWorkspaces(
 							account.subject,
 						);
+						if (revision !== catalogRevision) return;
 						catalogScope = {
 							chats: new Set(visible.map((item) => item.chatId)),
 							projects: new Set(visible.map((item) => item.projectId)),
@@ -126,6 +146,76 @@ export const RpcAuthorizationLive = Layer.effect(
 					),
 				);
 				yield* authorize;
+				if (catalogChanges !== null && catalogScope !== null) {
+					const refreshRequests = yield* Queue.make<void>({
+						capacity: 1,
+						strategy: "sliding",
+					});
+					const updates =
+						yield* SubscriptionRef.make<CatalogVisibility["Service"]>(
+							catalogScope,
+						);
+					const changes = SubscriptionRef.changes(updates).pipe(
+						Stream.changesWith(
+							(left, right) =>
+								left.chats.size === right.chats.size &&
+								left.projects.size === right.projects.size &&
+								[...left.chats].every((id) => right.chats.has(id)) &&
+								[...left.projects].every((id) => right.projects.has(id)),
+						),
+					);
+					const revoke = Effect.forever(
+						PubSub.take(revocations).pipe(
+							Effect.flatMap(() => {
+								catalogRevision += 1;
+								catalogScope = { chats: new Set(), projects: new Set() };
+								return SubscriptionRef.set(updates, catalogScope).pipe(
+									Effect.andThen(Queue.offer(refreshRequests, undefined)),
+								);
+							}),
+						),
+					);
+					const refresh = Effect.forever(
+						Effect.raceFirst(
+							Queue.take(refreshRequests),
+							Effect.sleep(20_000),
+						).pipe(
+							Effect.andThen(authorize),
+							Effect.andThen(
+								Effect.suspend(() =>
+									catalogScope === null
+										? Effect.fail(
+												new RpcAccessDeniedError({ code: "access-denied" }),
+											)
+										: SubscriptionRef.set(updates, catalogScope),
+								),
+							),
+						),
+					);
+					const expired = Effect.sleep(
+						Math.max(0, account.expiresAt - Date.now()),
+					).pipe(
+						Effect.andThen(
+							Effect.fail(
+								new RpcAccessDeniedError({ code: "credential-expired" }),
+							),
+						),
+					);
+					return yield* Effect.raceFirst(
+						Effect.provideService(effect, CatalogVisibilityChanges, changes),
+						Effect.raceFirst(
+							expired,
+							Effect.raceFirst(
+								Effect.forever(
+									PubSub.take(catalogChanges).pipe(
+										Effect.andThen(Queue.offer(refreshRequests, undefined)),
+									),
+								),
+								Effect.raceFirst(revoke, refresh),
+							),
+						),
+					);
+				}
 				const watchRevocations = Effect.forever(
 					PubSub.take(revocations).pipe(
 						Effect.flatMap((event) => {
