@@ -3,6 +3,7 @@ import type { ChatRef } from "@zuse/client-runtime/resource-ref";
 import type { Organization } from "@zuse/contracts";
 import { useMessages } from "@zuse/i18n/react";
 import { useEffect, useRef, useState } from "react";
+import { subscribeRendererAccount } from "../lib/renderer-account.ts";
 import {
 	type WorkspaceSharingState,
 	workspaceSharing,
@@ -38,6 +39,15 @@ export default function WorkspaceSharingDialog({
 	const [retry, setRetry] = useState(0);
 	const epoch = useRef(0);
 	const mutating = useRef(false);
+
+	useEffect(
+		() =>
+			subscribeRendererAccount(() => {
+				epoch.current++;
+				onClose();
+			}),
+		[onClose],
+	);
 
 	useEffect(() => {
 		const current = ++epoch.current;
@@ -97,6 +107,7 @@ export default function WorkspaceSharingDialog({
 		setError(null);
 		try {
 			await operation();
+			if (current !== epoch.current) return;
 			const next = await workspaceSharing.get(chatRef, organizationId);
 			if (current === epoch.current) {
 				setState(next);

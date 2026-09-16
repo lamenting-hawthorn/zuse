@@ -7,13 +7,18 @@ vi.mock("../../src/lib/session-timeline-client-bus.ts", () => ({
 	getRendererClientBus: () => mocks,
 }));
 
+import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 import { workspaceSharing } from "../../src/lib/workspace-sharing.ts";
 
 const ref = {
 	environmentId: EnvironmentId.make("remote"),
 	chatId: ChatId.make("chat"),
 };
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+	vi.resetAllMocks();
+	observeRendererAccount(null);
+	observeRendererAccount("alice");
+});
 
 it("uses the selected environment's existing client without opening another connection", async () => {
 	const list = vi.fn(() => Effect.succeed([]));
@@ -46,4 +51,21 @@ it("fails closed when the selected environment is disconnected", async () => {
 	await expect(workspaceSharing.setShared(ref, "org", true)).rejects.toThrow(
 		"Environment is not connected",
 	);
+});
+
+it("rejects a completed grant mutation after an account switch instead of refreshing under the new account", async () => {
+	const completion = Promise.withResolvers<void>();
+	mocks.client.mockReturnValue({
+		"organizations.setWorkspaceGrant": () =>
+			Effect.promise(() => completion.promise),
+	});
+	const refresh = vi.fn();
+	const pending = workspaceSharing
+		.setGrant(ref, "org", "user", "viewer")
+		.then(refresh);
+	observeRendererAccount("bob");
+	observeRendererAccount("alice");
+	completion.resolve();
+	await expect(pending).rejects.toThrow("connection account changed");
+	expect(refresh).not.toHaveBeenCalled();
 });

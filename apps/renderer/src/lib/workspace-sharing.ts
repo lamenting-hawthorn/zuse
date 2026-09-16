@@ -1,17 +1,25 @@
 import type { ChatRef } from "@zuse/client-runtime/resource-ref";
 import { Effect } from "effect";
+import {
+	assertRendererAccountCurrent,
+	rendererAccountSnapshot,
+} from "./renderer-account.ts";
 import type { MemoizeClient } from "./rpc-client.ts";
 import { getRendererClientBus } from "./session-timeline-client-bus.ts";
 
 /** Transient access settings use the environment's existing connected client. */
-const run = <A>(
+const run = async <A>(
 	ref: ChatRef,
 	operation: (client: MemoizeClient) => Effect.Effect<A, unknown>,
 ): Promise<A> => {
+	const account = rendererAccountSnapshot();
 	const client = getRendererClientBus().client(ref.environmentId);
-	if (client === null)
-		return Promise.reject(new Error("Environment is not connected"));
-	return Effect.runPromise(operation(client));
+	if (client === null) throw new Error("Environment is not connected");
+	try {
+		return await Effect.runPromise(operation(client));
+	} finally {
+		assertRendererAccountCurrent(account);
+	}
 };
 
 export const workspaceSharing = {
