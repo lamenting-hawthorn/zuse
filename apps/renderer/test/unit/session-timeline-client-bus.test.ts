@@ -45,6 +45,7 @@ import {
 	registerSessionTimelineCheckpointSynchronizer,
 	registerSessionTimelineOlderPageSynchronizer,
 	rehydrateRendererCommandPayload,
+	rendererResourceCacheNamespace,
 	resetSessionTimelineClientBus,
 	resetSessionTimelineClientBusForTest,
 	restartProvisionalSessionTimeline,
@@ -68,6 +69,36 @@ const sessionId = SessionId.make("timeline-session");
 const ref = { environmentId, sessionId } as const;
 
 describe("renderer session timeline ClientBus adapter", () => {
+	it("uses one cache namespace rule for registered accounts and device resources", () => {
+		expect(
+			rendererResourceCacheNamespace(EnvironmentId.make("local")),
+		).toBeUndefined();
+		expect(rendererResourceCacheNamespace(environmentId)).toBeNull();
+		observeRendererAccount("cache-first");
+		const firstRegistration = registerEnvironmentActivationForTest(
+			environmentId,
+			async () => undefined,
+			undefined,
+			"cloud-workspace",
+		);
+		const first = rendererResourceCacheNamespace(environmentId);
+		expect(first).toBe(JSON.stringify(["account", "cache-first"]));
+		observeRendererAccount("cache-second");
+		expect(rendererResourceCacheNamespace(environmentId)).toBeNull();
+		const secondRegistration = registerEnvironmentActivationForTest(
+			environmentId,
+			async () => undefined,
+			undefined,
+			"cloud-workspace",
+		);
+		expect(rendererResourceCacheNamespace(environmentId)).toBe(
+			JSON.stringify(["account", "cache-second"]),
+		);
+		firstRegistration();
+		expect(rendererResourceCacheNamespace(environmentId)).not.toBe(first);
+		secondRegistration();
+		expect(rendererResourceCacheNamespace(environmentId)).toBeNull();
+	});
 	afterEach(() => {
 		vi.restoreAllMocks();
 		resetSessionTimelineClientBusForTest();

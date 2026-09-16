@@ -1252,11 +1252,23 @@ export const registerRendererResourceDriver = (
 	};
 };
 
+const authorityFor = (environmentId: EnvironmentId) =>
+	activationByEnvironment.get(environmentId)?.account ??
+	rendererEnvironmentCommandAuthority(environmentId);
+
+export const rendererResourceCacheNamespace = (
+	environmentId: EnvironmentId,
+): string | null | undefined => {
+	const authority = authorityFor(environmentId);
+	if (authority === "device") return undefined;
+	return authority === rendererAccountSnapshot() &&
+		typeof authority.subject === "string"
+		? JSON.stringify(["account", authority.subject])
+		: null;
+};
+
 const createBus = (): ClientBus<MemoizeClient> => {
 	let bus: ClientBus<MemoizeClient>;
-	const authorityFor = (environmentId: EnvironmentId) =>
-		activationByEnvironment.get(environmentId)?.account ??
-		rendererEnvironmentCommandAuthority(environmentId);
 	bus = new ClientBus<MemoizeClient>({
 		...createRendererCommandAuthority(authorityFor),
 		resolver: environmentResolver,
@@ -1264,14 +1276,8 @@ const createBus = (): ClientBus<MemoizeClient> => {
 			key.kind === "session-timeline" &&
 			isCloudTimelineEnvironment(key.ref.environmentId),
 		persistence: rendererResourcePersistence,
-		resourceCacheNamespaceFor: (key) => {
-			const authority = authorityFor(key.ref.environmentId);
-			if (authority === "device") return undefined;
-			return authority === rendererAccountSnapshot() &&
-				typeof authority.subject === "string"
-				? JSON.stringify(["account", authority.subject])
-				: null;
-		},
+		resourceCacheNamespaceFor: (key) =>
+			rendererResourceCacheNamespace(key.ref.environmentId),
 		outbox: commandOutbox,
 		commandExecutor: executeSessionCommand,
 		commandTransportFor: (environmentId, kind) =>

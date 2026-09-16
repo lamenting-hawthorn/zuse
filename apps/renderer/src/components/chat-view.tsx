@@ -36,6 +36,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	useSyncExternalStore,
 } from "react";
 import { usePrefersReducedMotion } from "../hooks/use-media-query.ts";
 import { deriveChatAttentionState } from "../lib/chat-attention-state.ts";
@@ -63,6 +64,10 @@ import { useEnvironmentPermissions } from "../lib/environment-permissions-client
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
 import { markRendererInteraction } from "../lib/performance-marks.ts";
 import {
+	rendererAccountSnapshot,
+	subscribeRendererAccount,
+} from "../lib/renderer-account.ts";
+import {
 	clearSessionCommandError,
 	isRecoveredPreAckSessionError,
 	pendingSessionCommandError,
@@ -71,7 +76,10 @@ import {
 } from "../lib/session-actions.ts";
 import type { SessionRuntimeState } from "../lib/session-runtime-state.ts";
 import { timelineReadingPositionStore } from "../lib/session-timeline-cache.ts";
-import { restartProvisionalSessionTimeline } from "../lib/session-timeline-client-bus.ts";
+import {
+	rendererResourceCacheNamespace,
+	restartProvisionalSessionTimeline,
+} from "../lib/session-timeline-client-bus.ts";
 import { useRendererSessionTimeline } from "../lib/session-timeline-hooks.ts";
 import { workspaceCreationProgressIsActive } from "../lib/setup-card-visibility.ts";
 import {
@@ -226,6 +234,15 @@ export function ChatView({
 			),
 		[sessionId, timeline.presentation.interactions, questionAttachments.data],
 	);
+	const account = useSyncExternalStore(
+		subscribeRendererAccount,
+		rendererAccountSnapshot,
+		rendererAccountSnapshot,
+	);
+	const readingNamespace = rendererResourceCacheNamespace(
+		sessionRef.environmentId,
+	);
+	const readingAccount = readingNamespace === undefined ? null : account;
 	useEffect(() => {
 		if (cloudSummary !== null) return;
 		restartProvisionalSessionTimeline(sessionRef, timeline.view);
@@ -456,12 +473,12 @@ export function ChatView({
 
 	const persistReadingPosition = useCallback(() => {
 		const position = captureReadingPosition();
-		if (position !== null) {
+		if (position !== null && readingNamespace !== null) {
 			void timelineReadingPositionStore
-				?.save(sessionRef, position)
+				?.save(sessionRef, position, readingNamespace)
 				.catch(() => {});
 		}
-	}, [captureReadingPosition, sessionRef]);
+	}, [captureReadingPosition, sessionRef, readingNamespace]);
 	const persistReadingPositionRef = useRef(persistReadingPosition);
 	persistReadingPositionRef.current = persistReadingPosition;
 
@@ -509,15 +526,22 @@ export function ChatView({
 		currentReadingPositionRef.current = null;
 		void (async () => {
 			const position =
-				(await timelineReadingPositionStore
-					?.load(sessionRef)
-					.catch(() => null)) ?? null;
-			if (!cancelled) setReadingState({ sessionId, position });
+				readingNamespace === null
+					? null
+					: ((await timelineReadingPositionStore
+							?.load(sessionRef, readingNamespace)
+							.catch(() => null)) ?? null);
+			if (
+				!cancelled &&
+				(readingAccount === null ||
+					rendererAccountSnapshot() === readingAccount)
+			)
+				setReadingState({ sessionId, position });
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [sessionId, sessionRef]);
+	}, [sessionId, sessionRef, readingNamespace, readingAccount]);
 
 	useEffect(() => {
 		coordinator.attach({
@@ -565,15 +589,21 @@ export function ChatView({
 			if (scrollFrameRef.current !== null) {
 				cancelAnimationFrame(scrollFrameRef.current);
 			}
-			const position = currentReadingPositionRef.current;
-			if (position?.sessionId === sessionId) {
-				void timelineReadingPositionStore
-					?.save(sessionRef, position)
-					.catch(() => {});
-			}
 			coordinator.dispose();
 		},
-		[coordinator, sessionId, sessionRef],
+		[coordinator],
+	);
+
+	useEffect(
+		() => () => {
+			const position = currentReadingPositionRef.current;
+			if (position?.sessionId === sessionId && readingNamespace !== null) {
+				void timelineReadingPositionStore
+					?.save(sessionRef, position, readingNamespace)
+					.catch(() => {});
+			}
+		},
+		[sessionId, sessionRef, readingNamespace],
 	);
 
 	useEffect(() => {

@@ -396,8 +396,11 @@ class IndexedDbTimelineReadingPositionStore
 		return this.database;
 	}
 
-	async load(ref: SessionRef): Promise<TimelineReadingPosition | null> {
-		const storageKey = environmentSessionCacheKey(ref);
+	async load(
+		ref: SessionRef,
+		namespace?: string,
+	): Promise<TimelineReadingPosition | null> {
+		const storageKey = environmentSessionCacheKey(ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
 			READING_POSITION_STORE_NAME,
@@ -414,8 +417,9 @@ class IndexedDbTimelineReadingPositionStore
 	async save(
 		ref: SessionRef,
 		position: TimelineReadingPosition,
+		namespace?: string,
 	): Promise<void> {
-		const storageKey = environmentSessionCacheKey(ref);
+		const storageKey = environmentSessionCacheKey(ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
 			READING_POSITION_STORE_NAME,
@@ -432,8 +436,8 @@ class IndexedDbTimelineReadingPositionStore
 		await transactionComplete(transaction);
 	}
 
-	async remove(ref: SessionRef): Promise<void> {
-		const storageKey = environmentSessionCacheKey(ref);
+	async remove(ref: SessionRef, namespace?: string): Promise<void> {
+		const storageKey = environmentSessionCacheKey(ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
 			READING_POSITION_STORE_NAME,

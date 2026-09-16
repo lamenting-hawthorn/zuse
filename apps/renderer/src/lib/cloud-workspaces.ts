@@ -47,6 +47,7 @@ import {
 	registerEnvironmentActivation,
 	registerSessionTimelineCheckpointSynchronizer,
 	registerSessionTimelineOlderPageSynchronizer,
+	rendererResourceCacheNamespace,
 	retryRendererEnvironmentConnection,
 	stopCloudHistory,
 } from "../lib/session-timeline-client-bus.ts";
@@ -602,10 +603,12 @@ const removeDeletedCloudPlaceholders = (
 			environmentId: EnvironmentId.make(summary.workspaceId),
 			sessionId: summary.initialSessionId,
 		};
-		void Promise.all([
-			sessionTimelineCache?.remove(ref),
-			timelineReadingPositionStore?.remove(ref),
-		]).catch(() => undefined);
+		const namespace = rendererResourceCacheNamespace(ref.environmentId);
+		if (namespace !== null)
+			void Promise.all([
+				sessionTimelineCache?.remove(ref, namespace),
+				timelineReadingPositionStore?.remove(ref, namespace),
+			]).catch(() => undefined);
 	}
 	const sessionIds = new Set(
 		removed.map((summary) => summary.initialSessionId),

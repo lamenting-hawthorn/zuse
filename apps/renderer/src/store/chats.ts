@@ -52,6 +52,7 @@ import {
 import {
 	dispatchSessionCommand,
 	getRendererClientBus,
+	rendererResourceCacheNamespace,
 	restartSessionTimeline,
 } from "../lib/session-timeline-client-bus.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
@@ -1847,6 +1848,11 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
 	remove: async (chatId) => {
 		const ref = activeChatRef(chatId);
 		const cloud = cloudSummaryForChat(chatId);
+		const cacheEnvironmentId =
+			cloud === null
+				? ref.environmentId
+				: EnvironmentId.make(cloud.workspaceId);
+		const cacheNamespace = rendererResourceCacheNamespace(cacheEnvironmentId);
 		set({ error: null });
 		if (get().pendingCreationByChat[chatId]?.phase === "failed") {
 			get().discardCreation(chatId);
@@ -1891,19 +1897,16 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
 			const deletedSessions = projectSessions.filter(
 				(session) => session.chatId === chatId,
 			);
-			const cacheEnvironmentId =
-				cloud === null
-					? ref.environmentId
-					: EnvironmentId.make(cloud.workspaceId);
 			await Promise.all(
 				deletedSessions.flatMap((session) => {
+					if (cacheNamespace === null) return [];
 					const sessionRef = {
 						environmentId: cacheEnvironmentId,
 						sessionId: session.id,
 					};
 					return [
-						sessionTimelineCache?.remove(sessionRef),
-						timelineReadingPositionStore?.remove(sessionRef),
+						sessionTimelineCache?.remove(sessionRef, cacheNamespace),
+						timelineReadingPositionStore?.remove(sessionRef, cacheNamespace),
 					];
 				}),
 			);
