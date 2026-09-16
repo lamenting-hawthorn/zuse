@@ -1733,8 +1733,15 @@ export class ClientBus<Client> {
 						this.commandAcceptances
 							.get(command.commandId)
 							?.resolveAccepted(acceptance);
-						if (!this.disposed)
-							this.commandCancels.set(command.commandId, handle.cancel);
+						if (!this.disposed) {
+							const cancel = handle.cancel;
+							this.commandCancels.set(command.commandId, async () => {
+								assertAuthority();
+								const status = await cancel();
+								assertAuthority();
+								return status;
+							});
+						}
 						this.updateCommandResource(command, (view) => ({
 							...view,
 							pendingCommands: view.pendingCommands.map((item) =>

@@ -226,8 +226,12 @@ on device-owned routes and are never assigned to whichever account signs in next
 Account replay requires the stored subject and a current route/account epoch;
 A -> B -> A invalidates existing attempts. Account commands cannot be rerouted
 through a device profile. Tests cover capture-once, unmodified replay, legacy
-denial, foreign-owner denial, and matching account/device behavior. Authority loss
-during long-lived waits/cancellation and receipt/cache isolation still require verification. Other
+denial, foreign-owner denial, and matching account/device behavior. Retained mailbox
+cancellation callbacks now check captured authority before sending and again after
+the response. Tests cover direct cancel-by-ID and handle cancellation across
+authority changes, preserving the original durable acceptance. This prevents new
+unauthorized cancel requests; it cannot retract a request already sent while
+authorized. Long-lived waits and receipt/cache isolation still require verification. Other
 asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier

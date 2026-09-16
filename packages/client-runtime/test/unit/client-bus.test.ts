@@ -207,6 +207,78 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it.each([
+		false,
+		true,
+	])("fences mailbox cancellation before sending and after completion (in flight: %s)", async (inFlight) => {
+		const persistence = new MemoryPersistence();
+		const commandId = CommandId.make("cancel-authority");
+		let epoch = 0;
+		const status = {
+			commandId,
+			workspaceSequence: 1,
+			revision: 3,
+			fingerprint: "hmac-sha256:test-envelope",
+			state: "cancelled" as const,
+			everLeased: false,
+			updatedAt: 4,
+		};
+		const cancellation = deferred<typeof status>();
+		const cancel = vi.fn(() => cancellation.promise);
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandScopeFor: () => {
+				const captured = epoch;
+				return () => captured === epoch;
+			},
+			commandExecutor: {
+				execute: async () => {
+					throw new Error("live executor must not run");
+				},
+			},
+			commandTransportFor: () =>
+				testCloudTransport(() => ({
+					accepted: Promise.resolve({
+						commandId,
+						workspaceSequence: 1,
+						revision: 2,
+						acceptedAt: 3,
+						state: "accepted",
+					}),
+					result: new Promise<never>(() => undefined),
+					cancel,
+				})),
+		});
+		const command: ClientCommand = {
+			kind: "messages.send",
+			commandId,
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+		};
+		const handle = bus.dispatchHandle(command);
+		void handle.result.catch(() => undefined);
+		await handle.accepted;
+		if (!inFlight) epoch++;
+		const pending = inFlight ? handle.cancel() : bus.cancelCommand(commandId);
+		const rejected = expect(pending).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		if (inFlight) {
+			expect(cancel).toHaveBeenCalledOnce();
+			epoch++;
+			cancellation.resolve(status);
+		}
+		await rejected;
+		if (!inFlight) expect(cancel).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(commandId)?.acceptance?.state).toBe(
+			"accepted",
+		);
+		await bus.dispose();
+	});
 	it("captures ownership for new dispatch but never retroactively assigns replay ownership", async () => {
 		const persistence = new MemoryPersistence();
 		const legacy: ClientCommand = {
