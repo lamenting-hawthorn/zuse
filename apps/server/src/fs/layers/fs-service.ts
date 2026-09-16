@@ -103,6 +103,51 @@ export const FsServiceLive = Layer.effect(
 		const fs = yield* FileSystem.FileSystem;
 		const pathSvc = yield* Path.Path;
 		const writeSerial = new KeyedEffectSerialWorker<string>();
+		const isInsideRoot = (root: string, target: string) => {
+			const relative = pathSvc.relative(root, target);
+			return (
+				relative !== ".." &&
+				!relative.startsWith(`..${pathSvc.sep}`) &&
+				!pathSvc.isAbsolute(relative)
+			);
+		};
+		const redactReadError = (error: FsReadError) =>
+			Effect.serviceOption(WorkspaceFileAccess).pipe(
+				Effect.flatMap((access) =>
+					Effect.fail(
+						Option.isNone(access)
+							? error
+							: new FsReadError({
+									folderId: error.folderId,
+									path: error.path,
+									reason: "File is unavailable",
+								}),
+					),
+				),
+			);
+		const readEntry = Effect.fn("FsService.readEntry")(function* (
+			root: string,
+			entry: string,
+			scoped: boolean,
+		) {
+			const resolved = scoped
+				? yield* fs.realPath(entry).pipe(Effect.option)
+				: Option.some(entry);
+			if (
+				Option.isNone(resolved) ||
+				(scoped && !isInsideRoot(root, resolved.value))
+			)
+				return null;
+			const stat = yield* fs.stat(resolved.value).pipe(Effect.option);
+			if (
+				Option.isNone(stat) ||
+				(scoped &&
+					stat.value.type !== "File" &&
+					stat.value.type !== "Directory")
+			)
+				return null;
+			return { abs: resolved.value, stat: stat.value };
+		});
 
 		// Resolve a project-root-relative request path to an absolute path,
 		// failing with the appropriate wire error if the folder is unknown or
@@ -176,15 +221,7 @@ export const FsServiceLive = Layer.effect(
 								}),
 						),
 					);
-					const relative = pathSvc.relative(
-						canonical.root,
-						canonical.requested,
-					);
-					if (
-						relative === ".." ||
-						relative.startsWith(`..${pathSvc.sep}`) ||
-						pathSvc.isAbsolute(relative)
-					)
+					if (!isInsideRoot(canonical.root, canonical.requested))
 						return yield* new FsPathOutsideError({ folderId, path: relPath });
 					// Read the resolved path, not the symlink we just inspected.
 					return { rootAbs: canonical.root, requestedAbs: canonical.requested };
@@ -206,7 +243,10 @@ export const FsServiceLive = Layer.effect(
 			worktreeId,
 		) =>
 			Effect.gen(function* () {
-				const { requestedAbs } = yield* resolveInsideFolder(
+				const scoped = Option.isSome(
+					yield* Effect.serviceOption(WorkspaceFileAccess),
+				);
+				const { rootAbs, requestedAbs } = yield* resolveInsideFolder(
 					folderId,
 					relPath,
 					worktreeId,
@@ -233,10 +273,10 @@ export const FsServiceLive = Layer.effect(
 					(name) =>
 						Effect.gen(function* () {
 							const entryAbs = pathSvc.join(requestedAbs, name);
-							const stat = yield* fs.stat(entryAbs).pipe(Effect.option);
-							if (stat._tag === "None") return null;
+							const entry = yield* readEntry(rootAbs, entryAbs, scoped);
+							if (entry === null) return null;
 							const kind =
-								stat.value.type === "Directory" ? "directory" : "file";
+								entry.stat.type === "Directory" ? "directory" : "file";
 							if (kind === "directory" && SKIP_DIRS.has(name)) return null;
 							const childRel = toForwardSlash(
 								relPath === "" ? name : `${relPath}/${name}`,
@@ -263,7 +303,7 @@ export const FsServiceLive = Layer.effect(
 					});
 				});
 				return entries;
-			});
+			}).pipe(Effect.catchTag("FsReadError", redactReadError));
 
 		const watchTree: FsService["Service"]["watchTree"] = (
 			folderId,
@@ -394,6 +434,9 @@ export const FsServiceLive = Layer.effect(
 			worktreeId,
 		) =>
 			Effect.gen(function* () {
+				const scoped = Option.isSome(
+					yield* Effect.serviceOption(WorkspaceFileAccess),
+				);
 				const { rootAbs } = yield* resolveInsideFolder(
 					folderId,
 					"",
@@ -404,6 +447,7 @@ export const FsServiceLive = Layer.effect(
 				const deferredDirectories: string[] = [];
 				let truncated = false;
 				let estimatedBytes = 0;
+				const ancestors = new Set<string>();
 
 				const walk = (
 					absDir: string,
@@ -411,6 +455,7 @@ export const FsServiceLive = Layer.effect(
 				): Effect.Effect<void, FsReadError> =>
 					Effect.gen(function* () {
 						if (truncated) return;
+						ancestors.add(absDir);
 						const names = yield* fs.readDirectory(absDir).pipe(
 							Effect.mapError(
 								(cause) =>
@@ -426,17 +471,17 @@ export const FsServiceLive = Layer.effect(
 							(name) =>
 								Effect.gen(function* () {
 									const entryAbs = pathSvc.join(absDir, name);
-									const stat = yield* fs.stat(entryAbs).pipe(Effect.option);
-									if (stat._tag === "None") return null;
+									const entry = yield* readEntry(rootAbs, entryAbs, scoped);
+									if (entry === null) return null;
 									const kind =
-										stat.value.type === "Directory" ? "directory" : "file";
+										entry.stat.type === "Directory" ? "directory" : "file";
 									if (kind === "directory" && SKIP_DIRS.has(name)) return null;
 									const rel = toForwardSlash(
 										relDir === "" ? name : `${relDir}/${name}`,
 									);
 									const deferred =
 										kind === "directory" && isDeferredPath(rel, ignoredDirs);
-									return { name, kind, abs: entryAbs, rel, deferred } as const;
+									return { name, kind, abs: entry.abs, rel, deferred } as const;
 								}),
 							{ concurrency: "unbounded" },
 						);
@@ -467,13 +512,20 @@ export const FsServiceLive = Layer.effect(
 								deferredDirectories.push(row.rel);
 							} else if (row.kind === "directory") {
 								out.push(renderedPath);
-								yield* walk(row.abs, row.rel);
+								if (!scoped || !ancestors.has(row.abs))
+									yield* walk(row.abs, row.rel);
 								if (truncated) return;
 							} else {
 								out.push(renderedPath);
 							}
 						}
-					});
+					}).pipe(
+						Effect.ensuring(
+							Effect.sync(() => {
+								ancestors.delete(absDir);
+							}),
+						),
+					);
 
 				yield* walk(rootAbs, "");
 				return {
@@ -481,7 +533,7 @@ export const FsServiceLive = Layer.effect(
 					deferredDirectories,
 					truncated,
 				};
-			});
+			}).pipe(Effect.catchTag("FsReadError", redactReadError));
 
 		// Rename/move for the file tree's inline rename + drag-and-drop. Both
 		// endpoints are containment-validated; refuses to clobber an existing dest.
@@ -580,23 +632,7 @@ export const FsServiceLive = Layer.effect(
 				} catch {
 					return { kind: "binary" as const, bytes, size };
 				}
-			}).pipe(
-				Effect.catchTag("FsReadError", (error) =>
-					Effect.serviceOption(WorkspaceFileAccess).pipe(
-						Effect.flatMap((access) =>
-							Effect.fail(
-								Option.isNone(access)
-									? error
-									: new FsReadError({
-											folderId,
-											path: relPath,
-											reason: "File is unavailable",
-										}),
-							),
-						),
-					),
-				),
-			);
+			}).pipe(Effect.catchTag("FsReadError", redactReadError));
 
 		const writeFile: FsService["Service"]["writeFile"] = (
 			commandId,

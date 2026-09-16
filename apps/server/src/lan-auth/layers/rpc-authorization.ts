@@ -99,7 +99,11 @@ export const RpcAuthorizationLive = Layer.effect(
 						return;
 					}
 					let chatId: ChatId;
-					if (rpc._tag === "fs.readFile") {
+					if (
+						rpc._tag === "fs.readFile" ||
+						rpc._tag === "fs.tree" ||
+						rpc._tag === "fs.listPaths"
+					) {
 						const { folderId, worktreeId } = yield* Schema.decodeUnknownEffect(
 							Schema.Struct({
 								folderId: FolderId,

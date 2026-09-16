@@ -107,6 +107,13 @@ describe("filesystem service", () => {
 		);
 		await nodeFs.symlink("shared.txt", nodePath.join(project, "inside.txt"));
 		await nodeFs.symlink("..", nodePath.join(project, "outside"));
+		await nodeFs.symlink(".", nodePath.join(project, "cycle"));
+		await nodeFs.mkdir(nodePath.join(project, "nested"));
+		await nodeFs.writeFile(
+			nodePath.join(project, "nested", "child.txt"),
+			"child",
+		);
+		await nodeFs.symlink("nested", nodePath.join(project, "alias"));
 		const isolated = makeRuntime(project);
 		const read = (path: string, shared = true, requestedId = folderId) => {
 			const effect = Effect.flatMap(FsService, (service) =>
@@ -124,6 +131,57 @@ describe("filesystem service", () => {
 			);
 		};
 		try {
+			const browse = <A, E>(effect: Effect.Effect<A, E, FsService>) =>
+				isolated.runPromise(
+					effect.pipe(
+						Effect.provideService(WorkspaceFileAccess, {
+							folderId,
+							worktreeId: null,
+						}),
+					),
+				);
+			const entries = await browse(
+				Effect.flatMap(FsService, (service) => service.tree(folderId, "")),
+			);
+			expect(entries.map((entry) => entry.name)).toEqual([
+				"alias",
+				"cycle",
+				"nested",
+				"inside.txt",
+				"shared.txt",
+			]);
+			const paths = await browse(
+				Effect.flatMap(FsService, (service) => service.listPaths(folderId)),
+			);
+			expect(paths).toEqual({
+				paths: [
+					"alias/",
+					"alias/child.txt",
+					"cycle/",
+					"nested/",
+					"nested/child.txt",
+					"inside.txt",
+					"shared.txt",
+				],
+				truncated: false,
+			});
+			await expect(
+				browse(
+					Effect.flatMap(FsService, (service) =>
+						service.tree(folderId, "outside"),
+					),
+				),
+			).rejects.toMatchObject({ _tag: "FsPathOutsideError" });
+			await expect(
+				browse(
+					Effect.flatMap(FsService, (service) =>
+						service.tree(folderId, "missing"),
+					),
+				),
+			).rejects.toMatchObject({
+				_tag: "FsReadError",
+				reason: "File is unavailable",
+			});
 			await expect(read("shared.txt")).resolves.toMatchObject({
 				kind: "text",
 				content: "shared",

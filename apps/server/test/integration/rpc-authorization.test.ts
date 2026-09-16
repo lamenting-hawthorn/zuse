@@ -33,6 +33,20 @@ import { ConnectionIdentity } from "../../src/lan-auth/services/connection-ident
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
+	Rpc.make("fs.tree", {
+		payload: {
+			folderId: FolderId,
+			worktreeId: Schema.optional(Schema.NullOr(WorktreeId)),
+		},
+		success: Schema.String,
+	}),
+	Rpc.make("fs.listPaths", {
+		payload: {
+			folderId: FolderId,
+			worktreeId: Schema.optional(Schema.NullOr(WorktreeId)),
+		},
+		success: Schema.String,
+	}),
 	Rpc.make("fs.readFile", {
 		payload: {
 			folderId: FolderId,
@@ -97,15 +111,18 @@ const chatCatalogStream = () =>
 		),
 		Stream.never,
 	).pipe(withCatalogChanges);
-const handlers = Rpcs.toLayer({
-	"fs.readFile": () =>
-		Effect.serviceOption(WorkspaceFileAccess).pipe(
-			Effect.map((scope) =>
-				scope._tag === "Some"
-					? `${scope.value.folderId}:${scope.value.worktreeId ?? "main"}`
-					: "host",
-			),
+const fileScopeResult = () =>
+	Effect.serviceOption(WorkspaceFileAccess).pipe(
+		Effect.map((scope) =>
+			scope._tag === "Some"
+				? `${scope.value.folderId}:${scope.value.worktreeId ?? "main"}`
+				: "host",
 		),
+	);
+const handlers = Rpcs.toLayer({
+	"fs.readFile": fileScopeResult,
+	"fs.tree": fileScopeResult,
+	"fs.listPaths": fileScopeResult,
 	"chat.streamChanges": chatCatalogStream,
 	"session.streamChanges": chatCatalogStream,
 	"chat.creation.stream": chatCatalogStream,
@@ -253,6 +270,29 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				}),
 			),
 		).resolves.toBe("project:main");
+		for (const browse of [
+			(client: Effect.Success<typeof makeClient>, worktreeId?: WorktreeId) =>
+				client("fs.tree", { folderId: FolderId.make("project"), worktreeId }),
+			(client: Effect.Success<typeof makeClient>, worktreeId?: WorktreeId) =>
+				client("fs.listPaths", {
+					folderId: FolderId.make("project"),
+					worktreeId,
+				}),
+		]) {
+			await expect(
+				call(guestIdentity, (client) => browse(client)),
+			).resolves.toBe("project:main");
+			await expect(
+				call(guestIdentity, (client) =>
+					browse(client, WorktreeId.make("private-worktree")),
+				),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+			await expect(
+				call({ ...guestIdentity, subject: "stranger" }, (client) =>
+					browse(client),
+				),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		}
 		await runtime.runPromise(
 			Effect.gen(function* () {
 				const sql = yield* SqlClient.SqlClient;
