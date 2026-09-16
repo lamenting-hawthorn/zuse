@@ -453,14 +453,16 @@ const apiFetch = async (
 		readonly body?: unknown;
 	},
 ): Promise<Response> => {
+	const account = rendererAccountSnapshot();
 	const target = `${rendererApiUrl()}${path}`;
 	const proof = await signDpopProof({ method: init.method, url: target });
-	const workosToken =
-		init.token === undefined ? await hostedAccessToken() : null;
+	assertRendererAccountCurrent(account);
+	const workosToken = init.token === undefined ? await hostedAccessToken() : null;
+	assertRendererAccountCurrent(account);
 	if (init.token === undefined && workosToken === null) {
 		throw new Error("hosted_signed_out");
 	}
-	return fetch(target, {
+	const response = await fetch(target, {
 		signal: AbortSignal.timeout(15_000),
 		method: init.method,
 		headers: {
@@ -474,10 +476,14 @@ const apiFetch = async (
 				: { "content-type": "application/json" }),
 		},
 		body: init.body === undefined ? undefined : JSON.stringify(init.body),
+		signal: AbortSignal.timeout(15_000),
 	});
+	assertRendererAccountCurrent(account);
+	return response;
 };
 
 const ensureApiAccess = async (): Promise<string> => {
+	const account = rendererAccountSnapshot();
 	if (apiAccess !== null && apiAccess.expiresAt - Date.now() > 60_000) {
 		return apiAccess.token;
 	}
@@ -487,6 +493,7 @@ const ensureApiAccess = async (): Promise<string> => {
 		readonly expiresIn?: unknown;
 		readonly error?: unknown;
 	};
+	assertRendererAccountCurrent(account);
 	if (!response.ok || typeof body.accessToken !== "string") {
 		throw new Error(
 			typeof body.error === "string"
@@ -531,9 +538,12 @@ export const hostedAccountRequest = async (
 };
 
 export const listHostedEnvironments = async (): Promise<ApiEnvironmentList> => {
+	const account = rendererAccountSnapshot();
 	const response = await hostedAccountRequest(ApiPaths.environments);
 	if (!response.ok) throw new Error(`api_environments_${response.status}`);
-	return (await response.json()) as ApiEnvironmentList;
+	const environments = (await response.json()) as ApiEnvironmentList;
+	assertRendererAccountCurrent(account);
+	return environments;
 };
 
 /** Presence checks do not connect to or wake the runtime. */
@@ -568,27 +578,24 @@ export const removeHostedComputer = async (
 };
 
 export const registerHostedClient = async (): Promise<void> => {
+	const account = rendererAccountSnapshot();
 	const token = await ensureApiAccess();
+	assertRendererAccountCurrent(account);
 	const key = await dpopKey();
+	assertRendererAccountCurrent(account);
 	let deviceId = localStorage.getItem(DEVICE_ID_KEY);
 	if (deviceId === null) {
 		deviceId = crypto.randomUUID();
 		localStorage.setItem(DEVICE_ID_KEY, deviceId);
 	}
-	const target = `${rendererApiUrl()}${ApiPaths.devices}`;
-	const response = await fetch(target, {
-		signal: AbortSignal.timeout(15_000),
+	const response = await apiFetch(ApiPaths.devices, {
 		method: "POST",
-		headers: {
-			authorization: `DPoP ${token}`,
-			dpop: await signDpopProof({ method: "POST", url: target }),
-			"content-type": "application/json",
-		},
-		body: JSON.stringify({
+		token,
+		body: {
 			deviceId,
 			platform: "web",
 			dpopJwk: key.publicJwk,
-		}),
+		},
 	});
 	if (!response.ok) throw new Error(`api_device_${response.status}`);
 };
@@ -604,7 +611,9 @@ export const connectHostedEnvironment = async (
 	environmentId: string,
 	options: { lease?: boolean } = {},
 ): Promise<ApiConnectGrant> => {
+	const account = rendererAccountSnapshot();
 	const token = await ensureApiAccess();
+	assertRendererAccountCurrent(account);
 	const response = await apiFetch(ApiPaths.connect(environmentId), {
 		method: "POST",
 		token,
@@ -616,6 +625,7 @@ export const connectHostedEnvironment = async (
 	const body = (await response.json().catch(() => ({}))) as
 		| ApiConnectGrant
 		| { readonly error?: unknown };
+	assertRendererAccountCurrent(account);
 	if (!response.ok || !("connectToken" in body)) {
 		throw new Error(
 			"error" in body && typeof body.error === "string"

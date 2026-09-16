@@ -9,10 +9,14 @@ import {
 	hostedSignedIn,
 	isHostedProduct,
 	removeHostedComputer,
+	listHostedEnvironments,
 	resolveHostedWorkosClientId,
 	subscribeHostedAuth,
 } from "../../src/lib/hosted-connect.ts";
-import { rendererAccountSnapshot } from "../../src/lib/renderer-account.ts";
+import {
+	observeRendererAccount,
+	rendererAccountSnapshot,
+} from "../../src/lib/renderer-account.ts";
 
 const sessionKey = "zuse.hosted.session.v1";
 const storageMock = (entries: [string, string][] = []) => {
@@ -130,6 +134,43 @@ describe("hosted account ownership", () => {
 		await expect(pending).resolves.toBe(false);
 		expect(sessionStorage.getItem(key)).toBeNull();
 		expect(rendererAccountSnapshot().subject).toBeNull();
+	});
+	it.each([
+		"headers",
+		"body",
+	])("discards an environment list when the account changes during %s", async (phase) => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		await hostedSignedIn();
+		const headers = Promise.withResolvers<Response>();
+		const body = Promise.withResolvers<unknown>();
+		const response = Response.json({ environments: [] });
+		const json = vi.spyOn(response, "json").mockReturnValue(body.promise);
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockReturnValue(headers.promise);
+		const pending = listHostedEnvironments();
+		const rejected = expect(pending).rejects.toThrow(
+			"The connection account changed",
+		);
+		await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+		if (phase === "body") {
+			headers.resolve(response);
+			await vi.waitFor(() => expect(json).toHaveBeenCalledOnce());
+		}
+		// Returning to the same subject must not revive the earlier request.
+		observeRendererAccount("another-account");
+		observeRendererAccount(user.id);
+		headers.resolve(response);
+		body.resolve({ environments: [] });
+		await rejected;
 	});
 });
 
