@@ -1,4 +1,5 @@
 {
+	"shared_session_read_only": "Read-only shared session",
 	"app_files_are_unavailable_because_this_directory_was_deleted": "Files are unavailable because this directory was deleted.",
 	"app_changes_are_unavailable_because_this_directory_was_deleted": "Changes are unavailable because this directory was deleted.",
 	"browser_access_gate_zuse_serve": "Zuse Serve",

@@ -36,7 +36,10 @@ import {
 	cloudSessionPlaceholder,
 	useCloudChatSummaryForSelection,
 } from "../lib/cloud-workspaces.ts";
-import { useActiveSessionById } from "../lib/environment-entity-hooks.ts";
+import {
+	useActiveSessionById,
+	useEnvironmentChat,
+} from "../lib/environment-entity-hooks.ts";
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
 
 import { useGitWorkspaceResource } from "../lib/git-workspace-client-bus.ts";
@@ -372,6 +375,7 @@ export function MainShell() {
 	);
 	const selectedChatKey =
 		selectedChatRef === null ? null : rightPaneKey(selectedChatRef);
+	const selectedChat = useEnvironmentChat(selectedChatRef);
 	const pendingCreation = useChatsStore((s) =>
 		selectedChatId === null
 			? null
@@ -682,13 +686,13 @@ export function MainShell() {
 															</Suspense>
 														) : null}
 														<Suspense fallback={<ComposerFallback />}>
-															<ChatComposer
+															{selectedChat?.readOnly === true ? <p role="status" className="py-3 text-center text-xs text-muted-foreground">{uiMessage("shell:shared_session_read_only")}</p> : <ChatComposer
 																key={selectedSession.id}
 																session={selectedSession}
 																environmentId={selectedEnvironmentId}
 																constrain={false}
 																directoryUnavailable={directoryUnavailable}
-															/>
+															/>}
 														</Suspense>
 													</div>
 												</div>

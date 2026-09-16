@@ -1,4 +1,5 @@
 {
+	"shared_session_read_only": "Schreibgeschützte gemeinsame Sitzung",
 	"app_files_are_unavailable_because_this_directory_was_deleted": "Dateien sind nicht verfügbar, da dieses Verzeichnis gelöscht wurde.",
 	"app_changes_are_unavailable_because_this_directory_was_deleted": "Die Änderungen sind nicht verfügbar, da dieses Verzeichnis gelöscht wurde.",
 	"browser_access_gate_zuse_serve": "Zuse Servieren",

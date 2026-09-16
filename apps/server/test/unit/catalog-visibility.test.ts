@@ -13,7 +13,9 @@ import {
 	CatalogVisibility,
 	CatalogVisibilityChanges,
 	filterChatCatalog,
+	filterChats,
 	filterSessionCatalog,
+	projectChatAccess,
 	withCatalogChanges,
 } from "../../src/collaboration/services/catalog-visibility.ts";
 
@@ -77,9 +79,35 @@ it("filters chat snapshots and updates without changing the host feed", async ()
 			source.pipe(Effect.provideService(CatalogVisibility, scope("shared"))),
 		),
 	).toEqual([
-		{ _tag: "snapshot", chats: [chat("shared")] },
-		{ _tag: "change", chat: chat("shared") },
+		{
+			_tag: "snapshot",
+			chats: [Chat.make({ ...chat("shared"), readOnly: true })],
+		},
+		{ _tag: "change", chat: Chat.make({ ...chat("shared"), readOnly: true }) },
 	]);
+});
+
+it("projects read-only guest access consistently for list and direct reads without mutating stored chats", async () => {
+	const shared = chat("shared");
+	const privateChat = chat("private");
+	expect(await Effect.runPromise(filterChats([shared, privateChat]))).toEqual([
+		shared,
+		privateChat,
+	]);
+	expect(await Effect.runPromise(projectChatAccess(shared))).toBe(shared);
+	const visible = await Effect.runPromise(
+		filterChats([shared, privateChat]).pipe(
+			Effect.provideService(CatalogVisibility, scope("shared")),
+		),
+	);
+	const direct = await Effect.runPromise(
+		projectChatAccess(shared).pipe(
+			Effect.provideService(CatalogVisibility, scope("shared")),
+		),
+	);
+	expect(visible).toEqual([direct]);
+	expect(direct.readOnly).toBe(true);
+	expect(shared.readOnly).toBeUndefined();
 });
 
 it("preserves session cursors while suppressing private changes and removal IDs", async () => {

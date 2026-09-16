@@ -1,4 +1,5 @@
-import type { SessionId } from "@zuse/contracts";
+import type { ChatRef } from "@zuse/client-runtime/resource-ref";
+import type { Chat, SessionId } from "@zuse/contracts";
 import { EnvironmentId } from "@zuse/contracts";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
 import {
@@ -6,6 +7,17 @@ import {
 	EMPTY_SESSIONS_BY_PROJECT,
 } from "./environment-entities.ts";
 import { useEnvironmentShellResource } from "./environment-shell-client-bus.ts";
+
+/** Read connection-scoped chat metadata from the existing catalog subscription. */
+export const useEnvironmentChat = (ref: ChatRef | null): Chat | null => {
+	const shell = useEnvironmentShellResource(ref?.environmentId ?? null).data;
+	if (ref === null || shell === null) return null;
+	for (const chats of Object.values(shell.chatsByProject)) {
+		const chat = chats.find((chat) => chat.id === ref.chatId);
+		if (chat !== undefined) return chat;
+	}
+	return null;
+};
 
 /** Environment entities come directly from that environment's ClientBus shell. */
 export const useEnvironmentEntities = (environmentId: string) => {

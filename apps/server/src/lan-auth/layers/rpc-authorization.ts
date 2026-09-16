@@ -182,6 +182,8 @@ export const RpcAuthorizationLive = Layer.effect(
 						memberId: actor.memberId,
 						owner: grant === null,
 					};
+					if (rpc._tag === "chat.get")
+						catalogScope = { chats: new Set([chatId]), projects: new Set() };
 				}).pipe(
 					Effect.andThen(
 						Effect.suspend(() =>

@@ -1,4 +1,5 @@
 {
+	"shared_session_read_only": "只读共享会话",
 	"app_files_are_unavailable_because_this_directory_was_deleted": "文件不可用，因为该目录已被删除。",
 	"app_changes_are_unavailable_because_this_directory_was_deleted": "由于该目录已被删除，因此无法进行更改。",
 	"browser_access_gate_zuse_serve": "Zuse 发球",

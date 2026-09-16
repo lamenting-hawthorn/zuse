@@ -3,6 +3,7 @@ import type { ChatRef } from "@zuse/client-runtime/resource-ref";
 import { useMessages } from "@zuse/i18n/react";
 import { lazy, Suspense, useState } from "react";
 import { useAuth } from "../hooks/use-auth.ts";
+import { useEnvironmentChat } from "../lib/environment-entity-hooks.ts";
 import { Button } from "./ui/button.tsx";
 
 const WorkspaceSharingDialog = lazy(
@@ -16,8 +17,9 @@ export function WorkspaceSharingButton({
 }) {
 	const { message } = useMessages(["chat"]);
 	const auth = useAuth();
+	const chat = useEnvironmentChat(chatRef);
 	const [open, setOpen] = useState(false);
-	if (!auth.isSignedIn) return null;
+	if (!auth.isSignedIn || chat === null || chat.readOnly === true) return null;
 	return (
 		<>
 			<Button

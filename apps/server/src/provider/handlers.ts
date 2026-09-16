@@ -43,7 +43,9 @@ import { AnalyticsService } from "../analytics/services/analytics-service.ts";
 import {
 	filterCatalog,
 	filterChatCatalog,
+	filterChats,
 	filterSessionCatalog,
+	projectChatAccess,
 	withCatalogChanges,
 } from "../collaboration/services/catalog-visibility.ts";
 import { ConfigStoreService } from "../config-store/services/config-store-service.ts";
@@ -441,16 +443,14 @@ const ChatList = MemoizeRpcs.toLayerHandler(
 		Effect.flatMap(ChatService, (svc) =>
 			svc
 				.listChats(projectId, includeArchived ?? false)
-				.pipe(
-					Effect.flatMap((items) =>
-						filterCatalog(items, (scope, item) => scope.chats.has(item.id)),
-					),
-				),
+				.pipe(Effect.flatMap(filterChats)),
 		),
 );
 
 const ChatGet = MemoizeRpcs.toLayerHandler("chat.get", ({ chatId }) =>
-	Effect.flatMap(ChatService, (svc) => svc.getChat(chatId)),
+	Effect.flatMap(ChatService, (svc) => svc.getChat(chatId)).pipe(
+		Effect.flatMap(projectChatAccess),
+	),
 );
 
 const ChatArchivePreview = MemoizeRpcs.toLayerHandler(

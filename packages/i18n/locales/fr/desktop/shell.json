@@ -1,4 +1,5 @@
 {
+	"shared_session_read_only": "Session partagée en lecture seule",
 	"app_files_are_unavailable_because_this_directory_was_deleted": "Les fichiers ne sont pas disponibles car ce répertoire a été supprimé.",
 	"app_changes_are_unavailable_because_this_directory_was_deleted": "Les modifications ne sont pas disponibles car ce répertoire a été supprimé.",
 	"browser_access_gate_zuse_serve": "Zuse Servir",

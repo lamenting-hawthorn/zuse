@@ -1,9 +1,10 @@
-import type {
-	ChatId,
-	ChatSummaryChange,
-	FolderId,
-	SessionId,
-	SessionSummaryChange,
+import {
+	Chat,
+	type ChatId,
+	type ChatSummaryChange,
+	type FolderId,
+	type SessionId,
+	type SessionSummaryChange,
 } from "@zuse/contracts";
 import { Context, Effect, Result, Stream } from "effect";
 
@@ -49,6 +50,25 @@ export const filterCatalog = <A>(
 		),
 	);
 
+const readOnlyChat = (chat: Chat): Chat =>
+	Chat.make({ ...chat, readOnly: true });
+
+export const projectChatAccess = Effect.fn("projectChatAccess")(function* (
+	chat: Chat,
+) {
+	const scope = yield* Effect.serviceOption(CatalogVisibility);
+	return scope._tag === "None" ? chat : readOnlyChat(chat);
+});
+
+export const filterChats = Effect.fn("filterChats")(function* (
+	chats: ReadonlyArray<Chat>,
+) {
+	const scope = yield* Effect.serviceOption(CatalogVisibility);
+	return scope._tag === "None"
+		? chats
+		: chats.filter((chat) => scope.value.chats.has(chat.id)).map(readOnlyChat);
+});
+
 export const filterChatCatalog = <E, R>(
 	stream: Stream.Stream<ChatSummaryChange, E, R>,
 ) =>
@@ -63,12 +83,15 @@ export const filterChatCatalog = <E, R>(
 									if (change._tag === "snapshot")
 										return Result.succeed({
 											...change,
-											chats: change.chats.filter((chat) =>
-												scope.value.chats.has(chat.id),
-											),
+											chats: change.chats
+												.filter((chat) => scope.value.chats.has(chat.id))
+												.map(readOnlyChat),
 										});
 									return scope.value.chats.has(change.chat.id)
-										? Result.succeed(change)
+										? Result.succeed({
+												...change,
+												chat: readOnlyChat(change.chat),
+											})
 										: Result.fail(undefined);
 								},
 							),

@@ -887,6 +887,8 @@ export const SessionLatestPlanRpc = Rpc.make("session.latestPlan", {
  */
 export class Chat extends Schema.Class<Chat>("Chat")({
 	id: ChatId,
+	/** Connection-specific presentation hint; RPC authorization remains authoritative. */
+	readOnly: Schema.optional(Schema.Boolean),
 	projectId: FolderId,
 	worktreeId: Schema.NullOr(WorktreeId),
 	title: Schema.String,
