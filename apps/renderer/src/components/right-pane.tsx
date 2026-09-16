@@ -39,8 +39,11 @@ import {
 } from "../lib/cloud-sync-client-bus.ts";
 import { cloudSummaryForChat } from "../lib/cloud-workspace-catalog.ts";
 import { ensureCloudWorkspaceAttached } from "../lib/cloud-workspaces.ts";
+import {
+	useActiveSessionById,
+	useEnvironmentChat,
+} from "../lib/environment-entity-hooks.ts";
 import { makeCommittedAuthority } from "../lib/committed-authority.ts";
-import { useActiveSessionById } from "../lib/environment-entity-hooks.ts";
 import {
 	useGitPrDetailsResource,
 	useGitWorkspaceResource,
@@ -173,6 +176,9 @@ const PANEL_META: Record<
 		icon: MagicWand01Icon,
 	},
 };
+
+export const canUseChatPanel = (kind: PanelKind, readOnly: boolean): boolean =>
+	!readOnly || kind === "files" || kind === "plan";
 
 const LIVE_PANEL_KINDS = new Set<PanelKind>([
 	"files",
@@ -385,6 +391,7 @@ export function RightPane({
 		terminalCatalogChatId,
 		terminalCatalogEnvironmentId,
 	]);
+	const readOnly = useEnvironmentChat(chatRef)?.readOnly === true;
 	const cloudSummary =
 		cloudSummaryCandidate?.workspaceId === chatRef?.environmentId
 			? cloudSummaryCandidate
@@ -554,6 +561,7 @@ export function RightPane({
 		});
 	};
 	const handleAddPanel = (kind: PanelKind) => {
+		if (!canUseChatPanel(kind, readOnly)) return;
 		if (kind === "terminal") {
 			handleAddProjectTerminal();
 			return;
@@ -669,6 +677,7 @@ export function RightPane({
 			(kind) =>
 				kind !== "browser" || rendererPlatformCapabilities().integratedBrowser,
 		)
+		.filter((kind) => canUseChatPanel(kind, readOnly))
 		.filter(
 			(kind) =>
 				!directoryUnavailable ||
@@ -688,6 +697,7 @@ export function RightPane({
 	// session in the same chat has no proposed plan.
 	const visiblePanels = panels.filter(
 		(panel) =>
+			canUseChatPanel(panel.kind, readOnly) &&
 			(!isHostedProduct() ||
 				panel.kind !== "terminal" ||
 				termList[panel.slot]?.environmentId !== localTerminalEnvironmentId) &&
@@ -746,7 +756,8 @@ export function RightPane({
 	const activePanel =
 		visiblePanels.find((p) => p.id === effectiveActiveId) ?? null;
 	const browserActive = activePanel?.kind === "browser";
-	const browserAvailable = rendererPlatformCapabilities().integratedBrowser;
+	const browserAvailable =
+		!readOnly && rendererPlatformCapabilities().integratedBrowser;
 	const cloudTerminalActions =
 		cloudSummary === null
 			? null
