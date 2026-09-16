@@ -206,6 +206,21 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("preserves the shipped v1 fingerprint for unowned durable commands", () => {
+		expect(
+			commandFingerprint({
+				kind: "test",
+				commandId: CommandId.make("command"),
+				environmentId: EnvironmentId.make("env"),
+				resource: null,
+				retry: "safe",
+				payload: { text: "hello" },
+				createdAt: 1,
+			}),
+		).toBe(
+			"sha256:9e5279ffdc10c35abf4eecf9a96f979afc4f7ef1315509cb80683ab74035ace6",
+		);
+	});
 	it("fingerprints binary payloads by bytes instead of enumerable indices", () => {
 		const binary = {
 			kind: "attachments.upload",

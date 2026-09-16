@@ -203,7 +203,14 @@ transcript results; stale activation callbacks reject before accessing the runti
 Queued chat selection and reconnect work also check identity before running.
 Mocked callback tests cover cleanup, fresh registration, delayed checkpoint results,
 and opening a chat immediately before sign-out. Durable outbox replay and retained
-ClientBus resource state remain separate unfinished boundaries. Other
+ClientBus resource state remain separate unfinished boundaries. `ClientCommand`
+now supports an explicit device or account owner. Owned commands use a v2 fingerprint
+that includes ownership; unowned commands retain the shipped v1 fingerprint (covered
+by a fixed compatibility vector). Outbox round-trip/collision tests verify ownership
+is preserved and a command ID cannot be rebound to another owner. This metadata is
+not server authorization: dispatch-time capture, replay eligibility, account-scoped
+receipt access, and in-flight ownership changes still require implementation.
+No legacy pending command is assigned to the next account or deleted by this change. Other
 asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
