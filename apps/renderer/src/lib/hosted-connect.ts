@@ -59,39 +59,49 @@ let apiAccess: { readonly token: string; readonly expiresAt: number } | null =
 	null;
 
 export type HostedEndpointLease = {
-	readonly set: (environmentId: string, endpoint: string) => void;
-	readonly next: (
-		refresh: (environmentId: string) => Promise<void>,
-	) => Promise<string>;
+	readonly select: (environmentId: string) => Promise<void>;
+	readonly next: () => Promise<string>;
 	readonly clear: () => void;
 };
 
-export const createHostedEndpointLease = (): HostedEndpointLease => {
-	let environmentId: string | null = null;
-	let endpoint: string | null = null;
+export const createHostedEndpointLease = (
+	refresh: (environmentId: string) => Promise<string>,
+): HostedEndpointLease => {
+	let selected: { environmentId: string; endpoint: string | null } | null =
+		null;
+	const load = async (selection: NonNullable<typeof selected>) => {
+		const endpoint = await refresh(selection.environmentId);
+		if (selection !== selected) throw new Error("hosted_environment_changed");
+		return endpoint;
+	};
 	return {
-		set: (nextEnvironmentId, nextEndpoint) => {
-			environmentId = nextEnvironmentId;
-			endpoint = nextEndpoint;
+		select: async (environmentId) => {
+			const selection: NonNullable<typeof selected> = {
+				environmentId,
+				endpoint: null,
+			};
+			selected = selection;
+			selection.endpoint = await load(selection);
 		},
-		next: async (refresh) => {
-			if (environmentId === null) {
+		next: async () => {
+			if (selected === null) {
 				throw new Error("hosted_environment_not_selected");
 			}
-			if (endpoint === null) await refresh(environmentId);
-			if (endpoint === null) throw new Error("hosted_connect_grant_missing");
-			const leased = endpoint;
-			endpoint = null;
+			const selection = selected;
+			const leased = selection.endpoint;
+			selection.endpoint = null;
+			if (leased === null) return load(selection);
 			return leased;
 		},
 		clear: () => {
-			environmentId = null;
-			endpoint = null;
+			selected = null;
 		},
 	};
 };
 
-const rpcEndpointLease = createHostedEndpointLease();
+const rpcEndpointLease = createHostedEndpointLease((environmentId) =>
+	fetchHostedEndpoint(environmentId),
+);
 const unsubscribeAccount = subscribeRendererAccount(() => {
 	apiAccess = null;
 	rpcEndpointLease.clear();
@@ -607,7 +617,7 @@ export const hostedConnectGrantEndpoint = (grant: ApiConnectGrant): string => {
 	return url.toString();
 };
 
-export const connectHostedEnvironment = async (
+const fetchHostedGrant = async (
 	environmentId: string,
 	options: { lease?: boolean } = {},
 ): Promise<ApiConnectGrant> => {
@@ -633,15 +643,23 @@ export const connectHostedEnvironment = async (
 				: `api_connect_${response.status}`,
 		);
 	}
-	if (options.lease !== false)
-		rpcEndpointLease.set(environmentId, hostedConnectGrantEndpoint(body));
 	return body;
 };
 
+const fetchHostedEndpoint = async (environmentId: string): Promise<string> =>
+	hostedConnectGrantEndpoint(await fetchHostedGrant(environmentId));
+
+export const connectHostedEnvironment = async (
+	environmentId: string,
+	options: { lease?: boolean } = {},
+): Promise<ApiConnectGrant> => {
+	const grant = await fetchHostedGrant(environmentId);
+	if (options.lease !== false) await rpcEndpointLease.select(environmentId);
+	return grant;
+};
+
 export const nextHostedRpcEndpoint = (): Promise<string> =>
-	rpcEndpointLease.next(async (environmentId) => {
-		await connectHostedEnvironment(environmentId);
-	});
+	rpcEndpointLease.next();
 
 export const signOutHostedProduct = async (): Promise<void> => {
 	const accountId = hostedAccountId();

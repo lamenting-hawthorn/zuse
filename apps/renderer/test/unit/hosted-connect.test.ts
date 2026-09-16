@@ -199,21 +199,79 @@ describe("hosted authentication", () => {
 	});
 
 	it("uses each connect grant once and refreshes it for reconnects", async () => {
-		const lease = createHostedEndpointLease();
-		const refresh = vi.fn(async (environmentId: string) => {
-			lease.set(environmentId, "wss://host.example/rpc?token=fresh");
-		});
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockResolvedValueOnce("wss://host.example/rpc?token=initial")
+			.mockResolvedValue("wss://host.example/rpc?token=fresh");
+		const lease = createHostedEndpointLease(refresh);
+		await lease.select("env-1");
 
-		lease.set("env-1", "wss://host.example/rpc?token=initial");
-
-		await expect(lease.next(refresh)).resolves.toBe(
+		await expect(lease.next()).resolves.toBe(
 			"wss://host.example/rpc?token=initial",
 		);
-		await expect(lease.next(refresh)).resolves.toBe(
+		await expect(lease.next()).resolves.toBe(
 			"wss://host.example/rpc?token=fresh",
 		);
-		expect(refresh).toHaveBeenCalledOnce();
+		expect(refresh).toHaveBeenCalledTimes(2);
 		expect(refresh).toHaveBeenCalledWith("env-1");
+	});
+	it.each([
+		"select",
+		"reconnect",
+	])("discards a pending %s after selecting another environment", async (phase) => {
+		const stale = Promise.withResolvers<string>();
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockResolvedValueOnce("initial");
+		const lease = createHostedEndpointLease(refresh);
+		await lease.select("old");
+		await lease.next();
+		refresh.mockReturnValueOnce(stale.promise).mockResolvedValue("new");
+		const pending = phase === "select" ? lease.select("old") : lease.next();
+		const rejected = expect(pending).rejects.toThrow(
+			"hosted_environment_changed",
+		);
+		await lease.select("new");
+		stale.resolve("stale");
+		await rejected;
+		await expect(lease.next()).resolves.toBe("new");
+	});
+	it("does not revive a cleared selection, even when the same environment is selected again", async () => {
+		const stale = Promise.withResolvers<string>();
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockReturnValueOnce(stale.promise)
+			.mockResolvedValue("new");
+		const lease = createHostedEndpointLease(refresh);
+		const pending = lease.select("env-1");
+		const rejected = expect(pending).rejects.toThrow(
+			"hosted_environment_changed",
+		);
+		lease.clear();
+		await expect(lease.next()).rejects.toThrow(
+			"hosted_environment_not_selected",
+		);
+		await lease.select("env-1");
+		stale.resolve("stale");
+		await rejected;
+		await expect(lease.next()).resolves.toBe("new");
+	});
+	it("gives simultaneous reconnects distinct one-use grants", async () => {
+		const first = Promise.withResolvers<string>();
+		const second = Promise.withResolvers<string>();
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockResolvedValueOnce("initial")
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const lease = createHostedEndpointLease(refresh);
+		await lease.select("env-1");
+		await lease.next();
+		const one = lease.next();
+		const two = lease.next();
+		second.resolve("second");
+		first.resolve("first");
+		await expect(Promise.all([one, two])).resolves.toEqual(["first", "second"]);
 	});
 });
 
