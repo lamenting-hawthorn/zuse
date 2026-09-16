@@ -24,6 +24,7 @@ import {
 	CommandAuthorityLostError,
 	CommandIdentityCollisionError,
 	commandFingerprint,
+	resourceCacheStorageKey,
 	terminalErrorFromReceipt,
 } from "../../src/client-persistence.ts";
 import type { EnvironmentResolver } from "../../src/environment-runtime.ts";
@@ -119,21 +120,33 @@ class MemoryPersistence implements ClientPersistence {
 
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
+		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		return (this.loadGate ??
-			this.resources.get(resourceKeyId(key)) ??
+			this.resources.get(
+				resourceCacheStorageKey(resourceKeyId(key), namespace),
+			) ??
 			null) as PersistedResource<Data> | null;
 	}
 
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	): Promise<void> {
-		this.resources.set(resourceKeyId(key), value);
+		this.resources.set(
+			resourceCacheStorageKey(resourceKeyId(key), namespace),
+			value,
+		);
 	}
 
-	async removeResource(key: ResourceKey<unknown>): Promise<void> {
-		this.resources.delete(resourceKeyId(key));
+	async removeResource(
+		key: ResourceKey<unknown>,
+		namespace?: string,
+	): Promise<void> {
+		this.resources.delete(
+			resourceCacheStorageKey(resourceKeyId(key), namespace),
+		);
 	}
 
 	async putOutbox(entry: OutboxEntry): Promise<void> {
@@ -207,6 +220,49 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("captures cache ownership before queued writes and rejects stale hydration", async () => {
+		const persistence = new MemoryPersistence();
+		const loaded = deferred<PersistedResource<unknown> | null>();
+		vi.spyOn(persistence, "loadResource").mockReturnValue(loaded.promise);
+		const save = vi.spyOn(persistence, "saveResource");
+		let namespace: string | null = "account:first";
+		const contexts: ResourceDriverContext<Client, unknown>[] = [];
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			resourceCacheNamespaceFor: () => namespace,
+			driverFor: () => ({
+				start: (context) => {
+					contexts.push(context);
+				},
+				stop: () => undefined,
+			}),
+		});
+		bus.retain(timelineKey, { activation: "connect" });
+		namespace = "account:second";
+		loaded.resolve({
+			data: { text: "private first account" },
+			cursor: null,
+			storedAt: 1,
+		});
+		await waitUntil(() => contexts.length === 1);
+		expect(bus.snapshot(timelineKey).data).toBeNull();
+		contexts[0]?.emit({ data: { text: "second account" }, persist: true });
+		namespace = "account:third";
+		await waitUntil(() => save.mock.calls.length === 1);
+		expect(save.mock.calls[0]?.[2]).toBe("account:second");
+		expect(contexts[0]?.isCurrent()).toBe(false);
+		expect(
+			contexts[0]?.emit({
+				data: { text: "late second account" },
+				persist: true,
+			}),
+		).toBe(false);
+		namespace = null;
+		contexts[0]?.emit({ data: { text: "unowned" }, persist: true });
+		await bus.dispose();
+		expect(save).toHaveBeenCalledOnce();
+	});
 	it.each([
 		"acceptance",
 		"result",

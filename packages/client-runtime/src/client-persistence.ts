@@ -19,13 +19,24 @@ export type PersistedResource<Data> = Readonly<{
 export interface ResourcePersistence {
 	readonly loadResource: <Data>(
 		key: ResourceKey<Data>,
+		namespace?: string,
 	) => Promise<PersistedResource<Data> | null>;
 	readonly saveResource: <Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	) => Promise<void>;
-	readonly removeResource: (key: ResourceKey<unknown>) => Promise<void>;
+	readonly removeResource: (
+		key: ResourceKey<unknown>,
+		namespace?: string,
+	) => Promise<void>;
 }
+
+/** Keep device-local keys stable; account namespaces never adopt legacy rows. */
+export const resourceCacheStorageKey = (
+	key: string,
+	namespace?: string,
+): string => (namespace === undefined ? key : JSON.stringify([namespace, key]));
 
 export type CommandRetryPolicy = "safe" | "never";
 

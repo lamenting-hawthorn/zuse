@@ -9,6 +9,7 @@ import type {
 	PersistedResource,
 	ResourcePersistence,
 } from "@zuse/client-runtime/client-persistence";
+import { resourceCacheStorageKey } from "@zuse/client-runtime/client-persistence";
 import type { ResourceActivation } from "@zuse/client-runtime/environment-runtime";
 import {
 	type ExecutionRef,
@@ -496,11 +497,14 @@ class IndexedDbGitWorkspacePersistence implements ResourcePersistence {
 
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
+		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readonly");
 		const row = (await requestResult(
-			transaction.objectStore(STORE_NAME).get(resourceKeyId(key)),
+			transaction
+				.objectStore(STORE_NAME)
+				.get(resourceCacheStorageKey(resourceKeyId(key), namespace)),
 		)) as
 			| (PersistedResource<GitWorkspaceData> & { readonly key: string })
 			| undefined;
@@ -525,20 +529,26 @@ class IndexedDbGitWorkspacePersistence implements ResourcePersistence {
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	): Promise<void> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readwrite");
 		transaction.objectStore(STORE_NAME).put({
-			key: resourceKeyId(key),
+			key: resourceCacheStorageKey(resourceKeyId(key), namespace),
 			...value,
 		});
 		await transactionComplete(transaction);
 	}
 
-	async removeResource(key: ResourceKey<unknown>): Promise<void> {
+	async removeResource(
+		key: ResourceKey<unknown>,
+		namespace?: string,
+	): Promise<void> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readwrite");
-		transaction.objectStore(STORE_NAME).delete(resourceKeyId(key));
+		transaction
+			.objectStore(STORE_NAME)
+			.delete(resourceCacheStorageKey(resourceKeyId(key), namespace));
 		await transactionComplete(transaction);
 	}
 }

@@ -58,9 +58,15 @@ export type SessionTimelineCacheEntry = Readonly<{
 }>;
 
 export interface SessionTimelineCache {
-	readonly load: (ref: SessionRef) => Promise<SessionTimelineCacheEntry | null>;
-	readonly save: (entry: SessionTimelineCacheEntry) => Promise<void>;
-	readonly remove: (ref: SessionRef) => Promise<void>;
+	readonly load: (
+		ref: SessionRef,
+		namespace?: string,
+	) => Promise<SessionTimelineCacheEntry | null>;
+	readonly save: (
+		entry: SessionTimelineCacheEntry,
+		namespace?: string,
+	) => Promise<void>;
+	readonly remove: (ref: SessionRef, namespace?: string) => Promise<void>;
 	readonly prune: (limits?: {
 		readonly maxEntries?: number;
 		readonly maxBytes?: number;

@@ -133,10 +133,11 @@ const sessionRef = (key: ResourceKey<unknown>): SessionRef | null =>
 class RendererTimelinePersistence implements ResourcePersistence {
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
+		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		const ref = sessionRef(key);
 		if (ref === null || sessionTimelineCache === null) return null;
-		const cached = await sessionTimelineCache.load(ref);
+		const cached = await sessionTimelineCache.load(ref, namespace);
 		if (cached === null) return null;
 		return {
 			data: cached.projection as Data,
@@ -148,6 +149,7 @@ class RendererTimelinePersistence implements ResourcePersistence {
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	): Promise<void> {
 		const ref = sessionRef(key);
 		if (
@@ -164,13 +166,17 @@ class RendererTimelinePersistence implements ResourcePersistence {
 				projection: value.data as SessionTimelineProjection,
 				now: value.storedAt,
 			}),
+			namespace,
 		);
 		void sessionTimelineCache.prune().catch(() => undefined);
 	}
 
-	async removeResource(key: ResourceKey<unknown>): Promise<void> {
+	async removeResource(
+		key: ResourceKey<unknown>,
+		namespace?: string,
+	): Promise<void> {
 		const ref = sessionRef(key);
-		if (ref !== null) await sessionTimelineCache?.remove(ref);
+		if (ref !== null) await sessionTimelineCache?.remove(ref, namespace);
 	}
 }
 
@@ -206,17 +212,18 @@ export const registerRendererResourcePersistence = (
 };
 
 const rendererResourcePersistence: ResourcePersistence = {
-	loadResource: <Data>(key: ResourceKey<Data>) =>
-		registeredPersistence.get(key.kind)?.loadResource(key) ??
+	loadResource: <Data>(key: ResourceKey<Data>, namespace?: string) =>
+		registeredPersistence.get(key.kind)?.loadResource(key, namespace) ??
 		Promise.resolve(null),
 	saveResource: <Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	) =>
-		registeredPersistence.get(key.kind)?.saveResource(key, value) ??
+		registeredPersistence.get(key.kind)?.saveResource(key, value, namespace) ??
 		Promise.resolve(),
-	removeResource: (key) =>
-		registeredPersistence.get(key.kind)?.removeResource(key) ??
+	removeResource: (key, namespace) =>
+		registeredPersistence.get(key.kind)?.removeResource(key, namespace) ??
 		Promise.resolve(),
 };
 
@@ -1246,17 +1253,24 @@ export const registerRendererResourceDriver = (
 
 const createBus = (): ClientBus<MemoizeClient> => {
 	let bus: ClientBus<MemoizeClient>;
+	const authorityFor = (environmentId: EnvironmentId) =>
+		activationByEnvironment.get(environmentId)?.account ??
+		rendererEnvironmentCommandAuthority(environmentId);
 	bus = new ClientBus<MemoizeClient>({
-		...createRendererCommandAuthority(
-			(environmentId) =>
-				activationByEnvironment.get(environmentId)?.account ??
-				rendererEnvironmentCommandAuthority(environmentId),
-		),
+		...createRendererCommandAuthority(authorityFor),
 		resolver: environmentResolver,
 		coalescePersistence: (key) =>
 			key.kind === "session-timeline" &&
 			isCloudTimelineEnvironment(key.ref.environmentId),
 		persistence: rendererResourcePersistence,
+		resourceCacheNamespaceFor: (key) => {
+			const authority = authorityFor(key.ref.environmentId);
+			if (authority === "device") return undefined;
+			return authority === rendererAccountSnapshot() &&
+				typeof authority.subject === "string"
+				? JSON.stringify(["account", authority.subject])
+				: null;
+		},
 		outbox: commandOutbox,
 		commandExecutor: executeSessionCommand,
 		commandTransportFor: (environmentId, kind) =>

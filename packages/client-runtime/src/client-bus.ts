@@ -144,6 +144,10 @@ export type ClientBusOptions<Client> = Readonly<{
 	resolver: EnvironmentResolver<Client>;
 	persistence?: ResourcePersistence;
 	coalescePersistence?: (key: ResourceKey<unknown>) => boolean;
+	/** Undefined preserves device-local keys; null disables unowned cache access. */
+	resourceCacheNamespaceFor?: (
+		key: ResourceKey<unknown>,
+	) => string | null | undefined;
 	outbox?: CommandOutbox;
 	commandExecutor?: ClientCommandExecutor<Client>;
 	/** Applied only to newly submitted commands, never to persisted replay rows. */
@@ -1256,6 +1260,11 @@ export class ClientBus<Client> {
 
 	private hydrate(entry: ResourceEntry): void {
 		const persistence = this.options.persistence;
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		if (namespace === null) {
+			entry.hydrated = true;
+			return;
+		}
 		if (
 			persistence === undefined ||
 			entry.hydrated ||
@@ -1270,9 +1279,10 @@ export class ClientBus<Client> {
 			this.setView(entry, { ...initialView, sync: "hydrating-cache" });
 		}
 		const hydration = persistence
-			.loadResource(entry.key)
+			.loadResource(entry.key, namespace)
 			.then((cached) => {
 				if (
+					this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace ||
 					cached === null ||
 					entry.runtimeUpdates !== initialRuntimeUpdates ||
 					entry.view.origin === "runtime" ||
@@ -1332,6 +1342,7 @@ export class ClientBus<Client> {
 		)
 			return;
 		const epoch = ++entry.synchronizationEpoch;
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
 		const runtimeUpdates = entry.runtimeUpdates;
 		const initial = entry.view;
 		if (initial.data === null || initial.sync === "cached") {
@@ -1340,6 +1351,8 @@ export class ClientBus<Client> {
 		const pending = synchronizer
 			.synchronize(entry.key, entry.view)
 			.then(async (result) => {
+				if (this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace)
+					return;
 				if (result === null) {
 					if (
 						epoch === entry.synchronizationEpoch &&
@@ -1386,13 +1399,18 @@ export class ClientBus<Client> {
 				await this.persist(entry, next);
 				if (
 					epoch === entry.synchronizationEpoch &&
+					this.options.resourceCacheNamespaceFor?.(entry.key) === namespace &&
 					entry.runtimeUpdates === runtimeUpdates
 				) {
 					this.setView(entry, next);
 				}
 			})
 			.catch(() => {
-				if (epoch !== entry.synchronizationEpoch) return;
+				if (
+					epoch !== entry.synchronizationEpoch ||
+					this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace
+				)
+					return;
 				this.setView(entry, {
 					...entry.view,
 					sync: entry.view.data === null ? "failed" : "stale",
@@ -1428,6 +1446,12 @@ export class ClientBus<Client> {
 		this.stopDriver(entry);
 		const driverEpoch = ++entry.driverEpoch;
 		const generation = binding.runtime.snapshot().generation;
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		const isCurrent = () =>
+			driverEpoch === entry.driverEpoch &&
+			generation === entry.driverGeneration &&
+			generation === entry.view.generation &&
+			namespace === this.options.resourceCacheNamespaceFor?.(entry.key);
 		entry.driverGeneration = generation;
 		this.setView(entry, {
 			...entry.view,
@@ -1443,25 +1467,16 @@ export class ClientBus<Client> {
 				data: entry.view.data,
 				cursor: entry.view.cursor,
 				snapshot: () =>
-					driverEpoch === entry.driverEpoch &&
-					generation === entry.driverGeneration &&
-					generation === entry.view.generation
-						? (entry.view as ResourceView<unknown>)
-						: null,
-				isCurrent: () =>
-					driverEpoch === entry.driverEpoch &&
-					generation === entry.driverGeneration &&
-					generation === entry.view.generation,
+					isCurrent() ? (entry.view as ResourceView<unknown>) : null,
+				isCurrent,
 				emit: (update) =>
+					isCurrent() &&
 					this.acceptDriverUpdate(entry, generation, driverEpoch, update),
 			}),
 		).then(
 			() => undefined,
 			(cause) => {
-				if (
-					driverEpoch === entry.driverEpoch &&
-					generation === entry.driverGeneration
-				) {
+				if (isCurrent()) {
 					this.setView(entry, { ...entry.view, sync: "failed" });
 					binding.runtime.reportFault(
 						{ phase: "failed", message: messageOf(cause) },
@@ -1504,6 +1519,7 @@ export class ClientBus<Client> {
 		}
 		entry.runtimeUpdates += 1;
 		if (update.accessDenied === true) {
+			const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
 			entry.deniedGeneration = generation;
 			entry.synchronizationEpoch += 1;
 			// Fence cleanup checkpoints and late callbacks before stopping the driver.
@@ -1518,7 +1534,11 @@ export class ClientBus<Client> {
 			});
 			// Delete after any queued writes, so an older checkpoint cannot restore it.
 			entry.persistenceTail = entry.persistenceTail
-				.then(() => this.options.persistence?.removeResource(entry.key))
+				.then(() =>
+					namespace === null
+						? undefined
+						: this.options.persistence?.removeResource(entry.key, namespace),
+				)
 				.then(() => undefined)
 				.catch(() => undefined);
 			return true;
@@ -1541,7 +1561,9 @@ export class ClientBus<Client> {
 
 	private persist(entry: ResourceEntry, view: ResourceView<unknown>): Promise<void> {
 		if (view.data === null) return Promise.resolve();
-		if (this.options.coalescePersistence?.(entry.key)) {
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		if (namespace === null) return Promise.resolve();
+		if (namespace === undefined && this.options.coalescePersistence?.(entry.key)) {
 			const pending = entry.pendingPersistence !== null;
 			entry.pendingPersistence = view;
 			if (pending) return entry.persistenceTail;
@@ -1561,11 +1583,15 @@ export class ClientBus<Client> {
 		}
 		const pending = entry.persistenceTail
 			.then(() =>
-				this.options.persistence?.saveResource(entry.key, {
-					data: view.data,
-					cursor: view.cursor,
-					storedAt: Date.now(),
-				}),
+				this.options.persistence?.saveResource(
+					entry.key,
+					{
+						data: view.data,
+						cursor: view.cursor,
+						storedAt: Date.now(),
+					},
+					namespace,
+				),
 			)
 			.then(() => undefined);
 		entry.persistenceTail = pending.catch(() => undefined);

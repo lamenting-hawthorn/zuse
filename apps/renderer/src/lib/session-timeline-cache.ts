@@ -1,3 +1,4 @@
+import { resourceCacheStorageKey } from "@zuse/client-runtime/client-persistence";
 import {
 	resourceRefKey,
 	type SessionRef,
@@ -36,8 +37,11 @@ const DEFAULT_MAX_ENTRIES = 128;
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 const DEFAULT_MAX_READING_POSITIONS = 256;
 
-export const environmentSessionCacheKey = (ref: SessionRef): SessionId =>
-	resourceRefKey(ref) as SessionId;
+export const environmentSessionCacheKey = (
+	ref: SessionRef,
+	namespace?: string,
+): SessionId =>
+	resourceCacheStorageKey(resourceRefKey(ref), namespace) as SessionId;
 
 export const shouldPersistTimelineCheckpoint = (
 	existing: SessionTimelineCacheEntry,
@@ -202,8 +206,11 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		return this.database;
 	}
 
-	async load(ref: SessionRef): Promise<SessionTimelineCacheEntry | null> {
-		const storageKey = environmentSessionCacheKey(ref);
+	async load(
+		ref: SessionRef,
+		namespace?: string,
+	): Promise<SessionTimelineCacheEntry | null> {
+		const storageKey = environmentSessionCacheKey(ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
 			[STORE_NAME, METADATA_STORE_NAME, HISTORY_STORE_NAME],
@@ -233,9 +240,9 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		}
 	}
 
-	async save(fullEntry: SessionTimelineCacheEntry): Promise<void> {
+	async save(fullEntry: SessionTimelineCacheEntry, namespace?: string): Promise<void> {
 		const entry = cloudHeadEntry(fullEntry);
-		const storageKey = environmentSessionCacheKey(entry.ref);
+		const storageKey = environmentSessionCacheKey(entry.ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
 			[STORE_NAME, METADATA_STORE_NAME, HISTORY_STORE_NAME],
@@ -260,6 +267,7 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		const encoded = encodeSessionTimelineCacheEntry(entry);
 		const persisted = {
 			...(encoded as Record<string, unknown>),
+			sessionId: storageKey,
 			estimatedBytes: JSON.stringify(encoded).length,
 		};
 		store.put(persisted);
@@ -317,8 +325,8 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		await transactionComplete(transaction);
 	}
 
-	async remove(ref: SessionRef): Promise<void> {
-		const storageKey = environmentSessionCacheKey(ref);
+	async remove(ref: SessionRef, namespace?: string): Promise<void> {
+		const storageKey = environmentSessionCacheKey(ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
 			[STORE_NAME, METADATA_STORE_NAME, HISTORY_STORE_NAME],

@@ -981,7 +981,7 @@ describe("renderer session timeline ClientBus adapter", () => {
 
 	it("routes resource persistence by kind without creating another bus", async () => {
 		const terminalKey = makeResourceKey<{ phase: string }>("terminal", {
-			environmentId,
+			environmentId: EnvironmentId.make("local"),
 			terminalId: PtyId.make("terminal-persistence"),
 		});
 		const stored = new Map<string, PersistedResource<unknown>>();
