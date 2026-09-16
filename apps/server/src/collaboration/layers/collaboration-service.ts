@@ -8,6 +8,7 @@ import {
 	CollaborationAuditEvent,
 	CollaborationNotFoundError,
 	type CollaborationRole,
+	type EnvironmentSharingAudience,
 	FolderId,
 	type OrganizationDetails,
 	Team,
@@ -583,6 +584,32 @@ export const CollaborationServiceLive = Layer.effect(
 			});
 
 		return CollaborationService.of({
+			connectionAudience: sql<EnvironmentSharingAudience[number]>`
+				SELECT DISTINCT t.organization_id AS "organizationId",
+					m.organization_membership_id AS "membershipId", m.subject,
+					(m.role = 'owner') AS "adminOnly"
+				FROM collaboration_members m
+				JOIN collaboration_teams t ON t.id = m.team_id
+				JOIN collaboration_workspaces w ON w.team_id = m.team_id
+				WHERE m.status = 'active' AND t.organization_id IS NOT NULL
+					AND m.organization_membership_id IS NOT NULL
+					AND (m.role = 'owner' OR EXISTS (
+						SELECT 1 FROM collaboration_chat_grants g
+						WHERE g.chat_id = w.chat_id AND g.member_id = m.id
+					))
+				ORDER BY t.organization_id, m.subject
+				LIMIT 1001
+			`.pipe(
+				Effect.map((rows) =>
+					rows.length > 1000
+						? []
+						: rows.map((row) => ({
+								...row,
+								adminOnly: Boolean(row.adminOnly),
+							})),
+				),
+				Effect.catchTag("SqlError", Effect.die),
+			),
 			subscribeCatalogChanges: PubSub.subscribe(catalogChanges),
 			visibleWorkspaces: (subject) =>
 				Effect.gen(function* () {

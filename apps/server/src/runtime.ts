@@ -625,6 +625,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		deps.apiEnabled === false
 			? makeDisabledApiLinkService(lanAuthConfig)
 			: ApiLinkServiceLive.pipe(
+					Layer.provide(CollaborationLayer),
 					Layer.provide(AccountAccessLayer),
 					Layer.provide(EnrolledLanAuthLayer),
 					Layer.provide(LanAuthConfigLayer),

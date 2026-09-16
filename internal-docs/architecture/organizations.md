@@ -13,11 +13,21 @@ server API key. Organization administration uses `admin` and `member` role slugs
 workspace collaboration retains its separate `owner`, `driver`, and `viewer` roles.
 Unknown organization role slugs never imply administrative authority.
 
-This is organization management and a workspace-permission foundation, **not yet
-cross-account session sharing**. Accepting an invitation does not disclose personal
-environments, issue a connection grant, or expose terminal/file/agent RPCs. Existing
-same-account remote access remains unchanged. Do not broaden environment discovery
-or reuse the host owner's credentials to make organization sharing appear to work.
+Accepting an invitation alone does not disclose personal environments. A linked host
+publishes a bounded discovery audience through its existing heartbeat, derived from
+shared workspaces and explicit grants (or organization-owner access). The account API checks
+fresh presence, live publisher and guest membership, and the original membership ID
+before listing the environment or minting a guest-identity connection token. Rejoining
+does not restore an old grant. Owner-only pairing and private-network candidates are
+not exposed to guests; same-account behavior remains unchanged.
+
+This connects the account authorization path, **not a verified end-to-end collaboration
+experience**. The host still authorizes every workspace RPC. Guest mutation, agent
+control, terminal control, and multi-client browser acceptance remain unfinished.
+Discovery hints can lag a local revocation until the next heartbeat, but never override
+the host's immediately revoked workspace authority. Missing/legacy heartbeat audiences
+clear discovery hints. API migration 0025 adds the audience to the existing environment
+record, not a second environment registry; apply it before deploying the API update.
 
 ## WorkOS configuration
 
@@ -93,8 +103,8 @@ RPC payloads and headers are not identity sources. An integration test exercises
 two simultaneous connections with forged RPC authorization/actor headers and
 verifies that each handler still sees its own transport-verified identity.
 Identity alone does not grant workspace authority or turn a paired device ID into
-a human account. Existing access remains same-account/private; organization
-connections must not be enabled before the remaining authorization below exists.
+a human account. Organization connections receive only the explicitly authorized
+read/catalog operations below; all remaining operations stay denied by default.
 
 All public RPCs now carry `RpcAuthorization`. Native IPC and explicitly paired devices
 retain existing host authority. Verified same-account connections retain host access;
@@ -153,10 +163,10 @@ cached/checkpoint state stays blocked until a runtime data frame is accepted. Or
 offline recovery retains its existing cached-data behavior. This does not retract
 data a user previously exported or copied.
 
-Before enabling cross-account environment discovery, finish scoped file mutations
-and Git/terminal/agent operations. These remain denied to guests. Account-partitioned
-client caches and bootstrap behavior still need verification before any cached data
-is shown under a different account; clearing on a later denial is not sufficient.
+Scoped file mutations and Git/terminal/agent operations remain denied to guests and
+must be finished for the collaborative coding target. Account-partitioned client
+caches have automated coverage, but real multi-account bootstrap and UI acceptance
+are still required before release; clearing data on a later denial is not sufficient.
 
 The renderer now has one account-change boundary (`renderer-account.ts`), fed by
 the existing auth resource and auth actions. It distinguishes unknown startup state

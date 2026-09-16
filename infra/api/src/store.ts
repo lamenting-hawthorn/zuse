@@ -1,3 +1,4 @@
+import type { EnvironmentSharingAudience } from "@zuse/contracts";
 import { Context, Effect, Layer, Ref, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
@@ -25,6 +26,7 @@ export interface LinkChallengeRecord {
 }
 
 export interface EnvironmentRecord {
+	readonly sharingAudience?: EnvironmentSharingAudience;
 	readonly environmentId: string;
 	readonly accountId: string;
 	readonly orgId?: string;
@@ -108,6 +110,10 @@ export interface ApiStoreApi {
 	readonly listEnvironments: (
 		accountId: string,
 	) => Effect.Effect<ReadonlyArray<EnvironmentRecord>>;
+	/** Discovery candidates only; callers must verify current organization membership. */
+	readonly listSharedEnvironments: (
+		subject: string,
+	) => Effect.Effect<ReadonlyArray<EnvironmentRecord>>;
 	readonly getEnvironment: (
 		environmentId: string,
 	) => Effect.Effect<EnvironmentRecord | null>;
@@ -115,6 +121,7 @@ export interface ApiStoreApi {
 		environmentId: string,
 		lastSeenAtMs: number,
 		metadata?: {
+			readonly sharingAudience?: EnvironmentSharingAudience;
 			readonly runtimeVersion?: string;
 			readonly wireProtocolVersion?: number;
 			readonly capabilities?: unknown;
@@ -260,6 +267,18 @@ export const ApiStoreMemory: Layer.Layer<ApiStore> = Layer.effect(
 						[...map.values()].filter((env) => env.accountId === accountId),
 					),
 				),
+			listSharedEnvironments: (subject) =>
+				Ref.get(environments).pipe(
+					Effect.map((map) =>
+						[...map.values()].filter(
+							(env) =>
+								env.accountId !== subject &&
+								env.sharingAudience?.some(
+									(member) => member.subject === subject,
+								),
+						),
+					),
+				),
 			getEnvironment: (environmentId) =>
 				Ref.get(environments).pipe(
 					Effect.map((map) => map.get(environmentId) ?? null),
@@ -271,6 +290,7 @@ export const ApiStoreMemory: Layer.Layer<ApiStore> = Layer.effect(
 					return new Map(map).set(environmentId, {
 						...found,
 						...metadata,
+						sharingAudience: metadata?.sharingAudience ?? [],
 						lastSeenAtMs,
 					});
 				}),
@@ -462,6 +482,7 @@ export const ApiStoreMemory: Layer.Layer<ApiStore> = Layer.effect(
 // ---------------------------------------------------------------------------
 
 interface EnvironmentRow {
+	readonly sharing_audience: EnvironmentSharingAudience | null;
 	readonly environment_id: string;
 	readonly account_id: string;
 	readonly org_id: string | null;
@@ -485,6 +506,7 @@ interface EnvironmentRow {
 }
 
 const toEnvironment = (row: EnvironmentRow): EnvironmentRecord => ({
+	sharingAudience: row.sharing_audience ?? undefined,
 	environmentId: row.environment_id,
 	accountId: row.account_id,
 	orgId: row.org_id ?? undefined,
@@ -667,6 +689,15 @@ export const ApiStorePg: Layer.Layer<ApiStore, never, SqlClient.SqlClient> =
               ORDER BY linked_at DESC
             `.pipe(Effect.map((rows) => rows.map(toEnvironment))),
 					),
+				listSharedEnvironments: (subject) =>
+					orDie(
+						sql<EnvironmentRow>`
+						SELECT * FROM api_environments
+						WHERE account_id <> ${subject}
+						AND sharing_audience @> ${JSON.stringify([{ subject }])}::jsonb
+						ORDER BY linked_at DESC
+					`.pipe(Effect.map((rows) => rows.map(toEnvironment))),
+					),
 				getEnvironment: (environmentId) =>
 					orDie(
 						sql<EnvironmentRow>`
@@ -680,6 +711,7 @@ export const ApiStorePg: Layer.Layer<ApiStore, never, SqlClient.SqlClient> =
 						sql`
             UPDATE api_environments SET
               last_seen_at = ${lastSeenAtMs},
+              sharing_audience = ${JSON.stringify(metadata?.sharingAudience ?? [])},
               runtime_version = COALESCE(${metadata?.runtimeVersion ?? null}, runtime_version),
               wire_protocol_version = COALESCE(${metadata?.wireProtocolVersion ?? null}, wire_protocol_version),
               capabilities = COALESCE(${

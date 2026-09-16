@@ -241,6 +241,7 @@ describe("CollaborationService", () => {
 					yield* sql`INSERT INTO chats (id, project_id, title, created_at, updated_at) VALUES ('shared', 'p', 'Shared', ${now}, ${now}), ('private', 'p', 'Private', ${now}, ${now})`;
 					const chatId = "shared" as ChatId;
 					expect(yield* service.visibleWorkspaces("owner")).toEqual([]);
+					expect(yield* service.connectionAudience).toEqual([]);
 					yield* service
 						.shareWorkspace(actor, chatId)
 						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
@@ -248,6 +249,14 @@ describe("CollaborationService", () => {
 						{ chatId: "shared", projectId: "p" },
 					]);
 					expect(yield* service.visibleWorkspaces("driver")).toEqual([]);
+					expect(yield* service.connectionAudience).toEqual([
+						{
+							organizationId: "org-visible",
+							membershipId: "org-visible-owner",
+							subject: "owner",
+							adminOnly: true,
+						},
+					]);
 					yield* service.setWorkspaceGrant(
 						actor,
 						chatId,
@@ -258,12 +267,33 @@ describe("CollaborationService", () => {
 						{ chatId: "shared", projectId: "p" },
 					]);
 					expect(yield* service.visibleWorkspaces("stranger")).toEqual([]);
+					expect(yield* service.connectionAudience).toEqual([
+						{
+							organizationId: "org-visible",
+							membershipId: "org-visible-driver",
+							subject: "driver",
+							adminOnly: false,
+						},
+						{
+							organizationId: "org-visible",
+							membershipId: "org-visible-owner",
+							subject: "owner",
+							adminOnly: true,
+						},
+					]);
 					authorized = false;
 					expect(yield* service.visibleWorkspaces("owner")).toEqual([]);
 					expect(yield* service.visibleWorkspaces("driver")).toEqual([]);
 					authorized = true;
 					yield* service.removeWorkspaceGrant(actor, chatId, driver.memberId);
 					expect(yield* service.visibleWorkspaces("driver")).toEqual([]);
+					expect(
+						(yield* service.connectionAudience).map((entry) => entry.subject),
+					).toEqual(["owner"]);
+					yield* service
+						.unshareWorkspace(actor, chatId)
+						.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" }));
+					expect(yield* service.connectionAudience).toEqual([]);
 				}),
 			);
 		} finally {

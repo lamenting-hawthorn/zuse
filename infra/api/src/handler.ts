@@ -1,4 +1,4 @@
-import { ApiAuthTokenGrant } from "@zuse/contracts";
+import { ApiAuthTokenGrant, EnvironmentSharingAudience } from "@zuse/contracts";
 import { SandboxProviders } from "@zuse/sandbox-providers";
 import { Clock, Effect, Option, Redacted, Schema } from "effect";
 import { AccountIdentity } from "./account-identity.ts";
@@ -33,6 +33,7 @@ import {
 	signConnectToken,
 	verifyEnvironmentLinkProof,
 } from "./crypto.ts";
+import { canDiscoverEnvironment } from "./environment-access.ts";
 import {
 	type ApiError,
 	badRequest,
@@ -276,8 +277,12 @@ const hasManagedPublicEndpoint = (environment: EnvironmentRecord): boolean => {
 	}
 };
 
-const endpointCandidates = (environment: EnvironmentRecord) => [
-	...(environment.privateHttpBaseUrl !== undefined &&
+const endpointCandidates = (
+	environment: EnvironmentRecord,
+	includePrivate = true,
+) => [
+	...(includePrivate &&
+	environment.privateHttpBaseUrl !== undefined &&
 	environment.privateWsBaseUrl !== undefined
 		? [
 				{
@@ -578,7 +583,18 @@ const route = (
 		// 3. List the caller's environments (WorkOS-authenticated).
 		if (method === "GET" && path === "/v1/environments") {
 			const principal = yield* requireWorkos(request);
-			const environments = yield* store.listEnvironments(principal.accountId);
+			const owned = yield* store.listEnvironments(principal.accountId);
+			const shared = yield* Effect.filter(
+				yield* store.listSharedEnvironments(principal.accountId),
+				(environment) =>
+					canDiscoverEnvironment(
+						environment,
+						principal.accountId,
+						nowMs,
+						config.presenceStaleMs,
+					),
+			);
+			const environments = [...owned, ...shared];
 			const machines = yield* MachineStore;
 			const readyCloudEnvironmentIds = new Set(
 				(yield* machines.listMachines(principal.accountId))
@@ -846,7 +862,12 @@ const route = (
 			const environment = yield* store.getEnvironment(environmentId);
 			if (
 				environment === null ||
-				environment.accountId !== principal.accountId
+				!(yield* canDiscoverEnvironment(
+					environment,
+					principal.accountId,
+					nowMs,
+					config.presenceStaleMs,
+				))
 			) {
 				return yield* Effect.fail(notFound());
 			}
@@ -856,7 +877,10 @@ const route = (
 			return json({
 				status: online ? "online" : "offline",
 				endpoint: publicEndpoint(environment),
-				endpointCandidates: endpointCandidates(environment),
+				endpointCandidates: endpointCandidates(
+					environment,
+					environment.accountId === principal.accountId,
+				),
 				checkedAt: nowMs,
 			});
 		}
@@ -868,7 +892,12 @@ const route = (
 			const environment = yield* store.getEnvironment(environmentId);
 			if (
 				environment === null ||
-				environment.accountId !== principal.accountId
+				!(yield* canDiscoverEnvironment(
+					environment,
+					principal.accountId,
+					nowMs,
+					config.presenceStaleMs,
+				))
 			) {
 				return yield* Effect.fail(notFound());
 			}
@@ -907,6 +936,8 @@ const route = (
 						: undefined;
 				requireManaged = body.requireManaged === true;
 				if (body.localPairing !== undefined) {
+					if (environment.accountId !== principal.accountId)
+						return yield* Effect.fail(notFound());
 					const { serverNonce, devicePublicKey, transportCertificatePin } =
 						body.localPairing;
 					if (
@@ -959,7 +990,10 @@ const route = (
 			});
 			return json({
 				endpoint: publicEndpoint(environment),
-				endpointCandidates: endpointCandidates(environment),
+				endpointCandidates: endpointCandidates(
+					environment,
+					environment.accountId === principal.accountId,
+				),
 				connectToken,
 				expiresAt: nowMs + config.connectTokenTtlMs,
 			});
@@ -992,6 +1026,7 @@ const route = (
 					readonly capabilities?: unknown;
 					readonly serviceState?: unknown;
 					readonly credentialCleanupComplete?: unknown;
+					readonly sharingAudience?: unknown;
 				}>(request);
 				if (body.origin !== undefined && !isLoopbackOrigin(body.origin)) {
 					return yield* Effect.fail(badRequest("invalid_tunnel_origin"));
@@ -1019,6 +1054,11 @@ const route = (
 				) {
 					return yield* Effect.fail(notFound());
 				}
+				const sharingAudience = yield* Schema.decodeUnknownEffect(
+					EnvironmentSharingAudience,
+				)(body.sharingAudience ?? []).pipe(
+					Effect.mapError(() => badRequest("invalid_sharing_audience")),
+				);
 				if (body.origin !== undefined) {
 					const tunnel = yield* ManagedTunnelProvider;
 					if (!tunnel.enabled) {
@@ -1046,6 +1086,7 @@ const route = (
 					});
 				}
 				yield* store.touchEnvironment(environmentId, nowMs, {
+					sharingAudience,
 					runtimeVersion:
 						typeof body.runtimeVersion === "string"
 							? body.runtimeVersion
@@ -1080,8 +1121,9 @@ const route = (
 						);
 					}
 				}
+			} else {
+				yield* store.touchEnvironment(environmentId, nowMs);
 			}
-			yield* store.touchEnvironment(environmentId, nowMs);
 			const refreshed = yield* store.getEnvironment(environmentId);
 			const machines = yield* MachineStore;
 			const machine = yield* machines.findMachineByEnvironmentId(environmentId);

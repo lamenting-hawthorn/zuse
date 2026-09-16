@@ -6,6 +6,7 @@ import type {
 	CollaborationConflictError,
 	CollaborationNotFoundError,
 	CollaborationRole,
+	EnvironmentSharingAudience,
 	FolderId,
 	OrganizationDetails,
 	Team,
@@ -31,6 +32,8 @@ export type CollaborationServiceError =
 	| CollaborationNotFoundError;
 
 export interface CollaborationServiceShape {
+	/** Host-only discovery projection; no paths, chat titles, or authority credentials. */
+	readonly connectionAudience: Effect.Effect<EnvironmentSharingAudience>;
 	/** Wake catalog subscriptions after committed grants, sharing, or membership changes. */
 	readonly subscribeCatalogChanges: Effect.Effect<
 		PubSub.Subscription<void>,

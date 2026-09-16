@@ -258,6 +258,26 @@ export class ApiLinkResponse extends Schema.Class<ApiLinkResponse>(
 
 // --- discovery (mobile/desktop, WorkOS bearer) -------------------------------
 
+/** Host-published discovery hints; never a substitute for workspace RPC authorization. */
+export const EnvironmentSharingAudience = Schema.Array(
+	Schema.Struct({
+		organizationId: Schema.String.check(
+			Schema.isMinLength(1),
+			Schema.isMaxLength(128),
+		),
+		membershipId: Schema.String.check(
+			Schema.isMinLength(1),
+			Schema.isMaxLength(128),
+		),
+		subject: Schema.String.check(
+			Schema.isMinLength(1),
+			Schema.isMaxLength(128),
+		),
+		adminOnly: Schema.Boolean,
+	}),
+).check(Schema.isMaxLength(1000));
+export type EnvironmentSharingAudience = typeof EnvironmentSharingAudience.Type;
+
 export class ApiEnvironmentRecord extends Schema.Class<ApiEnvironmentRecord>(
 	"ApiEnvironmentRecord",
 )({

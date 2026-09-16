@@ -134,10 +134,12 @@ export const apiEnvironments = pgTable(
 		runtimeVersion: text("runtime_version"),
 		wireProtocolVersion: bigint("wire_protocol_version", { mode: "number" }),
 		capabilities: jsonb("capabilities"),
+		sharingAudience: jsonb("sharing_audience"),
 		serviceState: text("service_state"),
 	},
 	(table) => [
 		index("api_environments_account_idx").on(table.accountId),
+		index("api_environments_sharing_idx").using("gin", table.sharingAudience),
 		check(
 			"api_environments_provider_kind_check",
 			sql`${table.providerKind} IN ('desktop', 'ssh', 'cloud')`,
