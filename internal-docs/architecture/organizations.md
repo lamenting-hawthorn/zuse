@@ -123,9 +123,8 @@ calls remain interruptible; once success is observed, the local commit and notif
 are protected from request cancellation. Provider changes with an unconfirmed response
 still rely on live authorization and subsequent synchronization.
 
-Before enabling cross-account environment discovery, finish scoped
-streaming environment/catalog views and
-workspace-scoped file/Git/terminal/agent operations. These remain denied to guests.
+Before enabling cross-account environment discovery, finish workspace-scoped
+file/Git/terminal/agent operations. These remain denied to guests.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier
 and in-memory stream tests are not proof of that complete workflow.
 
@@ -145,7 +144,16 @@ before any network recheck, and a revision fence rejects pre-revocation lookup r
 A coalescing queue bounds refresh work; external WorkOS changes are checked every
 20 seconds and credential expiry independently ends the stream. The RPC test covers
 grant/revoke/regrant on one connection, including a delayed stale authorization read.
-The shell's chat/session/creation streams remain denied to guests until similarly scoped.
+The chat/session/creation catalog streams now use the same permission-aware restart
+mechanism. Chat snapshots and live rows are filtered by shared chat ID. Session feeds
+track only visible session IDs, suppress private removals, and send a removal when a
+previously visible session moves out of scope. Replacement snapshots retain the existing
+domain cursor; the renderer already accepts snapshots at an unchanged cursor. Creation
+operations are filtered by their owning chat in both list and stream RPCs. These are
+read surfaces only; agent commands and workspace mutation permissions are not enabled.
+An in-flight account request cannot change between host and guest authority if the
+host account switches; it must reconnect under a fresh scope. Host catalog streams
+drain their pre-authorization change subscription to avoid accumulating unused signals.
 
 Legacy HTTP attachment URLs are deliberately host-only: verified account credentials
 must match the signed-in host account, while explicitly paired devices retain access.

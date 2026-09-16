@@ -40,7 +40,12 @@ import { Effect, Layer, Result, Schedule, Stream } from "effect";
 import type { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
 import { SqlClient } from "effect/unstable/sql";
 import { AnalyticsService } from "../analytics/services/analytics-service.ts";
-import { filterCatalog } from "../collaboration/services/catalog-visibility.ts";
+import {
+	filterCatalog,
+	filterChatCatalog,
+	filterSessionCatalog,
+	withCatalogChanges,
+} from "../collaboration/services/catalog-visibility.ts";
 import { ConfigStoreService } from "../config-store/services/config-store-service.ts";
 import {
 	decodeChatStartupIntent,
@@ -394,7 +399,7 @@ const SessionStreamChanges = MemoizeRpcs.toLayerHandler(
 					live,
 				);
 			}),
-		).pipe(Stream.orDie),
+		).pipe(filterSessionCatalog, withCatalogChanges, Stream.orDie),
 );
 
 const SessionCreate = MemoizeRpcs.toLayerHandler("session.create", (input) =>
@@ -1339,15 +1344,24 @@ const ChatCreate = MemoizeRpcs.toLayerHandler(
 	}),
 );
 
+const listVisibleChatCreationOperations = (projectId: FolderId) =>
+	listChatCreationOperations(projectId).pipe(
+		Effect.flatMap((operations) =>
+			filterCatalog(operations, (scope, operation) =>
+				scope.chats.has(operation.chatId),
+			),
+		),
+	);
+
 const ChatCreationList = MemoizeRpcs.toLayerHandler(
 	"chat.creation.list",
-	({ projectId }) => listChatCreationOperations(projectId),
+	({ projectId }) => listVisibleChatCreationOperations(projectId),
 );
 
 const ChatCreationStream = MemoizeRpcs.toLayerHandler(
 	"chat.creation.stream",
 	({ projectId }) =>
-		Stream.fromEffect(listChatCreationOperations(projectId)).pipe(
+		Stream.fromEffect(listVisibleChatCreationOperations(projectId)).pipe(
 			Stream.repeat(Schedule.spaced("1 second")),
 			Stream.changesWith(
 				(previous, next) =>
@@ -1373,6 +1387,7 @@ const ChatCreationStream = MemoizeRpcs.toLayerHandler(
 				_tag: "snapshot" as const,
 				operations,
 			})),
+			withCatalogChanges,
 		),
 );
 
@@ -1509,7 +1524,7 @@ const ChatStreamChanges = MemoizeRpcs.toLayerHandler(
 	({ projectId }) =>
 		Stream.unwrap(
 			Effect.map(ChatService, (svc) => svc.streamChatChanges(projectId)),
-		),
+		).pipe(filterChatCatalog, withCatalogChanges),
 );
 
 const ChatSetWorktree = MemoizeRpcs.toLayerHandler(

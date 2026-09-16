@@ -40,11 +40,16 @@ export const RpcAuthorizationLive = Layer.effect(
 					return yield* effect;
 				const account = identity.value;
 				const revocations = yield* collaboration.subscribeAccessRevocations;
-				const catalogChanges =
-					rpc._tag === "workspace.streamChanges"
-						? yield* collaboration.subscribeCatalogChanges
-						: null;
+				const isCatalogStream =
+					rpc._tag === "workspace.streamChanges" ||
+					rpc._tag === "chat.streamChanges" ||
+					rpc._tag === "session.streamChanges" ||
+					rpc._tag === "chat.creation.stream";
+				const catalogChanges = isCatalogStream
+					? yield* collaboration.subscribeCatalogChanges
+					: null;
 				let catalogRevision = 0;
+				let authorityClass: "host" | "guest" | null = null;
 				let catalogScope: CatalogVisibility["Service"] | null = null;
 				let guestScope: {
 					chatId: ChatId;
@@ -59,14 +64,22 @@ export const RpcAuthorizationLive = Layer.effect(
 					const session = yield* auth.getSession();
 					if (session._tag !== "SignedIn")
 						return yield* new RpcAccessDeniedError({ code: "access-denied" });
-					if (session.session.user.id === account.subject) {
+					const currentAuthority =
+						session.session.user.id === account.subject ? "host" : "guest";
+					// A running unfiltered host feed cannot turn into a guest feed
+					// after an account switch. Reconnect with a fresh request scope.
+					if (authorityClass !== null && authorityClass !== currentAuthority)
+						return yield* new RpcAccessDeniedError({ code: "access-denied" });
+					authorityClass = currentAuthority;
+					if (currentAuthority === "host") {
 						guestScope = null;
 						catalogScope = null;
 						return;
 					}
 					if (
 						rpc._tag === "workspace.list" ||
-						rpc._tag === "workspace.streamChanges" ||
+						isCatalogStream ||
+						rpc._tag === "chat.creation.list" ||
 						rpc._tag === "chat.list" ||
 						rpc._tag === "session.list"
 					) {
@@ -247,7 +260,14 @@ export const RpcAuthorizationLive = Layer.effect(
 						? effect
 						: Effect.provideService(effect, CatalogVisibility, catalogScope),
 					Effect.raceFirst(
-						watchRevocations,
+						Effect.raceFirst(
+							watchRevocations,
+							// Host catalog requests do not need scope refreshes, but their
+							// pre-authorization subscription must not accumulate signals.
+							catalogChanges === null
+								? Effect.never
+								: Effect.forever(PubSub.take(catalogChanges)),
+						),
 						Effect.forever(
 							Effect.suspend(() =>
 								Effect.sleep(

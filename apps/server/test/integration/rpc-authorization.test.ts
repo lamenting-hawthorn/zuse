@@ -31,6 +31,25 @@ import { ConnectionIdentity } from "../../src/lan-auth/services/connection-ident
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
+	Rpc.make("chat.streamChanges", {
+		payload: { projectId: FolderId },
+		success: Schema.Array(Schema.String),
+		stream: true,
+	}),
+	Rpc.make("session.streamChanges", {
+		payload: { projectId: FolderId },
+		success: Schema.Array(Schema.String),
+		stream: true,
+	}),
+	Rpc.make("chat.creation.stream", {
+		payload: { projectId: FolderId },
+		success: Schema.Array(Schema.String),
+		stream: true,
+	}),
+	Rpc.make("chat.creation.list", {
+		payload: { projectId: FolderId },
+		success: Schema.Array(Schema.String),
+	}),
 	Rpc.make("chat.list", {
 		payload: { projectId: FolderId },
 		success: Schema.Array(Schema.String),
@@ -59,7 +78,23 @@ const Rpcs = RpcGroup.make(
 	}),
 	Rpc.make("host.secret", { success: Schema.String }),
 ).middleware(RpcAuthorization);
+const chatCatalogStream = () =>
+	Stream.concat(
+		Stream.fromEffect(
+			filterCatalog(["shared", "private"], (scope, id) =>
+				scope.chats.has(ChatId.make(id)),
+			),
+		),
+		Stream.never,
+	).pipe(withCatalogChanges);
 const handlers = Rpcs.toLayer({
+	"chat.streamChanges": chatCatalogStream,
+	"session.streamChanges": chatCatalogStream,
+	"chat.creation.stream": chatCatalogStream,
+	"chat.creation.list": () =>
+		filterCatalog(["shared", "private"], (scope, id) =>
+			scope.chats.has(ChatId.make(id)),
+		),
 	"workspace.streamChanges": () =>
 		Stream.concat(
 			Stream.fromEffect(
@@ -97,6 +132,7 @@ it("applies the authorization boundary to every public RPC", () => {
 
 it("enforces shared-workspace reads, denies other RPCs, and expires an active stream", async () => {
 	let signedIn = true;
+	let hostSubject = "owner";
 	const auth = Layer.succeed(AuthService, {
 		getSession: () =>
 			Effect.sync(() =>
@@ -105,7 +141,7 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 							_tag: "SignedIn",
 							session: {
 								user: {
-									id: "owner",
+									id: hostSubject,
 									email: "owner@example.com",
 									firstName: null,
 									lastName: null,
@@ -236,6 +272,32 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 			call(guestIdentity, (client) => client("workspace.list", undefined)),
 		).resolves.toEqual(["project"]);
 		const frames: ReadonlyArray<string>[] = [];
+		for (const read of [
+			(client: Effect.Success<typeof makeClient>) =>
+				client("chat.streamChanges", { projectId: FolderId.make("project") }),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("session.streamChanges", {
+					projectId: FolderId.make("project"),
+				}),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("chat.creation.stream", { projectId: FolderId.make("project") }),
+		]) {
+			await expect(
+				call(guestIdentity, (client) =>
+					read(client).pipe(Stream.take(1), Stream.runCollect),
+				),
+			).resolves.toEqual([["shared"]]);
+			await expect(
+				call({ ...guestIdentity, subject: "stranger" }, (client) =>
+					read(client).pipe(Stream.take(1), Stream.runCollect),
+				),
+			).resolves.toEqual([[]]);
+		}
+		await expect(
+			call(guestIdentity, (client) =>
+				client("chat.creation.list", { projectId: FolderId.make("project") }),
+			),
+		).resolves.toEqual(["shared"]);
 		const watching = call(guestIdentity, (client) =>
 			client("workspace.streamChanges", undefined).pipe(
 				Stream.take(3),
@@ -301,6 +363,30 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 		);
 		await watching;
 		expect(frames).toEqual([["project"], [], ["project"]]);
+		let markCatalogReady = () => {};
+		const catalogReady = new Promise<void>((resolve) => {
+			markCatalogReady = resolve;
+		});
+		const switchedAccount = call(guestIdentity, (client) =>
+			client("workspace.streamChanges", undefined).pipe(
+				Stream.runForEach(() => Effect.sync(markCatalogReady)),
+			),
+		).then(
+			() => null,
+			(error: unknown) => error,
+		);
+		await catalogReady;
+		hostSubject = "guest";
+		await runtime.runPromise(
+			service
+				.shareWorkspace(owner, ChatId.make("shared"))
+				.pipe(Effect.provideService(ConnectionIdentity, { kind: "local" })),
+		);
+		await expect(switchedAccount).resolves.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+			code: "access-denied",
+		});
+		hostSubject = "owner";
 		await expect(
 			call(guestIdentity, (client) =>
 				client("attachments.read", {
