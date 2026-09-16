@@ -756,6 +756,18 @@ export const getActiveEnvironment = (): string => activeEnvironmentId;
  */
 export const getLocalEnvironmentId = (): string => localEnvironmentId;
 
+/** Device profiles retain independent authority; unknown routes are not trusted. */
+export const rendererEnvironmentCommandAuthority = (
+	environmentId: string,
+): "device" | RendererAccountSnapshot | undefined => {
+	const options = environmentConnections.get(environmentId);
+	if (options !== undefined)
+		return options.kind === "websocket" && options.account !== undefined
+			? options.account
+			: "device";
+	return environmentId === LOCAL_ENVIRONMENT_KEY ? "device" : undefined;
+};
+
 /** Whether this environment id belongs to a registered cloud workspace. */
 export const isCloudWorkspaceEnvironment = (environmentId: string): boolean =>
 	cloudWorkspaceRegistrations.has(environmentId);

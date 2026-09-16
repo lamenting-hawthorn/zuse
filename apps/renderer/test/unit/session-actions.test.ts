@@ -10,13 +10,14 @@ import {
 	SessionTimelineProjection,
 } from "@zuse/contracts";
 import { Effect, Queue, Stream } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	clearPendingSessionMessage,
 	mergePendingSessionMessages,
 	pendingSessionMessages,
 	usePendingSessionMessages,
 } from "../../src/lib/pending-session-messages.ts";
+import { registerWebSocketEnvironment } from "../../src/lib/rpc-client.ts";
 
 import {
 	classifyError,
@@ -51,6 +52,9 @@ const sessionId = SessionId.make("session-actions-session");
 const ref = { environmentId, sessionId } as const;
 
 describe("session actions", () => {
+	beforeEach(() =>
+		registerWebSocketEnvironment(environmentId, "wss://example.test/rpc"),
+	);
 	afterEach(() => {
 		resetSessionTimelineClientBusForTest();
 		usePendingSessionMessages.setState({ byResource: {} });

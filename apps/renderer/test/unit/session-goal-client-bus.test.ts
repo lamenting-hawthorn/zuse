@@ -5,7 +5,8 @@ import {
 	ThreadGoal,
 } from "@zuse/contracts";
 import { Effect, Queue, Stream } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { registerWebSocketEnvironment } from "../../src/lib/rpc-client.ts";
 import {
 	clearSessionGoal,
 	resetSessionGoalClientBusForTest,
@@ -31,6 +32,10 @@ const waitUntil = async (predicate: () => boolean): Promise<void> => {
 const environmentId = EnvironmentId.make("goal-environment");
 const sessionId = SessionId.make("goal-session");
 const ref = { environmentId, sessionId } as const;
+
+beforeEach(() =>
+	registerWebSocketEnvironment(environmentId, "wss://example.test/rpc"),
+);
 
 const goal = ThreadGoal.make({
 	threadId: "thread-1",

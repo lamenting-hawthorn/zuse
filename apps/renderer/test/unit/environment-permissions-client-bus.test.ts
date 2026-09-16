@@ -1,19 +1,39 @@
 import { makeResourceKey } from "@zuse/client-runtime/resource-ref";
 import { EnvironmentId, PermissionRequest, SessionId } from "@zuse/contracts";
 import { Effect } from "effect";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	decideEnvironmentPermission,
 	denyEnvironmentPermissionAndInterrupt,
 	type EnvironmentPermissionsData,
 } from "../../src/lib/environment-permissions-client-bus.ts";
 import {
-	getRendererClientBus,
+	observeRendererAccount,
+	rendererAccountSnapshot,
+} from "../../src/lib/renderer-account.ts";
+import { registerApiEnvironment } from "../../src/lib/rpc-client.ts";
+import {
 	resetSessionTimelineClientBusForTest,
+	getRendererClientBus,
 	setSessionTimelineRpcClientForTest,
 } from "../../src/lib/session-timeline-client-bus.ts";
 
 describe("environment permissions ClientBus adapter", () => {
+	beforeEach(() => {
+		observeRendererAccount("permission-owner");
+		registerApiEnvironment(
+			"cloud-permission-environment",
+			"wss://example.test/rpc",
+			async () => "wss://example.test/rpc",
+			rendererAccountSnapshot(),
+		);
+		registerApiEnvironment(
+			"denied-permission-environment",
+			"wss://example.test/rpc",
+			async () => "wss://example.test/rpc",
+			rendererAccountSnapshot(),
+		);
+	});
 	afterEach(() => {
 		resetSessionTimelineClientBusForTest();
 	});

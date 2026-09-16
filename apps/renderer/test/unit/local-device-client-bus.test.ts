@@ -1,10 +1,8 @@
 import { CommandId, EnvironmentId } from "@zuse/contracts";
 import { Effect } from "effect";
-import { afterEach, describe, expect, test, vi } from "vitest";
-import {
-	isLocalDeviceConnectionReady,
-	localDeviceCommand,
-} from "../../src/lib/local-device-client-bus.ts";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { isLocalDeviceConnectionReady, localDeviceCommand } from "../../src/lib/local-device-client-bus.ts";
+import { registerWebSocketEnvironment } from "../../src/lib/rpc-client.ts";
 import {
 	getRendererClientBus,
 	resetSessionTimelineClientBusForTest,
@@ -12,6 +10,12 @@ import {
 } from "../../src/lib/session-timeline-client-bus.ts";
 
 describe("local device ClientBus commands", () => {
+	beforeEach(() =>
+		registerWebSocketEnvironment(
+			"desktop-environment",
+			"wss://example.test/rpc",
+		),
+	);
 	afterEach(() => resetSessionTimelineClientBusForTest());
 	test.each([
 		{ _tag: "status" },

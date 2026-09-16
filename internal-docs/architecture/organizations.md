@@ -208,8 +208,8 @@ now supports an explicit device or account owner. Owned commands use a v2 finger
 that includes ownership; unowned commands retain the shipped v1 fingerprint (covered
 by a fixed compatibility vector). Outbox round-trip/collision tests verify ownership
 is preserved and a command ID cannot be rebound to another owner. This metadata is
-not server authorization: dispatch-time capture, replay eligibility, account-scoped
-receipt access, and in-flight ownership changes still require implementation.
+not server authorization. Account-scoped persistence and remaining in-flight
+ownership changes still require implementation.
 No legacy pending command is assigned to the next account or deleted by this change.
 ClientBus now accepts an optional `commandScopeFor` hook that captures a currentness
 check before command admission/cache lookup. It checks that scope again after
@@ -218,8 +218,16 @@ execution/mailbox start, and before returning completed delivery. Losing authori
 before delivery preserves the pending outbox row and raises `CommandAuthorityLostError`
 without treating it as a definitive server rejection. Tests cover denied replay,
 resuming as the permitted owner, cached receipt denial, and revocation during a local
-write. Renderer ownership policy/capture is not wired yet; authority loss during
-long-lived waits/cancellation and receipt/cache isolation still require verification. Other
+write. The renderer now supplies `commandOwnerFor` and `commandScopeFor` through
+one shared policy: fresh dispatch captures device ownership for registered local/
+manual routes, or the current account for API/cloud routes. Unknown routes fail
+closed. Persisted replay bypasses owner capture: legacy/unowned rows can run only
+on device-owned routes and are never assigned to whichever account signs in next.
+Account replay requires the stored subject and a current route/account epoch;
+A -> B -> A invalidates existing attempts. Account commands cannot be rerouted
+through a device profile. Tests cover capture-once, unmodified replay, legacy
+denial, foreign-owner denial, and matching account/device behavior. Authority loss
+during long-lived waits/cancellation and receipt/cache isolation still require verification. Other
 asynchronous cloud actions also need account isolation, as do timeline/
 file caches and command outbox is also required before complete isolation.
 Verify actual account-grant renewal across a long-lived deployed connection; classifier

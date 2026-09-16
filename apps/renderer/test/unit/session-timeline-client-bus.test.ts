@@ -31,6 +31,7 @@ import { Effect, Queue, Schema, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClientCommandOutbox } from "../../src/lib/client-command-outbox.ts";
 import { cloudCommandTransport } from "../../src/lib/cloud-command-transport.ts";
+import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 import { sessionMessageCommandReflected } from "../../src/lib/session-message-intent.ts";
 import {
 	addOptimisticSessionMessage,
@@ -647,6 +648,7 @@ describe("renderer session timeline ClientBus adapter", () => {
 	});
 
 	it("uses the mailbox for a sleeping cloud workspace before gateway attachment", async () => {
+		observeRendererAccount("mailbox-owner");
 		const bus = getRendererClientBus();
 		const flush = vi
 			.spyOn(bus, "flushDurableOutbox")

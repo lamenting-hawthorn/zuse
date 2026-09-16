@@ -207,6 +207,52 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("captures ownership for new dispatch but never retroactively assigns replay ownership", async () => {
+		const persistence = new MemoryPersistence();
+		const legacy: ClientCommand = {
+			kind: "test",
+			commandId: CommandId.make("unowned-history"),
+			environmentId,
+			resource: null,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+		};
+		await persistence.putOutbox({
+			command: legacy,
+			fingerprint: commandFingerprint(legacy),
+			attempts: 0,
+			lastAttemptAt: null,
+		});
+		const ownerFor = vi.fn(() => ({
+			kind: "account" as const,
+			subject: "first",
+		}));
+		const execute = vi.fn(async (_client: Client, command: ClientCommand) => ({
+			commandId: command.commandId,
+			receivedAt: 2,
+			result: command.owner,
+		}));
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandOwnerFor: ownerFor,
+			commandScopeFor: (command) => () => command.owner?.kind === "account",
+			commandExecutor: { execute },
+		});
+		await bus.flushOutbox();
+		expect(ownerFor).not.toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
+		const fresh = { ...legacy, commandId: CommandId.make("new-owned") };
+		const receipt = await bus.dispatchHandle(fresh).result;
+		expect(receipt.result).toEqual({ kind: "account", subject: "first" });
+		expect(ownerFor).toHaveBeenCalledOnce();
+		expect(
+			persistence.outbox.get(legacy.commandId)?.command.owner,
+		).toBeUndefined();
+		expect(fresh.owner).toBeUndefined();
+		await bus.dispose();
+	});
 	it("leaves another owner's durable intent untouched and resumes it when authorized", async () => {
 		const persistence = new MemoryPersistence();
 		let subject = "second";

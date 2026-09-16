@@ -49,6 +49,11 @@ import { cloudFailurePresentation } from "./cloud-failure-presentation.ts";
 import { markCloudFetch } from "./cloud-fetch-timing.ts";
 import { isPlatformOnline } from "./network-status.ts";
 import {
+	type RendererAccountSnapshot,
+	rendererAccountSnapshot,
+} from "./renderer-account.ts";
+import { createRendererCommandAuthority } from "./renderer-command-authority.ts";
+import {
 	acquireRendererRpcSession,
 	environmentRequiresNetwork,
 	isAuthCodedConnectionError,
@@ -57,6 +62,7 @@ import {
 	type MemoizeClient,
 	markCloudWorkspaceConnectionHealthy,
 	type RendererRpcSession,
+	rendererEnvironmentCommandAuthority,
 } from "./rpc-client.ts";
 import {
 	durableOptimisticSessionMessage,
@@ -1049,6 +1055,7 @@ let commandOutbox = createClientCommandOutbox();
 type EnvironmentActivation = Readonly<{
 	/** The catalog authority that registered this resolver. */
 	readonly environmentKind: "cloud-workspace" | "other";
+	readonly account?: RendererAccountSnapshot;
 	prepare: (activation: "connect" | "wake") => Promise<void>;
 	prepareClient?: (client: MemoizeClient) => Promise<void>;
 }>;
@@ -1076,7 +1083,14 @@ export const registerEnvironmentActivation = (
 	prepareClient?: EnvironmentActivation["prepareClient"],
 	environmentKind: EnvironmentActivation["environmentKind"] = "other",
 ): (() => void) => {
-	const registration = { environmentKind, prepare, prepareClient };
+	const registration = {
+		environmentKind,
+		prepare,
+		prepareClient,
+		...(environmentKind === "cloud-workspace"
+			? { account: rendererAccountSnapshot() }
+			: {}),
+	};
 	activationByEnvironment.set(environmentId, registration);
 	if (environmentKind === "cloud-workspace") {
 		// Catalog hydration can happen after ClientBus's initial outbox scan. Resume
@@ -1233,6 +1247,11 @@ export const registerRendererResourceDriver = (
 const createBus = (): ClientBus<MemoizeClient> => {
 	let bus: ClientBus<MemoizeClient>;
 	bus = new ClientBus<MemoizeClient>({
+		...createRendererCommandAuthority(
+			(environmentId) =>
+				activationByEnvironment.get(environmentId)?.account ??
+				rendererEnvironmentCommandAuthority(environmentId),
+		),
 		resolver: environmentResolver,
 		coalescePersistence: (key) =>
 			key.kind === "session-timeline" &&

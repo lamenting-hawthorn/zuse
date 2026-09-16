@@ -9,6 +9,7 @@ import { clientCommandTargetId } from "./client-command-target";
 import type {
 	ClientCommand,
 	ClientCommandExecutor,
+	ClientCommandOwner,
 	CloudCommandTransport,
 	CommandDispatchHandle,
 	CommandFingerprint,
@@ -145,6 +146,8 @@ export type ClientBusOptions<Client> = Readonly<{
 	coalescePersistence?: (key: ResourceKey<unknown>) => boolean;
 	outbox?: CommandOutbox;
 	commandExecutor?: ClientCommandExecutor<Client>;
+	/** Applied only to newly submitted commands, never to persisted replay rows. */
+	commandOwnerFor?: (command: ClientCommand) => ClientCommandOwner;
 	/** Capture an authority scope before cache lookup, queueing, or replay. */
 	commandScopeFor?: (command: ClientCommand) => () => boolean;
 	/** Stable control-plane transport for eligible cloud environments. */
@@ -643,6 +646,27 @@ export class ClientBus<Client> {
 	dispatch<Result>(
 		command: ClientCommand<unknown, Result>,
 	): Promise<CommandReceipt<Result>> {
+		try {
+			return this.dispatchCommand(this.withCommandOwner(command));
+		} catch (cause) {
+			return Promise.reject(cause);
+		}
+	}
+
+	private withCommandOwner<Result>(
+		command: ClientCommand<unknown, Result>,
+	): ClientCommand<unknown, Result> {
+		if (
+			command.owner !== undefined ||
+			this.options.commandOwnerFor === undefined
+		)
+			return command;
+		return { ...command, owner: this.options.commandOwnerFor(command) };
+	}
+
+	private dispatchCommand<Result>(
+		command: ClientCommand<unknown, Result>,
+	): Promise<CommandReceipt<Result>> {
 		this.assertActive();
 		let assertAuthority: () => void;
 		try {
@@ -740,6 +764,7 @@ export class ClientBus<Client> {
 		command: ClientCommand<unknown, Result>,
 	): CommandDispatchHandle<Result> {
 		this.assertActive();
+		command = this.withCommandOwner(command);
 		const fingerprint = commandFingerprint(command);
 		let acceptance = this.commandAcceptances.get(command.commandId);
 		if (acceptance === undefined) {
@@ -961,7 +986,7 @@ export class ClientBus<Client> {
 		const entries = await outbox.listOutbox(environmentId);
 		await Promise.all(
 			entries.map((entry) =>
-				this.dispatch(entry.command).then(
+				this.dispatchCommand(entry.command).then(
 					() => undefined,
 					() => undefined,
 				),
@@ -998,7 +1023,7 @@ export class ClientBus<Client> {
 		);
 		if (eligible.length === 0) return;
 		await Promise.allSettled(
-			eligible.map((entry) => this.dispatch(entry.command)),
+			eligible.map((entry) => this.dispatchCommand(entry.command)),
 		);
 	}
 
