@@ -1,11 +1,14 @@
 import { makeResourceKey } from "@zuse/client-runtime/resource-ref";
-import { EnvironmentId, PermissionRequest, SessionId } from "@zuse/contracts";
+import { EnvironmentId, FolderId, PermissionRequest, SessionId } from "@zuse/contracts";
+import { emptyResourceView } from "@zuse/client-runtime/resource-state";
 import { Effect } from "effect";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	decideEnvironmentPermission,
 	denyEnvironmentPermissionAndInterrupt,
 	type EnvironmentPermissionsData,
+	loadEnvironmentPermissionDecisions,
+	revokeEnvironmentPermissionDecision,
 } from "../../src/lib/environment-permissions-client-bus.ts";
 import {
 	observeRendererAccount,
@@ -13,8 +16,8 @@ import {
 } from "../../src/lib/renderer-account.ts";
 import { registerApiEnvironment } from "../../src/lib/rpc-client.ts";
 import {
-	resetSessionTimelineClientBusForTest,
 	getRendererClientBus,
+	resetSessionTimelineClientBusForTest,
 	setSessionTimelineRpcClientForTest,
 } from "../../src/lib/session-timeline-client-bus.ts";
 
@@ -35,7 +38,49 @@ describe("environment permissions ClientBus adapter", () => {
 		);
 	});
 	afterEach(() => {
+		vi.restoreAllMocks();
 		resetSessionTimelineClientBusForTest();
+	});
+	it.each([
+		["decide", true],
+		["load", true],
+		["revoke", true],
+		["decide", false],
+		["load", false],
+		["revoke", false],
+	])("scopes %s rollback to its account (changed: %s)", async (operation, changed) => {
+		const bus = getRendererClientBus();
+		const pending = Promise.withResolvers<never>();
+		vi.spyOn(bus, "dispatch").mockReturnValue(pending.promise);
+		vi.spyOn(bus, "snapshot").mockReturnValue({
+			...emptyResourceView(),
+			data: {
+				requestsById: { request: { id: "request" } },
+				decisionsByProject: { project: [] },
+				loadingDecisionsByProject: {},
+			},
+		});
+		const overlay = vi.spyOn(bus, "overlay");
+		const completion =
+			operation === "decide"
+				? decideEnvironmentPermission("request", { _tag: "AllowOnce" })
+				: operation === "load"
+					? loadEnvironmentPermissionDecisions(FolderId.make("project"))
+					: revokeEnvironmentPermissionDecision(
+							FolderId.make("project"),
+							"request",
+						);
+		const rejected = expect(completion).rejects.toThrow(
+			changed ? "connection account changed" : "late failure",
+		);
+		expect(overlay).toHaveBeenCalledOnce();
+		if (changed) {
+			observeRendererAccount("another-account");
+			observeRendererAccount("permission-owner");
+		}
+		pending.reject(new Error("late failure"));
+		await rejected;
+		expect(overlay).toHaveBeenCalledTimes(changed ? 1 : 2);
 	});
 
 	it("routes a cloud decision through the permission request environment", async () => {
