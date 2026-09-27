@@ -29,6 +29,15 @@ describe("cloud command crypto", () => {
 			dependencies: [],
 		};
 		const additionalData = cloudCommandAdditionalData(metadata);
+		const serverAttributed = {
+			...metadata,
+			actor: { subject: "alice", membershipId: "member_alice" },
+		};
+		// The API adds attribution after encryption; it must not rewrite client
+		// ciphertext or invalidate existing Personal command recovery records.
+		expect(cloudCommandAdditionalData(serverAttributed)).toEqual(
+			additionalData,
+		);
 		const encrypted = await encryptCloudCommandBody({
 			encodedKey,
 			additionalData,

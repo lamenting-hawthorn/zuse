@@ -275,7 +275,11 @@ export const CollaborationServiceLive = Layer.effect(
 					let changed = existing[0]?.name !== details.organization.name;
 					const revokedMemberIds: TeamMemberId[] = [];
 					const incoming = new Set(
-						details.members.map((member) => member.userId),
+						details.members
+							.filter(
+								(member) => organizationCollaborationRole(member.role) !== null,
+							)
+							.map((member) => member.userId),
 					);
 					for (const member of previous) {
 						if (incoming.has(member.subject) || member.status === "revoked")
@@ -288,6 +292,7 @@ export const CollaborationServiceLive = Layer.effect(
 					for (const member of details.members) {
 						const old = previousBySubject.get(member.userId);
 						const role = organizationCollaborationRole(member.role);
+						if (role === null) continue;
 						const memberId = old?.id ?? randomUUID();
 						const membershipChanged =
 							old?.organization_membership_id !== member.id;

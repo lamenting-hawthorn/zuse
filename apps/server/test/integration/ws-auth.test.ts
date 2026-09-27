@@ -9,6 +9,8 @@ import { makeRpcClientSession } from "@zuse/client-runtime/connection";
 import { wsClientProtocolLayer } from "@zuse/client-runtime/ws-protocol";
 import {
 	AuthState,
+	ChatId,
+	FolderId,
 	PingResult,
 	PingRpc,
 	WIRE_PROTOCOL_VERSION,
@@ -33,6 +35,7 @@ import { Migration0028RelayMintPublicKey } from "../../src/persistence/migration
 import { Migration0039AuthTokenDevices } from "../../src/persistence/migrations/0039_auth_token_devices.ts";
 import { Migration0040BlockedNearbyDevices } from "../../src/persistence/migrations/0040_blocked_nearby_devices.ts";
 import { Migration0052ApiConfig } from "../../src/persistence/migrations/0052_api_config.ts";
+import { browserCookieName } from "../../src/transports/browser-http.ts";
 import { wsServerProtocolLayer } from "../../src/transports/ws.ts";
 
 const LargePayloadRpc = Rpc.make("test.largePayload", {
@@ -47,7 +50,15 @@ const TestRpcs = RpcGroup.make(PingRpc, LargePayloadRpc, IdentityRpc);
 const IdentityHandler = TestRpcs.toLayerHandler("test.identity", () =>
 	Effect.serviceOption(ConnectionIdentity).pipe(
 		Effect.map((identity) =>
-			identity._tag === "Some" ? identity.value : null,
+			identity._tag === "Some"
+				? identity.value.kind === "workspace"
+					? {
+							kind: identity.value.kind,
+							subject: identity.value.subject,
+							workspaceId: identity.value.workspaceId,
+						}
+					: identity.value
+				: null,
 		),
 	),
 );
@@ -255,6 +266,75 @@ const upgradeStatus = (
 	upgradeResponse(port, path, headers).then((response) => response.status);
 
 describe("WS LAN auth", () => {
+	it("retains scoped authority on loopback instead of upgrading a supplied credential to local", async () => {
+		const port = await freePort();
+		const runtime = makeRuntime({ policy: "local", port });
+		try {
+			const minted = await runtime.runPromise(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					return yield* auth.mintToken("gateway", undefined, {
+						kind: "workspace",
+						subject: "member",
+						membershipId: "membership-member",
+						workspaceId: "workspace",
+						chatId: ChatId.make("chat"),
+						projectId: FolderId.make("project"),
+						expiresAt: Date.now() + 60_000,
+						authorize: Effect.succeed("view"),
+					});
+				}),
+			);
+			const client = await makeRpcClientSession(
+				wsClientProtocolLayer({ host: "127.0.0.1", port, token: minted.token }),
+				TestRpcs,
+			);
+			try {
+				expect(
+					await Effect.runPromise(client.client["test.identity"]({})),
+				).toEqual({
+					kind: "workspace",
+					subject: "member",
+					workspaceId: "workspace",
+				});
+			} finally {
+				await client.dispose();
+			}
+			const origin = `http://127.0.0.1:${port}`;
+			const environmentId = await runtime.runPromise(
+				Effect.flatMap(LanAuthService, (auth) => auth.environmentId()),
+			);
+			const response = await fetch(`${origin}/auth/websocket-ticket`, {
+				method: "POST",
+				headers: {
+					origin,
+					cookie: `${browserCookieName(environmentId)}=${minted.token}`,
+				},
+			});
+			expect(response.status).toBe(200);
+			const { ticket } = Schema.decodeUnknownSync(
+				Schema.Struct({ ticket: Schema.String }),
+			)(await response.json());
+			await runtime.runPromise(
+				Effect.flatMap(LanAuthService, (auth) => auth.revokeToken(minted.id)),
+			);
+			expect(
+				await upgradeStatus(
+					port,
+					`/?ticket=${encodeURIComponent(ticket)}&wireVersion=${WIRE_PROTOCOL_VERSION}`,
+				),
+			).toBe(401);
+			expect(
+				await upgradeStatus(
+					port,
+					`/?ticket=invalid&wireVersion=${WIRE_PROTOCOL_VERSION}`,
+				),
+			).toBe(401);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	it("isolates verified connection identity and ignores forged RPC identity headers", async () => {
 		const port = await freePort();
 		const runtime = makeRuntime({ policy: "protected", port });

@@ -49,6 +49,7 @@ import type {
 	ThreadGoalSetInput,
 	TurnInterruptReceipt,
 	UserQuestionAnswer,
+	WorkspaceActor,
 	WorktreeId,
 } from "@zuse/contracts";
 import type { CommandReceiptIdentity } from "@zuse/domain/engine/dispatch";
@@ -220,6 +221,8 @@ export interface MessageSendInput {
 	/** Stable persisted user-message identity, when supplied by the caller. */
 	readonly messageId?: MessageId;
 	readonly origin?: MessageOrigin;
+	/** Supplied only by an authenticated server boundary. */
+	readonly actor?: WorkspaceActor;
 	/** Stable domain turn identity for a causally correlated transport command. */
 	readonly turnId?: AgentTurnId;
 	readonly receiptIdentity?: CommandReceiptIdentity;
@@ -563,6 +566,7 @@ export interface ConversationOperations {
 		clientMessageId?: MessageId,
 		origin?: MessageOrigin,
 		receiptIdentity?: CommandReceiptIdentity,
+		actor?: WorkspaceActor,
 	) => Effect.Effect<void, SessionNotFoundError | DirectoryUnavailableError>;
 
 	readonly interruptSession: (
@@ -582,6 +586,7 @@ export interface ConversationOperations {
 		queueId?: string,
 		ready?: boolean,
 		flush?: boolean,
+		actor?: WorkspaceActor,
 	) => Effect.Effect<
 		QueuedMessage,
 		SessionNotFoundError | QueuedMessageCapacityError

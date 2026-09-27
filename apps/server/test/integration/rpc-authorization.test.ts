@@ -9,9 +9,11 @@ import {
 	OrganizationMember,
 	PingResult,
 	PingRpc,
+	RpcAccessDeniedError,
 	RpcAuthorization,
 	SessionId,
 	WireWelcome,
+	WORKSPACE_SCOPE_HEADER,
 	WorktreeId,
 } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
@@ -23,7 +25,7 @@ import {
 	Schema,
 	Stream,
 } from "effect";
-import { Rpc, RpcGroup, RpcTest } from "effect/unstable/rpc";
+import { Rpc, RpcClient, RpcGroup, RpcTest } from "effect/unstable/rpc";
 import { SqlClient } from "effect/unstable/sql";
 import { expect, it, vi } from "vitest";
 import { AuthService } from "../../src/auth/services/auth-service.ts";
@@ -38,6 +40,7 @@ import { WorkspaceFileAccess } from "../../src/collaboration/services/workspace-
 import { WorkspaceSharingAuthorityLive } from "../../src/collaboration/services/workspace-sharing-authority.ts";
 import { RpcAuthorizationLive } from "../../src/lan-auth/layers/rpc-authorization.ts";
 import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
+import { RequestWorkspace } from "../../src/machine/request-workspace.ts";
 import { MigrationsLive } from "../../src/persistence/migrations.ts";
 
 const Rpcs = RpcGroup.make(
@@ -66,6 +69,14 @@ const Rpcs = RpcGroup.make(
 		success: Schema.String,
 	}),
 	Rpc.make("fs.readFile", {
+		payload: {
+			folderId: FolderId,
+			path: Schema.String,
+			worktreeId: Schema.optional(Schema.NullOr(WorktreeId)),
+		},
+		success: Schema.String,
+	}),
+	Rpc.make("fs.writeFile", {
 		payload: {
 			folderId: FolderId,
 			path: Schema.String,
@@ -119,6 +130,9 @@ const Rpcs = RpcGroup.make(
 		stream: true,
 	}),
 	Rpc.make("host.secret", { success: Schema.String }),
+	Rpc.make("machines.checkout", { success: Schema.String }),
+	Rpc.make("machines.billingPortal", { success: Schema.String }),
+	Rpc.make("machines.entitlements", { success: Schema.String }),
 ).middleware(RpcAuthorization);
 const chatCatalogStream = () =>
 	Stream.concat(
@@ -138,6 +152,9 @@ const fileScopeResult = () =>
 		),
 	);
 const handlers = Rpcs.toLayer({
+	"machines.checkout": () => RequestWorkspace,
+	"machines.billingPortal": () => RequestWorkspace,
+	"machines.entitlements": () => RequestWorkspace,
 	"connect.handshake": ({ protocolVersion }) =>
 		Effect.succeed(WireWelcome.make({ protocolVersion })),
 	"ping.ping": () =>
@@ -147,6 +164,7 @@ const handlers = Rpcs.toLayer({
 	"fs.watchTree": () =>
 		Stream.concat(Stream.fromEffect(fileScopeResult()), Stream.never),
 	"fs.readFile": fileScopeResult,
+	"fs.writeFile": fileScopeResult,
 	"fs.tree": fileScopeResult,
 	"fs.listPaths": fileScopeResult,
 	"chat.streamChanges": chatCatalogStream,
@@ -239,7 +257,7 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 					email: `${userId}@example.com`,
 					displayName: userId,
 					role:
-						userId === "owner" || guestRole === "owner" ? "admin" : "viewer",
+						userId === "owner" || guestRole === "owner" ? "admin" : "member",
 					directoryManaged: false,
 				}),
 			),
@@ -304,6 +322,88 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 				return { owner, guest };
 			}),
 		);
+		let cloudPermission: "view" | "edit" = "view";
+		let cloudRevoked = false;
+		const cloudIdentity = {
+			kind: "workspace" as const,
+			subject: "cloud-member",
+			membershipId: "membership-cloud-member",
+			workspaceId: "cloud-workspace",
+			chatId: ChatId.make("shared"),
+			projectId: FolderId.make("project"),
+			expiresAt: Date.now() + 60_000,
+			authorize: Effect.suspend(() =>
+				cloudRevoked
+					? Effect.fail(new RpcAccessDeniedError({ code: "access-denied" }))
+					: Effect.succeed(cloudPermission),
+			),
+		};
+		signedIn = false;
+		await expect(
+			call(cloudIdentity, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).resolves.toBe("project:main");
+		await expect(
+			call(cloudIdentity, (client) =>
+				client("fs.writeFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		cloudPermission = "edit";
+		await expect(
+			call(cloudIdentity, (client) =>
+				client("fs.writeFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).resolves.toBe("project:main");
+		for (const operation of [
+			(client: Effect.Success<typeof makeClient>) =>
+				client("host.secret", undefined),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("session.get", { sessionId: SessionId.make("private-session") }),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+					worktreeId: WorktreeId.make("other"),
+				}),
+		])
+			await expect(call(cloudIdentity, operation)).rejects.toMatchObject({
+				_tag: "RpcAccessDeniedError",
+			});
+		await expect(
+			call(cloudIdentity, (client) =>
+				client("chat.list", { projectId: FolderId.make("project") }),
+			),
+		).resolves.toEqual(["shared"]);
+		cloudRevoked = true;
+		await expect(
+			call(cloudIdentity, (client) =>
+				client("fs.readFile", {
+					folderId: FolderId.make("project"),
+					path: "file.txt",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		cloudRevoked = false;
+		await expect(
+			call({ ...cloudIdentity, expiresAt: Date.now() + 50 }, (client) =>
+				Stream.runCollect(
+					client("session.events", {
+						sessionId: SessionId.make("shared-session"),
+					}),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		signedIn = true;
 		const guestIdentity = {
 			kind: "account",
 			subject: "guest",
@@ -311,6 +411,40 @@ it("enforces shared-workspace reads, denies other RPCs, and expires an active st
 		} as const;
 		const handshake = (client: Effect.Success<typeof makeClient>) =>
 			client("connect.handshake", { protocolVersion: 5 });
+		for (const operation of [
+			(client: Effect.Success<typeof makeClient>) =>
+				client("machines.checkout", undefined),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("machines.billingPortal", undefined),
+			(client: Effect.Success<typeof makeClient>) =>
+				client("machines.entitlements", undefined),
+		]) {
+			await expect(
+				call({ kind: "local" }, (client) =>
+					operation(client).pipe(
+						RpcClient.withHeaders({
+							[WORKSPACE_SCOPE_HEADER]: "organization:org",
+						}),
+					),
+				),
+			).resolves.toBe("organization:org");
+		}
+		await expect(
+			call({ kind: "local" }, (client) =>
+				client("host.secret", undefined).pipe(
+					RpcClient.withHeaders({
+						[WORKSPACE_SCOPE_HEADER]: "organization:org",
+					}),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		await expect(
+			call({ kind: "local" }, (client) =>
+				client("machines.checkout", undefined).pipe(
+					RpcClient.withHeaders({ [WORKSPACE_SCOPE_HEADER]: "organization:" }),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
 		await expect(call(guestIdentity, handshake)).resolves.toMatchObject({
 			protocolVersion: 5,
 		});

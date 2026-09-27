@@ -433,7 +433,9 @@ const websocketTicketApp = (
 		if (!hasValidRequestOrigin(request.headers, security)) {
 			return yield* json({ error: "invalid_origin" }, 403);
 		}
+		const credential = sessionCredential(request, cookieName);
 		if (
+			credential === null &&
 			!requestRequiresAuthentication(
 				auth.policy,
 				request.headers,
@@ -442,7 +444,6 @@ const websocketTicketApp = (
 		) {
 			return yield* json(tickets.issue("local"), 200);
 		}
-		const credential = sessionCredential(request, cookieName);
 		const authenticated =
 			credential !== null &&
 			(yield* auth
@@ -563,6 +564,8 @@ export const wsServerProtocolLayer = (
 				const ticket = requestUrl.searchParams.get("ticket");
 				const ticketCredential =
 					ticket === null ? null : tickets.consume(ticket);
+				if (ticket !== null && ticketCredential === null)
+					return yield* json({ error: "unauthorized" }, 401);
 				const token =
 					ticketCredential === "local"
 						? null
@@ -582,6 +585,7 @@ export const wsServerProtocolLayer = (
 					}),
 				);
 				if (
+					token !== null ||
 					requestRequiresAuthentication(
 						auth.policy,
 						request.headers,
@@ -780,6 +784,8 @@ export const wsServerProtocolLayer = (
 						// This legacy URL has no session scope. A teammate must use
 						// attachments.read, which verifies both workspace access and
 						// the attachment's session, rather than an unscoped ID lookup.
+						if (identity.kind === "workspace")
+							return yield* json({ error: "forbidden" }, 403);
 						if (identity.kind === "account") {
 							const session = Option.isSome(hostAuth)
 								? yield* hostAuth.value.getSession()

@@ -1,6 +1,5 @@
 import {
 	AgentTurnId,
-	ComposerInput,
 	DEFAULT_PERMISSION_MODE,
 	DEFAULT_RUNTIME_MODE,
 	MAX_SESSION_QUEUE_ITEMS,
@@ -11,6 +10,7 @@ import {
 	MessageRole,
 	PermissionRequest,
 	QueuedMessage,
+	QueuedMessageInput,
 	QueueState,
 	type SessionId,
 	type SessionInteraction,
@@ -74,7 +74,7 @@ const decodeContent = Schema.decodeUnknownResult(
 const decodeRole = Schema.decodeUnknownResult(MessageRole);
 const decodeDate = Schema.decodeUnknownResult(Schema.DateFromString);
 const decodeComposer = Schema.decodeUnknownResult(
-	Schema.fromJsonString(ComposerInput),
+	Schema.fromJsonString(QueuedMessageInput),
 );
 const decodePermissionRequest = Schema.decodeUnknownResult(
 	Schema.fromJsonString(PermissionRequest),
@@ -264,6 +264,7 @@ export const readSessionTimelineSnapshot = Effect.fn(
 				id: row.id,
 				sessionId,
 				input: input.success,
+				actor: input.success.actor,
 				position: row.queue_order,
 				createdAt: new Date(row.created_at),
 				updatedAt: new Date(row.updated_at),

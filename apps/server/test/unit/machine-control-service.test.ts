@@ -1,8 +1,14 @@
-import { AgentSessionId, ChatId, CloudWorkspace } from "@zuse/contracts";
+import {
+	AgentSessionId,
+	ApiPaths,
+	ChatId,
+	CloudWorkspace,
+} from "@zuse/contracts";
 import { Effect, Stream } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+	MachineControlError,
 	mapApiErrorCode,
 	resolveMachineApiUrl,
 	streamCloudWorkspaceLifecycle,
@@ -34,11 +40,34 @@ const workspace = (
 	});
 
 describe("machine control api URL", () => {
+	it("does not describe an undeployed organization endpoint as a deleted team", () => {
+		expect(mapApiErrorCode(404, "not_found", ApiPaths.organizations).code).toBe(
+			"provider-unavailable",
+		);
+		expect(
+			mapApiErrorCode(
+				404,
+				"organization_resource_not_found",
+				ApiPaths.organizationDetails,
+			).code,
+		).toBe("not-found");
+	});
+	it("preserves the organization creation cap", () => {
+		expect(mapApiErrorCode(409, "organization_member_limit_reached").code).toBe(
+			"organization-member-limit-reached",
+		);
+		expect(mapApiErrorCode(409, "organization_limit_reached").code).toBe(
+			"organization-limit-reached",
+		);
+	});
 	it("preserves actionable cloud conflicts instead of reporting a workspace race", () => {
 		expect(
 			mapApiErrorCode(409, "cloud_credential_connection_required").code,
 		).toBe("credential-required");
 		expect(mapApiErrorCode(409, "cloud_branch_in_use:workspace_123").code).toBe(
+			"branch-in-use",
+		);
+		expect(mapApiErrorCode(409, "cloud_branch_in_use").code).toBe(
 			"branch-in-use",
 		);
 		expect(mapApiErrorCode(409, "cloud_workspace_unavailable").code).toBe(
@@ -50,6 +79,15 @@ describe("machine control api URL", () => {
 		expect(mapApiErrorCode(401, undefined).code).toBe("not-allowed");
 		expect(mapApiErrorCode(403, undefined).code).toBe("not-allowed");
 		expect(mapApiErrorCode(400, undefined).code).toBe("invalid-request");
+	});
+
+	it("retains billing holds and retryable rate limits", () => {
+		expect(mapApiErrorCode(403, "cloud_billing_hold").code).toBe(
+			"billing-hold",
+		);
+		expect(mapApiErrorCode(429, "rate_limited").code).toBe(
+			"provider-unavailable",
+		);
 	});
 
 	it("preserves private-beta access failures", () => {
@@ -110,5 +148,46 @@ describe("machine control api URL", () => {
 		expect(
 			Array.from(await Effect.runPromise(lifecycle), (value) => value.revision),
 		).toEqual([2]);
+	});
+
+	it("recovers transient lifecycle outages without replaying already published revisions", async () => {
+		let reads = 0;
+		const values = await Effect.runPromise(
+			streamCloudWorkspaceLifecycle(
+				Effect.suspend(() => {
+					reads++;
+					if (reads === 2)
+						return Effect.fail(new MachineControlError("provider-unavailable"));
+					return Effect.succeed(workspace(reads < 4 ? 2 : 3));
+				}),
+				1,
+			).pipe(Stream.take(2), Stream.runCollect),
+		);
+		expect(values.map((value) => value.revision)).toEqual([2, 3]);
+		expect(reads).toBe(4);
+	});
+
+	it("ends a desktop subscription when membership is revoked", async () => {
+		let reads = 0;
+		const denied = new MachineControlError("not-allowed");
+		const observed: number[] = [];
+		const failure = await Effect.runPromise(
+			streamCloudWorkspaceLifecycle(
+				Effect.suspend(() => {
+					reads++;
+					return reads === 1
+						? Effect.succeed(workspace(2))
+						: Effect.fail(denied);
+				}),
+				1,
+			).pipe(
+				Stream.tap((value) => Effect.sync(() => observed.push(value.revision))),
+				Stream.runDrain,
+				Effect.flip,
+			),
+		);
+		expect(observed).toEqual([2]);
+		expect(failure).toBe(denied);
+		expect(reads).toBe(2);
 	});
 });

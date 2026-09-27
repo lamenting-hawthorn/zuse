@@ -8,7 +8,10 @@ import type {
 import { Context, type Effect, Schema } from "effect";
 
 import type { LanAuthPolicy } from "../policy.ts";
-import type { CredentialIdentity } from "./connection-identity.ts";
+import type {
+	CredentialIdentity,
+	WorkspaceCredentialIdentity,
+} from "./connection-identity.ts";
 
 export interface LanAuthConfigShape {
 	readonly policy: LanAuthPolicy;
@@ -76,6 +79,7 @@ export interface LanAuthServiceShape {
 	readonly mintToken: (
 		label?: string,
 		deviceId?: string,
+		workspace?: WorkspaceCredentialIdentity,
 	) => Effect.Effect<
 		{ readonly id: AuthTokenId; readonly token: string },
 		LanAuthError

@@ -85,6 +85,9 @@ export type ResourceDataUpdate<Data> = Readonly<{
 	expectedGeneration: number;
 	/** Durable cursor observed before the side request started. */
 	expectedCursor: ResourceCursor | null;
+	/** Authenticated side requests may initialize an otherwise empty resource. */
+	initialData?: Data;
+	origin?: "runtime" | "checkpoint";
 	/** Returning undefined rejects the update without notifying subscribers. */
 	update: (data: Data) => Data | undefined;
 	persist?: boolean;
@@ -528,19 +531,21 @@ export class ClientBus<Client> {
 		const entry = this.entries.get(resourceKeyId(key));
 		if (
 			entry === undefined ||
-			entry.view.data === null ||
+			entry.deniedGeneration !== null ||
 			entry.view.generation !== options.expectedGeneration ||
 			!cursorEquals(entry.view.cursor, options.expectedCursor)
 		) {
 			return false;
 		}
-		const data = options.update(entry.view.data as ResourceData<Key>);
+		const current = entry.view.data ?? options.initialData;
+		if (current === undefined) return false;
+		const data = options.update(current as ResourceData<Key>);
 		if (data === undefined) return false;
 		entry.runtimeUpdates += 1;
 		const next: ResourceView<unknown> = {
 			...entry.view,
 			data,
-			origin: "runtime",
+			origin: options.origin ?? "runtime",
 		};
 		this.setView(entry, next);
 		if (options.persist === true) this.persist(entry, next);

@@ -197,7 +197,10 @@ describe("CollaborationService", () => {
 		]);
 	});
 
-	test("signals committed roster revocations without invalidating unchanged rosters", async () => {
+	test.each([
+		"removed",
+		"billing",
+	])("signals committed %s revocations without invalidating unchanged rosters", async (change) => {
 		await runtime.runPromise(
 			Effect.scoped(
 				Effect.gen(function* () {
@@ -210,13 +213,13 @@ describe("CollaborationService", () => {
 					yield* service.synchronizeOrganization(organizationRoster("org-a"));
 					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
 					yield* service.synchronizeOrganization(
-						organizationRoster("org-a", false),
+						organizationRoster("org-a", change !== "removed", "billing"),
 					);
 					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([
 						{ kind: "member", memberId: driver.memberId },
 					]);
 					yield* service.synchronizeOrganization(
-						organizationRoster("org-a", false),
+						organizationRoster("org-a", change !== "removed", "billing"),
 					);
 					expect(yield* PubSub.takeUpTo(subscription, 10)).toEqual([]);
 				}),
@@ -674,18 +677,26 @@ describe("CollaborationService", () => {
 		}
 	});
 
-	test("maps unknown WorkOS roles to read-only and rejects incomplete rosters", async () => {
+	test.each([
+		"custom",
+		"billing",
+	])("denies content to WorkOS role %s and rejects incomplete rosters", async (role) => {
 		await runtime.runPromise(
 			Effect.gen(function* () {
 				const service = yield* CollaborationService;
 				const synced = yield* service.synchronizeOrganization(
-					organizationRoster("org-a", true, "custom"),
+					organizationRoster("org-a", true, role),
 				);
 				expect(
 					(yield* service.listMembers(synced.actor)).find(
 						(member) => member.subject === "driver",
 					)?.role,
-				).toBe("viewer");
+				).toBeUndefined();
+				expect(
+					(yield* service
+						.resolveActor(synced.team.id, "driver")
+						.pipe(Effect.flip))._tag,
+				).toBe("CollaborationAccessDeniedError");
 				expect(
 					(yield* service
 						.synchronizeOrganization(

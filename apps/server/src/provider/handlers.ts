@@ -65,6 +65,7 @@ import {
 	SessionService,
 	TranscriptService,
 } from "../conversation/services/conversation-services.ts";
+import { connectionWorkspaceActor } from "../lan-auth/services/connection-identity.ts";
 import { resolveCliPath, resolveUpdateCommand } from "./availability.ts";
 import { BrowserBridgeService } from "./services/browser-bridge-service.ts";
 import { CredentialsService } from "./services/credentials-service.ts";
@@ -1945,7 +1946,7 @@ const SessionGoalStream = MemoizeRpcs.toLayerHandler(
 		),
 );
 
-const MessagesSend = MemoizeRpcs.toLayerHandler(
+export const MessagesSend = MemoizeRpcs.toLayerHandler(
 	"messages.send",
 	({ commandId, sessionId, text, input, asGoal, clientMessageId }) => {
 		console.log(
@@ -1960,8 +1961,10 @@ const MessagesSend = MemoizeRpcs.toLayerHandler(
 				`[rpc.messages.send] attachments: ${JSON.stringify(input.attachments)}`,
 			);
 		}
-		return Effect.flatMap(MessageService, (svc) =>
-			svc.sendMessage(
+		return Effect.gen(function* () {
+			const svc = yield* MessageService;
+			const actor = yield* connectionWorkspaceActor;
+			yield* svc.sendMessage(
 				commandId,
 				sessionId,
 				input?.text ?? text ?? "",
@@ -1971,8 +1974,11 @@ const MessagesSend = MemoizeRpcs.toLayerHandler(
 				input?.annotations,
 				asGoal,
 				clientMessageId,
-			),
-		);
+				undefined,
+				undefined,
+				actor,
+			);
+		});
 	},
 );
 
@@ -1996,6 +2002,7 @@ const MessagesQueueAdd = MemoizeRpcs.toLayerHandler(
 		Effect.gen(function* () {
 			const svc = yield* QueueService;
 			const analytics = yield* AnalyticsService;
+			const actor = yield* connectionWorkspaceActor;
 			const result = yield* svc.addQueuedMessage(
 				commandId,
 				sessionId,
@@ -2003,6 +2010,7 @@ const MessagesQueueAdd = MemoizeRpcs.toLayerHandler(
 				queueId,
 				ready,
 				flush,
+				actor,
 			);
 			yield* analytics.capture("queue action performed", { action: "add" });
 			return result;

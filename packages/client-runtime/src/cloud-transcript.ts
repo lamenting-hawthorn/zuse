@@ -48,6 +48,16 @@ export const openCloudTranscriptCheckpoint = async (
 		payload.cursor.version !== cursor.version
 	)
 		throw new Error("Cloud transcript checkpoint metadata mismatch");
+	if (payload.context !== undefined) {
+		const { session, chat, folder } = payload.context;
+		if (
+			session.id !== ref.sessionId ||
+			session.chatId !== chat.id ||
+			session.projectId !== folder.id ||
+			chat.projectId !== folder.id
+		)
+			throw new Error("Cloud transcript checkpoint context mismatch");
+	}
 	return payload;
 };
 

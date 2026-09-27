@@ -2,15 +2,13 @@ import { Schema } from "effect";
 import { Rpc } from "effect/unstable/rpc";
 
 export {
+	HOSTED_APP_URL,
 	PRODUCTION_API_URL,
 	PUBLIC_DEPLOYMENT_PROFILES,
 	STAGING_API_URL,
 	WORKOS_PUBLIC_CLIENT_ID,
 	WORKOS_STAGING_PUBLIC_CLIENT_ID,
 } from "./deployment.ts";
-
-/** Canonical hosted product origin shared by Serve and browser clients. */
-export const HOSTED_APP_URL = "https://code.zuse.sh";
 
 /**
  * WorkOS AuthKit identity — the first user-account primitive in Zuse.

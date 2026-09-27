@@ -22,8 +22,8 @@ export class OrganizationAuthority extends Context.Service<
 
 export const organizationCollaborationRole = (
 	role: string,
-): CollaborationRole =>
-	role === "admin" ? "owner" : role === "member" ? "driver" : "viewer";
+): CollaborationRole | null =>
+	role === "admin" ? "owner" : role === "member" ? "driver" : null;
 
 export const OrganizationAuthorityLive = Layer.effect(
 	OrganizationAuthority,
@@ -45,9 +45,14 @@ export const OrganizationAuthorityLive = Layer.effect(
 									}),
 							),
 						);
+					const role = organizationCollaborationRole(membership.role);
+					if (role === null)
+						return yield* new CollaborationAccessDeniedError({
+							reason: "organization_content_access_denied",
+						});
 					return {
 						membershipId: membership.membershipId,
-						role: organizationCollaborationRole(membership.role),
+						role,
 					};
 				},
 			),

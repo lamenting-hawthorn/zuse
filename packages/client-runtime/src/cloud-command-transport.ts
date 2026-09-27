@@ -35,7 +35,9 @@ import type { CloudCommandControlClient } from "./cloud-control-client.ts";
 import { cloudFailurePresentation } from "./cloud-failure-presentation.ts";
 
 export const makeCloudCommandTransport = (
-	getControlPlaneRpcClient: () => Promise<CloudCommandControlClient>,
+	getControlPlaneRpcClient: (
+		workspaceId: string,
+	) => Promise<CloudCommandControlClient>,
 ): CloudCommandTransport => {
 	const sessionIdOf = (command: ClientCommand): string => {
 		const payload = command.payload as Readonly<Record<string, unknown>>;
@@ -140,7 +142,7 @@ export const makeCloudCommandTransport = (
 		if (code !== "not-found" && code !== "conflict")
 			return { kind: "transient" };
 		try {
-			const control = await getControlPlaneRpcClient();
+			const control = await getControlPlaneRpcClient(workspaceId);
 			const workspace = await Effect.runPromise(
 				control["cloud.workspaces.get"]({ workspaceId }),
 			);
@@ -160,7 +162,7 @@ export const makeCloudCommandTransport = (
 	};
 
 	const dataKey = async (workspaceId: string) => {
-		const control = await getControlPlaneRpcClient();
+		const control = await getControlPlaneRpcClient(workspaceId);
 		try {
 			return await Effect.runPromise(
 				control["cloud.commands.dataKey"]({ workspaceId }),
@@ -200,7 +202,7 @@ export const makeCloudCommandTransport = (
 	};
 
 	const commandStatus = async (workspaceId: string, commandId: string) => {
-		const control = await getControlPlaneRpcClient();
+		const control = await getControlPlaneRpcClient(workspaceId);
 		return Effect.runPromise(
 			control["cloud.commands.status"]({ workspaceId, commandId }),
 		);
@@ -321,7 +323,7 @@ export const makeCloudCommandTransport = (
 			while (this.subscribers.size > 0) {
 				const afterRevision = this.revision ?? 0;
 				try {
-					const control = await getControlPlaneRpcClient();
+					const control = await getControlPlaneRpcClient(this.workspaceId);
 					const page = await Effect.runPromise(
 						control["cloud.commands.watch"]({
 							workspaceId: this.workspaceId,
@@ -700,7 +702,7 @@ export const makeCloudCommandTransport = (
 		envelope: CloudCommandEnvelope,
 	): Promise<CommandAcceptance> => {
 		try {
-			const control = await getControlPlaneRpcClient();
+			const control = await getControlPlaneRpcClient(envelope.workspaceId);
 			return await Effect.runPromise(
 				control["cloud.commands.enqueue"](envelope),
 			);
@@ -750,7 +752,7 @@ export const makeCloudCommandTransport = (
 	const cancelEnvelope = async (
 		envelope: CloudCommandEnvelope,
 	): Promise<CommandStatus> => {
-		const control = await getControlPlaneRpcClient();
+		const control = await getControlPlaneRpcClient(envelope.workspaceId);
 		const status = await Effect.runPromise(
 			control["cloud.commands.cancel"]({
 				workspaceId: envelope.workspaceId,

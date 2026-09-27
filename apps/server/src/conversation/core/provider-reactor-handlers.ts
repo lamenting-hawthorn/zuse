@@ -12,6 +12,10 @@ import { isProviderAuthenticationRequired } from "../../provider/provider-auth-f
 import type { makeReactorEffectJournal } from "../../provider/reactor-effect-journal.ts";
 import type { ProviderServiceShape } from "../../provider/services/provider-service.ts";
 import type { ConversationOperations } from "../services/conversation-services.ts";
+import {
+	type WorkspaceExecutionAuthorizer,
+	WorkspaceExecutionPolicy,
+} from "../services/workspace-execution-policy.ts";
 import type { ConversationReactorHandlers } from "./conversation-reactors.ts";
 import type { PersistedMessage } from "./conversation-store-types.ts";
 import type { OpenProviderSessionOptions } from "./provider-session-runtime.ts";
@@ -19,6 +23,7 @@ import {
 	decodeProviderModelOptions,
 	decodeProviderStartRequest,
 	decodeProviderTurnInput,
+	decodeQueuedTurnInput,
 } from "./provider-turn-request.ts";
 
 const PROVIDER_DELIVERY_OUTCOME_UNKNOWN =
@@ -37,6 +42,7 @@ const isProvenUndeliveredProviderSend = (
 };
 
 export interface ProviderReactorHandlersOptions {
+	readonly authorizeQueuedTurn?: WorkspaceExecutionAuthorizer;
 	readonly reactorEffects: ReturnType<typeof makeReactorEffectJournal>;
 	readonly getSession: ConversationOperations["getSession"];
 	readonly ensureForTurn: (
@@ -408,9 +414,33 @@ export const makeProviderReactorHandlers = (
 			Effect.gen(function* () {
 				if (yield* reactorEffects.isCompleted(reactorInput.commandId)) return;
 				const sessionId = SessionId.make(reactorInput.streamId);
-				const input = yield* decodeProviderTurnInput(
+				const input = yield* decodeQueuedTurnInput(
 					reactorInput.command.inputJson,
 				).pipe(Effect.orDie);
+				const executionPolicy = yield* WorkspaceExecutionPolicy;
+				if (
+					!(yield* (options.authorizeQueuedTurn ?? executionPolicy.authorize)(
+						sessionId,
+						input.actor,
+					))
+				) {
+					yield* sessionDomain
+						.dispatch({
+							commandId: `${reactorInput.commandId}:access-paused`,
+							streamId: sessionId,
+							command: {
+								_tag: "EnqueueTurn",
+								queueId: reactorInput.command.queueId,
+								inputJson: reactorInput.command.inputJson,
+								position: 0,
+								createdAt: Date.now(),
+								ready: false,
+							},
+						})
+						.pipe(Effect.orDie);
+					yield* reactorEffects.complete(reactorInput.commandId);
+					return;
+				}
 				const hasRich =
 					input.attachments.length > 0 ||
 					input.fileRefs.length > 0 ||
@@ -419,6 +449,7 @@ export const makeProviderReactorHandlers = (
 				const content = hasRich
 					? {
 							_tag: "user_rich" as const,
+							actor: input.actor,
 							text: input.text,
 							attachments: input.attachments,
 							fileRefs: input.fileRefs,
@@ -426,7 +457,12 @@ export const makeProviderReactorHandlers = (
 							annotations: input.annotations ?? [],
 							goal: false,
 						}
-					: { _tag: "user" as const, text: input.text, goal: false };
+					: {
+							_tag: "user" as const,
+							text: input.text,
+							goal: false,
+							actor: input.actor,
+						};
 				const admitted = yield* sessionDomain
 					.dispatch({
 						commandId: `${reactorInput.commandId}:submit`,

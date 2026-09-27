@@ -11,6 +11,7 @@ export class WireHello extends Schema.Class<WireHello>("WireHello")({
 }) {}
 
 export class WireWelcome extends Schema.Class<WireWelcome>("WireWelcome")({
+	workspaceScopeProtocol: Schema.optional(Schema.Literal(1)),
 	protocolVersion: Schema.Number,
 }) {}
 

@@ -813,6 +813,16 @@ describe("ClientBus", () => {
 				sync: "failed",
 			});
 			expect(cleanupWrites).toEqual([false]);
+			const denied = bus.snapshot(timelineKey);
+			expect(
+				bus.update(timelineKey, {
+					expectedGeneration: denied.generation,
+					expectedCursor: denied.cursor,
+					initialData: { text: "late checkpoint" },
+					origin: "checkpoint",
+					update: (data) => data,
+				}),
+			).toBe(false);
 			expect(first.emit({ data: { text: "late" } })).toBe(false);
 			expect(
 				bus.overlay(timelineKey, {
@@ -1307,6 +1317,41 @@ describe("ClientBus", () => {
 				data: { text: "with older page" },
 				cursor: { epoch: "epoch-1", version: 7 },
 			},
+		);
+	});
+
+	it("seeds a cold checkpoint without connecting and leaves subsequent data in charge", async () => {
+		const resolver = immediateResolver();
+		const connect = vi.spyOn(resolver, "resolve");
+		const persistence = new MemoryPersistence();
+		const bus = new ClientBus<Client>({
+			resolver,
+			persistence,
+			driverFor: () => null,
+		});
+		const before = bus.snapshot(timelineKey);
+		const initialData = { text: "checkpoint context" };
+		const options = {
+			expectedGeneration: before.generation,
+			expectedCursor: before.cursor,
+			initialData,
+			origin: "checkpoint" as const,
+			update: (data: Timeline) => (data === initialData ? data : undefined),
+			persist: true,
+		};
+		expect(bus.update(timelineKey, options)).toBe(true);
+		expect(bus.snapshot(timelineKey)).toMatchObject({
+			data: initialData,
+			origin: "checkpoint",
+			cursor: null,
+		});
+		expect(connect).not.toHaveBeenCalled();
+		bus.overlay(timelineKey, { update: () => ({ text: "newer state" }) });
+		expect(bus.update(timelineKey, options)).toBe(false);
+		expect(bus.snapshot(timelineKey).data).toEqual({ text: "newer state" });
+		await bus.dispose();
+		expect(persistence.resources.get(resourceKeyId(timelineKey))?.data).toEqual(
+			initialData,
 		);
 	});
 

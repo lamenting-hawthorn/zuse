@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 import { Rpc } from "effect/unstable/rpc";
-
 import {
 	AgentDefinition,
 	ContextUsagePrecision,
@@ -11,6 +10,7 @@ import {
 	RuntimeMode,
 	UserQuestion,
 } from "./agent.ts";
+import { WorkspaceActor } from "./collaboration.ts";
 import {
 	AttachmentRef,
 	ComposerAnnotation,
@@ -184,6 +184,7 @@ export type MessageOrigin = typeof MessageOrigin.Type;
 
 const UserContent = Schema.TaggedStruct("user", {
 	text: Schema.String,
+	actor: Schema.optional(WorkspaceActor),
 	origin: Schema.optional(MessageOrigin),
 	goal: Schema.optional(Schema.Boolean),
 });
@@ -196,6 +197,7 @@ const UserContent = Schema.TaggedStruct("user", {
  */
 const UserRichContent = Schema.TaggedStruct("user_rich", {
 	text: Schema.String,
+	actor: Schema.optional(WorkspaceActor),
 	attachments: Schema.Array(AttachmentRef),
 	fileRefs: Schema.Array(FileRef),
 	skillRefs: Schema.Array(SkillRef),
@@ -428,11 +430,18 @@ export class MessageEnvelope extends Schema.Class<MessageEnvelope>(
 	message: Message,
 }) {}
 
+/** Persisted queue payload; actor is populated only by the server. */
+export const QueuedMessageInput = Schema.Struct({
+	...ComposerInput.fields,
+	actor: Schema.optional(WorkspaceActor),
+});
+
 export class QueuedMessage extends Schema.Class<QueuedMessage>("QueuedMessage")(
 	{
 		id: Schema.String,
 		sessionId: SessionId,
 		input: ComposerInput,
+		actor: Schema.optional(WorkspaceActor),
 		position: Schema.Number,
 		createdAt: Schema.DateFromString,
 		updatedAt: Schema.DateFromString,

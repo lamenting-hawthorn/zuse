@@ -250,6 +250,57 @@ export const SettingsPatch = Schema.Struct({
 });
 export type SettingsPatch = typeof SettingsPatch.Type;
 
+/** Preferences of the viewing device, never inherited from an organization runtime. */
+export const DevicePreferences = SettingsPatch.mapFields(
+	Struct.pick([
+		"appearanceMode",
+		"completionSoundEnabled",
+		"completionSoundPreset",
+		"onboardingCompleted",
+		"notchTrayEnabled",
+		"notchTrayPinned",
+	]),
+);
+export type DevicePreferences = typeof DevicePreferences.Type;
+
+/** Shared, non-secret configuration. Device preferences and host paths stay local. */
+export const WorkspaceSettingsValues = SettingsPatch.mapFields(
+	Struct.pick([
+		"defaultProviderId",
+		"defaultModelByProvider",
+		"defaultRuntimeMode",
+		"defaultAutoCreateWorktree",
+		"defaultAutonomyLevel",
+		"providerEnabled",
+		"modelEnabledByProvider",
+		"customModelIdsByProvider",
+		"opencodeProviderVisible",
+		"opencodeModelVisibleByProvider",
+		"opencode2ProviderVisible",
+		"opencode2ModelVisibleByProvider",
+		"branchNamingStyle",
+		"branchNamingPrefix",
+		"mergePrefs",
+	]),
+);
+export type WorkspaceSettingsValues = typeof WorkspaceSettingsValues.Type;
+
+export const WorkspaceSettings = Schema.Struct({
+	revision: Schema.Number.check(
+		Schema.isInt(),
+		Schema.isGreaterThanOrEqualTo(0),
+	),
+	values: WorkspaceSettingsValues,
+});
+export type WorkspaceSettings = typeof WorkspaceSettings.Type;
+
+/** Replacement with optimistic concurrency; omitted values revert to product defaults. */
+export const WorkspaceSettingsUpdate = Schema.Struct({
+	expectedRevision: WorkspaceSettings.fields.revision,
+	values: WorkspaceSettingsValues,
+});
+export type WorkspaceSettingsUpdate = typeof WorkspaceSettingsUpdate.Type;
+
 export const SettingsGetRpc = Rpc.make("settings.get", {
 	success: SettingsFile,
 });

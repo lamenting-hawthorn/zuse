@@ -41,6 +41,7 @@ import { WorkspaceSharingAuthorityLive } from "./collaboration/services/workspac
 import { ConfigStoreServiceLive } from "./config-store/layers/config-store-service.ts";
 import { ConversationState } from "./conversation/core/conversation-state.ts";
 import { ConversationServicesLive } from "./conversation/layers/conversation-services.ts";
+import { PendingWorkspaceExecutionPolicy } from "./conversation/services/workspace-execution-policy.ts";
 import { DeviceBridgeServiceLive } from "./device-bridge/service.ts";
 import { DiagnosticsServiceLive } from "./diagnostics/layers/diagnostics-service.ts";
 import { ExternalThreadServiceLive } from "./external-thread/layers/external-thread-service.ts";
@@ -554,7 +555,12 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(MachineRuntimeRoleLayer),
 	);
 
+	const ExecutionPolicyLayer =
+		deps.cloudWorkspaceRuntime === undefined
+			? Layer.empty
+			: PendingWorkspaceExecutionPolicy;
 	const ConversationServicesLayer = ConversationServicesLive.pipe(
+		Layer.provide(ExecutionPolicyLayer),
 		Layer.provide(ConversationState.layer),
 		Layer.provide(ProviderLayer),
 		Layer.provide(ModelCatalogLayer),
@@ -578,6 +584,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const CloudWorkspaceRuntimeLayer = makeCloudWorkspaceRuntimeLayer(
 		deps.cloudWorkspaceRuntime,
 	).pipe(
+		Layer.provide(ExecutionPolicyLayer),
 		Layer.provide(CredentialsLayer),
 		Layer.provide(AttachmentLayer),
 		Layer.provide(RuntimeProviderCredentialsLayer),

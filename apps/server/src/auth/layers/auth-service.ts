@@ -194,6 +194,10 @@ export const AuthServiceLive = Layer.effect(
 				// Read request context here, not when constructing the shared service.
 				// Workspace access never delegates the host owner's account credentials.
 				const identity = yield* Effect.serviceOption(ConnectionIdentity);
+				if (Option.isSome(identity) && identity.value.kind === "workspace")
+					return yield* new AuthTokenError({
+						reason: "Workspace connections cannot use the host account.",
+					});
 				const authorize = (candidate: SessionBundle) =>
 					Option.isSome(identity) &&
 					identity.value.kind === "account" &&

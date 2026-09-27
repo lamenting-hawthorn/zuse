@@ -1,3 +1,4 @@
+import { organizationControlError } from "@zuse/client-runtime/control-api-error";
 import {
 	type ActorIdentity,
 	MemoizeRpcs,
@@ -19,18 +20,7 @@ const withOrganizations = <A>(
 	) => Effect.Effect<A, MachineControlError>,
 ) =>
 	Effect.flatMap(MachineControlService, run).pipe(
-		Effect.mapError(
-			(error) =>
-				new OrganizationError({
-					code:
-						error.code === "not-allowed" ||
-						error.code === "not-found" ||
-						error.code === "conflict" ||
-						error.code === "invalid-request"
-							? error.code
-							: "unavailable",
-				}),
-		),
+		Effect.mapError((error) => organizationControlError(error.code)),
 	);
 
 const withOrganizationActor = <A>(
@@ -135,11 +125,11 @@ export const OrganizationHandlersLayer = Layer.mergeAll(
 				yield* restore(
 					withOrganizations((service) => service.setOrganizationRole(input)),
 				);
-				if (input.role === "member") {
+				if (input.role !== "admin") {
 					const collaboration = yield* CollaborationService;
 					yield* collaboration.applyOrganizationMembershipRestriction({
 						...input,
-						change: "demoted",
+						change: input.role === "billing" ? "removed" : "demoted",
 					});
 				}
 			}),

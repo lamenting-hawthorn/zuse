@@ -116,6 +116,10 @@ export const ApiPaths = {
 		`/v1/api/webhooks/${encodeURIComponent(webhookId)}`,
 	cloudWorkspaces: "/v1/cloud/workspaces",
 	cloudWorkspacesFork: "/v1/cloud/workspaces/fork",
+	cloudSharingDefaults: "/v1/cloud/sharing-defaults",
+	cloudSettings: "/v1/cloud/settings",
+	cloudWorkspaceSharing: (workspaceId: string) =>
+		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/sharing`,
 	cloudWorkspace: (workspaceId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}`,
 	cloudWorkspaceConnectionTicket: (workspaceId: string) =>
@@ -155,6 +159,8 @@ export const ApiPaths = {
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/providers/${encodeURIComponent(providerId)}/grant`,
 	cloudWorkspaceRuntimeCommands: (workspaceId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/commands`,
+	cloudWorkspaceRuntimeAccess: (workspaceId: string) =>
+		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/access`,
 	cloudWorkspaceRuntimeAsset: (workspaceId: string, assetId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/attachments/${encodeURIComponent(assetId)}`,
 	cloudWorkspaceRuntimeTurnEvents: (workspaceId: string) =>

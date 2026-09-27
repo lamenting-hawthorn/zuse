@@ -15,6 +15,7 @@ import {
 	buildBrowserPairUrl,
 	type EnvironmentId,
 	normalizePairingCodeInput,
+	RpcAccessDeniedError,
 	SHORT_PAIRING_CODE_ALPHABET,
 	SHORT_PAIRING_CODE_LENGTH,
 } from "@zuse/contracts";
@@ -26,7 +27,10 @@ import {
 	generateEnvironmentKeypair,
 	signEnvironmentLinkProof,
 } from "../../api/link-proof.ts";
-import type { CredentialIdentity } from "../services/connection-identity.ts";
+import type {
+	CredentialIdentity,
+	WorkspaceCredentialIdentity,
+} from "../services/connection-identity.ts";
 import {
 	LanAuthConfig,
 	LanAuthError,
@@ -254,11 +258,50 @@ export const LanAuthServiceLive = Layer.effect(
 		const nearbyAdmission = yield* Semaphore.make(1);
 		const nearbyChallenges = yield* Ref.make(new Map<string, number>());
 
-		const mintToken = (label?: string, deviceId?: string) =>
+		// Gateway credentials live only for the local connection, never in the paired-device table.
+		const workspaceTokens = new Map<
+			string,
+			{
+				readonly id: AuthTokenId;
+				readonly identity: WorkspaceCredentialIdentity;
+			}
+		>();
+		const mintToken = (
+			label?: string,
+			deviceId?: string,
+			workspace?: WorkspaceCredentialIdentity,
+		) =>
 			Effect.gen(function* () {
 				const id = `auth_${yield* randomBase64Url(16)}` as AuthTokenId;
 				const token = `zt_${yield* randomBase64Url(32)}`;
 				const hash = yield* tokenHash(token);
+				if (workspace !== undefined) {
+					const now = yield* Clock.currentTimeMillis;
+					for (const [key, value] of workspaceTokens)
+						if (value.identity.expiresAt <= now) workspaceTokens.delete(key);
+					if (workspace.expiresAt <= now || workspaceTokens.size >= 256)
+						return yield* new LanAuthError({
+							reason: "workspace_credential_unavailable",
+						});
+					const validate = Effect.gen(function* () {
+						if (
+							!workspaceTokens.has(hash) ||
+							workspace.expiresAt <= (yield* Clock.currentTimeMillis)
+						)
+							return yield* new RpcAccessDeniedError({
+								code: "credential-expired",
+							});
+					});
+					const identity: WorkspaceCredentialIdentity = {
+						...workspace,
+						authorize: validate.pipe(
+							Effect.andThen(workspace.authorize),
+							Effect.tap(() => validate),
+						),
+					};
+					workspaceTokens.set(hash, { id, identity });
+					return { id, token } as const;
+				}
 				const createdAt = yield* nowIso;
 				yield* sql.withTransaction(
 					Effect.gen(function* () {
@@ -764,6 +807,16 @@ export const LanAuthServiceLive = Layer.effect(
 		): Effect.Effect<CredentialIdentity | null, LanAuthError> =>
 			Effect.gen(function* () {
 				const hash = yield* tokenHash(token);
+				const workspace = workspaceTokens.get(hash);
+				if (workspace !== undefined) {
+					if (
+						workspace.identity.expiresAt <= (yield* Clock.currentTimeMillis)
+					) {
+						workspaceTokens.delete(hash);
+						return null;
+					}
+					return workspace.identity;
+				}
 				const rows = yield* sql<{
 					readonly id: string;
 					readonly device_id: string | null;
@@ -855,6 +908,11 @@ export const LanAuthServiceLive = Layer.effect(
 				}).pipe(Effect.mapError(toLanAuthError)),
 			revokeToken: (id) =>
 				Effect.gen(function* () {
+					for (const [hash, workspace] of workspaceTokens)
+						if (workspace.id === id) {
+							workspaceTokens.delete(hash);
+							return;
+						}
 					const revokedAt = yield* nowIso;
 					yield* sql`
             UPDATE auth_tokens

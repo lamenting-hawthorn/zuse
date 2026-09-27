@@ -1,4 +1,5 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
+import { ChatId, FolderId, RpcAccessDeniedError } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Duration, Effect, Layer, ManagedRuntime, Result } from "effect";
 import { TestClock } from "effect/testing";
@@ -128,6 +129,49 @@ describe("LanAuthService", () => {
 			expect(rows).toHaveLength(1);
 			expect(rows[0]?.token_hash).not.toBe(minted.token);
 			expect(JSON.stringify(rows)).not.toContain(minted.token);
+		});
+	});
+
+	it("keeps scoped gateway tokens ephemeral and revokes authority on existing identities", async () => {
+		await withRuntime(async (run) => {
+			await run(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					let allowed = true;
+					const token = yield* auth.mintToken("gateway", undefined, {
+						kind: "workspace",
+						subject: "member",
+						membershipId: "membership-member",
+						workspaceId: "cloud-workspace",
+						chatId: ChatId.make("chat"),
+						projectId: FolderId.make("project"),
+						expiresAt: Number.MAX_SAFE_INTEGER,
+						authorize: Effect.suspend(() =>
+							allowed
+								? Effect.succeed("view" as const)
+								: Effect.fail(
+										new RpcAccessDeniedError({ code: "access-denied" }),
+									),
+						),
+					});
+					const identity = yield* auth.authenticateToken(token.token);
+					expect(identity?.kind).toBe("workspace");
+					if (identity?.kind !== "workspace")
+						throw new Error("Missing scoped identity");
+					expect(yield* identity.authorize).toBe("view");
+					expect(yield* auth.listTokens()).toEqual([]);
+					allowed = false;
+					expect((yield* identity.authorize.pipe(Effect.result))._tag).toBe(
+						"Failure",
+					);
+					allowed = true;
+					yield* auth.revokeToken(token.id);
+					expect(yield* auth.authenticateToken(token.token)).toBeNull();
+					expect((yield* identity.authorize.pipe(Effect.result))._tag).toBe(
+						"Failure",
+					);
+				}),
+			);
 		});
 	});
 

@@ -3,8 +3,11 @@ import { Rpc } from "effect/unstable/rpc";
 import { TeamMember, WorkspaceGrant } from "./collaboration.ts";
 import { ChatId } from "./ids.ts";
 
+/** Includes the creator; pending invitations reserve seats. */
+export const ORGANIZATION_MEMBER_LIMIT = 5;
+
 /** Organization administration is separate from private workspace permissions. */
-export const OrganizationRole = Schema.Literals(["admin", "member"]);
+export const OrganizationRole = Schema.Literals(["admin", "member", "billing"]);
 export type OrganizationRole = typeof OrganizationRole.Type;
 const Identifier = Schema.String.check(
 	Schema.isMinLength(1),
@@ -19,6 +22,7 @@ export class Organization extends Schema.Class<Organization>("Organization")({
 	id: Identifier,
 	name: Schema.String,
 	role: OrganizationRole,
+	isCreator: Schema.optional(Schema.Boolean),
 }) {}
 
 export class OrganizationMember extends Schema.Class<OrganizationMember>(
@@ -59,6 +63,8 @@ export class OrganizationError extends Schema.TaggedErrorClass<OrganizationError
 			"conflict",
 			"invalid-request",
 			"unavailable",
+			"organization-limit-reached",
+			"organization-member-limit-reached",
 		]),
 	},
 ) {}

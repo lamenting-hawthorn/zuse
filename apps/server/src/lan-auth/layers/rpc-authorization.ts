@@ -6,6 +6,8 @@ import {
 	SessionId,
 	TeamId,
 	type TeamMemberId,
+	WORKSPACE_SCOPE_HEADER,
+	WorkspaceScopeHeader,
 	WorktreeId,
 } from "@zuse/contracts";
 import {
@@ -26,7 +28,9 @@ import {
 } from "../../collaboration/services/catalog-visibility.ts";
 import { CollaborationService } from "../../collaboration/services/collaboration-service.ts";
 import { WorkspaceFileAccess } from "../../collaboration/services/workspace-file-access.ts";
+import { RequestWorkspace } from "../../machine/request-workspace.ts";
 import { ConnectionIdentity } from "../services/connection-identity.ts";
+import { authorizeWorkspaceRpc } from "./workspace-rpc-authorization.ts";
 
 export const RpcAuthorizationLive = Layer.effect(
 	RpcAuthorization,
@@ -34,13 +38,40 @@ export const RpcAuthorizationLive = Layer.effect(
 		const auth = yield* AuthService;
 		const sql = yield* SqlClient.SqlClient;
 		const collaboration = yield* CollaborationService;
-		return RpcAuthorization.of((effect, { rpc, payload }) =>
+		return RpcAuthorization.of((effect, { rpc, payload, headers }) =>
 			Effect.gen(function* () {
+				const scope = yield* Schema.decodeUnknownEffect(WorkspaceScopeHeader)(
+					headers[WORKSPACE_SCOPE_HEADER] ?? "personal",
+				).pipe(
+					Effect.mapError(
+						() => new RpcAccessDeniedError({ code: "access-denied" }),
+					),
+				);
+				const scopedRequest = Effect.provideService(
+					effect,
+					RequestWorkspace,
+					scope,
+				);
+				if (
+					scope !== "personal" &&
+					!rpc._tag.startsWith("cloud.") &&
+					rpc._tag !== "machines.checkout" &&
+					rpc._tag !== "machines.billingPortal" &&
+					rpc._tag !== "machines.entitlements"
+				)
+					return yield* new RpcAccessDeniedError({ code: "access-denied" });
 				const identity = yield* Effect.serviceOption(ConnectionIdentity);
+				if (Option.isSome(identity) && identity.value.kind === "workspace")
+					return yield* authorizeWorkspaceRpc(
+						scopedRequest,
+						identity.value,
+						rpc._tag,
+						payload,
+					).pipe(Effect.provideService(SqlClient.SqlClient, sql));
 				// Native IPC and explicitly paired devices retain their existing host
 				// authority. Account connections never inherit it from the transport.
 				if (Option.isNone(identity) || identity.value.kind !== "account")
-					return yield* effect;
+					return yield* scopedRequest;
 				const account = identity.value;
 				const revocations = yield* collaboration.subscribeAccessRevocations;
 				const isCatalogStream =
@@ -257,7 +288,11 @@ export const RpcAuthorizationLive = Layer.effect(
 						),
 					);
 					return yield* Effect.raceFirst(
-						Effect.provideService(effect, CatalogVisibilityChanges, changes),
+						Effect.provideService(
+							scopedRequest,
+							CatalogVisibilityChanges,
+							changes,
+						),
 						Effect.raceFirst(
 							expired,
 							Effect.raceFirst(
@@ -299,8 +334,12 @@ export const RpcAuthorizationLive = Layer.effect(
 				// credential expiry. Cancellation closes the existing RPC stream.
 				const scopedEffect =
 					fileScope === null
-						? effect
-						: Effect.provideService(effect, WorkspaceFileAccess, fileScope);
+						? scopedRequest
+						: Effect.provideService(
+								scopedRequest,
+								WorkspaceFileAccess,
+								fileScope,
+							);
 				return yield* Effect.raceFirst(
 					catalogScope === null
 						? scopedEffect
