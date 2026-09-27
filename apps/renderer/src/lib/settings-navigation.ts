@@ -1,17 +1,22 @@
 import "@zuse/i18n/english/settings";
 import type { IconSvgElement } from "@hugeicons/react";
+import type { WorkspaceScope } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 import {
 	BrowserIcon,
-	ConnectIcon,
+	CloudIcon,
 	DocumentAttachmentIcon,
 	KeyboardIcon,
 	PackageIcon,
 	PlugSocketIcon,
+	PuzzleIcon,
+	ServerStack01Icon,
 	Settings01Icon,
+	Share01Icon,
 	SmartPhone01Icon,
 	TaskDone01Icon,
 	TestTubeIcon,
+	UserGroupIcon,
 } from "@zuse/icons/solid-rounded";
 import type { SettingsSection } from "../store/ui.ts";
 import { cloudWorkspaceBetaAvailable } from "./cloud-machines-availability.ts";
@@ -61,7 +66,7 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		get label() {
 			return uiMessage("settings:settings_navigation_integrations");
 		},
-		Icon: ConnectIcon,
+		Icon: PuzzleIcon,
 		section: { kind: "integrations" },
 	},
 	{
@@ -77,7 +82,7 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		get label() {
 			return uiMessage("settings:organizations_organizations");
 		},
-		Icon: ConnectIcon,
+		Icon: UserGroupIcon,
 		section: { kind: "organizations" },
 	},
 	{
@@ -85,7 +90,7 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		get label() {
 			return uiMessage("settings:self_hosted_servers");
 		},
-		Icon: ConnectIcon,
+		Icon: ServerStack01Icon,
 		section: { kind: "self-hosted" },
 	},
 	{
@@ -93,7 +98,7 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		get label() {
 			return uiMessage("settings:settings_navigation_cloud_workspaces_beta");
 		},
-		Icon: ConnectIcon,
+		Icon: CloudIcon,
 		section: { kind: "machines" },
 	},
 	{
@@ -141,6 +146,74 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 ];
 
 const CLOUD_MACHINES_AVAILABLE = cloudWorkspaceBetaAvailable();
+
+/** Organization management has its own rail, separate from personal settings. */
+export function settingsNavigationFor(
+	section: SettingsSection,
+	desktop: boolean,
+	scope?: WorkspaceScope,
+) {
+	if (scope?.kind === "organization") return ORGANIZATION_NAVIGATION;
+	return SETTINGS_NAVIGATION.filter(
+		(item) =>
+			(item.section.kind === "organizations") ===
+				(section.kind === "organizations") &&
+			(desktop ||
+				(item.section.kind !== "machines" &&
+					item.section.kind !== "self-hosted")),
+	);
+}
+
+export const ORGANIZATION_NAVIGATION: ReadonlyArray<SettingsNavigationItem> = [
+	{
+		id: "organizations",
+		get label() {
+			return uiMessage("settings:organizations_members");
+		},
+		Icon: UserGroupIcon,
+		section: { kind: "organizations" },
+	},
+	{
+		id: "repositories",
+		get label() {
+			return uiMessage("settings:workspace_repositories_scripts");
+		},
+		Icon: PuzzleIcon,
+		section: { kind: "cloud", page: "repositories" },
+	},
+	{
+		id: "image",
+		get label() {
+			return uiMessage("settings:cloud_workspace_pool_cloud_image");
+		},
+		Icon: CloudIcon,
+		section: { kind: "cloud", page: "image" },
+	},
+	{
+		id: "agents",
+		get label() {
+			return uiMessage("settings:settings_navigation_providers");
+		},
+		Icon: PackageIcon,
+		section: { kind: "cloud", page: "agents" },
+	},
+	{
+		id: "sharing",
+		get label() {
+			return uiMessage("settings:workspace_sharing_defaults");
+		},
+		Icon: Share01Icon,
+		section: { kind: "cloud", page: "sharing" },
+	},
+	{
+		id: "billing",
+		get label() {
+			return uiMessage("settings:workspace_billing");
+		},
+		Icon: DocumentAttachmentIcon,
+		section: { kind: "cloud", page: "billing" },
+	},
+];
 
 export const SETTINGS_NAVIGATION: ReadonlyArray<SettingsNavigationItem> =
 	TOP_RAIL.filter(

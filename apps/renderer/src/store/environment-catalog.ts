@@ -38,7 +38,9 @@ import {
 	rendererAccountSnapshot,
 	subscribeRendererAccount,
 } from "../lib/renderer-account.ts";
+import { rendererWorkspaceSnapshot } from "../lib/renderer-workspace.ts";
 import {
+	environmentBelongsToWorkspace,
 	LOCAL_ENVIRONMENT_KEY,
 	registerApiEnvironment,
 	registerLocalEnvironment,
@@ -624,7 +626,11 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 							).error
 						: null,
 			});
-			if (view.data !== null && get().activeEnvironmentId === environmentId) {
+			if (
+				view.data !== null &&
+				get().activeEnvironmentId === environmentId &&
+				environmentBelongsToWorkspace(environmentId)
+			) {
 				projectEnvironmentShell(view.data);
 			}
 		};
@@ -828,6 +834,9 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			selection: EnvironmentActivation | undefined,
 			fallback?: EnvironmentShellData,
 		): Promise<Folder["id"] | null> => {
+			const workspace = rendererWorkspaceSnapshot();
+			if (!environmentBelongsToWorkspace(environmentId, workspace.scope))
+				throw new Error("This environment belongs to another workspace.");
 			runtime.requestedActivation = "connect";
 			await runtime.lease.activate("connect");
 			const data = await waitForShellData(runtime).catch((cause) => {
@@ -837,10 +846,14 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			});
 			// Connection work can finish after the user has opened another draft.
 			// Check before changing either the active environment or its selection.
-			if (selection?.isCurrent?.() === false) return null;
-			if (shellRuntimes.get(catalogKey) !== runtime)
-				throw new Error("Environment activation was superseded.");
+			if (
+				selection?.isCurrent?.() === false ||
+				rendererWorkspaceSnapshot() !== workspace
+			)
+				return null;
 			if (activeShellKey !== null && activeShellKey !== catalogKey) {
+				if (shellRuntimes.get(catalogKey) !== runtime)
+					throw new Error("Environment activation was superseded.");
 				const previous = shellRuntimes.get(activeShellKey);
 				if (previous !== undefined) {
 					previous.requestedActivation = "cache-only";
@@ -1556,10 +1569,19 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			},
 			activate: async (environmentId, selection) => {
 				const account = rendererAccountSnapshot();
+				const workspace = rendererWorkspaceSnapshot();
+				if (!environmentBelongsToWorkspace(environmentId, workspace.scope))
+					throw new Error("This environment belongs to another workspace.");
 				let entry = get().entries.find(
 					(item) => item.environmentId === environmentId,
 				);
-				if (entry === undefined) return null;
+				if (entry === undefined) {
+					const catalogKey = `transient:${environmentId}`;
+					const runtime = shellRuntimes.get(catalogKey);
+					return runtime === undefined
+						? null
+						: activateRuntime(catalogKey, runtime, environmentId, selection);
+				}
 				if (entry.connectionKind === "ssh" && entry.profileId !== null) {
 					await connectProfile(entry.profileId);
 				} else if (
@@ -1585,6 +1607,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 					throw new Error(entry?.error ?? "Unable to connect to environment.");
 				}
 				const catalogKey = entryKey(entry);
+				if (rendererWorkspaceSnapshot() !== workspace) return null;
 				const runtime = retainShell(catalogKey, environmentId, "connect");
 				return activateRuntime(catalogKey, runtime, environmentId, selection);
 			},

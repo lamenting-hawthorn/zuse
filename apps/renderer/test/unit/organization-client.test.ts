@@ -144,7 +144,7 @@ it("creates, loads, and invites using the existing contracts", async () => {
 
 it.each([
 	[403, "not-allowed"],
-	[404, "not-found"],
+	[404, "unavailable"],
 	[409, "conflict"],
 	[400, "invalid-request"],
 	[503, "unavailable"],
@@ -162,6 +162,50 @@ it("validates response contracts before publishing organization data", async () 
 	await expect(
 		runOrganizations((client) => client["organizations.list"]({})),
 	).rejects.toMatchObject({ code: "unavailable" });
+});
+
+it("preserves auth failures even when the server returns a non-JSON body", async () => {
+	mocks.request.mockResolvedValueOnce(
+		new Response("Unauthorized", { status: 401 }),
+	);
+	await expect(
+		runOrganizations((client) => client["organizations.list"]({})),
+	).rejects.toMatchObject({ code: "not-allowed" });
+});
+
+it("preserves a missing individual organization while distinguishing the creation cap", async () => {
+	mocks.request.mockResolvedValueOnce(
+		Response.json(
+			{ error: "organization_member_limit_reached" },
+			{ status: 409 },
+		),
+	);
+	await expect(
+		runOrganizations((client) =>
+			client["organizations.invite"]({
+				organizationId: "org",
+				email: "guest@example.com",
+				role: "member",
+			}),
+		),
+	).rejects.toMatchObject({ code: "organization-member-limit-reached" });
+	mocks.request.mockResolvedValueOnce(Response.json({}, { status: 404 }));
+	await expect(
+		runOrganizations((client) =>
+			client["organizations.get"]({ organizationId: "gone" }),
+		),
+	).rejects.toMatchObject({ code: "not-found" });
+	mocks.request.mockResolvedValueOnce(
+		Response.json({ error: "organization_limit_reached" }, { status: 409 }),
+	);
+	await expect(
+		runOrganizations((client) =>
+			client["organizations.create"]({
+				name: "Second",
+				operationId: "b4a97770-c98d-483b-87a0-aea06d585c50",
+			}),
+		),
+	).rejects.toMatchObject({ code: "organization-limit-reached" });
 });
 
 it("does not send a mutation when the account changes while loading the browser adapter", async () => {

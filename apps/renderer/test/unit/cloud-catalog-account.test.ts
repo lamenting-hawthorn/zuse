@@ -10,6 +10,7 @@ import {
 	useCloudChatCatalogStore,
 } from "../../src/lib/cloud-workspace-catalog.ts";
 import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
+import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 
 const deferred = <T>() => {
 	let resolve!: (value: T) => void;
@@ -95,6 +96,50 @@ describe("account-scoped cloud catalog", () => {
 		expect(persistence.save.mock.calls.at(-1)?.[0]).toBe("second");
 		expect(useCloudChatCatalogStore.getState().syncPrefs).toEqual(
 			catalog("second").syncPrefs,
+		);
+	});
+
+	it("preserves Personal cache keys and separates each organization", async () => {
+		observeRendererAccount("alice");
+		await hydrateCloudChatCatalogPersistence();
+		expect(persistence.load).toHaveBeenLastCalledWith("alice");
+		for (const organizationId of ["org_a", "org_b"]) {
+			selectRendererWorkspace({ kind: "organization", organizationId });
+			expect(useCloudChatCatalogStore.getState().syncPrefs).toEqual({});
+			await hydrateCloudChatCatalogPersistence();
+			const key = JSON.stringify(["alice", `organization:${organizationId}`]);
+			expect(persistence.load).toHaveBeenLastCalledWith(key);
+			expect(useCloudChatCatalogStore.getState().syncPrefs).toEqual(
+				catalog(key).syncPrefs,
+			);
+		}
+		selectRendererWorkspace({ kind: "personal" });
+		await hydrateCloudChatCatalogPersistence();
+		expect(useCloudChatCatalogStore.getState().syncPrefs).toEqual(
+			catalog("alice").syncPrefs,
+		);
+	});
+
+	it("ignores a late organization load after switching away and back", async () => {
+		observeRendererAccount("alice");
+		await hydrateCloudChatCatalogPersistence();
+		const old = deferred<unknown>();
+		persistence.load.mockImplementationOnce(() => old.promise);
+		selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+		const initial = hydrateCloudChatCatalogPersistence();
+		await vi.waitFor(() =>
+			expect(persistence.load).toHaveBeenLastCalledWith(
+				JSON.stringify(["alice", "organization:org_a"]),
+			),
+		);
+		selectRendererWorkspace({ kind: "personal" });
+		await hydrateCloudChatCatalogPersistence();
+		selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+		await hydrateCloudChatCatalogPersistence();
+		old.resolve(catalog("stale"));
+		await initial;
+		expect(useCloudChatCatalogStore.getState().syncPrefs).toEqual(
+			catalog(JSON.stringify(["alice", "organization:org_a"])).syncPrefs,
 		);
 	});
 });

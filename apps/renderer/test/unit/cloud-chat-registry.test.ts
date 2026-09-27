@@ -75,6 +75,28 @@ describe("cloud chat catalog", () => {
 		});
 	});
 
+	it("rejects a mixed-owner catalog without partially replacing its rows", () => {
+		const current = summary({
+			workspaceId: "personal",
+			chatId: "chat",
+			sessionId: "session",
+			revision: 1,
+		});
+		registerCloudChat(current);
+		const before = useCloudChatCatalogStore.getState();
+		expect(() =>
+			reconcileCloudChatCatalog([
+				{ ...current, revision: 2 },
+				{
+					...current,
+					workspaceId: "other",
+					workspaceScope: { kind: "organization", organizationId: "org_a" },
+				},
+			]),
+		).toThrow("another workspace");
+		expect(useCloudChatCatalogStore.getState()).toBe(before);
+	});
+
 	it("keeps one monotonic summary per qualified environment", () => {
 		const current = summary({
 			workspaceId: "environment-a",

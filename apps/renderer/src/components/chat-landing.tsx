@@ -45,6 +45,7 @@ import {
 	useMemo,
 	useRef,
 	useState,
+	useSyncExternalStore,
 } from "react";
 import { Button } from "~/components/ui/button.tsx";
 import {
@@ -89,7 +90,7 @@ import {
 	summaryFromLaunch,
 	useCloudChatSummaryForSelection,
 } from "~/lib/cloud-workspaces.ts";
-import { runControlPlane } from "~/lib/control-plane-client.ts";
+import { runCloudControl } from "~/lib/control-plane-client.ts";
 import { useActiveEnvironmentEntities } from "~/lib/environment-entity-hooks.ts";
 import {
 	dispatchEnvironmentShellCommand,
@@ -140,6 +141,11 @@ import { useWorkspaceStore } from "~/store/workspace";
 import { EMPTY_WORKTREES, useWorktreesStore } from "~/store/worktrees";
 import { bindCloudWorkspaceToLocalDevice } from "../lib/device-bridge-binding.ts";
 import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
+import {
+	assertRendererWorkspaceCurrent,
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "../lib/renderer-workspace.ts";
 import { ChatStartupView } from "./chat-startup-view.tsx";
 import {
 	type CloudComputerPickerItem,
@@ -251,6 +257,24 @@ const formatThreadRelative = (date: Date): string => {
  * the next render.
  */
 export function ChatLanding() {
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+		rendererWorkspaceSnapshot,
+	);
+	return (
+		<WorkspaceChatLanding
+			key={`${workspace.key}:${workspace.epoch}`}
+			workspace={workspace}
+		/>
+	);
+}
+
+function WorkspaceChatLanding({
+	workspace,
+}: {
+	readonly workspace: ReturnType<typeof rendererWorkspaceSnapshot>;
+}) {
 	const { message: uiMessage } = useUiMessages(["chat", "common", "shell"]);
 
 	const { originsByFolder: origins } = useActiveEnvironmentEntities();
@@ -1027,7 +1051,7 @@ export function ChatLanding() {
 			readonly pendingContextFiles: ReadonlyArray<PendingDraftContextFile>;
 		},
 	): Promise<void> => {
-		if (submitting) return;
+		if (submitting || rendererWorkspaceSnapshot() !== workspace) return;
 		if (
 			isHostedProduct() &&
 			activeEnvironmentId === "local" &&
@@ -1043,7 +1067,8 @@ export function ChatLanding() {
 		const { draftSession: draft, draftRevision } = useSessionsStore.getState();
 		if (draft === null) return;
 		const ownsLanding = captureNewChatLanding();
-		const resetStaleCompletion = () =>
+		const resetStaleCompletion = () => {
+			if (!ownsLanding()) return;
 			resetCompletedChatDraft(draftRevision, () => {
 				setPendingInput(null);
 				setPendingPreviews({});
@@ -1056,6 +1081,7 @@ export function ChatLanding() {
 				setSubmitting(false);
 				setDraftAttempt((attempt) => attempt + 1);
 			});
+		};
 		if (selectedCloudProviderId !== null) {
 			if (!CLOUD_WORKSPACE_BETA_AVAILABLE) return;
 			if (isHostedProduct()) {
@@ -1123,7 +1149,8 @@ export function ChatLanding() {
 			let staged = false;
 			let stagedMessage: { ref: SessionRef; id: MessageId } | null = null;
 			try {
-				const launch = await runControlPlane((control) =>
+				assertRendererWorkspaceCurrent(workspace);
+				const launch = await runCloudControl((control) =>
 					control["cloud.workspaces.create"]({
 						projectId: cloudProject.projectId,
 						providerId: selectedCloudProviderId,
@@ -1642,10 +1669,12 @@ export function ChatLanding() {
 							? composerDraftKeyForRemoteLanding(
 									EnvironmentId.make(remoteAnchor.member.environmentId),
 									remoteAnchor.member.folderId,
+									workspace.scope,
 								)
 							: composerDraftKeyForLanding(
 									EnvironmentId.make(activeEnvironmentId),
 									selectedFolderId,
+									workspace.scope,
 								)
 					}
 					onDraftSubmit={(input, opts) => void handleDraftSubmit(input, opts)}

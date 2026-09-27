@@ -32,7 +32,7 @@ import {
 import { overlayActiveEnvironmentShell } from "../lib/environment-entities.ts";
 import { formatError } from "../lib/format-error.ts";
 import {
-	getControlPlaneRpcClient,
+	isAuthCodedConnectionError,
 	refreshCloudWorkspaceConnectionWithRecovery,
 	registerCloudWorkspace,
 } from "../lib/rpc-client.ts";
@@ -57,6 +57,7 @@ import { useChatsStore } from "../store/chats.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useUiStore } from "../store/ui.ts";
 import { useWorkspaceStore } from "../store/workspace.ts";
+import { getCloudControlClient } from "./cloud-control-client.ts";
 import {
 	beginCloudFetch,
 	markCloudCatalogArrival,
@@ -80,11 +81,21 @@ import {
 import { isHostedProduct } from "./hosted-connect.ts";
 import { hostedProjectFolderId } from "./hosted-workspace.ts";
 import {
+	type EnvironmentShellData,
+	environmentShellResourceKey,
+} from "./environment-shell-client-bus.ts";
+import {
 	assertRendererAccountCurrent,
 	type RendererAccountSnapshot,
 	rendererAccountSnapshot,
 	subscribeRendererAccount,
 } from "./renderer-account.ts";
+import {
+	assertRendererWorkspaceCurrent,
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+	workspaceScopeKey,
+} from "./renderer-workspace.ts";
 
 type CloudChatsState = {
 	readonly loading: boolean;
@@ -95,7 +106,11 @@ type CloudChatsState = {
 
 const opening = new Map<
 	string,
-	{ account: RendererAccountSnapshot; promise: Promise<void> }
+	{
+		account: RendererAccountSnapshot;
+		workspace: ReturnType<typeof rendererWorkspaceSnapshot>;
+		promise: Promise<void>;
+	}
 >();
 type CloudAttachment = {
 	account: RendererAccountSnapshot;
@@ -193,7 +208,13 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 		async (ref, current: ResourceView<SessionTimelineProjection>) => {
 			markCloudFetch(ref, "request-start");
 			if (rendererAccountSnapshot() !== account) return null;
-			const control = await getControlPlaneRpcClient();
+			const shellKey = environmentShellResourceKey({
+				environmentId: ref.environmentId,
+			});
+			const shellBefore = getRendererClientBus().snapshot(shellKey);
+			const control = await getCloudControlClient(
+				summary.workspaceScope ?? { kind: "personal" },
+			);
 			if (rendererAccountSnapshot() !== account) return null;
 			markCloudFetch(ref, "control-ready");
 			const result = await Effect.runPromise(
@@ -216,6 +237,30 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 			const payload = await openCloudTranscriptCheckpoint(ref, checkpoint);
 			if (rendererAccountSnapshot() !== account) return null;
 			markCloudFetch(ref, "decrypted");
+			if (payload.context !== undefined) {
+				const { chat, session, folder } = payload.context;
+				if (chat.id !== summary.chatId)
+					throw new Error(
+						"Cloud transcript checkpoint belongs to another chat.",
+					);
+				if (shellBefore.data === null) {
+					const initialData: EnvironmentShellData = {
+						folders: [folder],
+						originsByFolder: {},
+						chatsByProject: { [folder.id]: [chat] },
+						sessionsByProject: { [folder.id]: [session] },
+						creationOperationsByProject: {},
+					};
+					getRendererClientBus().update(shellKey, {
+						expectedGeneration: shellBefore.generation,
+						expectedCursor: shellBefore.cursor,
+						initialData,
+						origin: "checkpoint",
+						update: (data) => (data === initialData ? data : undefined),
+						persist: true,
+					});
+				}
+			}
 			rememberCloudTimelineHead(ref, payload.projection, payload.cursor);
 
 			return {
@@ -231,7 +276,9 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 		EnvironmentId.make(summary.workspaceId),
 		async (ref, cursor, beforeSequence) => {
 			if (rendererAccountSnapshot() !== account) return null;
-			const control = await getControlPlaneRpcClient();
+			const control = await getCloudControlClient(
+				summary.workspaceScope ?? { kind: "personal" },
+			);
 			if (rendererAccountSnapshot() !== account) return null;
 			const result = await Effect.runPromise(
 				control["cloud.transcript.messages.page"]({
@@ -315,7 +362,7 @@ const updateSummary = (summary: CloudChatSummary): void => {
 	const current = cloudSummaryForEnvironment(summary.workspaceId);
 	if (current !== null && compareCloudChatSummaryVersion(summary, current) < 0)
 		return;
-	registerCloudChat(summary);
+	if (!registerCloudChat(summary)) return;
 	const accepted = cloudSummaryForEnvironment(summary.workspaceId) ?? summary;
 	registerCloudEnvironmentResolver(accepted);
 	const projectId = projectForSummary(summary);
@@ -346,7 +393,7 @@ export const stageCloudChat = (
 		compareCloudChatSummaryVersion(summary, previous) < 0
 	)
 		return;
-	registerCloudChat(summary, projectId);
+	if (!registerCloudChat(summary, projectId)) return;
 	const accepted = cloudSummaryForEnvironment(summary.workspaceId) ?? summary;
 	registerCloudEnvironmentResolver(accepted);
 	const activeSessionId = cloudSummaryActiveSessionId(accepted);
@@ -413,14 +460,28 @@ export const stageCloudChat = (
 
 export const openCloudChat = (
 	summary: CloudChatSummary,
-	projectId: FolderId,
+	projectId?: FolderId,
 ): Promise<void> => {
 	const account = rendererAccountSnapshot();
+	const workspace = rendererWorkspaceSnapshot();
 	const existing = opening.get(summary.workspaceId);
-	if (existing?.account === account) return existing.promise;
+	if (existing?.account === account && existing.workspace === workspace)
+		return existing.promise;
 	const operation = Promise.resolve().then(() => {
 		assertRendererAccountCurrent(account);
-		stageCloudChat(summary, projectId);
+		assertRendererWorkspaceCurrent(workspace);
+		if (
+			workspaceScopeKey(summary.workspaceScope ?? { kind: "personal" }) !==
+			workspace.key
+		)
+			throw new Error("Select the chat's workspace before opening it.");
+		if (projectId === undefined) {
+			registerCloudChat(summary);
+			registerCloudEnvironmentResolver(summary);
+			// A fresh browser has no local checkout. Keep the real runtime identity
+			// unbound until its shell arrives rather than inventing a local folder.
+			useWorkspaceStore.setState({ selectedFolderId: null });
+		} else stageCloudChat(summary, projectId);
 		const activeSessionId = cloudSummaryActiveSessionId(summary);
 		if (activeSessionId !== null)
 			beginCloudFetch({
@@ -432,19 +493,23 @@ export const openCloudChat = (
 		useUiStore.getState().setActiveMainTab("chat");
 		useChatsStore.setState((state) => ({
 			selectedChatId: summary.chatId,
+			landingRevision: state.landingRevision + 1,
 			selectedChatByProject: {
 				...state.selectedChatByProject,
-				[projectId]: summary.chatId,
+				...(projectId === undefined ? {} : { [projectId]: summary.chatId }),
 			},
 		}));
 		useSessionsStore.setState((state) => ({
 			selectedSessionId: activeSessionId,
 			selectedSessionByProject: {
 				...state.selectedSessionByProject,
-				[projectId]: activeSessionId,
+				...(projectId === undefined ? {} : { [projectId]: activeSessionId }),
 			},
 		}));
-		if (useWorkspaceStore.getState().selectedFolderId !== projectId) {
+		if (
+			projectId !== undefined &&
+			useWorkspaceStore.getState().selectedFolderId !== projectId
+		) {
 			void useWorkspaceStore.getState().select(projectId);
 		}
 		// The retained timeline hydrates cache first. EnvironmentRuntime then
@@ -454,7 +519,7 @@ export const openCloudChat = (
 		if (opening.get(summary.workspaceId)?.promise === tracked)
 			opening.delete(summary.workspaceId);
 	});
-	opening.set(summary.workspaceId, { account, promise: tracked });
+	opening.set(summary.workspaceId, { account, workspace, promise: tracked });
 	return tracked;
 };
 
@@ -504,7 +569,9 @@ const attachCloudWorkspace = async (
 		assertRendererAccountCurrent(account);
 		updateSummary(refreshSummaryFromWorkspace(summary, workspace));
 	};
-	const control = await getControlPlaneRpcClient();
+	const control = await getCloudControlClient(
+		summary.workspaceScope ?? { kind: "personal" },
+	);
 	assertRendererAccountCurrent(account);
 	let workspace = await Effect.runPromise(
 		control["cloud.workspaces.get"]({ workspaceId: summary.workspaceId }),
@@ -663,6 +730,7 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 	hydrate: async () => {
 		hydrationRequested = true;
 		const account = rendererAccountSnapshot();
+		const workspace = rendererWorkspaceSnapshot();
 		if (typeof account.subject !== "string") return;
 		if (hydration !== null) return hydration;
 		const generation = catalogGeneration;
@@ -676,7 +744,9 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 					const cachedProject = projectForSummary(cached);
 					if (cachedProject !== null) stageCloudChat(cached, cachedProject);
 				}
-				const client = await getControlPlaneRpcClient();
+				const client = await getCloudControlClient(workspace.scope);
+				if (rendererAccountSnapshot() !== account) return;
+				if (generation !== catalogGeneration) return;
 
 				const result = await Effect.runPromise(
 					client["cloud.chats.list"]({ scope: "all" }),
@@ -716,8 +786,14 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 				})().catch(() => undefined);
 				set({ loading: false });
 			} catch (cause) {
-				if (rendererAccountSnapshot() === account)
+				if (
+					rendererAccountSnapshot() === account &&
+					generation === catalogGeneration
+				) {
+					if (isAuthCodedConnectionError(cause))
+						removeDeletedCloudPlaceholders(reconcileCloudChatCatalog([]));
 					set({ error: formatError(cause), loading: false });
+				}
 			}
 		})().finally(() => {
 			if (hydration === pending) hydration = null;
@@ -727,6 +803,7 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 	},
 	archive: async (summary) => {
 		const account = rendererAccountSnapshot();
+		const selectedWorkspace = rendererWorkspaceSnapshot();
 		const archivedAt = Date.now();
 		const commandId = crypto.randomUUID();
 		const optimistic = optimisticallyArchiveCloudChat(
@@ -737,7 +814,9 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 		const projectId = projectForSummary(summary);
 		if (projectId !== null) stageCloudChat(optimistic, projectId);
 		try {
-			const client = await getControlPlaneRpcClient();
+			const client = await getCloudControlClient(
+				summary.workspaceScope ?? { kind: "personal" },
+			);
 			if (rendererAccountSnapshot() !== account) return;
 			const workspace = await Effect.runPromise(
 				client["cloud.workspaces.archive"]({
@@ -746,12 +825,16 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 				}),
 			);
 			if (rendererAccountSnapshot() !== account) return;
+			if (rendererWorkspaceSnapshot() !== selectedWorkspace) return;
 			updateSummary({
 				...refreshSummaryFromWorkspace(summary, workspace),
 				archivedAt,
 			});
 		} catch (cause) {
-			if (rendererAccountSnapshot() === account)
+			if (
+				rendererAccountSnapshot() === account &&
+				rendererWorkspaceSnapshot() === selectedWorkspace
+			)
 				set({ error: formatError(cause) });
 			// A response can be lost after API durably accepts the command. Keep
 			// the persisted intent as the authoritative optimistic fence and retry
@@ -785,10 +868,18 @@ const unsubscribeAccount = subscribeRendererAccount(() => {
 	)
 		void useCloudChatsStore.getState().hydrate();
 });
+const unsubscribeWorkspace = subscribeRendererWorkspace(() => {
+	catalogGeneration++;
+	hydration = null;
+	useCloudChatsStore.setState({ loading: false, error: null });
+	if (hydrationRequested && rendererAccountSnapshot().subject)
+		void useCloudChatsStore.getState().hydrate();
+});
 if (import.meta.hot)
 	import.meta.hot.dispose(() => {
 		unsubscribeCatalogAccount();
 		unsubscribeAccount();
+		unsubscribeWorkspace();
 	});
 
 registerCloudChatCatalogRefresh(() => useCloudChatsStore.getState().hydrate());
@@ -812,16 +903,19 @@ export const useCloudChatSummaryForSession = (
 
 /** One account catalog feed owned by the signed-in sidebar lifecycle. */
 export const watchCloudChatCatalog = (): (() => void) => {
+	const workspace = rendererWorkspaceSnapshot();
 	let stopped = false;
 	let cursor: number | undefined;
 	let fiber: Fiber.Fiber<unknown, unknown> | null = null;
 	const start = async () => {
 		await useCloudChatsStore.getState().hydrate();
-		if (stopped) return;
+		if (stopped || rendererWorkspaceSnapshot() !== workspace) return;
 		const stream = Stream.unwrap(
 			Effect.tryPromise({
 				try: async () =>
-					(await getControlPlaneRpcClient())["cloud.chats.watch"]({ cursor }),
+					(await getCloudControlClient(workspace.scope))["cloud.chats.watch"]({
+						cursor,
+					}),
 				catch: (cause) => cause,
 			}),
 		).pipe(
@@ -832,6 +926,7 @@ export const watchCloudChatCatalog = (): (() => void) => {
 							Duration.millis(Math.min(Duration.toMillis(duration), 10_000)),
 						),
 					),
+					Schedule.while(({ input }) => !isAuthCodedConnectionError(input)),
 				),
 			),
 		);
@@ -840,6 +935,7 @@ export const watchCloudChatCatalog = (): (() => void) => {
 				Effect.sync(() => {
 					if (
 						stopped ||
+						rendererWorkspaceSnapshot() !== workspace ||
 						(cursor !== undefined && page.cursor < cursor && !page.reset)
 					)
 						return;
@@ -885,9 +981,18 @@ export const watchCloudChatCatalog = (): (() => void) => {
 					cursor = page.cursor;
 				}),
 			).pipe(
+				Effect.catch((error) =>
+					Effect.sync(() => {
+						if (!stopped && rendererWorkspaceSnapshot() === workspace) {
+							if (isAuthCodedConnectionError(error))
+								removeDeletedCloudPlaceholders(reconcileCloudChatCatalog([]));
+							useCloudChatsStore.setState({ error: formatError(error) });
+						}
+					}),
+				),
 				Effect.catchCause((cause) =>
 					Effect.sync(() => {
-						if (!stopped)
+						if (!stopped && rendererWorkspaceSnapshot() === workspace)
 							useCloudChatsStore.setState({ error: formatError(cause) });
 					}),
 				),
@@ -895,7 +1000,8 @@ export const watchCloudChatCatalog = (): (() => void) => {
 		);
 	};
 	void start().catch((cause) => {
-		if (!stopped) useCloudChatsStore.setState({ error: formatError(cause) });
+		if (!stopped && rendererWorkspaceSnapshot() === workspace)
+			useCloudChatsStore.setState({ error: formatError(cause) });
 	});
 	return () => {
 		stopped = true;

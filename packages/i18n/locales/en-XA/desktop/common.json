@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "⟦Côôüüld nôôt sààvëë dëëvïïcëë prëëfëërëëncëës. Yôôüür prëëvïïôôüüs prëëfëërëëncëës ààrëë üünchààngëëd.⟧",
+	"workspace_settings_load_failed": "⟦Côôüüld nôôt lôôààd wôôrkspààcëë sëëttïïngs. Try ààgààïïn.⟧",
+	"workspace_settings_save_failed": "⟦Côôüüld nôôt sààvëë wôôrkspààcëë sëëttïïngs. Rëëfrëësh bëëfôôrëë tryïïng ààgààïïn.⟧",
+	"workspace_settings_separate_configuration": "⟦Côônfïïgüürëë thïïs sëëttïïng sëëpààrààtëëly fôôr thëë wôôrkspààcëë.⟧",
 	"projects_and_chats": "⟦Prôôjëëcts àànd chààts⟧",
 	"collapse": "⟦Côôllààpsëë {{title}}⟧",
 	"expand": "⟦ËËxpàànd {{title}}⟧",

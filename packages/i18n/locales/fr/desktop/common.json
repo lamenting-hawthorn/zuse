@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "Impossible d’enregistrer les préférences de cet appareil. Les préférences précédentes sont conservées.",
+	"workspace_settings_load_failed": "Impossible de charger les paramètres de l’espace de travail. Réessayez.",
+	"workspace_settings_save_failed": "Impossible d’enregistrer les paramètres de l’espace de travail. Actualisez avant de réessayer.",
+	"workspace_settings_separate_configuration": "Configurez ce paramètre séparément pour l’espace de travail.",
 	"projects_and_chats": "Projets et discussions",
 	"collapse": "Réduire {{title}}",
 	"expand": "Développer {{title}}",

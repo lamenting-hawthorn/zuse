@@ -4,6 +4,7 @@ import {
 	createHostedEndpointLease,
 	hostedAccessToken,
 	hostedAccountUser,
+	hostedAccountRequest,
 	hostedAuthState,
 	hostedAuthTokenEndpoint,
 	hostedSignedIn,
@@ -59,6 +60,47 @@ describe("hosted account ownership", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.unstubAllGlobals();
+	});
+	it("routes organization HTTP requests through the versioned namespace and rejects invalid scopes", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		await hostedSignedIn();
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(Response.json({}));
+		await hostedAccountRequest(
+			"/v1/cloud/workspaces/workspace/sharing",
+			{ audience: "private" },
+			{
+				method: "PUT",
+				workspace: { kind: "organization", organizationId: "org_a" },
+			},
+		);
+		expect(fetch).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"/v1/organization-workspaces/org_a/v1/cloud/workspaces/workspace/sharing",
+			),
+			expect.objectContaining({
+				method: "PUT",
+				headers: expect.objectContaining({
+					"x-zuse-workspace": "organization:org_a",
+				}),
+				body: JSON.stringify({ audience: "private" }),
+			}),
+		);
+		await expect(
+			hostedAccountRequest("/v1/cloud/chats", undefined, {
+				workspace: { kind: "organization", organizationId: "../other" },
+			}),
+		).rejects.toThrow();
+		expect(fetch).toHaveBeenCalledOnce();
 	});
 	it("uses the browser profile and publishes its identity without asking the host", async () => {
 		sessionStorage.setItem(

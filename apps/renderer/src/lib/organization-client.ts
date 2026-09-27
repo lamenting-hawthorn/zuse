@@ -1,11 +1,9 @@
 import {
-	ApiPaths,
-	type MemoizeRpcs,
-	Organization,
-	OrganizationDetails,
-	OrganizationError,
-	OrganizationInvitation,
-} from "@zuse/contracts";
+	controlApiErrorCode,
+	organizationControlError,
+} from "@zuse/client-runtime/control-api-error";
+import { makeOrganizationControlClient } from "@zuse/client-runtime/organization-control-client";
+import { type MemoizeRpcs, OrganizationError } from "@zuse/contracts";
 import { Effect, Schema } from "effect";
 import type { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { runControlPlane } from "./control-plane-client.ts";
@@ -51,19 +49,17 @@ const makeHostedClient = (
 			},
 			catch: () => new OrganizationError({ code: "unavailable" }),
 		});
-		if (!response.ok)
-			return yield* new OrganizationError({
-				code:
-					response.status === 401 || response.status === 403
-						? "not-allowed"
-						: response.status === 404
-							? "not-found"
-							: response.status === 409
-								? "conflict"
-								: response.status === 400 || response.status === 422
-									? "invalid-request"
-									: "unavailable",
-			});
+		if (!response.ok) {
+			const payload = yield* Effect.promise(() =>
+				response.json().catch(() => null),
+			);
+			const code = Schema.is(Schema.Struct({ error: Schema.String }))(payload)
+				? payload.error
+				: undefined;
+			return yield* organizationControlError(
+				controlApiErrorCode(response.status, code, path),
+			);
+		}
 		const value = yield* Effect.tryPromise({
 			try: () => response.json(),
 			catch: () => new OrganizationError({ code: "unavailable" }),
@@ -73,36 +69,14 @@ const makeHostedClient = (
 		);
 	});
 
-	const acknowledgement = Schema.Struct({ ok: Schema.Literal(true) });
-	return {
-		"organizations.list": () =>
-			request(ApiPaths.organizations, Schema.Array(Organization)),
-		"organizations.get": (input) =>
-			request(ApiPaths.organizationDetails, OrganizationDetails, input),
-		"organizations.create": (input) =>
-			request(ApiPaths.organizations, Organization, input),
-		"organizations.invite": (input) =>
-			request(ApiPaths.organizationInvite, OrganizationInvitation, input),
-		"organizations.revokeInvite": (input) =>
-			request(ApiPaths.organizationRevokeInvite, acknowledgement, input).pipe(
-				Effect.asVoid,
-			),
-		"organizations.setRole": (input) =>
-			request(ApiPaths.organizationSetRole, acknowledgement, input).pipe(
-				Effect.asVoid,
-			),
-		"organizations.removeMember": (input) =>
-			request(ApiPaths.organizationRemoveMember, acknowledgement, input).pipe(
-				Effect.asVoid,
-			),
-	};
+	return makeOrganizationControlClient(request);
 };
 
 /** Organization administration belongs to the user's account, not the selected host. */
 export const runOrganizations = async <A>(
 	run: (client: OrganizationClient) => Effect.Effect<A, unknown>,
 ): Promise<A> => {
-	if (!isHostedProduct()) return runControlPlane(run);
+	if (!isHostedProduct()) return runControlPlane(run, { scope: "account" });
 	const account = rendererAccountSnapshot();
 	try {
 		return await Effect.runPromise(run(makeHostedClient(account)));

@@ -1,32 +1,65 @@
+import type { WorkspaceScope } from "@zuse/contracts";
 import { Effect } from "effect";
-import { assertRendererAccountCurrent, rendererAccountSnapshot } from "./renderer-account.ts";
-
+import type { getCloudControlClient } from "./cloud-control-client.ts";
 import {
-	type ControlPlaneClient,
-	getControlPlaneRpcClient,
-} from "./rpc-client.ts";
+	assertRendererAccountCurrent,
+	rendererAccountSnapshot,
+	subscribeRendererAccount,
+} from "./renderer-account.ts";
+import {
+	assertRendererWorkspaceCurrent,
+	rendererWorkspaceSnapshot,
+} from "./renderer-workspace.ts";
+import { getControlPlaneRpcClient, type MemoizeClient } from "./rpc-client.ts";
 
 /** Single renderer boundary for API account and workspace lifecycle RPCs. */
-export const runControlPlane = async <Result>(
-	effect: (client: ControlPlaneClient) => Effect.Effect<Result, unknown>,
+const runScopedControlPlane = async <Client, Result>(
+	getClient: (scope: WorkspaceScope) => Promise<Client>,
+	effect: (client: Client) => Effect.Effect<Result, unknown>,
+	options?: { readonly scope?: "account" },
 ): Promise<Result> => {
 	const account = rendererAccountSnapshot();
-	const client = await getControlPlaneRpcClient();
+	const workspace = rendererWorkspaceSnapshot();
+	const client = await getClient(
+		options?.scope === "account" ? { kind: "personal" } : workspace.scope,
+	);
 	assertRendererAccountCurrent(account);
+	if (options?.scope !== "account") assertRendererWorkspaceCurrent(workspace);
 	try {
 		return await Effect.runPromise(effect(client));
 	} finally {
 		assertRendererAccountCurrent(account);
+		if (options?.scope !== "account") assertRendererWorkspaceCurrent(workspace);
 	}
 };
 
-type SessionCacheEntry = {
-	value?: Promise<unknown>;
-	pending?: Promise<unknown>;
-};
+export const runControlPlane = <Result>(
+	effect: (client: MemoizeClient) => Effect.Effect<Result, unknown>,
+	options?: { readonly scope?: "account" },
+): Promise<Result> =>
+	runScopedControlPlane(getControlPlaneRpcClient, effect, options);
 
-const sessionCache = new Map<string, SessionCacheEntry>();
-const cacheListeners = new Set<(key: string) => void>();
+export const runCloudControl = <Result>(
+	effect: (
+		client: Awaited<ReturnType<typeof getCloudControlClient>>,
+	) => Effect.Effect<Result, unknown>,
+): Promise<Result> =>
+	runScopedControlPlane(
+		async (scope) =>
+			(await import("./cloud-control-client.ts")).getCloudControlClient(scope),
+		effect,
+	);
+
+export const controlPlaneClient = (): Promise<MemoizeClient> =>
+	getControlPlaneRpcClient();
+
+type SessionCacheEntry = Readonly<{
+	promise: Promise<unknown>;
+	expiresAt: number;
+}>;
+
+const sessionCaches = new Map<string, Map<string, SessionCacheEntry>>();
+subscribeRendererAccount(() => sessionCaches.clear());
 
 export const subscribeControlPlaneSessionCache = (
 	listener: (key: string) => void,
@@ -42,48 +75,57 @@ export const subscribeControlPlaneSessionCache = (
  */
 export const runCachedControlPlane = <Result>(
 	key: string,
-	effect: (client: ControlPlaneClient) => Effect.Effect<Result, unknown>,
-	options?: { readonly refresh?: boolean },
+	effect: (
+		client: Awaited<ReturnType<typeof getCloudControlClient>>,
+	) => Effect.Effect<Result, unknown>,
+	options?: { readonly refresh?: boolean; readonly maxAgeMs?: number },
 ): Promise<Result> => {
-	const previous = sessionCache.get(key);
-	// A refresh after a mutation must not join a read started before that write.
-	const entry: SessionCacheEntry = options?.refresh
-		? { value: previous?.value }
-		: (previous ?? {});
-	const cached = entry.value as Promise<Result> | undefined;
-	if (!options?.refresh && cached) {
-		return cached;
+	const account = rendererAccountSnapshot();
+	const workspace = rendererWorkspaceSnapshot();
+	const partition = JSON.stringify([
+		account.subject,
+		account.epoch,
+		workspace.key,
+	]);
+	let sessionCache = sessionCaches.get(partition);
+	if (sessionCache === undefined) {
+		sessionCache = new Map();
+		sessionCaches.set(partition, sessionCache);
 	}
-	if (!entry.pending) {
-		sessionCache.set(key, entry);
-		const request = runControlPlane(effect).then(
-			(value) => {
-				if (sessionCache.get(key) === entry) {
-					entry.value = Promise.resolve(value);
-					entry.pending = undefined;
-					for (const listener of cacheListeners) listener(key);
-				}
-				return value;
-			},
-			(cause) => {
-				if (sessionCache.get(key) === entry) {
-					entry.pending = undefined;
-					if (!entry.value) sessionCache.delete(key);
-				}
-				throw cause;
-			},
-		);
-		entry.pending = request;
+	const cache = sessionCache;
+	if (!options?.refresh) {
+		const cached = cache.get(key);
+		if (cached !== undefined && cached.expiresAt > Date.now()) {
+			return cached.promise.then((value) => {
+				assertRendererAccountCurrent(account);
+				assertRendererWorkspaceCurrent(workspace);
+				return value as Result;
+			});
+		}
 	}
-	return entry.pending as Promise<Result>;
+
+	const request = runCloudControl(effect).catch((cause) => {
+		if (cache.get(key)?.promise === request) cache.delete(key);
+		throw cause;
+	});
+	cache.set(key, {
+		promise: request,
+		expiresAt:
+			options?.maxAgeMs === undefined
+				? Number.POSITIVE_INFINITY
+				: Date.now() + options.maxAgeMs,
+	});
+	return request;
 };
 
 export const clearControlPlaneSessionCache = (prefix?: string): void => {
 	if (prefix === undefined) {
-		sessionCache.clear();
+		sessionCaches.clear();
 		return;
 	}
-	for (const key of sessionCache.keys()) {
-		if (key.startsWith(prefix)) sessionCache.delete(key);
+	for (const cache of sessionCaches.values()) {
+		for (const key of cache.keys()) {
+			if (key.startsWith(prefix)) cache.delete(key);
+		}
 	}
 };

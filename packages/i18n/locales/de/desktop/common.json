@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "Die Geräteeinstellungen konnten nicht gespeichert werden. Deine bisherigen Einstellungen bleiben unverändert.",
+	"workspace_settings_load_failed": "Die Arbeitsbereichseinstellungen konnten nicht geladen werden. Versuche es erneut.",
+	"workspace_settings_save_failed": "Die Arbeitsbereichseinstellungen konnten nicht gespeichert werden. Aktualisiere sie, bevor du es erneut versuchst.",
+	"workspace_settings_separate_configuration": "Konfiguriere diese Einstellung separat für den Arbeitsbereich.",
 	"projects_and_chats": "Projekte und Chats",
 	"collapse": "Einklappen {{title}}",
 	"expand": "Ausklappen {{title}}",

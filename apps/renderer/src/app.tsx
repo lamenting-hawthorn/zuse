@@ -16,8 +16,6 @@ import { useKeybindingDispatch } from "./hooks/use-keybinding-dispatch.ts";
 import { useMenuShortcuts } from "./hooks/use-menu-shortcuts.ts";
 import { useModelCatalogUpdates } from "./hooks/use-model-catalog-updates.ts";
 
-import { useReportRuntimeActivity } from "./hooks/use-report-runtime-activity.ts";
-
 import {
 	startDesktopAnalytics,
 	trackAnalyticsScreen,
@@ -30,6 +28,7 @@ import { prefetchCloudWorkspaceSession } from "./lib/cloud-workspace-session-cac
 import { clearControlPlaneSessionCache } from "./lib/control-plane-client.ts";
 
 import { markRendererStartupMilestone } from "./lib/performance-marks.ts";
+import { isHostedProduct } from "./lib/platform-capabilities.ts";
 
 import { installQueueOnlineRecovery } from "./lib/queue-recovery.ts";
 
@@ -48,6 +47,12 @@ import { useWorkspaceStore } from "./store/workspace.ts";
 const PrWatchController = lazy(() =>
 	import("./components/pr-watch-controller.tsx").then((module) => ({
 		default: module.PrWatchController,
+	})),
+);
+
+const RuntimeActivityReporter = lazy(() =>
+	import("./hooks/use-report-runtime-activity.ts").then((module) => ({
+		default: module.RuntimeActivityReporter,
 	})),
 );
 
@@ -99,6 +104,7 @@ function AmbientSurfaces() {
 	const chatSwitcherOpen = useUiStore((state) => state.chatSwitcherOpen);
 	return (
 		<Suspense fallback={null}>
+			<RuntimeActivityReporter />
 			{chatSwitcherOpen ? <ChatSwitcher /> : null}
 			<NotchTrayBridge />
 			<PrWatchController />
@@ -125,7 +131,7 @@ export function App({ onReady }: { readonly onReady?: () => void }) {
 	return (
 		<>
 			<ReadyApp
-				onboardingCompleted={onboardingCompleted}
+				onboardingCompleted={isHostedProduct() || onboardingCompleted}
 				onReady={onReady}
 				cloudOnboarding={cloudOnboarding}
 			/>
@@ -180,10 +186,6 @@ function ReadyApp({
 	// and editor commands are handled by CodeMirror keymaps, so this hook
 	// ignores them.
 	useKeybindingDispatch();
-
-	// Mirror privacy-safe agent, terminal, browser, recording, and indexing
-	// counts to desktop services. The agent count also powers quit deferrals.
-	useReportRuntimeActivity();
 
 	// Warm the analytics surface after the shell settles so opening Usage never
 	// pauses on parsing the chart renderer. The data request still starts only

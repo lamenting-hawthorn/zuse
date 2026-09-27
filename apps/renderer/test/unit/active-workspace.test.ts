@@ -2,6 +2,8 @@ import { FolderId } from "@zuse/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
+import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 
 const state = vi.hoisted(() => ({
 	workspace: {
@@ -103,6 +105,8 @@ const readRoot = () => {
 };
 
 beforeEach(() => {
+	observeRendererAccount("alice");
+	selectRendererWorkspace({ kind: "personal" });
 	state.workspace.selectedFolderId = "project";
 	state.chats.selectedChatId = "chat";
 	state.sessions.selectedSessionId = "session";
@@ -117,6 +121,15 @@ beforeEach(() => {
 	state.worktrees.byProject.project = [{ id: "worktree", path: "/worktree" }];
 });
 describe("active workspace during attached chat startup", () => {
+	it("does not expose a Personal execution root from a stale selection in an organization", () => {
+		selectRendererWorkspace({ kind: "organization", organizationId: "org-a" });
+		expect(readContext()).toEqual({ status: "empty" });
+		selectRendererWorkspace({ kind: "personal" });
+		expect(readContext()).toMatchObject({
+			status: "ready",
+			rootPath: "/worktree",
+		});
+	});
 	it("follows the chat binding when the session summary has not caught up", () => {
 		expect(readContext()).toMatchObject({
 			status: "ready",

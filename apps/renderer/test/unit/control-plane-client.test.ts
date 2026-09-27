@@ -6,11 +6,17 @@ vi.mock("../../src/lib/rpc-client.ts", () => ({
 	getControlPlaneRpcClient: connection,
 }));
 
-import { runControlPlane } from "../../src/lib/control-plane-client.ts";
+import {
+	runCachedControlPlane,
+	runControlPlane,
+} from "../../src/lib/control-plane-client.ts";
 import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
+import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 
 beforeEach(() => {
-	connection.mockReset().mockResolvedValue({});
+	connection.mockReset().mockResolvedValue({
+		"connect.handshake": () => Effect.succeed({ workspaceScopeProtocol: 1 }),
+	});
 	observeRendererAccount(null);
 	observeRendererAccount("alice");
 });
@@ -51,4 +57,39 @@ it("does not require authentication for existing signed-out control-plane calls"
 	await expect(runControlPlane(() => Effect.succeed("status"))).resolves.toBe(
 		"status",
 	);
+});
+
+it("carries scope on each request without changing the account", async () => {
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	await runControlPlane(() => Effect.void);
+	expect(connection).toHaveBeenLastCalledWith({
+		kind: "organization",
+		organizationId: "org_a",
+	});
+	await runControlPlane(() => Effect.void, {
+		scope: "account",
+	});
+	expect(connection).toHaveBeenLastCalledWith({ kind: "personal" });
+});
+
+it("ignores a late result after switching workspaces, including away and back", async () => {
+	const result = Promise.withResolvers<string>();
+	const operation = vi.fn(() => Effect.promise(() => result.promise));
+	const pending = runControlPlane(operation);
+	await vi.waitFor(() => expect(operation).toHaveBeenCalledOnce());
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	selectRendererWorkspace({ kind: "personal" });
+	result.resolve("old personal result");
+	await expect(pending).rejects.toThrow("workspace changed");
+});
+
+it("partitions cached reads by workspace and reuses only that workspace's result", async () => {
+	const read = vi.fn(() => Effect.succeed("personal"));
+	expect(await runCachedControlPlane("cloud.image", read)).toBe("personal");
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	read.mockImplementation(() => Effect.succeed("org_a"));
+	expect(await runCachedControlPlane("cloud.image", read)).toBe("org_a");
+	selectRendererWorkspace({ kind: "personal" });
+	expect(await runCachedControlPlane("cloud.image", read)).toBe("personal");
+	expect(read).toHaveBeenCalledTimes(2);
 });

@@ -15,17 +15,82 @@ import {
 } from "../../src/lib/renderer-account.ts";
 import {
 	acquireRendererRpcSession,
+	environmentBelongsToWorkspace,
+	getCloudWorkspaceScope,
 	isCloudWorkspaceEnvironment,
 	registerApiEnvironment,
 	registerCloudWorkspace,
 	registerWebSocketEnvironment,
 	removeRendererEnvironment,
+	requestCloudWorkspaceRuntimeRecovery,
 } from "../../src/lib/rpc-client.ts";
 
 beforeEach(() => {
 	observeRendererAccount(null);
 	mocks.create.mockReset();
 	mocks.protocol.mockReset();
+});
+
+it.each([
+	undefined,
+	{ kind: "organization" as const, organizationId: "org_a" },
+])("preserves the cloud owner when recovery invalidates its ticket: %j", (workspaceScope) => {
+	observeRendererAccount("first");
+	const ticket = {
+		workspaceId: "recover-owner",
+		workspaceScope,
+		wsUrl: "wss://example.test/cloud",
+		protocol: "zuse-workspace-v1",
+		role: "client" as const,
+		generation: 1,
+		gatewayEpoch: 1,
+		credential: "test-ticket",
+		expiresAt: Date.now() + 60_000,
+	};
+	registerCloudWorkspace(
+		ticket.workspaceId,
+		ticket,
+		async () => ticket,
+		rendererAccountSnapshot(),
+	);
+	requestCloudWorkspaceRuntimeRecovery(ticket.workspaceId);
+	expect(getCloudWorkspaceScope(ticket.workspaceId)).toEqual(
+		workspaceScope ?? { kind: "personal" },
+	);
+	expect(
+		environmentBelongsToWorkspace(
+			ticket.workspaceId,
+			workspaceScope ?? { kind: "personal" },
+		),
+	).toBe(true);
+	expect(
+		environmentBelongsToWorkspace(ticket.workspaceId, {
+			kind: "organization",
+			organizationId: "org_b",
+		}),
+	).toBe(false);
+	expect(
+		environmentBelongsToWorkspace(ticket.workspaceId, { kind: "personal" }),
+	).toBe(workspaceScope === undefined);
+	expect(
+		environmentBelongsToWorkspace("local-device", {
+			kind: "organization",
+			organizationId: "org_a",
+		}),
+	).toBe(false);
+	expect(() =>
+		registerCloudWorkspace(
+			ticket.workspaceId,
+			{
+				...ticket,
+				workspaceScope: { kind: "organization", organizationId: "org_b" },
+			},
+			async () => ticket,
+			rendererAccountSnapshot(),
+		),
+	).toThrow("ownership changed");
+	observeRendererAccount(null);
+	expect(getCloudWorkspaceScope(ticket.workspaceId)).toBeUndefined();
 });
 
 it("rejects late registrations using the initiating account, including A -> B -> A", async () => {
@@ -63,6 +128,34 @@ it("rejects late registrations using the initiating account, including A -> B ->
 	await expect(acquireRendererRpcSession("late-api")).rejects.toThrow(
 		"not connected",
 	);
+});
+
+it("rejects a refreshed ticket that changes an organization's owner", async () => {
+	observeRendererAccount("first");
+	const ticket = {
+		workspaceId: "refresh-owner",
+		workspaceScope: { kind: "organization" as const, organizationId: "org_a" },
+		wsUrl: "wss://example.test/cloud",
+		protocol: "zuse-workspace-v1",
+		role: "client" as const,
+		generation: 1,
+		gatewayEpoch: 1,
+		credential: "expired-ticket",
+		expiresAt: 0,
+	};
+	registerCloudWorkspace(
+		ticket.workspaceId,
+		ticket,
+		async () => ({ ...ticket, workspaceScope: undefined }),
+		rendererAccountSnapshot(),
+	);
+	await expect(acquireRendererRpcSession(ticket.workspaceId)).rejects.toThrow(
+		"ownership changed",
+	);
+	expect(getCloudWorkspaceScope(ticket.workspaceId)).toEqual(
+		ticket.workspaceScope,
+	);
+	expect(mocks.create).not.toHaveBeenCalled();
 });
 
 it("reports account closure once even when disposing also closes the socket", async () => {

@@ -32,13 +32,22 @@ import {
 	VolumeHighIcon,
 } from "@zuse/icons/solid-rounded";
 import { ChevronLeft, Plus, RefreshCw as RefreshIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { cloudWorkspaceBetaAvailable } from "~/lib/cloud-machines-availability.ts";
 import { displayPath } from "~/lib/display-path";
 import { hasHostCapability, isMacHost } from "~/lib/host-platform";
 import { rendererPlatformCapabilities } from "~/lib/platform-capabilities.ts";
 import { isInitialProviderAvailabilityLoading } from "~/lib/provider-status";
-import { SETTINGS_NAVIGATION as VISIBLE_RAIL } from "~/lib/settings-navigation.ts";
+import {
+	ORGANIZATION_NAVIGATION,
+	settingsNavigationFor,
+} from "~/lib/settings-navigation.ts";
 import {
 	formatRelativeTime,
 	useRelativeTimeTick,
@@ -57,7 +66,12 @@ import {
 	computerAwakeStatusText,
 } from "../lib/computer-awake.ts";
 import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client-bus.ts";
+import { useOrganizationWorkspaces } from "../lib/organization-workspaces.ts";
 import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "../lib/renderer-workspace.ts";
 import { useSettingsStore } from "../lib/settings-client-bus.ts";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
 import { useProvidersStore } from "../store/providers.ts";
@@ -78,6 +92,7 @@ import { HostedDevicesPane } from "./settings/hosted-devices-pane.tsx";
 import { KeybindingsPane } from "./settings/keybindings-editor.tsx";
 import { LinearIntegrationsPane } from "./settings/linear-integrations-pane.tsx";
 import { McpServersPane } from "./settings/mcp-servers-pane.tsx";
+import { OrganizationSharingPane } from "./settings/organization-sharing-pane.tsx";
 import { OrganizationsPane } from "./settings/organizations-pane.tsx";
 import { PokedexPane } from "./settings/pokedex-pane.tsx";
 import { SelfHostedServersPane } from "./settings/self-hosted-servers-pane.tsx";
@@ -101,6 +116,7 @@ import {
 	SettingsRow,
 	SettingsFrame as SharedSettingsFrame,
 } from "./ui/settings-panel.tsx";
+import { WorkspaceSwitcher } from "./workspace-switcher.tsx";
 
 export { SettingsGroup, SettingsRow } from "./ui/settings-panel.tsx";
 
@@ -120,6 +136,10 @@ const CLOUD_MACHINES_AVAILABLE = cloudWorkspaceBetaAvailable();
  * settings; the right pane renders the active section's form.
  */
 export function SettingsPage() {
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
 	const setView = useUiStore((s) => s.setView);
@@ -128,10 +148,32 @@ export function SettingsPage() {
 	const folders = useWorkspaceStore((s) => s.folders);
 	const loadFolders = useWorkspaceStore((s) => s.load);
 	const desktop = rendererPlatformCapabilities().desktop;
+	const organizations = useOrganizationWorkspaces(
+		(state) => state.organizations,
+	);
+	const organizationId =
+		workspace.scope.kind === "organization"
+			? workspace.scope.organizationId
+			: undefined;
+	const selectedOrganization = organizations.find(
+		(entry) => entry.id === organizationId,
+	);
 	const visibleSection: SettingsSection =
-		!CLOUD_MACHINES_AVAILABLE && section.kind === "machines"
+		workspace.scope.kind === "personal" &&
+		section.kind === "cloud" &&
+		section.page === "sharing"
 			? { kind: "general" }
-			: section;
+			: workspace.scope.kind === "organization" &&
+					selectedOrganization?.role === "billing"
+				? { kind: "cloud", page: "billing" }
+				: workspace.scope.kind === "organization" &&
+						!ORGANIZATION_NAVIGATION.some(
+							(item) => item.section.kind === section.kind,
+						)
+					? { kind: "organizations" }
+					: !CLOUD_MACHINES_AVAILABLE && section.kind === "machines"
+						? { kind: "general" }
+						: section;
 
 	useEffect(() => {
 		if (!isHostedProduct() && folders.length === 0) void loadFolders();
@@ -160,6 +202,9 @@ export function SettingsPage() {
 					<ChevronLeft className="size-3.5" />
 					<span>{uiMessage("settings:settings_page_back_to_app")}</span>
 				</button>
+				<div className="ml-auto min-w-40 [-webkit-app-region:no-drag]">
+					<WorkspaceSwitcher />
+				</div>
 			</header>
 			<div className="flex min-h-0 flex-1">
 				<Rail
@@ -181,7 +226,7 @@ export function SettingsPage() {
 						)}
 					>
 						<SectionTitle section={visibleSection} folders={folders} />
-						<Pane section={visibleSection} />
+						<Pane key={workspace.key} section={visibleSection} />
 					</div>
 				</div>
 			</div>
@@ -201,72 +246,83 @@ function Rail({
 	desktop: boolean;
 }) {
 	useUiMessages(["common", "settings"]);
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
+	const organizations = useOrganizationWorkspaces(
+		(state) => state.organizations,
+	);
+	const organizationId =
+		workspace.scope.kind === "organization"
+			? workspace.scope.organizationId
+			: undefined;
+	const financeOnly =
+		organizations.find((entry) => entry.id === organizationId)?.role ===
+		"billing";
 
 	return (
 		<nav className="flex w-52 shrink-0 flex-col gap-4 border-r border-sidebar-border bg-sidebar px-2.5 py-3 text-xs text-sidebar-foreground max-[800px]:w-12 max-[800px]:px-1.5">
 			<div className="flex flex-col gap-0.5">
-				{VISIBLE_RAIL.filter((item) =>
-					isHostedProduct()
-						? [
-								"general",
-								"providers",
-								"defaults",
-								"machines",
-								"devices",
-								"shortcuts",
-							].includes(item.section.kind)
-						: desktop || (item.section.kind !== "machines" && item.section.kind !== "self-hosted"),
-				).map((item) => {
-					const active =
-						section.kind !== "repository" && section.kind === item.section.kind;
-					return (
-						<RailButton
-							key={item.id}
-							active={active}
-							onClick={() => onSelect(item.section)}
-							icon={item.Icon}
-							label={item.label}
-						/>
-					);
-				})}
+				{settingsNavigationFor(section, desktop, workspace.scope)
+					.filter((item) => !financeOnly || item.id === "billing")
+					.map((item) => {
+						const active =
+							section.kind === item.section.kind &&
+							(section.kind !== "cloud" ||
+								(item.section.kind === "cloud" &&
+									section.page === item.section.page));
+						return (
+							<RailButton
+								key={item.id}
+								active={active}
+								onClick={() => onSelect(item.section)}
+								icon={item.Icon}
+								label={item.label}
+							/>
+						);
+					})}
 			</div>
-			{!isHostedProduct() && folders.length > 0 && (
-				<div className="flex flex-col gap-2 max-[800px]:hidden">
-					<div className="flex items-center justify-between px-2">
-						<RichMessage
-							id="settings:settings_page_repositories_sentence"
-							values={{ value: folders.length }}
-							components={{
-								part0: (
-									<span className="text-[11px] font-medium tracking-wide text-muted-foreground/80" />
-								),
-								part1: (
-									<span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" />
-								),
-							}}
-						/>
+			{workspace.scope.kind === "personal" &&
+				!isHostedProduct() &&
+				section.kind !== "organizations" &&
+				folders.length > 0 && (
+					<div className="flex flex-col gap-2 max-[800px]:hidden">
+						<div className="flex items-center justify-between px-2">
+							<RichMessage
+								id="settings:settings_page_repositories_sentence"
+								values={{ value: folders.length }}
+								components={{
+									part0: (
+										<span className="text-[11px] font-medium tracking-wide text-muted-foreground/80" />
+									),
+									part1: (
+										<span className="rounded-full bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" />
+									),
+								}}
+							/>
+						</div>
+						<div className="flex flex-col gap-0.5">
+							{folders.map((f) => {
+								const active =
+									section.kind === "repository" && section.projectId === f.id;
+								return (
+									<RailButton
+										key={f.id}
+										active={active}
+										onClick={() =>
+											onSelect({ kind: "repository", projectId: f.id })
+										}
+										icon={Folder01Icon}
+										label={f.name}
+										title={displayPath(f.path)}
+										truncate
+									/>
+								);
+							})}
+						</div>
 					</div>
-					<div className="flex flex-col gap-0.5">
-						{folders.map((f) => {
-							const active =
-								section.kind === "repository" && section.projectId === f.id;
-							return (
-								<RailButton
-									key={f.id}
-									active={active}
-									onClick={() =>
-										onSelect({ kind: "repository", projectId: f.id })
-									}
-									icon={Folder01Icon}
-									label={f.name}
-									title={displayPath(f.path)}
-									truncate
-								/>
-							);
-						})}
-					</div>
-				</div>
-			)}
+				)}
 		</nav>
 	);
 }
@@ -316,6 +372,13 @@ function SectionTitle({
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
 	const { title, subtitle } = useMemo(() => {
+		if (section.kind === "cloud")
+			return {
+				title:
+					ORGANIZATION_NAVIGATION.find((item) => item.id === section.page)
+						?.label ?? section.page,
+				subtitle: "",
+			};
 		if (section.kind === "general") {
 			return {
 				title: uiMessage("settings:settings_page_general"),
@@ -427,7 +490,34 @@ function SectionTitle({
 }
 
 function Pane({ section }: { section: SettingsSection }) {
-	if (section.kind === "organizations") return <OrganizationsPane />;
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
+	const organization = useOrganizationWorkspaces((state) =>
+		state.organizations.find(
+			(entry) =>
+				workspace.scope.kind === "organization" &&
+				entry.id === workspace.scope.organizationId,
+		),
+	);
+	if (section.kind === "cloud") {
+		if (section.page === "sharing")
+			return organization === undefined ? null : (
+				<OrganizationSharingPane organization={organization} />
+			);
+		return <CloudWorkspacePool section={section.page} />;
+	}
+	if (section.kind === "organizations")
+		return (
+			<OrganizationsPane
+				organizationId={
+					workspace.scope.kind === "organization"
+						? workspace.scope.organizationId
+						: undefined
+				}
+			/>
+		);
 	if (section.kind === "self-hosted") return <SelfHostedServersPane />;
 	if (section.kind === "general") return <GeneralPane />;
 	if (section.kind === "defaults") return <DefaultModelsPane />;

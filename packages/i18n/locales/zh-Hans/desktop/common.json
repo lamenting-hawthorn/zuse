@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "无法保存设备偏好设置。原有偏好设置保持不变。",
+	"workspace_settings_load_failed": "无法加载工作区设置。请重试。",
+	"workspace_settings_save_failed": "无法保存工作区设置。请刷新后重试。",
+	"workspace_settings_separate_configuration": "请单独为此工作区配置此设置。",
 	"projects_and_chats": "项目和聊天",
 	"collapse": "折叠 {{title}}",
 	"expand": "展开 {{title}}",

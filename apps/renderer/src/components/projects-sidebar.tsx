@@ -6,6 +6,14 @@ import {
 import { isInputComposing } from "../lib/input-composition.ts";
 import { openProjectSetupDialog } from "../lib/project-setup-dialog-state.ts";
 import { HostedLaptopSection } from "./hosted-sidebar.tsx";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "../lib/renderer-workspace.ts";
+import {
+	organizationWorkspacesAvailable,
+	WorkspaceSwitcher,
+} from "./workspace-switcher.tsx";
 import "@zuse/i18n/english/projects";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
@@ -114,7 +122,10 @@ import {
 	type LogicalProjectGroup,
 	preferredGroupMember,
 } from "../lib/project-groups.ts";
-import { getLocalEnvironmentId } from "../lib/rpc-client.ts";
+import {
+	environmentBelongsToWorkspace,
+	getLocalEnvironmentId,
+} from "../lib/rpc-client.ts";
 import { isSessionRuntimeBusy } from "../lib/session-runtime-state.ts";
 import {
 	useOptionalRendererSessionTimeline,
@@ -272,22 +283,35 @@ export function ProjectsSidebar() {
 	useSessionRuntimeEffects();
 	const paneRef = useRef<HTMLElement>(null);
 	useRegisterPane("sidebar", paneRef);
-	const workspaceFolders = useWorkspaceStore((s) => s.folders);
+	const workspaceScope = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
+	const storedFolders = useWorkspaceStore((s) => s.folders);
 	const selectedFolderId = useWorkspaceStore((s) => s.selectedFolderId);
 	const loading = useWorkspaceStore((s) => s.loading);
-	const removeFolder = useWorkspaceStore((s) => s.remove);
-	const remove = async (id: FolderId) => {
-		if (isHostedProduct()) openProjectSetupDialog();
-		else await removeFolder(id);
-	};
-	const selectFolder = useWorkspaceStore((s) => s.select);
-	const select = async (id: FolderId) => {
-		if (isHostedProduct()) selectHostedCloudHome(id);
-		else await selectFolder(id);
-	};
-	const catalogEntries = useEnvironmentCatalogStore((s) => s.entries);
-	const activeEnvironmentId = useEnvironmentCatalogStore((s) =>
-		isHostedProduct() ? "local" : s.activeEnvironmentId,
+	const remove = useWorkspaceStore((s) => s.remove);
+	const select = useWorkspaceStore((s) => s.select);
+	const storedCatalogEntries = useEnvironmentCatalogStore((s) => s.entries);
+	const catalogEntries = useMemo(
+		() =>
+			storedCatalogEntries.filter((entry) =>
+				environmentBelongsToWorkspace(
+					entry.environmentId,
+					workspaceScope.scope,
+				),
+			),
+		[storedCatalogEntries, workspaceScope],
+	);
+	const activeEnvironmentId = useEnvironmentCatalogStore(
+		(s) => s.activeEnvironmentId,
+	);
+	const workspaceFolders = useMemo(
+		() =>
+			environmentBelongsToWorkspace(activeEnvironmentId, workspaceScope.scope)
+				? storedFolders
+				: [],
+		[activeEnvironmentId, workspaceScope, storedFolders],
 	);
 	const shellViews = useEnvironmentShellCatalog(
 		catalogEntries.map((entry) => entry.environmentId),
@@ -325,7 +349,7 @@ export function ProjectsSidebar() {
 	useEffect(() => {
 		if (CLOUD_WORKSPACE_BETA_AVAILABLE && cloudAccount)
 			return watchCloudChatCatalog();
-	}, [cloudAccount]);
+	}, [cloudAccount, workspaceScope]);
 
 	const desktopCatalogEnabled = window.zuse?.ssh !== undefined;
 
@@ -397,12 +421,37 @@ export function ProjectsSidebar() {
 				: folders.map((folder) => folder.id),
 		[desktopCatalogEnabled, folders, logicalGroups, uiMessage],
 	);
+	const ungroupedCloudChats = useMemo(() => {
+		const representedChats = new Set([
+			...Object.values(chatsByProject)
+				.flat()
+				.filter((chat) => chat.archivedAt === null)
+				.map((chat) => chat.id),
+			...logicalGroups.flatMap((group) =>
+				group.chats.map((row) => row.chat.id),
+			),
+		]);
+		const repositories = new Set([
+			...Object.values(origins).map(repositoryIdentityForOrigin),
+			...logicalGroups.map((group) =>
+				repositoryIdentityForOrigin(group.origin),
+			),
+		]);
+		return cloudChats.filter(
+			(chat) =>
+				chat.archivedAt === undefined &&
+				chat.state !== "archived" &&
+				chat.state !== "deleted" &&
+				!representedChats.has(chat.chatId) &&
+				!repositories.has(chat.repositoryIdentity),
+		);
+	}, [cloudChats, logicalGroups, origins, chatsByProject]);
 	const organize = useSidebarOrganize(projectKeys);
 	const catalogViewState = environmentCatalogViewState({
 		initialized: catalogInitialized,
 		initializing: catalogInitializing,
 		initializationError: catalogInitializationError,
-		projectCount: logicalGroups.length,
+		projectCount: logicalGroups.length + ungroupedCloudChats.length,
 		projectsLoading: loading,
 	});
 
@@ -414,6 +463,11 @@ export function ProjectsSidebar() {
 			tabIndex={-1}
 			className="flex h-full min-h-0 w-full flex-col text-sidebar-foreground outline-none"
 		>
+			{organizationWorkspacesAvailable() && (
+				<div className="px-2 py-1">
+					<WorkspaceSwitcher />
+				</div>
+			)}
 			{desktopCatalogEnabled || isHostedProduct() ? null : (
 				<Suspense fallback={<div className="h-[60px]" />}>
 					<ComputerSwitcher />
@@ -448,6 +502,9 @@ export function ProjectsSidebar() {
 				data-sidebar-scroll
 				className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-1.5"
 			>
+				{ungroupedCloudChats.map((summary) => (
+					<CloudChatRow key={summary.workspaceId} summary={summary} />
+				))}
 				{desktopCatalogEnabled ? (
 					<>
 						{catalogViewState === "loading" ? (
@@ -582,7 +639,9 @@ export function ProjectsSidebar() {
 					</>
 				) : (
 					<>
-						{folders.length === 0 && !loading ? (
+						{folders.length === 0 &&
+						ungroupedCloudChats.length === 0 &&
+						!loading ? (
 							<li>
 								<CompactEmptyState
 									title={uiMessage("projects:projects_sidebar_no_projects_yet")}
@@ -2143,7 +2202,7 @@ function CloudChatRow({
 	projectId,
 }: {
 	readonly summary: CloudChatSummary;
-	readonly projectId: FolderId;
+	readonly projectId?: FolderId;
 }) {
 	const { message: uiMessage } = useUiMessages(["common", "projects"]);
 

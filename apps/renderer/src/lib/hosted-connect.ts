@@ -8,6 +8,9 @@ import {
 	WIRE_PROTOCOL_VERSION,
 	WORKOS_PUBLIC_CLIENT_ID,
 	WORKOS_STAGING_PUBLIC_CLIENT_ID,
+	WORKSPACE_API_PREFIX,
+	WORKSPACE_SCOPE_HEADER,
+	WorkspaceScope,
 } from "@zuse/contracts";
 import { Schema } from "effect";
 
@@ -529,19 +532,43 @@ export const hostedSignedIn = async (): Promise<boolean> => {
 export const hostedAccountRequest = async (
 	path: string,
 	body?: unknown,
+	options?: {
+		readonly method?: string;
+		readonly workspace?: WorkspaceScope;
+		readonly signal?: AbortSignal;
+	},
 ): Promise<Response> => {
 	const account = rendererAccountSnapshot();
+	const scope =
+		options?.workspace === undefined
+			? undefined
+			: Schema.decodeUnknownSync(WorkspaceScope)(options.workspace);
+	const scopedPath =
+		scope?.kind === "organization"
+			? `${WORKSPACE_API_PREFIX}${scope.organizationId}${path}`
+			: path;
 	const token = await hostedAccessToken();
 	assertRendererAccountCurrent(account);
 	if (token === null) throw new Error("hosted_signed_out");
-	const response = await fetch(`${rendererApiUrl()}${path}`, {
-		method: body === undefined ? "GET" : "POST",
+	const response = await fetch(`${rendererApiUrl()}${scopedPath}`, {
+		method: options?.method ?? (body === undefined ? "GET" : "POST"),
 		headers: {
+			...(scope === undefined
+				? {}
+				: {
+						[WORKSPACE_SCOPE_HEADER]:
+							scope.kind === "personal"
+								? "personal"
+								: `organization:${scope.organizationId}`,
+					}),
 			authorization: `Bearer ${token}`,
 			...(body === undefined ? {} : { "content-type": "application/json" }),
 		},
 		body: body === undefined ? undefined : JSON.stringify(body),
-		signal: AbortSignal.timeout(15_000),
+		signal:
+			options?.signal === undefined
+				? AbortSignal.timeout(30_000)
+				: AbortSignal.any([options.signal, AbortSignal.timeout(30_000)]),
 	});
 	assertRendererAccountCurrent(account);
 	return response;

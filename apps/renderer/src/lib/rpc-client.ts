@@ -16,6 +16,7 @@ import {
 	type CloudWorkspaceConnection,
 	MemoizeRpcs,
 	WIRE_PROTOCOL_VERSION,
+	type WorkspaceScope,
 } from "@zuse/contracts";
 import { Effect, Layer, type Stream } from "effect";
 import {
@@ -42,7 +43,12 @@ import {
 	LOCAL_RENDERER_STORAGE_SCOPE,
 	setActiveEnvironmentStorageScope,
 } from "./renderer-environment-scope.ts";
+import {
+	rendererWorkspaceSnapshot,
+	workspaceScopeKey,
+} from "./renderer-workspace.ts";
 import { instrumentRendererRpcClient } from "./rpc-stall-instrumentation.ts";
+import { withWorkspaceScope } from "./workspace-rpc-client.ts";
 import { wsClientProtocolLayer } from "./ws-client-protocol.ts";
 
 export type MemoizeClient = RpcClient.RpcClient<
@@ -92,6 +98,7 @@ export const connectionRequiresNetwork = (
 
 const environmentConnections = new Map<string, RendererConnectionOptions>();
 type CloudWorkspaceRegistration = {
+	readonly workspaceScope: WorkspaceScope;
 	connection: CloudWorkspaceConnection | null;
 	refresh: () => Promise<CloudWorkspaceConnection>;
 	readonly refreshStable: () => Promise<CloudWorkspaceConnection>;
@@ -626,20 +633,51 @@ export const getVerifiedRpcClient = async (
  * Account operations use hosted HTTP on web and the owning desktop elsewhere,
  * independently of the runtime selected for a chat.
  */
-export type ControlPlaneClient = {
-	[K in keyof CloudControlClient]: (
-		...args: Parameters<CloudControlClient[K]>
-	) => ReturnType<CloudControlClient[K]> extends Effect.Effect<infer A, unknown>
-		? Effect.Effect<A, unknown>
-		: ReturnType<CloudControlClient[K]> extends Stream.Stream<infer A, unknown>
-			? Stream.Stream<A, unknown>
-			: never;
+export const getControlPlaneRpcClient = async (
+	scope: WorkspaceScope = rendererWorkspaceSnapshot().scope,
+): Promise<MemoizeClient> => {
+	const account = rendererAccountSnapshot();
+	const client = await getRpcClient(localEnvironmentId);
+	if (scope.kind === "organization") {
+		const welcome = await Effect.runPromise(
+			client["connect.handshake"]({ protocolVersion: WIRE_PROTOCOL_VERSION }),
+		);
+		if (welcome.workspaceScopeProtocol !== 1)
+			throw new Error(
+				"Update Zuse on this computer before using organization workspaces.",
+			);
+	}
+	assertRendererAccountCurrent(account);
+	return withWorkspaceScope(client, scope);
 };
-export const getControlPlaneRpcClient =
-	async (): Promise<ControlPlaneClient> =>
-		isHostedProduct()
-			? (await import("./hosted-control-client.ts")).hostedControlClient
-			: getRpcClient(localEnvironmentId);
+
+/** Background command recovery follows the runtime owner, never the selected UI. */
+export const getCloudWorkspaceScope = (
+	workspaceId: string,
+): WorkspaceScope | undefined =>
+	cloudWorkspaceRegistrations.get(workspaceId)?.workspaceScope;
+
+/** Local/legacy device connections remain Personal until explicitly enrolled. */
+export const environmentBelongsToWorkspace = (
+	environmentId: string,
+	scope: WorkspaceScope = rendererWorkspaceSnapshot().scope,
+): boolean =>
+	workspaceScopeKey(
+		getCloudWorkspaceScope(environmentId) ?? { kind: "personal" },
+	) === workspaceScopeKey(scope);
+
+const assertCloudConnectionOwner = (
+	workspaceId: string,
+	scope: WorkspaceScope,
+	connection: CloudWorkspaceConnection,
+): void => {
+	if (
+		connection.workspaceId !== workspaceId ||
+		workspaceScopeKey(connection.workspaceScope ?? { kind: "personal" }) !==
+			workspaceScopeKey(scope)
+	)
+		throw new Error("Cloud workspace connection ownership changed.");
+};
 
 export const registerWebSocketEnvironment = (
 	environmentId: string,
@@ -686,8 +724,14 @@ export const registerCloudWorkspace = (
 	assertRendererAccountCurrent(account);
 	const existingEntry = rendererEntries.get(workspaceId);
 	let registration = cloudWorkspaceRegistrations.get(workspaceId);
+	const scope = registration?.workspaceScope ??
+		initial.workspaceScope ?? {
+			kind: "personal",
+		};
+	assertCloudConnectionOwner(workspaceId, scope, initial);
 	if (registration === undefined) {
 		const created: CloudWorkspaceRegistration = {
+			workspaceScope: scope,
 			connection: initial,
 			refresh: refreshConnection,
 			refreshStable: async () => {
@@ -697,6 +741,11 @@ export const registerCloudWorkspace = (
 				if (canReuseCloudWorkspaceTicket(current.connection))
 					return current.connection;
 				const refreshed = await current.refresh();
+				assertCloudConnectionOwner(
+					workspaceId,
+					current.workspaceScope,
+					refreshed,
+				);
 				current.connection = refreshed;
 				return refreshed;
 			},

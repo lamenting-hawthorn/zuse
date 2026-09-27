@@ -161,7 +161,7 @@ export async function flushRendererDiagnostics(): Promise<void> {
 			import("./rpc-client.ts"),
 			import("effect"),
 		]);
-		const client = await getRpcClient();
+		const client = await getControlPlaneRpcClient({ kind: "personal" });
 		await Effect.runPromise(
 			client["diagnostics.ingest"]({
 				events: pending.map((entry, index) => ({

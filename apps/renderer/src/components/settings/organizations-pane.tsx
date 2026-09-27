@@ -5,11 +5,13 @@ import type {
 	OrganizationMember,
 	OrganizationRole,
 } from "@zuse/contracts";
+import { ORGANIZATION_MEMBER_LIMIT } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../hooks/use-auth.ts";
 import { runOrganizations } from "../../lib/organization-client.ts";
+import { loadOrganizationWorkspaces } from "../../lib/organization-workspaces.ts";
 import { rendererAccountSnapshot } from "../../lib/renderer-account.ts";
 import {
 	AlertDialog,
@@ -22,7 +24,18 @@ import {
 } from "../ui/alert-dialog.tsx";
 import { Button } from "../ui/button.tsx";
 import { Input } from "../ui/input.tsx";
-import { SettingsGroup, SettingsRow } from "../ui/settings-panel.tsx";
+import {
+	Select,
+	SelectItem,
+	SelectPopup,
+	SelectTrigger,
+	SelectValue,
+} from "../ui/select.tsx";
+import {
+	SettingsFrame,
+	SettingsGroup,
+	SettingsRow,
+} from "../ui/settings-panel.tsx";
 
 export const organizationErrorMessage = (error: unknown): string => {
 	const code =
@@ -31,6 +44,12 @@ export const organizationErrorMessage = (error: unknown): string => {
 			: null;
 	if (code === "not-allowed")
 		return uiMessage("settings:organizations_access_changed");
+	if (code === "organization-limit-reached")
+		return uiMessage("settings:organizations_creation_limit");
+	if (code === "organization-member-limit-reached")
+		return uiMessage("settings:organizations_member_limit", {
+			limit: ORGANIZATION_MEMBER_LIMIT,
+		});
 	if (code === "conflict") return uiMessage("settings:organizations_conflict");
 	if (code === "invalid-request")
 		return uiMessage("settings:organizations_invalid");
@@ -39,7 +58,56 @@ export const organizationErrorMessage = (error: unknown): string => {
 	return uiMessage("settings:organizations_unavailable");
 };
 
-export function OrganizationsPane() {
+function OrganizationRoleSelect({
+	value,
+	disabled,
+	label,
+	onValueChange,
+}: {
+	value: string;
+	disabled: boolean;
+	label: string;
+	onValueChange: (role: OrganizationRole) => void;
+}) {
+	const items = [
+		{ value: "member", label: uiMessage("settings:organizations_member") },
+		{ value: "admin", label: uiMessage("settings:organizations_admin") },
+		{
+			value: "billing",
+			label: uiMessage("settings:organizations_billing_only"),
+		},
+	];
+	if (!items.some((item) => item.value === value))
+		items.push({ value, label: value });
+	return (
+		<Select
+			items={items}
+			value={value}
+			disabled={disabled}
+			onValueChange={(next) => {
+				if (next === "admin" || next === "member" || next === "billing")
+					onValueChange(next);
+			}}
+		>
+			<SelectTrigger className="h-7 w-auto" aria-label={label}>
+				<SelectValue />
+			</SelectTrigger>
+			<SelectPopup>
+				{items.map((item) => (
+					<SelectItem key={item.value} value={item.value}>
+						{item.label}
+					</SelectItem>
+				))}
+			</SelectPopup>
+		</Select>
+	);
+}
+
+export function OrganizationsPane({
+	organizationId,
+}: {
+	organizationId?: string;
+} = {}) {
 	useUiMessages(["settings"]);
 	const auth = useAuth();
 	const [organizations, setOrganizations] = useState<
@@ -51,6 +119,7 @@ export function OrganizationsPane() {
 	const [email, setEmail] = useState("");
 	const [role, setRole] = useState<OrganizationRole>("member");
 	const [loading, setLoading] = useState(true);
+	const [listReady, setListReady] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -63,40 +132,47 @@ export function OrganizationsPane() {
 	);
 	const currentUserId = auth.user?.id;
 
-	const refresh = useCallback(async (preferId?: string) => {
-		const epoch = ++generation.current;
-		const account = rendererAccountSnapshot();
-		const stillCurrent = () =>
-			epoch === generation.current && account === rendererAccountSnapshot();
-		setLoading(true);
-		setError(null);
-		setDetails(null);
-		try {
-			const list = await runOrganizations((client) =>
-				client["organizations.list"]({}),
-			);
-			if (!stillCurrent()) return;
-			setOrganizations(list);
-			const id =
-				list.find((org) => org.id === preferId)?.id ?? list[0]?.id ?? "";
-			setSelectedId(id);
-			if (id) {
-				const next = await runOrganizations((client) =>
-					client["organizations.get"]({ organizationId: id }),
-				);
-				if (stillCurrent()) setDetails(next);
+	const refresh = useCallback(
+		async (preferId?: string) => {
+			const epoch = ++generation.current;
+			const account = rendererAccountSnapshot();
+			const stillCurrent = () =>
+				epoch === generation.current && account === rendererAccountSnapshot();
+			setLoading(true);
+			setListReady(false);
+			setError(null);
+			setDetails(null);
+			try {
+				const list = await loadOrganizationWorkspaces(true);
+				if (!stillCurrent()) return;
+				setOrganizations(list);
+				setListReady(true);
+				const id =
+					organizationId ??
+					list.find((org) => org.id === preferId)?.id ??
+					list[0]?.id ??
+					"";
+				setSelectedId(id);
+				if (id) {
+					const next = await runOrganizations((client) =>
+						client["organizations.get"]({ organizationId: id }),
+					);
+					if (stillCurrent()) setDetails(next);
+				}
+			} catch (cause) {
+				if (stillCurrent()) setError(organizationErrorMessage(cause));
+			} finally {
+				if (stillCurrent()) setLoading(false);
 			}
-		} catch (cause) {
-			if (stillCurrent()) setError(organizationErrorMessage(cause));
-		} finally {
-			if (stillCurrent()) setLoading(false);
-		}
-	}, []);
+		},
+		[organizationId],
+	);
 
 	useEffect(() => {
 		setBusy(false);
 		mutationInFlight.current = null;
 		setOrganizations([]);
+		setListReady(false);
 		setSelectedId("");
 		setDetails(null);
 		setError(null);
@@ -161,21 +237,36 @@ export function OrganizationsPane() {
 			</SettingsGroup>
 		);
 	const admin = details?.organization.role === "admin";
+	const seatsFull =
+		details !== null &&
+		details.members.length + details.invitations.length >=
+			ORGANIZATION_MEMBER_LIMIT;
 	return (
-		<div className="flex flex-col gap-5 text-xs">
-			{error && (
-				<p role="alert" className="text-destructive">
-					{error}
-				</p>
-			)}
+		<div className="flex max-w-xl flex-col gap-5 text-xs">
 			{notice && (
 				<p role="status" className="text-muted-foreground">
 					{notice}
 				</p>
 			)}
-			<SettingsGroup
+			<SettingsFrame
 				title={uiMessage("settings:organizations_your_organizations")}
+				action={
+					<Button
+						className="h-7"
+						size="xs"
+						variant="ghost"
+						disabled={busy || loading}
+						onClick={() => void refresh(selectedId)}
+					>
+						{uiMessage("settings:organizations_refresh")}
+					</Button>
+				}
 			>
+				{error && (
+					<p role="alert" className="text-destructive">
+						{error}
+					</p>
+				)}
 				{loading && (
 					<p role="status" className="text-muted-foreground">
 						{uiMessage("settings:organizations_loading_organization")}
@@ -189,36 +280,38 @@ export function OrganizationsPane() {
 					</p>
 				)}
 				<div className="flex items-center gap-2">
-					{organizations.length > 0 && (
-						<select
-							aria-label={uiMessage("settings:organizations_organization")}
-							className="h-7 min-w-0 flex-1 rounded-md bg-muted px-2"
+					{organizationId === undefined && organizations.length > 0 && (
+						<Select
+							items={organizations.map((org) => ({
+								value: org.id,
+								label: org.name,
+							}))}
 							value={selectedId}
 							disabled={busy || loading}
-							onChange={(event) => {
+							onValueChange={(value) => {
+								if (!value) return;
 								setEmail("");
 								setNotice(null);
-								void refresh(event.target.value);
+								void refresh(value);
 							}}
 						>
-							{organizations.map((org) => (
-								<option key={org.id} value={org.id}>
-									{org.name}
-								</option>
-							))}
-						</select>
+							<SelectTrigger
+								className="h-7 min-w-0 flex-1"
+								aria-label={uiMessage("settings:organizations_organization")}
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectPopup>
+								{organizations.map((org) => (
+									<SelectItem key={org.id} value={org.id}>
+										{org.name}
+									</SelectItem>
+								))}
+							</SelectPopup>
+						</Select>
 					)}
-					<Button
-						className="h-7"
-						size="xs"
-						variant="ghost"
-						disabled={busy || loading}
-						onClick={() => void refresh(selectedId)}
-					>
-						{uiMessage("settings:organizations_refresh")}
-					</Button>
 				</div>
-			</SettingsGroup>
+			</SettingsFrame>
 			{details && (
 				<SettingsGroup title={uiMessage("settings:organizations_members")}>
 					{details.members.map((member) => (
@@ -238,18 +331,13 @@ export function OrganizationsPane() {
 									member.userId !== details.currentUserId &&
 									!member.directoryManaged ? (
 										<>
-											<select
-												aria-label={uiMessage(
-													"settings:organizations_role_for",
-													{ email: member.email },
-												)}
-												className="h-7 rounded-md bg-muted px-2"
+											<OrganizationRoleSelect
+												label={uiMessage("settings:organizations_role_for", {
+													email: member.email,
+												})}
 												value={member.role}
 												disabled={busy || loading}
-												onChange={(event) => {
-													const nextRole = event.target.value;
-													if (nextRole !== "admin" && nextRole !== "member")
-														return;
+												onValueChange={(nextRole) => {
 													void mutate(async (stillCurrent) => {
 														await runOrganizations((client) =>
 															client["organizations.setRole"]({
@@ -261,18 +349,7 @@ export function OrganizationsPane() {
 														if (stillCurrent()) await refresh(selectedId);
 													});
 												}}
-											>
-												<option value="member">
-													{uiMessage("settings:organizations_member")}
-												</option>
-												<option value="admin">
-													{uiMessage("settings:organizations_admin")}
-												</option>
-												{member.role !== "admin" &&
-													member.role !== "member" && (
-														<option value={member.role}>{member.role}</option>
-													)}
-											</select>
+											/>
 											<Button
 												className="h-7"
 												size="xs"
@@ -303,12 +380,12 @@ export function OrganizationsPane() {
 			{admin && (
 				<SettingsGroup
 					title={uiMessage("settings:organizations_invite_people")}
-					description={uiMessage(
-						"settings:organizations_invitations_are_sent_by_email_and_expire_after_seven_days",
-					)}
+					description={uiMessage("settings:organizations_member_limit", {
+						limit: ORGANIZATION_MEMBER_LIMIT,
+					})}
 				>
 					<form
-						className="flex flex-wrap items-center gap-2"
+						className="flex flex-wrap items-center gap-2 px-3 py-2.5"
 						onSubmit={(event) => {
 							event.preventDefault();
 							void mutate(async (stillCurrent) => {
@@ -340,27 +417,17 @@ export function OrganizationsPane() {
 							disabled={busy || loading}
 							placeholder={uiMessage("settings:organizations_name_company_com")}
 						/>
-						<select
-							className="h-7 rounded-md bg-muted px-2"
-							aria-label={uiMessage("settings:organizations_invitation_role")}
+						<OrganizationRoleSelect
+							label={uiMessage("settings:organizations_invitation_role")}
 							value={role}
 							disabled={busy || loading}
-							onChange={(event) =>
-								setRole(event.target.value === "admin" ? "admin" : "member")
-							}
-						>
-							<option value="member">
-								{uiMessage("settings:organizations_member")}
-							</option>
-							<option value="admin">
-								{uiMessage("settings:organizations_admin")}
-							</option>
-						</select>
+							onValueChange={setRole}
+						/>
 						<Button
 							className="h-7"
 							size="xs"
 							type="submit"
-							disabled={busy || loading || !email.trim()}
+							disabled={busy || loading || seatsFull || !email.trim()}
 						>
 							{uiMessage("settings:organizations_send_invitation")}
 						</Button>
@@ -397,51 +464,61 @@ export function OrganizationsPane() {
 					))}
 				</SettingsGroup>
 			)}
-			<SettingsGroup
-				title={uiMessage("settings:organizations_create_an_organization")}
-			>
-				<form
-					className="flex items-center gap-2"
-					onSubmit={(event) => {
-						event.preventDefault();
-						void mutate(async (stillCurrent) => {
-							const trimmed = name.trim();
-							if (createAttempt.current?.name !== trimmed)
-								createAttempt.current = {
-									name: trimmed,
-									operationId: crypto.randomUUID(),
-								};
-							const attempt = createAttempt.current;
-							const created = await runOrganizations((client) =>
-								client["organizations.create"](attempt),
-							);
-							if (!stillCurrent()) return;
-							createAttempt.current = null;
-							setName("");
-							await refresh(created.id);
-						});
-					}}
-				>
-					<Input
-						className="h-7 min-w-0 flex-1"
-						aria-label={uiMessage("settings:organizations_organization_name")}
-						required
-						maxLength={100}
-						value={name}
-						disabled={busy || loading}
-						onChange={(event) => setName(event.target.value)}
-						placeholder={uiMessage("settings:organizations_organization_name")}
-					/>
-					<Button
-						className="h-7"
-						size="xs"
-						type="submit"
-						disabled={busy || loading || !name.trim()}
+			{organizationId === undefined &&
+				listReady &&
+				!organizations.some((organization) => organization.isCreator) && (
+					<SettingsFrame
+						title={uiMessage("settings:organizations_create_an_organization")}
+						description={uiMessage("settings:organizations_creation_limit")}
 					>
-						{uiMessage("settings:organizations_create")}
-					</Button>
-				</form>
-			</SettingsGroup>
+						<form
+							className="flex items-center gap-2"
+							onSubmit={(event) => {
+								event.preventDefault();
+								if (!listReady || loading || !name.trim()) return;
+								void mutate(async (stillCurrent) => {
+									const trimmed = name.trim();
+									if (createAttempt.current?.name !== trimmed)
+										createAttempt.current = {
+											name: trimmed,
+											operationId: crypto.randomUUID(),
+										};
+									const attempt = createAttempt.current;
+									const created = await runOrganizations((client) =>
+										client["organizations.create"](attempt),
+									);
+									if (!stillCurrent()) return;
+									createAttempt.current = null;
+									setName("");
+									await refresh(created.id);
+								});
+							}}
+						>
+							<Input
+								className="h-7 min-w-0 flex-1 border-0 shadow-none"
+								aria-label={uiMessage(
+									"settings:organizations_organization_name",
+								)}
+								required
+								maxLength={100}
+								value={name}
+								disabled={busy || loading}
+								onChange={(event) => setName(event.target.value)}
+								placeholder={uiMessage(
+									"settings:organizations_organization_name",
+								)}
+							/>
+							<Button
+								className="h-7"
+								size="xs"
+								type="submit"
+								disabled={busy || loading || !name.trim()}
+							>
+								{uiMessage("settings:organizations_create")}
+							</Button>
+						</form>
+					</SettingsFrame>
+				)}
 			<AlertDialog
 				open={removing !== null}
 				onOpenChange={(open) => {

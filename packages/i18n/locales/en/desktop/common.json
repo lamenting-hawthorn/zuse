@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "Could not save device preferences. Your previous preferences are unchanged.",
+	"workspace_settings_load_failed": "Could not load workspace settings. Try again.",
+	"workspace_settings_save_failed": "Could not save workspace settings. Refresh before trying again.",
+	"workspace_settings_separate_configuration": "Configure this setting separately for the workspace.",
 	"projects_and_chats": "Projects and chats",
 	"collapse": "Collapse {{title}}",
 	"expand": "Expand {{title}}",

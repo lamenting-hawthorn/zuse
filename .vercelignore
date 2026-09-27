@@ -1,0 +1,12 @@
+# Local workspace context and credentials are never deployment inputs.
+.context
+.conductor
+.zuse
+**/.dev-instances
+apps/desktop/native/*/bin
+**/.env
+**/.env.*
+**/.dev.vars
+**/.dev.vars.*
+!**/.env.example
+!**/.env.*.example

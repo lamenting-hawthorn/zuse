@@ -26,7 +26,7 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import { runControlPlane } from "../../lib/control-plane-client.ts";
+import { runCloudControl } from "../../lib/control-plane-client.ts";
 import { copyText, openExternal } from "../../lib/platform-capabilities.ts";
 import { ProviderIcon } from "../provider-icons.tsx";
 import { Badge } from "../ui/badge.tsx";
@@ -253,7 +253,7 @@ export function CloudWorkspaceAuth() {
 	const refresh = useCallback(async () => {
 		try {
 			setStatus(
-				await runControlPlane((client) => client["cloud.auth.status"]()),
+				await runCloudControl((client) => client["cloud.auth.status"]()),
 			);
 			setError(null);
 		} catch (cause) {
@@ -281,7 +281,7 @@ export function CloudWorkspaceAuth() {
 		let timer: ReturnType<typeof setTimeout>;
 		const poll = async () => {
 			try {
-				const next = await runControlPlane((client) =>
+				const next = await runCloudControl((client) =>
 					client["cloud.auth.login.poll"]({
 						operationId: operation.operationId,
 					}),
@@ -316,9 +316,11 @@ export function CloudWorkspaceAuth() {
 		setBusy(`open:${providerId}`);
 		setError(null);
 		try {
-			setStatus(
-				await runControlPlane((client) => client["cloud.auth.provision"]()),
-			);
+			if (status?.authorityState !== "ready") {
+				setStatus(
+					await runCloudControl((client) => client["cloud.auth.provision"]()),
+				);
+			}
 			setSelectedProvider(providerId);
 			setMethod(providerId === "cursor" ? "api-key" : "subscription");
 			setOperation(null);
@@ -348,7 +350,7 @@ export function CloudWorkspaceAuth() {
 		setError(null);
 		try {
 			const ciphertext = await sealSecret(status.encryptionPublicJwk, secret);
-			await runControlPlane((client) =>
+			await runCloudControl((client) =>
 				client["cloud.auth.configure"]({
 					providerId: selectedProvider,
 					method,
@@ -384,7 +386,7 @@ export function CloudWorkspaceAuth() {
 		setError(null);
 		try {
 			setOperation(
-				await runControlPlane((client) =>
+				await runCloudControl((client) =>
 					client["cloud.auth.login.start"]({
 						providerId: selectedProvider,
 					}),
@@ -400,7 +402,7 @@ export function CloudWorkspaceAuth() {
 	const disconnect = async (providerId: CloudAuthProvider) => {
 		setBusy(`disconnect:${providerId}`);
 		try {
-			await runControlPlane((client) =>
+			await runCloudControl((client) =>
 				client["cloud.auth.disconnect"]({ providerId }),
 			);
 			await refresh();
@@ -425,7 +427,7 @@ export function CloudWorkspaceAuth() {
 		setBusy(`cancel:${operation.providerId}`);
 		try {
 			setOperation(
-				await runControlPlane((client) =>
+				await runCloudControl((client) =>
 					client["cloud.auth.login.cancel"]({
 						operationId: operation.operationId,
 					}),

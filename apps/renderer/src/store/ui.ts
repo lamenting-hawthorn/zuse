@@ -41,6 +41,15 @@ export type SettingsSection =
 	| { readonly kind: "self-hosted" }
 	| { readonly kind: "organizations" }
 	| { readonly kind: "machines" }
+	| {
+			readonly kind: "cloud";
+			readonly page:
+				| "repositories"
+				| "image"
+				| "agents"
+				| "billing"
+				| "sharing";
+	  }
 	| { readonly kind: "browser" }
 	| { readonly kind: "pokedex" }
 	| { readonly kind: "diagnostics" }

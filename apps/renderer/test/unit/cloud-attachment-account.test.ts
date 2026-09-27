@@ -1,9 +1,24 @@
-import { ChatId, CloudChatSummary, FolderId, SessionId } from "@zuse/contracts";
-import { Effect } from "effect";
+import { cloudSessionPlaceholder } from "@zuse/client-runtime/cloud-catalog";
+import { emptyResourceView } from "@zuse/client-runtime/resource-state";
+import {
+	Chat,
+	ChatId,
+	CloudChatSummary,
+	CloudWorkspaceOpError,
+	EnvironmentId,
+	Folder,
+	FolderId,
+	QueueState,
+	SessionId,
+	SessionTimelineProjection,
+} from "@zuse/contracts";
+import { Effect, Stream } from "effect";
 import { beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	get: vi.fn(),
+	list: vi.fn(),
+	watch: vi.fn(),
 	resume: vi.fn(),
 	connect: vi.fn(),
 	checkpoint: vi.fn(),
@@ -13,10 +28,17 @@ const mocks = vi.hoisted(() => ({
 	releasePage: vi.fn(),
 	releaseActivation: vi.fn(),
 	transcript: vi.fn(),
+	decodeCheckpoint: vi.fn(),
+}));
+vi.mock("@zuse/client-runtime/cloud-transcript", async (original) => ({
+	...(await original<typeof import("@zuse/client-runtime/cloud-transcript")>()),
+	openCloudTranscriptCheckpoint: mocks.decodeCheckpoint,
 }));
 vi.mock("../../src/lib/rpc-client.ts", async (original) => ({
 	...(await original<typeof import("../../src/lib/rpc-client.ts")>()),
 	getControlPlaneRpcClient: async () => ({
+		"cloud.chats.list": mocks.list,
+		"cloud.chats.watch": mocks.watch,
 		"cloud.workspaces.get": mocks.get,
 		"cloud.workspaces.resume": mocks.resume,
 		"cloud.workspaces.connect": mocks.connect,
@@ -37,8 +59,15 @@ import {
 	ensureCloudWorkspaceAttached,
 	openCloudChat,
 	stageCloudChat,
+	useCloudChatsStore,
+	watchCloudChatCatalog,
 } from "../../src/lib/cloud-workspaces.ts";
+import { environmentShellResourceKey } from "../../src/lib/environment-shell-client-bus.ts";
 import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
+import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
+import { getRendererClientBus } from "../../src/lib/session-timeline-client-bus.ts";
+import { useChatsStore } from "../../src/store/chats.ts";
+import { useWorkspaceStore } from "../../src/store/workspace.ts";
 
 const summary = CloudChatSummary.make({
 	workspaceId: "attachment-account",
@@ -69,6 +98,8 @@ const summary = CloudChatSummary.make({
 
 beforeEach(() => {
 	observeRendererAccount(null);
+	mocks.list.mockReset().mockReturnValue(Effect.succeed({ chats: [] }));
+	mocks.watch.mockReset().mockReturnValue(Stream.never);
 	mocks.get.mockReset();
 	mocks.resume.mockReset();
 	mocks.connect.mockReset();
@@ -79,6 +110,182 @@ beforeEach(() => {
 	mocks.releasePage.mockClear();
 	mocks.releaseActivation.mockClear();
 	mocks.transcript.mockReset();
+	mocks.decodeCheckpoint.mockReset();
+});
+
+it("removes cached catalog entries on an authoritative denial, but not a service outage", async () => {
+	observeRendererAccount("catalog-reader");
+	await useCloudChatsStore.getState().hydrate();
+	useCloudChatCatalogStore.setState({ summaries: [summary] });
+	mocks.list.mockReturnValueOnce(
+		Effect.fail(new CloudWorkspaceOpError({ code: "provider-unavailable" })),
+	);
+	await useCloudChatsStore.getState().hydrate();
+	expect(useCloudChatCatalogStore.getState().summaries).toHaveLength(1);
+	mocks.list.mockReturnValueOnce(
+		Effect.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
+	);
+	await useCloudChatsStore.getState().hydrate();
+	expect(useCloudChatCatalogStore.getState().summaries).toEqual([]);
+});
+
+it("stops catalog retries and removes entries when the live feed denies access", async () => {
+	observeRendererAccount("catalog-revoked");
+	await useCloudChatsStore.getState().hydrate();
+	mocks.list.mockReturnValue(Effect.succeed({ chats: [summary] }));
+	mocks.watch.mockReturnValue(
+		Stream.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
+	);
+	const stop = watchCloudChatCatalog();
+	try {
+		await vi.waitFor(() => expect(mocks.watch).toHaveBeenCalledOnce());
+		await vi.waitFor(() =>
+			expect(useCloudChatCatalogStore.getState().summaries).toEqual([]),
+		);
+		expect(useCloudChatsStore.getState().error).not.toBeNull();
+	} finally {
+		stop();
+	}
+});
+
+it("does not let a late catalog denial clear a newly selected workspace", async () => {
+	observeRendererAccount("catalog-switch");
+	await useCloudChatsStore.getState().hydrate();
+	const denial = Promise.withResolvers<void>();
+	mocks.watch.mockReturnValue(
+		Stream.fromEffect(
+			Effect.promise(() => denial.promise).pipe(
+				Effect.flatMap(() =>
+					Effect.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
+				),
+			),
+		),
+	);
+	const stop = watchCloudChatCatalog();
+	try {
+		await vi.waitFor(() => expect(mocks.watch).toHaveBeenCalledOnce());
+		selectRendererWorkspace({
+			kind: "organization",
+			organizationId: "next-org",
+		});
+		await useCloudChatsStore.getState().hydrate();
+		const next = {
+			...summary,
+			workspaceScope: {
+				kind: "organization" as const,
+				organizationId: "next-org",
+			},
+		};
+		useCloudChatCatalogStore.setState({ summaries: [next] });
+		denial.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(useCloudChatCatalogStore.getState().summaries).toEqual([next]);
+	} finally {
+		stop();
+	}
+});
+
+it.each([
+	false,
+	true,
+])("hydrates cold context without waking compute and preserves a newer shell (live race: %s)", async (liveRace) => {
+	observeRendererAccount("first");
+	const cloud = {
+		...summary,
+		workspaceId: `cold-context-${liveRace}`,
+		state: "paused" as const,
+	};
+	await openCloudChat(cloud);
+	const synchronize = mocks.checkpoint.mock.calls[0]?.[1];
+	const ref = {
+		environmentId: EnvironmentId.make(cloud.workspaceId),
+		sessionId: cloud.initialSessionId,
+	};
+	const folder = Folder.make({
+		id: FolderId.make("runtime-folder"),
+		name: "checkpoint",
+		path: "/workspace/repo",
+		addedAt: new Date(0),
+	});
+	const session = cloudSessionPlaceholder(cloud, folder.id);
+	const chat = Chat.make({
+		...session,
+		id: cloud.chatId,
+		activeSessionId: session.id,
+		originSessionId: null,
+		lastMessageAt: null,
+		lastReadAt: null,
+	});
+	const projection = SessionTimelineProjection.make({
+		messages: [],
+		status: "idle",
+		currentTurn: null,
+		queue: QueueState.make({ items: [], paused: false }),
+		permissionMode: "default",
+		runtimeMode: "approval-required",
+	});
+	let release = () => {};
+	mocks.transcript.mockReturnValue(Effect.succeed({ checkpoint: {} }));
+	mocks.decodeCheckpoint.mockImplementation(
+		() =>
+			new Promise((resolve) => {
+				release = () =>
+					resolve({
+						context: { folder, chat, session },
+						cursor: { epoch: "epoch", version: 1 },
+						projection,
+					});
+			}),
+	);
+	const pending = synchronize(
+		ref,
+		emptyResourceView<SessionTimelineProjection>(),
+	);
+	await vi.waitFor(() => expect(mocks.decodeCheckpoint).toHaveBeenCalledOnce());
+	const key = environmentShellResourceKey({ environmentId: ref.environmentId });
+	if (liveRace)
+		getRendererClientBus().overlay(key, {
+			initialData: {
+				folders: [{ ...folder, name: "live" }],
+				originsByFolder: {},
+				chatsByProject: {},
+				sessionsByProject: {},
+				creationOperationsByProject: {},
+			},
+			update: (data) => data,
+		});
+	release();
+	await pending;
+	expect(getRendererClientBus().snapshot(key).data?.folders[0]?.name).toBe(
+		liveRace ? "live" : "checkpoint",
+	);
+	expect(mocks.get).not.toHaveBeenCalled();
+	expect(mocks.resume).not.toHaveBeenCalled();
+	expect(mocks.connect).not.toHaveBeenCalled();
+});
+
+it("selects an organization cloud chat without a local checkout or fabricated folder mapping", async () => {
+	observeRendererAccount("first");
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	useWorkspaceStore.setState({
+		selectedFolderId: FolderId.make("personal-checkout"),
+		folders: [],
+	});
+	const cloud = {
+		...summary,
+		workspaceScope: { kind: "organization" as const, organizationId: "org_a" },
+	};
+	await openCloudChat(cloud);
+	expect(useChatsStore.getState().selectedChatId).toBe(summary.chatId);
+	expect(useWorkspaceStore.getState().selectedFolderId).toBeNull();
+	expect(useWorkspaceStore.getState().folders).toEqual([]);
+	expect(
+		useCloudChatCatalogStore.getState().localProjectByEnvironment[
+			summary.workspaceId
+		],
+	).toBeUndefined();
+	expect(mocks.activation).toHaveBeenCalledOnce();
+	expect(mocks.resume).not.toHaveBeenCalled();
 });
 
 it("releases account-owned resolver callbacks and registers fresh ones after switching", () => {
@@ -128,6 +335,41 @@ it("does not select a queued cloud chat after the initiating account signs out",
 	await rejected;
 	expect(useCloudChatCatalogStore.getState().summaries).toEqual([]);
 	expect(mocks.activation).not.toHaveBeenCalled();
+});
+
+it("does not select a queued chat after switching workspaces, even when switching back", async () => {
+	observeRendererAccount("first");
+	const pending = openCloudChat(summary, FolderId.make("project"));
+	const rejected = expect(pending).rejects.toThrow("workspace changed");
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	selectRendererWorkspace({ kind: "personal" });
+	await rejected;
+	expect(useCloudChatCatalogStore.getState().summaries).toEqual([]);
+	expect(mocks.activation).not.toHaveBeenCalled();
+});
+
+it("rejects opening a chat belonging to another workspace", async () => {
+	observeRendererAccount("first");
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	for (const workspaceScope of [
+		undefined,
+		{ kind: "organization" as const, organizationId: "org_b" },
+	]) {
+		await expect(
+			openCloudChat({ ...summary, workspaceScope }, FolderId.make("project")),
+		).rejects.toThrow("Select the chat's workspace");
+	}
+	expect(useCloudChatCatalogStore.getState().summaries).toEqual([]);
+	expect(mocks.activation).not.toHaveBeenCalled();
+});
+
+it("does not stage a rejected cross-workspace catalog row into the chat UI", () => {
+	observeRendererAccount("first");
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	stageCloudChat(summary, FolderId.make("project"));
+	expect(useCloudChatCatalogStore.getState().summaries).toEqual([]);
+	expect(mocks.activation).not.toHaveBeenCalled();
+	expect(mocks.checkpoint).not.toHaveBeenCalled();
 });
 
 it("does not reuse an earlier account attachment or publish its delayed result", async () => {

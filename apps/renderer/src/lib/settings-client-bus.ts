@@ -1,3 +1,4 @@
+import "@zuse/i18n/english/common";
 import type { ResourceDriver } from "@zuse/client-runtime/client-bus";
 import {
 	makeResourceKey,
@@ -5,6 +6,7 @@ import {
 } from "@zuse/client-runtime/resource-ref";
 import {
 	deriveSurfacePhase,
+	emptyResourceView,
 	type ResourceOrigin,
 	type SurfacePhase,
 } from "@zuse/client-runtime/resource-state";
@@ -15,6 +17,7 @@ import {
 	BUNDLED_MODEL_CATALOG,
 	CommandId,
 	CompletionSoundPreset,
+	DevicePreferences,
 	defaultModelEnabledByProvider,
 	defaultModelFor,
 	EnvironmentId,
@@ -27,12 +30,26 @@ import {
 	resolveModelSlug,
 	type SettingsFile,
 	type SettingsPatch,
+	WorkspaceSettingsValues,
 } from "@zuse/contracts";
+import { message } from "@zuse/i18n";
 import { Cause, Effect, Fiber, Schema, Stream } from "effect";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { toastManager } from "../components/ui/toast.tsx";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
-import { hostedAccountId, isHostedProduct } from "./hosted-connect.ts";
+import {
+	updateBrowserDevicePreferences,
+	useBrowserDevicePreferences,
+} from "./browser-device-preferences.ts";
+import { useOrganizationWorkspaces } from "./organization-workspaces.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
+import { hostedAccountId } from "./hosted-session.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "./renderer-workspace.ts";
 import type { MemoizeClient } from "./rpc-client.ts";
+import { getLocalEnvironmentId } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -40,6 +57,15 @@ import {
 } from "./session-timeline-client-bus.ts";
 import { readStorageWithLegacy, removeStorageKeys } from "./storage-keys.ts";
 import { makeLocalStorageResourcePersistence } from "./storage-resource-persistence.ts";
+import { useClientBusResource } from "./use-client-bus-resource.ts";
+import {
+	loadWorkspaceSettings,
+	isDesktopPersonalWorkspace as nativePersonal,
+	retainWorkspaceSettings,
+	updateWorkspaceSettings,
+	usesAccountWorkspaceSettings,
+	useWorkspaceSettingsState,
+} from "./workspace-settings-client.ts";
 
 /** Canonical environment-qualified projection of `settings.json`. */
 export interface SettingsSlice {
@@ -252,7 +278,6 @@ const SettingsSliceSchema = Schema.Struct({
 	notchTrayPinned: Schema.Boolean,
 });
 
-const hostedListeners = new Set<() => void>();
 let hostedPreferences: SettingsSlice | null = null;
 let hostedPreferenceAccount: string | null = null;
 const hostedSettings = (): SettingsSlice => {
@@ -363,7 +388,7 @@ const withPendingPatches = (
 		state,
 	);
 
-const migrateLegacy = async (client: MemoizeClient): Promise<void> => {
+const migrateLegacyOnce = async (client: MemoizeClient): Promise<void> => {
 	if (typeof window === "undefined") return;
 	const settingsV1Raw = window.localStorage.getItem("memoize.settings.v1");
 	const subagentsRaw = window.localStorage.getItem("memoize.subagents");
@@ -409,6 +434,17 @@ const migrateLegacy = async (client: MemoizeClient): Promise<void> => {
 			"memoize.mergePrefs.v1",
 		]);
 	} catch {}
+};
+
+const legacyMigrations = new WeakMap<MemoizeClient, Promise<void>>();
+const migrateLegacy = (client: MemoizeClient): Promise<void> => {
+	const existing = legacyMigrations.get(client);
+	if (existing !== undefined) return existing;
+	const pending = migrateLegacyOnce(client).finally(() =>
+		legacyMigrations.delete(client),
+	);
+	legacyMigrations.set(client, pending);
+	return pending;
 };
 
 const messageOf = (cause: unknown): string =>
@@ -484,7 +520,9 @@ registerRendererResourceDriver("environment-settings", (key) =>
 
 const activeResource = () => {
 	const environmentId = EnvironmentId.make(
-		useEnvironmentCatalogStore.getState().activeEnvironmentId,
+		rendererWorkspaceSnapshot().scope.kind === "organization"
+			? getLocalEnvironmentId()
+			: useEnvironmentCatalogStore.getState().activeEnvironmentId,
 	);
 	return {
 		environmentId,
@@ -493,15 +531,77 @@ const activeResource = () => {
 	};
 };
 
-/** Creation must not interpret an unhydrated settings cell as user intent. */
-export const resolveEnvironmentSettings = async (
+const EMPTY = emptyResourceView<SettingsSlice>();
+
+const financeOnlyWorkspace = () => {
+	const scope = rendererWorkspaceSnapshot().scope;
+	return (
+		scope.kind === "organization" &&
+		useOrganizationWorkspaces
+			.getState()
+			.organizations.some(
+				(organization) =>
+					organization.id === scope.organizationId &&
+					organization.role === "billing",
+			)
+	);
+};
+
+const workspaceDefaults = Schema.decodeUnknownSync(WorkspaceSettingsValues)(
+	FALLBACK,
+);
+
+const workspaceProjection = (device: SettingsSlice): SettingsSlice => ({
+	...(nativePersonal() ? device : FALLBACK),
+	...workspaceDefaults,
+	...Schema.decodeUnknownSync(DevicePreferences)(
+		isHostedProduct() ? { ...hostedSettings(), ...useBrowserDevicePreferences.getState() } : device,
+	),
+	...(financeOnlyWorkspace()
+		? {}
+		: useWorkspaceSettingsState.getState().data?.values),
+});
+
+const scopedState = (runtime: SettingsState): SettingsState => {
+	if (!usesAccountWorkspaceSettings()) return runtime;
+	const workspace = useWorkspaceSettingsState.getState();
+	// Existing local work remains available during first migration or an API outage.
+	// Shared commands still await loadWorkspaceSettings before reading user intent.
+	if (nativePersonal() && workspace.data === null) return runtime;
+	const financeOnly = financeOnlyWorkspace();
+	return {
+		...ACTIONS,
+		...workspaceProjection(runtime),
+		loaded: financeOnly
+			? isHostedProduct() || runtime.loaded
+			: workspace.data !== null,
+		phase: financeOnly
+			? isHostedProduct()
+				? "live"
+				: runtime.phase
+			: workspace.error !== null
+				? nativePersonal() && workspace.data !== null
+					? "offline-stale"
+					: "error"
+				: workspace.data === null
+					? "initial-loading"
+					: workspace.origin === "cache"
+						? "cached"
+						: "live",
+		origin: financeOnly ? runtime.origin : workspace.origin,
+		error: financeOnly ? runtime.error : workspace.error,
+	};
+};
+
+const readRuntimeSettings = async (
 	environmentId: EnvironmentId,
+	fresh = false,
 ): Promise<SettingsSlice> => {
 	if (isHostedProduct() && environmentId === "local") return hostedSettings();
 	const bus = getRendererClientBus();
 	const key = keyFor(environmentId);
 	const cached = bus.snapshot(key).data;
-	if (cached !== null) return cached;
+	if (!fresh && cached !== null) return cached;
 	const { result } = await bus.dispatch<SettingsFile>({
 		kind: "settings.get",
 		commandId: CommandId.make(`settings-get:${crypto.randomUUID()}`),
@@ -511,29 +611,98 @@ export const resolveEnvironmentSettings = async (
 		retry: "safe",
 		createdAt: Date.now(),
 	});
-	return (
-		bus.snapshot(key).data ??
-		withPendingPatches(environmentId, fromFile(result))
+	return fresh
+		? fromFile(result)
+		: (bus.snapshot(key).data ??
+				withPendingPatches(environmentId, fromFile(result)));
+};
+
+/** Read the selected user's local configuration, never a connected server's settings. */
+export const readPersonalSettingsForMigration = async () => {
+	const environmentId = EnvironmentId.make(getLocalEnvironmentId());
+	const bus = getRendererClientBus();
+	const lease = bus.retain(keyFor(environmentId), { activation: "connect" });
+	try {
+		await readRuntimeSettings(environmentId, true);
+		const client = bus.client(environmentId);
+		if (client === null)
+			throw new Error("Local settings connection is unavailable.");
+		await migrateLegacy(client);
+		return Schema.decodeUnknownSync(WorkspaceSettingsValues)(
+			await readRuntimeSettings(environmentId, true),
+		);
+	} finally {
+		lease.release();
+	}
+};
+
+/** Creation must not interpret an unhydrated settings cell as user intent. */
+export const resolveEnvironmentSettings = async (
+	environmentId: EnvironmentId,
+): Promise<SettingsSlice> => {
+	if (!usesAccountWorkspaceSettings())
+		return readRuntimeSettings(environmentId);
+	if (financeOnlyWorkspace())
+		throw new Error("Workspace content access is required.");
+	await loadWorkspaceSettings();
+	return workspaceProjection(
+		nativePersonal() ? await readRuntimeSettings(environmentId) : FALLBACK,
 	);
 };
 
 const update = (patchFor: (current: SettingsSlice) => SettingsPatch): void => {
-	if (isHostedProduct()) {
-		const current = hostedSettings();
-		hostedPreferences = applyPatch(current, patchFor(current));
-		try {
-			localStorage.setItem(
-				`zuse.hosted.preferences:${hostedAccountId()}`,
-				JSON.stringify(hostedPreferences),
-			);
-		} catch {
-			/* In-memory preferences remain usable when storage is unavailable. */
-		}
-		for (const listener of hostedListeners) listener();
-		return;
-	}
+	const workspace = rendererWorkspaceSnapshot();
 	const { environmentId, key, bus } = activeResource();
 	const current = bus.snapshot(key)?.data ?? FALLBACK;
+	if (usesAccountWorkspaceSettings()) {
+		const patch = patchFor(workspaceProjection(current));
+		if (
+			!Object.keys(patch).every((key) =>
+				Object.hasOwn(DevicePreferences.fields, key),
+			)
+		) {
+			if (
+				!Object.keys(patch).every(
+					(key) => key in WorkspaceSettingsValues.fields,
+				)
+			) {
+				if (!nativePersonal())
+					toastManager.add({
+						type: "error",
+						title: message("common:workspace_settings_separate_configuration"),
+					});
+				if (!nativePersonal()) return;
+			} else {
+				void updateWorkspaceSettings((values) =>
+					Schema.decodeUnknownSync(WorkspaceSettingsValues)(
+						patchFor({ ...FALLBACK, ...values }),
+					),
+				).catch(() => {
+					if (rendererWorkspaceSnapshot() !== workspace) return;
+					toastManager.add({
+						type: "error",
+						title: message("common:workspace_settings_save_failed"),
+					});
+				});
+				return;
+			}
+		}
+	}
+	if (isHostedProduct()) {
+		try {
+			updateBrowserDevicePreferences(
+				Schema.decodeUnknownSync(DevicePreferences)(
+					patchFor(workspaceProjection(current)),
+				),
+			);
+		} catch {
+			toastManager.add({
+				type: "error",
+				title: message("common:device_preferences_save_failed"),
+			});
+		}
+		return;
+	}
 	const patch = patchFor(current);
 	const id = crypto.randomUUID();
 	pendingPatches.set(environmentId, [
@@ -709,88 +878,76 @@ const ACTIONS = {
 	setNotchTrayPinned: (notchTrayPinned: boolean) =>
 		update(() => ({ notchTrayPinned })),
 	retry: () => {
+		if (usesAccountWorkspaceSettings() && !financeOnlyWorkspace()) {
+			void loadWorkspaceSettings(true).catch(() => undefined);
+			return;
+		}
+		if (isHostedProduct()) return;
 		const { environmentId, bus } = activeResource();
 		bus.retryConnection(environmentId);
 	},
 };
 
-const hostedState = (): SettingsState => ({
-	...hostedSettings(),
-	...ACTIONS,
-	loaded: true,
-	phase: "live",
-	origin: "cache",
-	error: null,
-});
 const state = (): SettingsState =>
-	isHostedProduct()
-		? hostedState()
-		: {
-				...(() => {
-					const { environmentId, key, bus } = activeResource();
-					const view = bus.snapshot(key);
-					return {
-						...(view.data ?? FALLBACK),
-						loaded: view.data !== null,
-						phase: deriveSurfacePhase(view),
-						origin: view.origin,
-						error: bus.connection(environmentId).error,
-					};
-				})(),
-				...ACTIONS,
+	scopedState({
+		...(() => {
+			const { environmentId, key, bus } = activeResource();
+			const view = bus.snapshot(key);
+			return {
+				...(view.data ?? FALLBACK),
+				loaded: view.data !== null,
+				phase: deriveSurfacePhase(view),
+				origin: view.origin,
+				error: bus.connection(environmentId).error,
 			};
+		})(),
+		...ACTIONS,
+	});
 
 type SettingsHook = {
 	<Selected>(selector: (state: SettingsState) => Selected): Selected;
 	getState: () => SettingsState;
 };
 
-const useRuntimeSettings: SettingsHook = Object.assign(
+export const useSettingsStore: SettingsHook = Object.assign(
 	<Selected>(selector: (state: SettingsState) => Selected): Selected => {
+		const workspace = useSyncExternalStore(
+			subscribeRendererWorkspace,
+			rendererWorkspaceSnapshot,
+			rendererWorkspaceSnapshot,
+		);
+		useWorkspaceSettingsState();
+		useBrowserDevicePreferences();
+		useOrganizationWorkspaces();
+		const financeOnly = financeOnlyWorkspace();
+		useEffect(() => {
+			if (usesAccountWorkspaceSettings() && !financeOnly)
+				return retainWorkspaceSettings();
+		}, [workspace, financeOnly]);
+		const activeEnvironmentId = useEnvironmentCatalogStore(
+			(catalog) => catalog.activeEnvironmentId,
+		);
 		const environmentId = EnvironmentId.make(
-			useEnvironmentCatalogStore((catalog) => catalog.activeEnvironmentId),
+			workspace.scope.kind === "organization"
+				? getLocalEnvironmentId()
+				: activeEnvironmentId,
 		);
-		const key = useMemo(() => keyFor(environmentId), [environmentId]);
+		const key = useMemo(
+			() => (isHostedProduct() ? null : keyFor(environmentId)),
+			[environmentId],
+		);
 		const bus = getRendererClientBus();
-		useEffect(
-			() => bus.retain(key, { activation: "connect" }).release,
-			[bus, key],
+		const view = useClientBusResource(key, EMPTY, "connect");
+		return selector(
+			scopedState({
+				...(view.data ?? FALLBACK),
+				...ACTIONS,
+				loaded: view.data !== null,
+				phase: deriveSurfacePhase(view),
+				origin: view.origin,
+				error: bus.connection(environmentId).error,
+			}),
 		);
-		const view = useSyncExternalStore(
-			(listener) => bus.subscribe(key, listener),
-			() => bus.snapshot(key),
-		);
-		return selector({
-			...(view.data ?? FALLBACK),
-			...ACTIONS,
-			loaded: view.data !== null,
-			phase: deriveSurfacePhase(view),
-			origin: view.origin,
-			error: bus.connection(environmentId).error,
-		});
 	},
 	{ getState: state },
 );
-
-const useHostedSettings: SettingsHook = Object.assign(
-	<Selected>(selector: (state: SettingsState) => Selected): Selected => {
-		const preferences = useSyncExternalStore((listener) => {
-			hostedListeners.add(listener);
-			return () => {
-				hostedListeners.delete(listener);
-			};
-		}, hostedSettings);
-		return selector({
-			...preferences,
-			...ACTIONS,
-			loaded: true,
-			phase: "live",
-			origin: "cache",
-			error: null,
-		});
-	},
-	{ getState: hostedState },
-);
-export const useSettingsStore = isHostedProduct()
-	? useHostedSettings
-	: useRuntimeSettings;

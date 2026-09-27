@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "無法儲存裝置偏好設定。原有偏好設定維持不變。",
+	"workspace_settings_load_failed": "無法載入工作區設定。請重試。",
+	"workspace_settings_save_failed": "無法儲存工作區設定。請重新整理後重試。",
+	"workspace_settings_separate_configuration": "請單獨為此工作區配置此設定。",
 	"projects_and_chats": "專案與聊天",
 	"collapse": "收合 {{title}}",
 	"expand": "展開 {{title}}",
