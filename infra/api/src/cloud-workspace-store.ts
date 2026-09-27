@@ -1,10 +1,14 @@
 import {
+	ChatSharingPolicy,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
+	CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY,
 	type CloudProjectBuildState,
 	type CloudProjectState,
 	type CloudWorkspaceDesiredState,
 	type CloudWorkspaceState,
 	type TurnSettlementOutcome,
+	WorkspaceSettings,
+	type WorkspaceSettingsUpdate,
 } from "@zuse/contracts";
 import { Context, Effect, Layer, Ref, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
@@ -12,6 +16,7 @@ import {
 	cloudWorkspaceGatewayEpoch,
 	cloudWorkspaceRuntimeGeneration,
 } from "./cloud-workspace-runtime-fence.ts";
+import { workspaceScopeForOwner } from "./workspace-scope.ts";
 
 export interface CloudCatalogRead {
 	readonly cursor: number;
@@ -520,6 +525,13 @@ export interface DueApiWebhookDelivery {
 }
 
 export interface CloudWorkspaceStoreApi {
+	readonly getWorkspaceSettings: (
+		ownerId: string,
+	) => Effect.Effect<WorkspaceSettings>;
+	readonly replaceWorkspaceSettings: (
+		ownerId: string,
+		input: WorkspaceSettingsUpdate,
+	) => Effect.Effect<WorkspaceSettings | null>;
 	readonly getCloudAuthAuthority: (
 		accountId: string,
 	) => Effect.Effect<CloudAuthAuthorityRecord | null>;
@@ -642,6 +654,16 @@ export interface CloudWorkspaceStoreApi {
 	readonly saveWorkspace: (
 		workspace: CloudWorkspaceRecord,
 	) => Effect.Effect<void>;
+	readonly updateWorkspaceSharing: (input: {
+		readonly workspaceId: string;
+		readonly accountId: string;
+		readonly expectedRevision: number;
+		readonly sharing: Pick<
+			ChatSharingPolicy,
+			"audience" | "permission" | "grants"
+		>;
+		readonly nowMs: number;
+	}) => Effect.Effect<CloudWorkspaceRecord | null>;
 	readonly transitionWorkspaceLifecycle: (
 		input: CloudWorkspaceLifecycleTransitionInput,
 	) => Effect.Effect<CloudWorkspaceLifecycleTransitionOutcome>;
@@ -861,6 +883,7 @@ export class CloudWorkspaceStore extends Context.Service<
 >()("@zuse/api/CloudWorkspaceStore") {}
 
 interface MemoryState {
+	readonly workspaceSettings: Map<string, WorkspaceSettings>;
 	readonly authAuthorities: Map<string, CloudAuthAuthorityRecord>;
 	readonly githubInstallations: Map<string, CloudGithubInstallationRecord>;
 	readonly projects: Map<string, CloudProjectRecord>;
@@ -885,11 +908,23 @@ const activeBranch = (workspace: CloudWorkspaceRecord): boolean =>
 /** A runtime capability is valid only for the generation that advertised it. */
 export const workspaceSupportsCloudCommandMailbox = (
 	workspace: CloudWorkspaceRecord,
-): boolean =>
-	workspace.requestConfig.cloudCommandProtocolVersion ===
-		CLOUD_COMMAND_PROTOCOL_VERSION &&
-	workspace.requestConfig.cloudCommandRuntimeGeneration ===
-		cloudWorkspaceRuntimeGeneration(workspace);
+): boolean => {
+	const generation = cloudWorkspaceRuntimeGeneration(workspace);
+	if (workspaceScopeForOwner(workspace.accountId).kind === "organization") {
+		const receipt = runtimeBootstrapReceiptFromConfig(workspace.requestConfig);
+		if (
+			receipt?.generation !== generation ||
+			receipt.workspaceId !== workspace.workspaceId ||
+			!receipt.capabilities?.includes(CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY)
+		)
+			return false;
+	}
+	return (
+		workspace.requestConfig.cloudCommandProtocolVersion ===
+			CLOUD_COMMAND_PROTOCOL_VERSION &&
+		workspace.requestConfig.cloudCommandRuntimeGeneration === generation
+	);
+};
 
 /**
  * New workspaces can durably accept commands before their first runtime has
@@ -1335,7 +1370,37 @@ const preserveMailboxLifecycle = (
 	};
 };
 
-/** Reject stale generic writers once the irreversible delete fence exists. */
+const prepareWorkspaceSharingUpdate = (
+	workspace: CloudWorkspaceRecord | undefined,
+	input: Parameters<
+		CloudWorkspaceStore["Service"]["updateWorkspaceSharing"]
+	>[0],
+): CloudWorkspaceRecord | null => {
+	if (
+		workspace === undefined ||
+		workspace.accountId !== input.accountId ||
+		workspace.revision !== input.expectedRevision ||
+		workspaceDeletionRequested(workspace) ||
+		!Schema.is(ChatSharingPolicy)(workspace.requestConfig.sharingPolicy)
+	)
+		return null;
+	return {
+		...workspace,
+		requestConfig: {
+			...workspace.requestConfig,
+			sharingPolicy: {
+				...workspace.requestConfig.sharingPolicy,
+				audience: input.sharing.audience,
+				permission: input.sharing.permission,
+				grants: input.sharing.grants,
+			},
+		},
+		revision: workspace.revision + 1,
+		updatedAtMs: Math.max(workspace.updatedAtMs + 1, input.nowMs),
+	};
+};
+
+/** Generic lifecycle writes must not overwrite independently managed sharing policy. */
 const prepareWorkspaceSave = (
 	current: CloudWorkspaceRecord,
 	proposed: CloudWorkspaceRecord,
@@ -1345,6 +1410,7 @@ const prepareWorkspaceSave = (
 		requestConfig: {
 			...proposed.requestConfig,
 			localDeviceId: current.requestConfig.localDeviceId,
+			sharingPolicy: current.requestConfig.sharingPolicy,
 		},
 	};
 	if (!workspaceDeletionRequested(current)) return proposed;
@@ -1567,6 +1633,7 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 	Effect.gen(function* () {
 		const catalogs = new Map<string, { signature: string; revision: number }>();
 		const state = yield* Ref.make<MemoryState>({
+			workspaceSettings: new Map(),
 			authAuthorities: new Map(),
 			githubInstallations: new Map(),
 			projects: new Map(),
@@ -1585,6 +1652,32 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 			apiDeliveries: new Map(),
 		});
 		return CloudWorkspaceStore.of({
+			getWorkspaceSettings: (ownerId) =>
+				Ref.get(state).pipe(
+					Effect.map(
+						(current) =>
+							current.workspaceSettings.get(ownerId) ?? {
+								revision: 0,
+								values: {},
+							},
+					),
+				),
+			replaceWorkspaceSettings: (ownerId, input) =>
+				Ref.modify(
+					state,
+					(current): readonly [WorkspaceSettings | null, MemoryState] => {
+						const existing = current.workspaceSettings.get(ownerId);
+						if ((existing?.revision ?? 0) !== input.expectedRevision)
+							return [null, current];
+						const updated = {
+							revision: input.expectedRevision + 1,
+							values: input.values,
+						};
+						const workspaceSettings = new Map(current.workspaceSettings);
+						workspaceSettings.set(ownerId, updated);
+						return [updated, { ...current, workspaceSettings }];
+					},
+				),
 			getCloudAuthAuthority: (accountId) =>
 				Ref.get(state).pipe(
 					Effect.map(
@@ -2409,6 +2502,24 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 						},
 					] as const;
 				}),
+			updateWorkspaceSharing: (input) =>
+				Ref.modify(state, (current) => {
+					const updated = prepareWorkspaceSharingUpdate(
+						current.workspaces.get(input.workspaceId),
+						input,
+					);
+					if (updated === null) return [null, current] as const;
+					return [
+						updated,
+						{
+							...current,
+							workspaces: new Map(current.workspaces).set(
+								input.workspaceId,
+								updated,
+							),
+						},
+					] as const;
+				}),
 			saveWorkspace: (workspace) =>
 				Ref.update(state, (current) => {
 					const saved = current.workspaces.get(workspace.workspaceId);
@@ -3079,6 +3190,8 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 					);
 					const authAuthorities = new Map(current.authAuthorities);
 					authAuthorities.delete(accountId);
+					const workspaceSettings = new Map(current.workspaceSettings);
+					workspaceSettings.delete(accountId);
 					const projects = new Map(
 						[...current.projects].filter(
 							([, project]) => project.accountId !== accountId,
@@ -3148,6 +3261,7 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 						{
 							...current,
 							authAuthorities,
+							workspaceSettings,
 							githubInstallations,
 							projects,
 							builds,
@@ -3985,6 +4099,31 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 		const sql = yield* SqlClient.SqlClient;
 		const orDie = <A>(effect: Effect.Effect<A, unknown>): Effect.Effect<A> =>
 			effect.pipe(Effect.orDie);
+		const getWorkspaceSettings = (ownerId: string) =>
+			orDie(
+				sql`SELECT revision, "values" FROM api_workspace_settings WHERE owner_id=${ownerId}`.pipe(
+					Effect.flatMap((rows) =>
+						Schema.decodeUnknownEffect(WorkspaceSettings)(
+							rows[0] ?? { revision: 0, values: {} },
+						),
+					),
+				),
+			);
+		const replaceWorkspaceSettings = (
+			ownerId: string,
+			input: WorkspaceSettingsUpdate,
+		) =>
+			orDie(
+				Effect.gen(function* () {
+					const rows =
+						input.expectedRevision === 0
+							? yield* sql`INSERT INTO api_workspace_settings (owner_id, revision, "values") VALUES (${ownerId}, 1, ${JSON.stringify(input.values)}::jsonb) ON CONFLICT (owner_id) DO NOTHING RETURNING revision, "values"`
+							: yield* sql`UPDATE api_workspace_settings SET revision=revision+1, "values"=${JSON.stringify(input.values)}::jsonb WHERE owner_id=${ownerId} AND revision=${input.expectedRevision} RETURNING revision, "values"`;
+					return rows[0] === undefined
+						? null
+						: yield* Schema.decodeUnknownEffect(WorkspaceSettings)(rows[0]);
+				}),
+			);
 		const saveProject = (p: CloudProjectRecord) =>
 			orDie(
 				sql`UPDATE api_cloud_projects SET repository_url=${p.repositoryUrl}, display_name=${p.displayName}, default_branch=${p.defaultBranch}, visibility=${p.visibility}, cloud_environment=${JSON.stringify(p.cloudEnvironment)}::jsonb, secret_bindings=${JSON.stringify(p.secretBindings)}::jsonb, configuration_digest=${p.configurationDigest}, state=${p.state}, included=${p.included !== false}, last_error_code=${p.lastErrorCode ?? null}, updated_at=${p.updatedAtMs} WHERE project_id=${p.projectId}`.pipe(
@@ -4119,6 +4258,8 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 			);
 		};
 		return CloudWorkspaceStore.of({
+			getWorkspaceSettings,
+			replaceWorkspaceSettings,
 			getCloudAuthAuthority: (accountId) =>
 				orDie(
 					sql`SELECT * FROM api_cloud_auth_authorities WHERE account_id=${accountId}`.pipe(
@@ -4445,6 +4586,21 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 				),
 
 			saveWorkspace,
+			updateWorkspaceSharing: (input) =>
+				Effect.gen(function* () {
+					const rows =
+						yield* sql`SELECT * FROM api_cloud_workspaces WHERE workspace_id=${input.workspaceId} AND account_id=${input.accountId} AND revision=${input.expectedRevision} FOR UPDATE`;
+					if (rows[0] === undefined) return null;
+					const updated = prepareWorkspaceSharingUpdate(
+						workspaceFromRow(rows[0] as Row),
+						input,
+					);
+					if (updated === null) return null;
+					const saved = yield* saveWorkspaceReturning(updated);
+					return saved[0] === undefined
+						? null
+						: workspaceFromRow(saved[0] as Row);
+				}).pipe(sql.withTransaction, Effect.orDie),
 			transitionWorkspaceLifecycle: (input) =>
 				orDie(
 					Effect.gen(function* () {
@@ -5147,6 +5303,7 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 						yield* sql`DELETE FROM api_api_webhooks WHERE account_id=${accountId}`;
 						yield* sql`DELETE FROM api_api_keys WHERE account_id=${accountId}`;
 						yield* sql`DELETE FROM api_cloud_auth_authorities WHERE account_id=${accountId}`;
+						yield* sql`DELETE FROM api_workspace_settings WHERE owner_id=${accountId}`;
 						yield* sql`DELETE FROM api_cloud_catalog_changes WHERE account_id=${accountId}`;
 						yield* sql`DELETE FROM api_cloud_catalog_heads WHERE account_id=${accountId}`;
 						return true;

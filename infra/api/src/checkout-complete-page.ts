@@ -15,6 +15,8 @@ export type CheckoutCompleteStatus = "paid" | "pending" | "failed";
 export interface CheckoutCompletePageInput {
 	/** Purchased product, already resolved from the provider or the catalog. */
 	readonly productName: string;
+	/** Workspace name bound to the API-signed receipt ticket, not a URL parameter. */
+	readonly workspaceName?: string;
 	readonly status: CheckoutCompleteStatus;
 	readonly amount?: { readonly cents: number; readonly currency: string };
 	/** Short, human-quotable reference derived from the checkout id. */
@@ -233,6 +235,7 @@ ${
 <span>${escapeHtml(date)}</span>
 </div>
 <div class="rule"></div>
+${input.workspaceName === undefined ? "" : `<div class="line"><span class="label">Workspace</span><span class="value">${clampedText(input.workspaceName, 100)}</span></div>`}
 <div class="line"><span class="label">${product}</span>${amount === null ? "" : `<span class="value">${amount}</span>`}</div>
 ${
 	amount === null

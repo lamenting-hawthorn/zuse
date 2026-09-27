@@ -110,7 +110,8 @@ describe("relay migration reconciliation", () => {
 			{ idx: 26, tag: "0026_remove_workspace_pool" },
 			{ idx: 27, tag: "0027_cloud_usage" },
 			{ idx: 28, tag: "0028_chat_user_message_time" },
-			{ idx: 29, tag: "0025_environment_sharing_audience" },
+			{ idx: 29, tag: "0027_environment_sharing_audience" },
+			{ idx: 30, tag: "0028_workspace_settings" },
 		]);
 	});
 

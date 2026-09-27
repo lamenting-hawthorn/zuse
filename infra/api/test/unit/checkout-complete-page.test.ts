@@ -6,6 +6,16 @@ import { renderCheckoutCompletePage } from "../../src/checkout-complete-page.ts"
 const purchasedAtMs = Date.parse("2026-08-14T10:11:12.000Z");
 
 describe("checkout completion page", () => {
+	test("identifies the billed workspace and escapes its name", () => {
+		const page = renderCheckoutCompletePage({
+			productName: "Cloud Workspace",
+			workspaceName: 'Acme <script>alert("x")</script>',
+			status: "paid",
+		});
+		expect(page).toContain(">Workspace</span>");
+		expect(page).toContain("Acme &lt;script&gt;");
+		expect(page).not.toContain("<script>");
+	});
 	test("renders the purchased order", () => {
 		const page = renderCheckoutCompletePage({
 			amount: { cents: 1_900, currency: "usd" },

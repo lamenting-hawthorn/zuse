@@ -15,6 +15,25 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+export const apiWorkspaceSettings = pgTable(
+	"api_workspace_settings",
+	{
+		ownerId: text("owner_id").primaryKey(),
+		revision: integer("revision").notNull(),
+		values: jsonb("values").notNull(),
+	},
+	(table) => [
+		check(
+			"api_workspace_settings_revision_positive",
+			sql`${table.revision} > 0`,
+		),
+		check(
+			"api_workspace_settings_values_object",
+			sql`jsonb_typeof(${table.values}) = 'object'`,
+		),
+	],
+);
+
 export const apiSlackInstallations = pgTable(
 	"api_slack_installations",
 	{

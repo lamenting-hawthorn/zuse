@@ -1,3 +1,4 @@
+import { CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY } from "@zuse/contracts";
 import { ManagedRuntime } from "effect";
 import { describe, expect, test } from "vitest";
 import {
@@ -10,6 +11,106 @@ import {
 	workspaceDestructionFence,
 	workspaceSupportsCloudCommandMailbox,
 } from "../../src/cloud-workspace-store.ts";
+
+test("workspace settings isolate owners and reject concurrent stale replacements", async () => {
+	const runtime = ManagedRuntime.make(CloudWorkspaceStoreMemory);
+	try {
+		const store = await runtime.runPromise(CloudWorkspaceStore);
+		for (const owner of ["alice", "organization:org_a", "organization:org_b"]) {
+			expect(
+				await runtime.runPromise(store.getWorkspaceSettings(owner)),
+			).toEqual({ revision: 0, values: {} });
+			const results = await Promise.all(
+				["claude", "codex"].map((defaultProviderId) =>
+					runtime.runPromise(
+						store.replaceWorkspaceSettings(owner, {
+							expectedRevision: 0,
+							values: { branchNamingPrefix: defaultProviderId },
+						}),
+					),
+				),
+			);
+			expect(results.filter((result) => result !== null)).toHaveLength(1);
+			expect(
+				await runtime.runPromise(
+					store.replaceWorkspaceSettings(owner, {
+						expectedRevision: 0,
+						values: {},
+					}),
+				),
+			).toBeNull();
+			expect(
+				await runtime.runPromise(
+					store.replaceWorkspaceSettings(owner, {
+						expectedRevision: 1,
+						values: {},
+					}),
+				),
+			).toEqual({ revision: 2, values: {} });
+		}
+		expect(await runtime.runPromise(store.deleteAccountData("alice"))).toBe(
+			true,
+		);
+		expect(
+			await runtime.runPromise(store.getWorkspaceSettings("alice")),
+		).toEqual({ revision: 0, values: {} });
+		expect(
+			await runtime.runPromise(
+				store.getWorkspaceSettings("organization:org_a"),
+			),
+		).toEqual({ revision: 2, values: {} });
+	} finally {
+		await runtime.dispose();
+	}
+});
+
+test("organization mailbox delivery requires a current author-aware runtime, while Personal remains compatible", () => {
+	const workspace = {
+		...workspaceRecord("workspace-author-gate"),
+		requestConfig: {
+			runtimeGeneration: 2,
+			cloudCommandRuntimeGeneration: 2,
+			cloudCommandProtocolVersion: 3,
+			cloudCommandEnrollmentProtocolVersion: 3,
+		},
+	};
+	expect(workspaceSupportsCloudCommandMailbox(workspace)).toBe(true);
+	const organization = { ...workspace, accountId: "organization:org-a" };
+	expect(workspaceSupportsCloudCommandMailbox(organization)).toBe(false);
+	// Acceptance remains independent of delivery: first prompts may queue while booting.
+	expect(workspaceAcceptsCloudCommandMailbox(organization)).toBe(true);
+	const receipt = {
+		workspaceId: workspace.workspaceId,
+		bootTokenHash: "boot",
+		credentialKeyThumbprint: "credential",
+		signingKeyThumbprint: "signing",
+		signingPublicJwk: "jwk",
+		runtimeCredentialHash: "runtime",
+		runtimeCredentialExpiresAtMs: 1000,
+		generation: 2,
+		gatewayEpoch: 2,
+		sealedTranscriptKey: "key",
+		enrolledAtMs: 1,
+		capabilities: [CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY],
+	};
+	for (const [proof, expected] of [
+		[receipt, true],
+		[{ ...receipt, generation: 1 }, false],
+		[{ ...receipt, workspaceId: "another-workspace" }, false],
+		[{ ...receipt, capabilities: [] }, false],
+		[{ capabilities: receipt.capabilities, generation: 2 }, false],
+	] as const) {
+		expect(
+			workspaceSupportsCloudCommandMailbox({
+				...organization,
+				requestConfig: {
+					...organization.requestConfig,
+					runtimeBootstrapReceipt: proof,
+				},
+			}),
+		).toBe(expected);
+	}
+});
 
 describe("cloud auth authority locator", () => {
 	test("serializes provisioning and fences epoch changes to the located sandbox", async () => {
@@ -194,6 +295,60 @@ const workspaceRecord = (workspaceId: string) => ({
 });
 
 describe("cloud workspace store", () => {
+	test("serializes sharing updates and protects policy from stale lifecycle writers", async () => {
+		const runtime = ManagedRuntime.make(CloudWorkspaceStoreMemory);
+		try {
+			const store = await runtime.runPromise(CloudWorkspaceStore);
+			const policy = {
+				creatorSubject: "creator",
+				creatorMembershipId: "membership_creator",
+				audience: "organization" as const,
+				permission: "edit" as const,
+				grants: [],
+			};
+			const workspace = {
+				...workspaceRecord("sharing"),
+				requestConfig: { sharingPolicy: policy },
+			};
+			await runtime.runPromise(
+				store.createWorkspace(workspace, startCommand(workspace.workspaceId)),
+			);
+			const input = {
+				workspaceId: workspace.workspaceId,
+				accountId: workspace.accountId,
+				expectedRevision: workspace.revision,
+				sharing: {
+					audience: "private" as const,
+					permission: "view" as const,
+					grants: [],
+				},
+				nowMs: 101,
+			};
+			expect(
+				await runtime.runPromise(
+					store.updateWorkspaceSharing({
+						...input,
+						accountId: "another-owner",
+					}),
+				),
+			).toBeNull();
+			const results = await Promise.all([
+				runtime.runPromise(store.updateWorkspaceSharing(input)),
+				runtime.runPromise(store.updateWorkspaceSharing(input)),
+			]);
+			expect(results.filter((result) => result !== null)).toHaveLength(1);
+			await runtime.runPromise(
+				store.saveWorkspace({ ...workspace, revision: 10, updatedAtMs: 200 }),
+			);
+			expect(
+				(await runtime.runPromise(store.getWorkspace(workspace.workspaceId)))
+					?.requestConfig.sharingPolicy,
+			).toEqual({ ...policy, ...input.sharing });
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	test("soft-removes repositories and lets the same repository be added again", async () => {
 		const runtime = ManagedRuntime.make(CloudWorkspaceStoreMemory);
 		const store = await runtime.runPromise(CloudWorkspaceStore);

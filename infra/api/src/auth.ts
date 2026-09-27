@@ -12,6 +12,7 @@ import {
 import { type ApiError, forbidden, unauthorized } from "./errors.ts";
 import { ApiStore } from "./store.ts";
 import { type WorkosPrincipal, WorkosVerifier } from "./workos.ts";
+import { requirePersonalWorkspace } from "./workspace-scope.ts";
 
 export const API_SCOPES = {
 	status: "environment:status",
@@ -33,7 +34,7 @@ const canonicalApiRequestUrl = (
 };
 
 /** Require a valid WorkOS access token (Authorization: Bearer …). */
-export const requireWorkos = (
+export const authenticateWorkos = (
 	request: Request,
 ): Effect.Effect<WorkosPrincipal, ApiError, WorkosVerifier> =>
 	Effect.gen(function* () {
@@ -49,6 +50,15 @@ export const requireWorkos = (
 		const verifier = yield* WorkosVerifier;
 		return yield* verifier.verify(token);
 	});
+
+/** Legacy account-owned routes are Personal-only until explicitly migrated. */
+export const requireWorkos = Effect.fn("requireWorkos")(function* (
+	request: Request,
+) {
+	const principal = yield* authenticateWorkos(request);
+	yield* requirePersonalWorkspace(request);
+	return principal;
+});
 
 /**
  * Require a valid per-environment credential (Authorization: Bearer zenv_…),

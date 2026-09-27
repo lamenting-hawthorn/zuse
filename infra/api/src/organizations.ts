@@ -1,5 +1,7 @@
 import {
 	ApiPaths,
+	ChatSharingDefaults,
+	ORGANIZATION_MEMBER_LIMIT,
 	Organization,
 	OrganizationCreateInput,
 	OrganizationDetails,
@@ -8,9 +10,10 @@ import {
 	OrganizationMember,
 	OrganizationMemberInput,
 	OrganizationRevokeInviteInput,
+	OrganizationRole,
 	OrganizationRoleInput,
 } from "@zuse/contracts";
-import { Effect, Redacted, Schema } from "effect";
+import { Clock, Effect, Redacted, Schema } from "effect";
 import { requireWorkos } from "./auth.ts";
 import { ApiConfiguration } from "./config.ts";
 import {
@@ -27,6 +30,67 @@ const WorkosOrganization = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	metadata: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+
+/** Resolve display identity only after the caller has verified membership. */
+export const getOrganizationName = Effect.fn("getOrganizationName")(function* (
+	organizationId: string,
+) {
+	const organization = yield* requestWorkos(
+		`/organizations/${encodeURIComponent(organizationId)}`,
+		WorkosOrganization,
+	);
+	return organization.name;
+});
+
+const sharingDefaults = Effect.fn("organizationSharingDefaults")(function* (
+	organization: typeof WorkosOrganization.Type,
+) {
+	const encoded = organization.metadata?.zuse_chat_sharing;
+	if (encoded === undefined)
+		return { audience: "organization", permission: "edit" } as const;
+	return yield* Effect.try({
+		try: () =>
+			Schema.decodeUnknownSync(ChatSharingDefaults)(JSON.parse(encoded)),
+		catch: () => serviceUnavailable("organization_sharing_defaults_invalid"),
+	});
+});
+
+/** Callers establish workspace membership; defaults are copied only when creating a chat. */
+export const getOrganizationSharingDefaults = Effect.fn(
+	"getOrganizationSharingDefaults",
+)(function* (organizationId: string) {
+	return yield* sharingDefaults(
+		yield* requestWorkos(
+			`/organizations/${encodeURIComponent(organizationId)}`,
+			WorkosOrganization,
+		),
+	);
+});
+
+export const setOrganizationSharingDefaults = Effect.fn(
+	"setOrganizationSharingDefaults",
+)(function* (
+	actorId: string,
+	organizationId: string,
+	defaults: ChatSharingDefaults,
+) {
+	const store = yield* ApiStore;
+	return yield* store.withOrganizationLock(
+		organizationId,
+		Effect.gen(function* () {
+			yield* requireOrganizationMember(actorId, organizationId, true);
+			const path = `/organizations/${encodeURIComponent(organizationId)}`;
+			const organization = yield* requestWorkos(path, WorkosOrganization);
+			const updated = yield* requestWorkos(path, WorkosOrganization, "PUT", {
+				metadata: {
+					...organization.metadata,
+					zuse_chat_sharing: JSON.stringify(defaults),
+				},
+			});
+			return yield* sharingDefaults(updated);
+		}),
+	);
 });
 const WorkosMember = Schema.Struct({
 	id: Schema.String,
@@ -126,23 +190,66 @@ const listWorkos = <A, I>(path: string, schema: Schema.Codec<A, I>) =>
 		return rows;
 	});
 
+export const requireOrganizationMembership = Effect.fn(
+	"requireOrganizationMembership",
+)(function* (accountId: string, organizationId: string) {
+	const memberships = yield* listWorkos(
+		`/user_management/organization_memberships?user_id=${encodeURIComponent(accountId)}&organization_id=${encodeURIComponent(organizationId)}`,
+		WorkosMember,
+	);
+	const member = memberships.find(
+		(m) =>
+			m.user_id === accountId &&
+			m.organization_id === organizationId &&
+			m.status === "active",
+	);
+	if (member === undefined)
+		return yield* forbidden("organization_access_denied");
+	return member;
+});
+
 export const requireOrganizationMember = Effect.fn("requireOrganizationMember")(
 	function* (accountId: string, organizationId: string, admin = false) {
-		const memberships = yield* listWorkos(
-			`/user_management/organization_memberships?user_id=${encodeURIComponent(accountId)}&organization_id=${encodeURIComponent(organizationId)}`,
-			WorkosMember,
+		const member = yield* requireOrganizationMembership(
+			accountId,
+			organizationId,
 		);
-		const member = memberships.find(
-			(m) =>
-				m.user_id === accountId &&
-				m.organization_id === organizationId &&
-				m.status === "active",
-		);
-		if (member === undefined || (admin && member.role.slug !== "admin"))
+		if (
+			member.role.slug !== "admin" &&
+			(admin || member.role.slug !== "member")
+		)
 			return yield* forbidden("organization_access_denied");
 		return member;
 	},
 );
+
+/** Validate named chat grants against live membership, never caller-supplied subjects. */
+export const validateOrganizationChatGrants = Effect.fn(
+	"validateOrganizationChatGrants",
+)(function* (organizationId: string, membershipIds: ReadonlyArray<string>) {
+	if (
+		membershipIds.length > ORGANIZATION_MEMBER_LIMIT ||
+		new Set(membershipIds).size !== membershipIds.length
+	)
+		return yield* badRequest("invalid_chat_grants");
+	if (membershipIds.length === 0) return;
+	const members = yield* listWorkos(
+		`/user_management/organization_memberships?organization_id=${encodeURIComponent(organizationId)}`,
+		WorkosMember,
+	);
+	if (
+		!membershipIds.every((id) =>
+			members.some(
+				(member) =>
+					member.id === id &&
+					member.organization_id === organizationId &&
+					member.status === "active" &&
+					(member.role.slug === "admin" || member.role.slug === "member"),
+			),
+		)
+	)
+		return yield* badRequest("invalid_chat_grants");
+});
 
 const invitation = (value: typeof WorkosInvitation.Type) =>
 	OrganizationInvitation.make({
@@ -151,6 +258,15 @@ const invitation = (value: typeof WorkosInvitation.Type) =>
 		state: value.state,
 		expiresAt: value.expires_at,
 	});
+
+const reservesSeat = (
+	invite: typeof WorkosInvitation.Type,
+	organizationId: string,
+	now: number,
+) =>
+	invite.organization_id === organizationId &&
+	invite.state === "pending" &&
+	!(Date.parse(invite.expires_at) <= now);
 
 export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 	function* (request: Request) {
@@ -191,7 +307,10 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 			);
 			const organizations = yield* Effect.forEach(
 				memberships.filter(
-					(m) => m.user_id === userId && m.status === "active",
+					(m) =>
+						m.user_id === userId &&
+						m.status === "active" &&
+						Schema.is(OrganizationRole)(m.role.slug),
 				),
 				(member) =>
 					requestWorkos(
@@ -202,7 +321,10 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 							Organization.make({
 								id: org.id,
 								name: org.name,
-								role: member.role.slug === "admin" ? "admin" : "member",
+								role: Schema.decodeUnknownSync(OrganizationRole)(
+									member.role.slug,
+								),
+								isCreator: org.metadata?.zuse_creator === userId,
 							}),
 						),
 					),
@@ -214,68 +336,102 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 			const input = yield* decodeBody(OrganizationCreateInput, request);
 			if (input.name.trim().length === 0)
 				return yield* badRequest("organization_name_required");
-			// A retry can finish initial enrollment, but cannot re-enroll a removed admin.
-			const externalId = `zuse:${userId}:${input.operationId}`;
-			const find = requestWorkos(
-				`/organizations/external_id/${encodeURIComponent(externalId)}`,
-				WorkosOrganization,
-			);
-			let org = yield* find.pipe(
-				Effect.catch((error) =>
-					error.status === 404 ? Effect.succeed(null) : Effect.fail(error),
-				),
-			);
-			if (org === null) {
-				org = yield* requestWorkos(
-					"/organizations",
-					WorkosOrganization,
-					"POST",
-					{
-						name: input.name.trim(),
-						external_id: externalId,
-						metadata: { zuse_creator: userId, zuse_setup: "pending" },
-					},
-				).pipe(
-					Effect.catch((error) =>
-						error.status === 409 ? find : Effect.fail(error),
-					),
-				);
-			}
-			if (org.metadata?.zuse_creator !== userId)
-				return yield* forbidden("organization_access_denied");
-			if (org.metadata.zuse_setup === "pending") {
-				const memberships = yield* listWorkos(
-					`/user_management/organization_memberships?organization_id=${encodeURIComponent(org.id)}&user_id=${encodeURIComponent(userId)}`,
-					WorkosMember,
-				);
-				if (memberships.length === 0) {
-					yield* requestWorkos(
-						"/user_management/organization_memberships",
-						WorkosMember,
-						"POST",
-						{ organization_id: org.id, user_id: userId, role_slug: "admin" },
-					).pipe(
+			const store = yield* ApiStore;
+			return yield* store.withOrganizationLock(
+				`creator:${userId}`,
+				Effect.gen(function* () {
+					// A retry can finish initial enrollment, but cannot re-enroll a removed admin.
+					// One durable provider identity per creator also covers failed enrollment.
+					const externalId = `zuse:${userId}:organization`;
+					const find = requestWorkos(
+						`/organizations/external_id/${encodeURIComponent(externalId)}`,
+						WorkosOrganization,
+					);
+					let org = yield* find.pipe(
 						Effect.catch((error) =>
-							error.status === 409
-								? requireOrganizationMember(userId, org.id, true)
-								: Effect.fail(error),
+							error.status === 404 ? Effect.succeed(null) : Effect.fail(error),
 						),
 					);
-				}
-				yield* requireOrganizationMember(userId, org.id, true);
-				yield* requestWorkos(
-					`/organizations/${encodeURIComponent(org.id)}`,
-					WorkosOrganization,
-					"PUT",
-					{ metadata: { ...org.metadata, zuse_setup: "complete" } },
-				);
-			}
-			const member = yield* requireOrganizationMember(userId, org.id);
-			return json(
-				Organization.make({
-					id: org.id,
-					name: org.name,
-					role: member.role.slug === "admin" ? "admin" : "member",
+					if (org === null) {
+						// Respect organizations created by earlier versions as well as invited teams.
+						const memberships = yield* listWorkos(
+							`/user_management/organization_memberships?user_id=${encodeURIComponent(userId)}`,
+							WorkosMember,
+						);
+						for (const membership of memberships) {
+							const existing = yield* requestWorkos(
+								`/organizations/${encodeURIComponent(membership.organization_id)}`,
+								WorkosOrganization,
+							);
+							if (existing.metadata?.zuse_creator === userId)
+								return yield* conflict("organization_limit_reached");
+						}
+						org = yield* requestWorkos(
+							"/organizations",
+							WorkosOrganization,
+							"POST",
+							{
+								name: input.name.trim(),
+								external_id: externalId,
+								metadata: {
+									zuse_creator: userId,
+									zuse_setup: "pending",
+									zuse_creation_operation: input.operationId,
+								},
+							},
+						).pipe(
+							Effect.catch((error) =>
+								error.status === 409 ? find : Effect.fail(error),
+							),
+						);
+					}
+					if (org.metadata?.zuse_creator !== userId)
+						return yield* forbidden("organization_access_denied");
+					if (
+						org.metadata.zuse_setup === "complete" &&
+						org.metadata.zuse_creation_operation !== input.operationId
+					)
+						return yield* conflict("organization_limit_reached");
+					if (org.metadata.zuse_setup === "pending") {
+						const memberships = yield* listWorkos(
+							`/user_management/organization_memberships?organization_id=${encodeURIComponent(org.id)}&user_id=${encodeURIComponent(userId)}`,
+							WorkosMember,
+						);
+						if (memberships.length === 0) {
+							yield* requestWorkos(
+								"/user_management/organization_memberships",
+								WorkosMember,
+								"POST",
+								{
+									organization_id: org.id,
+									user_id: userId,
+									role_slug: "admin",
+								},
+							).pipe(
+								Effect.catch((error) =>
+									error.status === 409
+										? requireOrganizationMember(userId, org.id, true)
+										: Effect.fail(error),
+								),
+							);
+						}
+						yield* requireOrganizationMember(userId, org.id, true);
+						yield* requestWorkos(
+							`/organizations/${encodeURIComponent(org.id)}`,
+							WorkosOrganization,
+							"PUT",
+							{ metadata: { ...org.metadata, zuse_setup: "complete" } },
+						);
+					}
+					const member = yield* requireOrganizationMember(userId, org.id);
+					return json(
+						Organization.make({
+							id: org.id,
+							name: org.name,
+							role: member.role.slug === "admin" ? "admin" : "member",
+							isCreator: true,
+						}),
+					);
 				}),
 			);
 		}
@@ -323,6 +479,7 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 							WorkosInvitation,
 						)
 					: [];
+			const now = yield* Clock.currentTimeMillis;
 			return json(
 				OrganizationDetails.make({
 					organization: Organization.make({
@@ -333,30 +490,58 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 					currentUserId: userId,
 					members,
 					invitations: invitations
-						.filter(
-							(i) =>
-								i.organization_id === organizationId && i.state === "pending",
-						)
+						.filter((i) => reservesSeat(i, organizationId, now))
 						.map(invitation),
 				}),
 			);
 		}
 		if (path === ApiPaths.organizationInvite && method === "POST") {
 			const input = yield* decodeBody(OrganizationInviteInput, request);
-			yield* requireOrganizationMember(userId, input.organizationId, true);
-			const result = yield* requestWorkos(
-				"/user_management/invitations",
-				WorkosInvitation,
-				"POST",
-				{
-					organization_id: input.organizationId,
-					email: input.email.trim().toLowerCase(),
-					role_slug: input.role,
-					inviter_user_id: userId,
-					expires_in_days: 7,
-				},
+			const store = yield* ApiStore;
+			return yield* store.withOrganizationLock(
+				input.organizationId,
+				Effect.gen(function* () {
+					yield* requireOrganizationMember(userId, input.organizationId, true);
+					const now = yield* Clock.currentTimeMillis;
+					// Read invitations first: an acceptance between reads may temporarily
+					// count twice, but must never leave an uncounted seat.
+					const invites = yield* listWorkos(
+						`/user_management/invitations?organization_id=${encodeURIComponent(input.organizationId)}`,
+						WorkosInvitation,
+					);
+					const roster = yield* listWorkos(
+						`/user_management/organization_memberships?organization_id=${encodeURIComponent(input.organizationId)}`,
+						WorkosMember,
+					);
+					const occupied = new Set(
+						roster
+							.filter(
+								(member) =>
+									member.organization_id === input.organizationId &&
+									member.status === "active",
+							)
+							.map((member) => member.user_id),
+					).size;
+					const reserved = invites.filter((invite) =>
+						reservesSeat(invite, input.organizationId, now),
+					).length;
+					if (occupied + reserved >= ORGANIZATION_MEMBER_LIMIT)
+						return yield* conflict("organization_member_limit_reached");
+					const result = yield* requestWorkos(
+						"/user_management/invitations",
+						WorkosInvitation,
+						"POST",
+						{
+							organization_id: input.organizationId,
+							email: input.email.trim().toLowerCase(),
+							role_slug: input.role,
+							inviter_user_id: userId,
+							expires_in_days: 7,
+						},
+					);
+					return json(invitation(result));
+				}),
 			);
-			return json(invitation(result));
 		}
 		if (path === ApiPaths.organizationRevokeInvite && method === "POST") {
 			const input = yield* decodeBody(OrganizationRevokeInviteInput, request);

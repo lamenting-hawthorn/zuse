@@ -55,6 +55,20 @@ interface WranglerTarget {
 }
 
 describe("api deployment safety", () => {
+	test("wires the organization rollout gate without enabling either deployment", async () => {
+		const worker = await readFile(
+			new URL("../../src/worker.ts", import.meta.url),
+			"utf8",
+		);
+		expect(worker).toMatch(
+			/organizationWorkspacesEnabled:\s*env\.ORGANIZATION_WORKSPACES_ENABLED === "true"/,
+		);
+		for (const url of [wranglerConfigUrl, productionWranglerConfigUrl]) {
+			const config = parse(await readFile(url, "utf8")) as WranglerTarget;
+			expect(config.vars.ORGANIZATION_WORKSPACES_ENABLED).not.toBe("true");
+		}
+	});
+
 	test.each([
 		"snapshot",
 		"version",
@@ -251,6 +265,22 @@ else process.exit(2);
 				expect(command).toMatch(/ --env=$/);
 			}
 		}
+	});
+
+	test("allows the staging renderer without widening production browser access", async () => {
+		const staging = parse(
+			await readFile(wranglerConfigUrl, "utf8"),
+		) as WranglerTarget;
+		const production = parse(
+			await readFile(productionWranglerConfigUrl, "utf8"),
+		) as WranglerTarget;
+		expect(staging.vars.ALLOWED_BROWSER_ORIGINS?.split(",")).toEqual([
+			"https://code.zuse.sh",
+			"https://code-staging.zuse.sh",
+		]);
+		expect(production.vars.ALLOWED_BROWSER_ORIGINS).toBe(
+			"https://code.zuse.sh",
+		);
 	});
 
 	test("keeps the allowlisted sandbox workflow live only on staging", async () => {

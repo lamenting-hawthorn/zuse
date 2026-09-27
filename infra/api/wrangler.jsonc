@@ -48,6 +48,8 @@
 		]
 	},
 	"vars": {
+		// Enable only after compatible client/runtime and multi-identity verification.
+		"ORGANIZATION_WORKSPACES_ENABLED": "false",
 		// Enable only after migration 0022, Slack/WorkOS setup, and queue provisioning.
 		// Queue bindings are documented in internal-docs/cloud/slack-app-operations.md.
 		"SLACK_ENABLED": "true",

@@ -5,6 +5,33 @@ export type WorkspaceGatewayProtocol =
 	| typeof WORKSPACE_GATEWAY_PROTOCOL
 	| typeof LEGACY_WORKSPACE_GATEWAY_PROTOCOL;
 
+/** Only the API's verified response may supply internal gateway authority. */
+export const gatewayForwardHeaders = (
+	request: Headers,
+	verified: Headers,
+): Headers => {
+	const headers = new Headers(request);
+	headers.delete("authorization");
+	request.forEach((_value, key) => {
+		if (key.startsWith("x-zuse-gateway-")) headers.delete(key);
+	});
+	for (const field of [
+		"workspace",
+		"role",
+		"generation",
+		"epoch",
+		"protocol",
+		"connection",
+		"actor",
+		"permission",
+	]) {
+		const key = `x-zuse-gateway-${field}`;
+		const value = verified.get(key);
+		if (value !== null) headers.set(key, value);
+	}
+	return headers;
+};
+
 export const workspaceGatewayProtocol = (
 	value: string | undefined,
 ): WorkspaceGatewayProtocol | undefined =>
@@ -25,6 +52,9 @@ export type WorkspaceGatewayControlMessage =
 	| {
 			readonly type: "client.open";
 			readonly connectionId: string;
+			/** Established by API ticket verification, not client request headers. */
+			readonly actorId?: string;
+			readonly permission?: "view" | "edit";
 	  }
 	| {
 			readonly type: "client.close";

@@ -1,4 +1,9 @@
-import { ApiAuthTokenGrant, EnvironmentSharingAudience } from "@zuse/contracts";
+import {
+	ApiAuthTokenGrant,
+	EnvironmentSharingAudience,
+	WORKSPACE_API_PREFIX,
+	WORKSPACE_SCOPE_HEADER,
+} from "@zuse/contracts";
 import { SandboxProviders } from "@zuse/sandbox-providers";
 import { Clock, Effect, Option, Redacted, Schema } from "effect";
 import { AccountIdentity } from "./account-identity.ts";
@@ -38,6 +43,7 @@ import {
 	type ApiError,
 	badRequest,
 	conflict,
+	forbidden,
 	gone,
 	notFound,
 	serviceUnavailable,
@@ -63,6 +69,10 @@ import {
 	type ProviderKind,
 } from "./store.ts";
 import { WorkosVerifier } from "./workos.ts";
+import {
+	requestWorkspaceScope,
+	workspaceAccessForPath,
+} from "./workspace-scope.ts";
 
 export type ApiContext =
 	| AccountIdentity
@@ -87,10 +97,13 @@ const withBrowserCors = (
 	const headers = new Headers(response.headers);
 	headers.set("access-control-allow-origin", origin);
 	headers.set("access-control-allow-credentials", "true");
-	headers.set("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+	headers.set(
+		"access-control-allow-methods",
+		"GET, POST, PUT, DELETE, OPTIONS",
+	);
 	headers.set(
 		"access-control-allow-headers",
-		"authorization, content-type, dpop, idempotency-key",
+		`authorization, content-type, dpop, idempotency-key, ${WORKSPACE_SCOPE_HEADER}`,
 	);
 	headers.set("vary", "Origin");
 	return new Response(response.body, {
@@ -305,9 +318,30 @@ const route = (
 	request: Request,
 ): Effect.Effect<Response, ApiError, ApiContext> =>
 	Effect.gen(function* () {
+		const incomingUrl = new URL(request.url);
+		if (incomingUrl.pathname.startsWith(WORKSPACE_API_PREFIX)) {
+			const suffix = incomingUrl.pathname.slice(WORKSPACE_API_PREFIX.length);
+			const separator = suffix.indexOf("/");
+			const organizationId = suffix.slice(0, separator);
+			const scope = yield* requestWorkspaceScope(request);
+			if (
+				separator < 1 ||
+				scope.kind !== "organization" ||
+				scope.organizationId !== organizationId
+			)
+				return yield* badRequest("invalid_workspace_scope");
+			incomingUrl.pathname = suffix.slice(separator);
+			request = new Request(incomingUrl, request);
+		}
 		const url = new URL(request.url);
 		const method = request.method.toUpperCase();
 		const path = url.pathname;
+		const workspaceScope = yield* requestWorkspaceScope(request);
+		if (
+			workspaceScope.kind === "organization" &&
+			workspaceAccessForPath(path, method) === undefined
+		)
+			return yield* forbidden("workspace_scope_not_supported");
 		const config = yield* ApiConfiguration;
 		const store = yield* ApiStore;
 		const push = yield* PushDelivery;
