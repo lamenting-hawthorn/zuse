@@ -61,7 +61,8 @@ describe("api deployment safety", () => {
 		"secret",
 		"ready",
 		"legacy-secret",
-	])("checks enabled Boat prerequisites before deployment: %s", async (scenario) => {
+		"slack-secret",
+	])("checks enabled production prerequisites before deployment: %s", async (scenario) => {
 		const directory = await mkdtemp(join(tmpdir(), "zuse-deploy-test-"));
 		try {
 			const config = parse(await readFile(productionWranglerConfigUrl, "utf8"));
@@ -82,7 +83,9 @@ describe("api deployment safety", () => {
 				"POLAR_ACCESS_TOKEN",
 				"POLAR_WEBHOOK_SECRET",
 				"GITHUB_APP_PRIVATE_KEY",
+				"SLACK_CLIENT_SECRET",
 			];
+			if (scenario !== "slack-secret") secrets.push("SLACK_SIGNING_SECRET");
 			if (scenario !== "secret")
 				secrets.push(
 					scenario === "legacy-secret" ? "BOX_API_KEY" : "BOAT_API_KEY",
@@ -121,7 +124,9 @@ else process.exit(2);
 						? "BOAT_TEMPLATE_SNAPSHOT"
 						: scenario === "version"
 							? "BOAT_TEMPLATE_VERSION"
-							: "BOAT_API_KEY",
+							: scenario === "slack-secret"
+								? "SLACK_SIGNING_SECRET"
+								: "BOAT_API_KEY",
 				);
 			}
 		} finally {
