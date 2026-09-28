@@ -77,6 +77,7 @@ describe("api deployment safety", () => {
 				"RELAY_MINT_PRIVATE_JWK",
 				"WORKOS_API_KEY",
 				"CF_API_TOKEN",
+				"BOXD_API_KEY",
 				"E2B_API_KEY",
 				"E2B_WEBHOOK_SECRET",
 				"CLOUD_CREDENTIAL_VAULT_KEY",
