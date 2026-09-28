@@ -282,8 +282,14 @@ interface PendingAgent {
 interface TranslateState {
 	thinkingByIndex: Map<number, ThinkingAccumulator>;
 	currentMessageId: string | null;
-	readonly streamedTextThisTurn: string[];
-	emittedThinkingThisTurn: boolean;
+	/**
+	 * SDK message ids observed via `message_start`. The partial-message stream
+	 * owns text and thinking rows for these messages; the completed `assistant`
+	 * snapshot only contributes tool uses. The SDK delivers that snapshot
+	 * either before or after `content_block_stop` depending on the CLI version,
+	 * so ownership must not depend on ordering. Cleared when the turn ends.
+	 */
+	readonly streamedMessageIds: Set<string>;
 	/**
 	 * Tracks `Agent` / `Task` tool_uses awaiting their paired tool_result
 	 * so we can emit a `SubagentSummary` event when the result lands.
@@ -348,8 +354,7 @@ interface TranslateState {
 const newTranslateState = (): TranslateState => ({
 	thinkingByIndex: new Map(),
 	currentMessageId: null,
-	streamedTextThisTurn: [],
-	emittedThinkingThisTurn: false,
+	streamedMessageIds: new Set(),
 	pendingAgents: new Map(),
 	backgroundTaskParents: new Map(),
 	backgroundShellInputs: new Map(),
@@ -580,6 +585,12 @@ const translate = (
 	if (msg.type === "assistant") {
 		const out: AgentEvent[] = [];
 		const content = msg.message.content;
+		const messageId =
+			typeof (msg.message as { id?: unknown }).id === "string"
+				? (msg.message as { id: string }).id
+				: state.currentMessageId;
+		const streamed =
+			messageId !== null && state.streamedMessageIds.has(messageId);
 		const blockTypes: string[] = [];
 		// Each assistant message inside a sub-agent counts as one of its
 		// turns. The SDK exposes only the parent's `Agent` tool_use start
@@ -609,7 +620,7 @@ const translate = (
 			}
 		}
 		if (Array.isArray(content)) {
-			for (const [blockIndex, block] of content.entries()) {
+			for (const block of content) {
 				blockTypes.push(String((block as { type?: unknown }).type));
 				if (block.type === "text" && typeof block.text === "string") {
 					// An unauthenticated `claude` surfaces "Not logged in · Please run
@@ -625,15 +636,10 @@ const translate = (
 						state.emittedAuthError = true;
 						continue;
 					}
-					if (state.streamedTextThisTurn[blockIndex] === block.text) {
-						continue;
-					}
+					if (streamed) continue;
 					out.push({
 						_tag: "AssistantMessage",
-						itemId:
-							state.currentMessageId !== null
-								? (`${state.currentMessageId}:text:${blockIndex}` as AgentItemId)
-								: nextItemId(),
+						itemId: nextItemId(),
 						text: block.text,
 						parentItemId,
 					});
@@ -699,18 +705,16 @@ const translate = (
 					block.type === "thinking" &&
 					typeof (block as { thinking?: unknown }).thinking === "string"
 				) {
-					// Fallback: if the partial-message deltas didn't deliver
-					// anything for this turn (e.g. SDK strips them too), at least
-					// emit whatever the assistant message has — even if `thinking`
-					// is empty — so a row appears and we know thinking happened.
+					// Fallback for messages that never streamed: emit whatever the
+					// snapshot has — even if `thinking` is empty — so a row appears
+					// and we know thinking happened.
 					const text = (block as { thinking: string }).thinking;
 					tlog("assistant.thinking-block", {
 						textLen: text.length,
-						emittedFromDeltasThisTurn: state.emittedThinkingThisTurn,
+						streamed,
 						preview: summarize(text),
 					});
-					if (!state.emittedThinkingThisTurn) {
-						state.emittedThinkingThisTurn = true;
+					if (!streamed) {
 						out.push({
 							_tag: "Thinking",
 							itemId: nextItemId(),
@@ -720,11 +724,8 @@ const translate = (
 						});
 					}
 				} else if (block.type === "redacted_thinking") {
-					tlog("assistant.redacted-thinking-block", {
-						emittedFromDeltasThisTurn: state.emittedThinkingThisTurn,
-					});
-					if (!state.emittedThinkingThisTurn) {
-						state.emittedThinkingThisTurn = true;
+					tlog("assistant.redacted-thinking-block", { streamed });
+					if (!streamed) {
 						out.push({
 							_tag: "Thinking",
 							itemId: nextItemId(),
@@ -737,8 +738,6 @@ const translate = (
 			}
 		}
 		tlog("assistant.blocks", { types: blockTypes, emitted: out.length });
-		state.currentMessageId = null;
-		state.streamedTextThisTurn.length = 0;
 		return out;
 	}
 	if (msg.type === "stream_event") {
@@ -751,11 +750,12 @@ const translate = (
 		}
 		if (ev.type === "message_start") {
 			state.thinkingByIndex.clear();
-			state.streamedTextThisTurn.length = 0;
 			const message = ev.message as Record<string, unknown> | undefined;
 			state.currentMessageId =
 				typeof message?.id === "string" ? message.id : null;
-			state.emittedThinkingThisTurn = false;
+			if (state.currentMessageId !== null) {
+				state.streamedMessageIds.add(state.currentMessageId);
+			}
 			tlog("stream_event.message_start");
 			return [];
 		}
@@ -817,7 +817,6 @@ const translate = (
 				if (acc?.kind !== "text" || chunk.length === 0) return [];
 				acc.text += chunk;
 				acc.revision += 1;
-				state.streamedTextThisTurn[index] = acc.text;
 				return [
 					{
 						_tag: "AssistantMessage",
@@ -880,10 +879,8 @@ const translate = (
 				signatureLen: acc.signatureLength,
 				textPreview: summarize(acc.text),
 			});
-			// If the assistant-message path already emitted thinking for this
-			// turn (rare ordering: full message arrives before trailing
-			// content_block_stop), skip — otherwise we render the same thought
-			// twice.
+			// The stream owns this block, so always finalize it here — the
+			// completed assistant snapshot never emits a competing row.
 			if (acc.kind === "text") {
 				return acc.text.length === 0
 					? []
@@ -900,21 +897,19 @@ const translate = (
 							},
 						];
 			}
-			if (state.emittedThinkingThisTurn) return [];
 			if (acc.kind === "redacted_thinking") {
-				state.emittedThinkingThisTurn = true;
 				return [
 					{
 						_tag: "Thinking",
-						itemId: nextItemId(),
+						itemId: acc.itemId,
 						text: "",
 						redacted: true,
-						parentItemId,
+						parentItemId: acc.parentItemId,
+						checkpoint: { revision: acc.revision + 1, final: true },
 					},
 				];
 			}
 			if (acc.text.length > 0) {
-				state.emittedThinkingThisTurn = true;
 				return [
 					{
 						_tag: "Thinking",
@@ -930,14 +925,14 @@ const translate = (
 			// was produced — render the empty placeholder so the user can see
 			// it happened. (If signature is also zero, drop silently.)
 			if (acc.signatureLength > 0) {
-				state.emittedThinkingThisTurn = true;
 				return [
 					{
 						_tag: "Thinking",
-						itemId: nextItemId(),
+						itemId: acc.itemId,
 						text: "",
 						redacted: false,
-						parentItemId,
+						parentItemId: acc.parentItemId,
+						checkpoint: { revision: acc.revision + 1, final: true },
 					},
 				];
 			}
@@ -1046,6 +1041,7 @@ const translate = (
 		// A sub-agent's `result` does NOT close the parent's turn — the SDK
 		// continues running until the parent emits its own top-level result.
 		if (parentItemId === undefined) {
+			state.streamedMessageIds.clear();
 			// Emit the exact context occupancy for the turn. The real window
 			// comes from `modelUsage[model].contextWindow`; the used tokens are
 			// the snapshot stashed from the last top-level assistant message.

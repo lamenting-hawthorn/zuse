@@ -129,4 +129,107 @@ describe("Claude partial-message durability", () => {
 		expect(events).toHaveLength(2);
 		expect(events.at(-1)?.checkpoint?.final).toBe(true);
 	});
+
+	// Claude Code 2.1.283+ delivers one completed `assistant` snapshot per
+	// content block, before that block's `content_block_stop`.
+	it("emits each streamed block once when the snapshot precedes content_block_stop", () => {
+		const stream = (event: Record<string, unknown>) => ({
+			type: "stream_event",
+			event,
+			parent_tool_use_id: null,
+		});
+		const snapshot = (content: unknown[]) => ({
+			type: "assistant",
+			message: { id: "message-1", role: "assistant", content },
+			parent_tool_use_id: null,
+		});
+		const events = translateClaudeSdkMessages([
+			stream({ type: "message_start", message: { id: "message-1" } }),
+			stream({
+				type: "content_block_start",
+				index: 0,
+				content_block: { type: "thinking", thinking: "" },
+			}),
+			stream({
+				type: "content_block_delta",
+				index: 0,
+				delta: { type: "thinking_delta", thinking: "pondering" },
+			}),
+			snapshot([{ type: "thinking", thinking: "pondering" }]),
+			stream({ type: "content_block_stop", index: 0 }),
+			stream({
+				type: "content_block_start",
+				index: 1,
+				content_block: { type: "text", text: "" },
+			}),
+			stream({
+				type: "content_block_delta",
+				index: 1,
+				delta: { type: "text_delta", text: "answer" },
+			}),
+			snapshot([{ type: "text", text: "answer" }]),
+			stream({ type: "content_block_stop", index: 1 }),
+			stream({
+				type: "content_block_start",
+				index: 2,
+				content_block: { type: "tool_use", id: "tool-1", name: "Bash" },
+			}),
+			snapshot([
+				{
+					type: "tool_use",
+					id: "tool-1",
+					name: "Bash",
+					input: { command: "echo hi" },
+				},
+			]),
+			stream({ type: "content_block_stop", index: 2 }),
+		] as never);
+
+		const rows = events.filter(
+			(event) =>
+				event._tag === "Thinking" ||
+				event._tag === "AssistantMessage" ||
+				event._tag === "ToolUse",
+		);
+		expect(new Set(rows.map((event) => event.itemId))).toEqual(
+			new Set(["message-1:thinking:0", "message-1:text:1", "tool-1"]),
+		);
+		expect(rows).toMatchObject([
+			{ _tag: "Thinking", checkpoint: { final: false } },
+			{
+				_tag: "Thinking",
+				text: "pondering",
+				checkpoint: { final: true },
+			},
+			{ _tag: "AssistantMessage", checkpoint: { final: false } },
+			{
+				_tag: "AssistantMessage",
+				text: "answer",
+				checkpoint: { final: true },
+			},
+			{ _tag: "ToolUse", itemId: "tool-1" },
+		]);
+	});
+
+	it("still emits text and thinking from snapshots that never streamed", () => {
+		const events = translateClaudeSdkMessages([
+			{
+				type: "assistant",
+				message: {
+					id: "message-2",
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "hmm" },
+						{ type: "text", text: "reply" },
+					],
+				},
+				parent_tool_use_id: "agent-1",
+			},
+		] as never);
+
+		expect(events).toMatchObject([
+			{ _tag: "Thinking", text: "hmm", parentItemId: "agent-1" },
+			{ _tag: "AssistantMessage", text: "reply", parentItemId: "agent-1" },
+		]);
+	});
 });
