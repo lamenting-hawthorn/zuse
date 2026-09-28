@@ -365,6 +365,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const FsLayer = FsServiceLive.pipe(
 		Layer.provide(WorkspaceLayer),
 		Layer.provide(WorktreeLayer),
+		Layer.provide(GitLayer),
 		Layer.provide(MigratedSqlite),
 		Layer.provide(NodeServices.layer),
 	);
@@ -376,6 +377,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const FileSearchLayer = FileSearchServiceLive.pipe(
 		Layer.provide(WorkspaceLayer),
 		Layer.provide(WorktreeLayer),
+		Layer.provide(GitLayer),
 		Layer.provide(NodeServices.layer),
 	);
 

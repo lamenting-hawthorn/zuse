@@ -3,6 +3,7 @@ import {
 	DirectoryUnavailableError,
 	FsFolderNotFoundError,
 } from "@zuse/contracts";
+import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
 import { Effect, FileSystem, Layer, Path } from "effect";
 import fuzzysort from "fuzzysort";
@@ -38,9 +39,10 @@ const MAX_DEPTH = 12;
 /**
  * Cap the *visited* node count too, independent of `limit`. The popover
  * filters client-side after the server returns; we still want the search
- * to terminate quickly even when the user hasn't typed yet.
+ * to terminate quickly even when the user hasn't typed yet. Gitignored
+ * directories are skipped, so this bounds real project sources only.
  */
-const MAX_VISITED = 5_000;
+const MAX_VISITED = 20_000;
 
 const DEFAULT_LIMIT = 20;
 
@@ -52,6 +54,7 @@ export const FileSearchServiceLive = Layer.effect(
 	Effect.gen(function* () {
 		const workspace = yield* WorkspaceService;
 		const worktrees = yield* WorktreeService;
+		const git = yield* GitService;
 		const fs = yield* FileSystem.FileSystem;
 		const pathSvc = yield* Path.Path;
 
@@ -99,6 +102,9 @@ export const FileSearchServiceLive = Layer.effect(
 					);
 				}
 				const rootAbs = pathSvc.resolve(root);
+				const ignoredDirs = yield* git
+					.ignoredDirectories(folderId, worktreeId)
+					.pipe(Effect.orElseSucceed((): ReadonlySet<string> => new Set()));
 
 				// Collect every candidate (subject to depth/visit caps), then rank
 				// with fuzzysort. The substring matcher we used previously couldn't
@@ -138,6 +144,11 @@ export const FileSearchServiceLive = Layer.effect(
 							if (stat._tag === "None") continue;
 							const kind =
 								stat.value.type === "Directory" ? "directory" : "file";
+							if (
+								kind === "directory" &&
+								ignoredDirs.has(toForwardSlash(childRel))
+							)
+								continue;
 
 							candidates.push({
 								relPath: toForwardSlash(childRel),

@@ -47,6 +47,16 @@ export interface GitServiceShape {
 	readonly isRepository: (
 		folderId: FolderId,
 	) => Effect.Effect<boolean, GitFailure>;
+	/**
+	 * Gitignored directories of the checkout, relative to its root and without
+	 * a trailing slash. Git collapses each ignored tree to its top directory, so
+	 * the set stays small even for huge `node_modules` or virtualenvs. A folder
+	 * that is not a Git repository has none.
+	 */
+	readonly ignoredDirectories: (
+		folderId: FolderId,
+		worktreeId?: WorktreeId | null,
+	) => Effect.Effect<ReadonlySet<string>, GitFailure>;
 	readonly log: (
 		folderId: FolderId,
 		limit: number,

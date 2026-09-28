@@ -9,6 +9,7 @@ import {
 	FolderId,
 	FsCommandReuseError,
 } from "@zuse/contracts";
+import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
 import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from "effect";
@@ -26,7 +27,10 @@ const hash = (content: string): string =>
 
 const commandId = (value: string) => CommandId.make(value);
 
-const makeRuntime = (root: string) => {
+const makeRuntime = (
+	root: string,
+	ignoredDirectories: ReadonlySet<string> = new Set(),
+) => {
 	const SqlLive = sqliteLayer({ filename: ":memory:" });
 	const WorkspaceLive = Layer.succeed(WorkspaceService, {
 		add: () => Effect.die("not used"),
@@ -59,11 +63,15 @@ const makeRuntime = (root: string) => {
 		startRun: () => Effect.die("not used"),
 		restore: () => Effect.die("not used"),
 	});
+	const GitLive = Layer.succeed(GitService, {
+		ignoredDirectories: () => Effect.succeed(ignoredDirectories),
+	} as unknown as GitService["Service"]);
 	const Dependencies = Layer.mergeAll(
 		SqlLive,
 		NodeServices.layer,
 		WorkspaceLive,
 		WorktreeLive,
+		GitLive,
 	);
 	return ManagedRuntime.make(
 		Layer.mergeAll(
@@ -345,5 +353,115 @@ describe("filesystem write receipts", () => {
 			}),
 		);
 		expect(rows).toEqual([]);
+	});
+});
+
+describe("deferred directories", () => {
+	let root: string;
+	let runtime: ReturnType<typeof makeRuntime>;
+
+	const write = async (rel: string, content = ""): Promise<void> => {
+		await nodeFs.mkdir(nodePath.dirname(nodePath.join(root, rel)), {
+			recursive: true,
+		});
+		await nodeFs.writeFile(nodePath.join(root, rel), content);
+	};
+
+	beforeEach(async () => {
+		root = await nodeFs.mkdtemp(nodePath.join(os.tmpdir(), "zuse-fs-tree-"));
+		await write("src/app.ts");
+		await write("node_modules/pkg/index.js");
+		await write(".venv/lib/site.py");
+		await write(".git/HEAD");
+		await write(".env");
+		runtime = makeRuntime(root, new Set([".venv"]));
+	});
+
+	afterEach(async () => {
+		await runtime.dispose();
+		await nodeFs.rm(root, { recursive: true, force: true });
+	});
+
+	it("lists deferred directories without walking them", async () => {
+		const listing = await runtime.runPromise(
+			Effect.flatMap(FsService, (fs) => fs.listPaths(folderId, null)),
+		);
+
+		expect(listing.paths).toEqual([
+			".venv/",
+			"node_modules/",
+			"src/",
+			"src/app.ts",
+			".env",
+		]);
+		expect(listing.deferredDirectories).toEqual([".venv", "node_modules"]);
+		expect(listing.truncated).toBe(false);
+	});
+
+	it("marks deferred directories and their descendants in one-level listings", async () => {
+		const [top, inside] = await runtime.runPromise(
+			Effect.flatMap(FsService, (fs) =>
+				Effect.all([
+					fs.tree(folderId, "", null),
+					fs.tree(folderId, "node_modules", null),
+				]),
+			),
+		);
+
+		expect(
+			top.map((entry) => [entry.path, entry.deferred === true] as const),
+		).toEqual([
+			[".venv", true],
+			["node_modules", true],
+			["src", false],
+			[".env", false],
+		]);
+		expect(inside.map((entry) => [entry.path, entry.deferred])).toEqual([
+			["node_modules/pkg", true],
+		]);
+	});
+
+	it("does not report changes inside deferred directories", async () => {
+		const changed: string[] = [];
+		let ready = false;
+		const fiber = runtime.runFork(
+			Effect.gen(function* () {
+				const fs = yield* FsService;
+				yield* Stream.runForEach(fs.watchTree(folderId, null), (event) =>
+					Effect.sync(() => {
+						if (event._tag === "ready") ready = true;
+						if (event._tag === "changed") changed.push(...event.paths);
+					}),
+				);
+			}),
+		);
+		const waitFor = async (condition: () => boolean, label: string) => {
+			const deadline = Date.now() + 3_000;
+			while (!condition()) {
+				if (Date.now() > deadline) throw new Error(`Timed out: ${label}`);
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			}
+		};
+		try {
+			await waitFor(() => ready, "watcher ready");
+			await write("node_modules/pkg/index.js", "changed");
+			await write(".venv/lib/site.py", "changed");
+			await write("src/app.ts", "changed");
+			await waitFor(() => changed.includes("src/app.ts"), "source change");
+			// A directory created after the watcher attached is watched too.
+			await write("src/feature/new.ts");
+			await waitFor(
+				() => changed.includes("src/feature/new.ts"),
+				"new directory change",
+			);
+			expect(
+				changed.filter(
+					(path) =>
+						path.startsWith("node_modules/") || path.startsWith(".venv/"),
+				),
+			).toEqual([]);
+		} finally {
+			await runtime.runPromise(Fiber.interrupt(fiber));
+		}
 	});
 });

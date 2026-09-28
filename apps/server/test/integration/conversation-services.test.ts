@@ -496,6 +496,7 @@ const StubWorktreeLive = Layer.succeed(WorktreeService, {
 // do not exercise branch naming, so these stubs only satisfy the layer graph.
 const StubGitLive = Layer.succeed(GitService, {
 	isRepository: () => Effect.succeed(true),
+	ignoredDirectories: () => Effect.succeed(new Set<string>()),
 	log: () => Effect.die("not used"),
 	status: () => Effect.die("not used"),
 	branches: () => Effect.die("not used"),

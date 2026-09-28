@@ -315,6 +315,34 @@ describe("GitServiceLive", () => {
 		).resolves.toBe(false);
 	});
 
+	test("reports gitignored directories collapsed to their top directory", async () => {
+		const plainDirectory = join(temporaryRoot, "plain-directory");
+		mkdirSync(plainDirectory);
+		writeFileSync(join(repositoryRoot, ".gitignore"), ".venv/\nout/\n.env\n");
+		mkdirSync(join(repositoryRoot, ".venv", "lib", "site-packages"), {
+			recursive: true,
+		});
+		writeFileSync(
+			join(repositoryRoot, ".venv", "lib", "site-packages", "pkg.py"),
+			"",
+		);
+		mkdirSync(join(repositoryRoot, "nested", "out"), { recursive: true });
+		writeFileSync(join(repositoryRoot, "nested", "out", "bundle.js"), "");
+		writeFileSync(join(repositoryRoot, ".env"), "SECRET=1\n");
+
+		const ignored = await run((service) =>
+			service.ignoredDirectories(folderId),
+		);
+
+		expect([...ignored].sort()).toEqual([".venv", "nested/out"]);
+		await expect(
+			run(
+				(service) => service.ignoredDirectories(folderId),
+				makeLayer({ root: plainDirectory }),
+			),
+		).resolves.toEqual(new Set());
+	});
+
 	test("commits changes and pushes the current branch", async () => {
 		const remote = join(temporaryRoot, "remote.git");
 		git(temporaryRoot, "init", "--bare", remote);

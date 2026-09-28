@@ -20,18 +20,23 @@ const treePath = (entry: FsEntry): string =>
  *
  * New directories are walked only inside themselves. Deletes remove the
  * already-known subtree locally. Ordinary saves list just their parent.
+ * Deferred directories (e.g. `node_modules`) are tracked but never walked;
+ * the tree loads their contents only when the user expands them.
  */
 export const reconcileFileTreePaths = async (input: {
 	readonly changedPaths: ReadonlyArray<string>;
 	readonly knownPaths: ReadonlySet<string>;
+	readonly deferredDirectories?: ReadonlySet<string>;
 	readonly listDirectory: (path: string) => Promise<ReadonlyArray<FsEntry>>;
 	readonly maxDirectories?: number;
 }): Promise<{
 	readonly paths: ReadonlySet<string>;
+	readonly deferredDirectories: ReadonlySet<string>;
 	readonly operations: ReadonlyArray<FileTreePathOperation>;
 	readonly requiresFullReconciliation: boolean;
 }> => {
 	const next = new Set(input.knownPaths);
+	const deferred = new Set(input.deferredDirectories);
 	const operations: FileTreePathOperation[] = [];
 	const queued = new Set<string>();
 	const pending: string[] = [];
@@ -52,13 +57,14 @@ export const reconcileFileTreePaths = async (input: {
 		}
 		childrenByParent.delete(stripSlash(path));
 		childrenByParent.get(parentPath(path))?.delete(path);
+		deferred.delete(stripSlash(path));
 		if (!next.delete(path)) return;
 		operations.push({ type: "remove", path });
 	};
 
 	const enqueue = (path: string): void => {
 		const normalized = stripSlash(path);
-		if (queued.has(normalized)) return;
+		if (queued.has(normalized) || deferred.has(normalized)) return;
 		queued.add(normalized);
 		pending.push(normalized);
 	};
@@ -73,6 +79,7 @@ export const reconcileFileTreePaths = async (input: {
 		if (processed >= maxDirectories) {
 			return {
 				paths: input.knownPaths,
+				deferredDirectories: input.deferredDirectories ?? new Set(),
 				operations: [],
 				requiresFullReconciliation: true,
 			};
@@ -98,12 +105,17 @@ export const reconcileFileTreePaths = async (input: {
 				indexPath(path);
 				operations.push({ type: "add", path });
 			}
-			if (entry.kind === "directory" && added) enqueue(entry.path);
+			if (entry.kind === "directory" && entry.deferred === true) {
+				deferred.add(stripSlash(entry.path));
+			} else if (entry.kind === "directory" && added) {
+				enqueue(entry.path);
+			}
 		}
 	}
 
 	return {
 		paths: next,
+		deferredDirectories: deferred,
 		operations,
 		requiresFullReconciliation: false,
 	};

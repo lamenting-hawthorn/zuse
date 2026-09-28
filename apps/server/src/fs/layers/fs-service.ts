@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { watch } from "node:fs";
 import * as path from "node:path";
 import {
 	DirectoryUnavailableError,
@@ -18,30 +17,22 @@ import {
 	FsTreeWatchEvent,
 	type WorktreeId,
 } from "@zuse/contracts";
+import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
 import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
 import { Effect, FileSystem, Layer, Option, Path, Queue, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { WorkspaceService } from "../../workspace/services/workspace-service.ts";
+import { watchDirectoryTree } from "../directory-tree-watcher.ts";
 import { FsService } from "../services/fs-service.ts";
 
-// Skip directories that are large, irrelevant, or just noise in a code-tree
-// view. Match by basename. Hidden dotfiles other than `.git` still show up —
-// users often want to see `.env`, `.github/`, `.vscode/`, etc.
-const SKIP_DIRS = new Set([".git", "node_modules", ".zuse", ".DS_Store"]);
-const WATCH_SKIP_DIRS = new Set([
-	".git",
-	"node_modules",
-	".zuse",
-	".DS_Store",
-	"dist",
-	"build",
-	".turbo",
-	".next",
-	".cache",
-	"coverage",
-	"out",
-]);
+// Directories never shown in the code tree. Match by basename. Hidden dotfiles
+// other than these still show up — users often want `.env`, `.github/`, etc.
+const SKIP_DIRS = new Set([".git", ".zuse", ".DS_Store"]);
+// Directories shown in the tree but not listed, walked, or watched until the
+// user expands them. Gitignored directories (virtualenvs, build output,
+// caches) are deferred too, so they cannot crowd out the project's sources.
+const DEFERRED_DIR_NAMES = new Set(["node_modules"]);
 const WATCH_BATCH_MS = 120;
 
 // Cap how much we'll ship across the RPC for a single file. Anything larger
@@ -76,9 +67,20 @@ type TreeWatchState = {
 const toForwardSlash = (p: string): string =>
 	path.sep === "/" ? p : p.split(path.sep).join("/");
 
-const isSkippedWatchPath = (relPath: string): boolean => {
-	const first = toForwardSlash(relPath).split("/")[0] ?? "";
-	return WATCH_SKIP_DIRS.has(first);
+/**
+ * Whether `rel` (root-relative, forward-slash) is a deferred directory or lies
+ * inside one. `ignoredDirs` comes from `GitService.ignoredDirectories`.
+ */
+const isDeferredPath = (
+	rel: string,
+	ignoredDirs: ReadonlySet<string>,
+): boolean => {
+	let prefix = "";
+	for (const segment of rel.split("/")) {
+		prefix = prefix === "" ? segment : `${prefix}/${segment}`;
+		if (DEFERRED_DIR_NAMES.has(segment) || ignoredDirs.has(prefix)) return true;
+	}
+	return false;
 };
 
 const mtimeToString = (mtime: Option.Option<Date>): string =>
@@ -95,6 +97,7 @@ export const FsServiceLive = Layer.effect(
 	Effect.gen(function* () {
 		const workspace = yield* WorkspaceService;
 		const worktrees = yield* WorktreeService;
+		const git = yield* GitService;
 		const sql = yield* SqlClient.SqlClient;
 		const fs = yield* FileSystem.FileSystem;
 		const pathSvc = yield* Path.Path;
@@ -154,6 +157,14 @@ export const FsServiceLive = Layer.effect(
 				return { rootAbs, requestedAbs } as const;
 			});
 
+		const ignoredDirectories = (
+			folderId: FolderId,
+			worktreeId?: WorktreeId | null,
+		): Effect.Effect<ReadonlySet<string>> =>
+			git
+				.ignoredDirectories(folderId, worktreeId)
+				.pipe(Effect.orElseSucceed((): ReadonlySet<string> => new Set()));
+
 		const tree: FsService["Service"]["tree"] = (
 			folderId,
 			relPath,
@@ -166,6 +177,7 @@ export const FsServiceLive = Layer.effect(
 					worktreeId,
 				);
 
+				const ignoredDirs = yield* ignoredDirectories(folderId, worktreeId);
 				const names = yield* fs.readDirectory(requestedAbs).pipe(
 					Effect.mapError(
 						(cause) =>
@@ -191,11 +203,17 @@ export const FsServiceLive = Layer.effect(
 							const kind =
 								stat.value.type === "Directory" ? "directory" : "file";
 							if (kind === "directory" && SKIP_DIRS.has(name)) return null;
-							const childRel = relPath === "" ? name : `${relPath}/${name}`;
+							const childRel = toForwardSlash(
+								relPath === "" ? name : `${relPath}/${name}`,
+							);
 							return FsEntry.make({
 								name,
-								path: toForwardSlash(childRel),
+								path: childRel,
 								kind,
+								...(kind === "directory" &&
+								isDeferredPath(childRel, ignoredDirs)
+									? { deferred: true }
+									: {}),
 							});
 						}),
 					{ concurrency: "unbounded" },
@@ -231,9 +249,7 @@ export const FsServiceLive = Layer.effect(
 
 					let timer: ReturnType<typeof setTimeout> | null = null;
 					const pending = new Set<string>();
-					let handle: ReturnType<typeof watch> | null = null;
-					let attached = false;
-					let failedToAttach: Error | null = null;
+					let ignoredDirs = yield* ignoredDirectories(folderId, worktreeId);
 
 					const flush = () => {
 						timer = null;
@@ -256,66 +272,62 @@ export const FsServiceLive = Layer.effect(
 						if (timer === null) timer = setTimeout(flush, WATCH_BATCH_MS);
 					};
 
-					try {
-						handle = watch(rootAbs, { recursive: true }, (_event, filename) => {
-							if (filename === null) return;
-							const rel = toForwardSlash(filename.toString());
-							if (rel === "" || isSkippedWatchPath(rel)) return;
-							pending.add(rel);
-							schedule();
-						});
-						attached = true;
-						handle.on("error", (err) => {
-							// eslint-disable-next-line no-console
-							console.warn("[fs.watchTree] fs.watch error:", err.message);
-							state.sequence += 1;
-							publish(
-								FsTreeWatchEvent.make({
-									_tag: "gap",
-									epoch: state.epoch,
-									sequence: state.sequence,
-									reason: err.message,
-								}),
-							);
-						});
-					} catch (err) {
-						failedToAttach =
-							err instanceof Error ? err : new Error(String(err));
+					const attached = yield* Effect.tryPromise({
+						try: () =>
+							watchDirectoryTree({
+								root: rootAbs,
+								isExcludedDirectory: (rel, name) =>
+									SKIP_DIRS.has(name) || isDeferredPath(rel, ignoredDirs),
+								refreshExclusions: () =>
+									Effect.runPromise(
+										ignoredDirectories(folderId, worktreeId),
+									).then((next) => {
+										ignoredDirs = next;
+									}),
+								onChange: (rel) => {
+									if (rel.split("/").some((segment) => SKIP_DIRS.has(segment)))
+										return;
+									pending.add(rel);
+									schedule();
+								},
+								onError: (err) => {
+									console.warn("[fs.watchTree] fs.watch error:", err.message);
+									state.sequence += 1;
+									publish(
+										FsTreeWatchEvent.make({
+											_tag: "gap",
+											epoch: state.epoch,
+											sequence: state.sequence,
+											reason: err.message,
+										}),
+									);
+								},
+							}),
+						catch: (err) =>
+							err instanceof Error ? err : new Error(String(err)),
+					}).pipe(Effect.result);
+					if (attached._tag === "Failure") {
 						// An unwatched tree cannot claim live continuity.
-						// eslint-disable-next-line no-console
 						console.warn(
-							`[fs.watchTree] could not watch ${rootAbs}: ${(err as Error).message}`,
+							`[fs.watchTree] could not watch ${rootAbs}: ${attached.failure.message}`,
 						);
-						state.sequence += 1;
-						publish(
-							FsTreeWatchEvent.make({
-								_tag: "gap",
-								epoch: state.epoch,
-								sequence: state.sequence,
-								reason: (err as Error).message,
-							}),
-						);
-					}
-
-					if (attached) {
-						Queue.offerUnsafe(
-							queue,
-							FsTreeWatchEvent.make({
-								_tag: "ready",
-								epoch: state.epoch,
-								sequence: state.sequence,
-							}),
-						);
-					}
-					if (failedToAttach !== null) {
 						return yield* Effect.fail(
 							new FsReadError({
 								folderId,
 								path: "",
-								reason: failedToAttach.message,
+								reason: attached.failure.message,
 							}),
 						);
 					}
+					const handle = attached.success;
+					Queue.offerUnsafe(
+						queue,
+						FsTreeWatchEvent.make({
+							_tag: "ready",
+							epoch: state.epoch,
+							sequence: state.sequence,
+						}),
+					);
 
 					yield* Effect.addFinalizer(() =>
 						Effect.andThen(
@@ -324,7 +336,7 @@ export const FsServiceLive = Layer.effect(
 									clearTimeout(timer);
 									timer = null;
 								}
-								handle?.close();
+								handle.close();
 							}),
 							Queue.shutdown(queue),
 						),
@@ -339,6 +351,9 @@ export const FsServiceLive = Layer.effect(
 		// (parent before children) for `preparePresortedFileTreeInput`.
 		// Directories carry a trailing "/" so empty ones still render. Bounded by
 		// MAX_TREE_PATHS; a failed stat drops that entry rather than the branch.
+		// Deferred directories (`node_modules` and gitignored ones such as
+		// virtualenvs and build output) are listed but not walked; the tree loads
+		// them with `fs.tree` when expanded. Gitignored files like `.env` stay.
 		const listPaths: FsService["Service"]["listPaths"] = (
 			folderId,
 			worktreeId,
@@ -349,7 +364,9 @@ export const FsServiceLive = Layer.effect(
 					"",
 					worktreeId,
 				);
+				const ignoredDirs = yield* ignoredDirectories(folderId, worktreeId);
 				const out: string[] = [];
+				const deferredDirectories: string[] = [];
 				let truncated = false;
 				let estimatedBytes = 0;
 
@@ -379,8 +396,12 @@ export const FsServiceLive = Layer.effect(
 									const kind =
 										stat.value.type === "Directory" ? "directory" : "file";
 									if (kind === "directory" && SKIP_DIRS.has(name)) return null;
-									const rel = relDir === "" ? name : `${relDir}/${name}`;
-									return { name, kind, abs: entryAbs, rel } as const;
+									const rel = toForwardSlash(
+										relDir === "" ? name : `${relDir}/${name}`,
+									);
+									const deferred =
+										kind === "directory" && isDeferredPath(rel, ignoredDirs);
+									return { name, kind, abs: entryAbs, rel, deferred } as const;
 								}),
 							{ concurrency: "unbounded" },
 						);
@@ -399,16 +420,17 @@ export const FsServiceLive = Layer.effect(
 								return;
 							}
 							const renderedPath =
-								row.kind === "directory"
-									? `${toForwardSlash(row.rel)}/`
-									: toForwardSlash(row.rel);
+								row.kind === "directory" ? `${row.rel}/` : row.rel;
 							const renderedBytes = Buffer.byteLength(renderedPath) + 3;
 							if (estimatedBytes + renderedBytes > MAX_TREE_PATH_BYTES) {
 								truncated = true;
 								return;
 							}
 							estimatedBytes += renderedBytes;
-							if (row.kind === "directory") {
+							if (row.deferred) {
+								out.push(renderedPath);
+								deferredDirectories.push(row.rel);
+							} else if (row.kind === "directory") {
 								out.push(renderedPath);
 								yield* walk(row.abs, row.rel);
 								if (truncated) return;
@@ -421,6 +443,7 @@ export const FsServiceLive = Layer.effect(
 				yield* walk(rootAbs, "");
 				return {
 					paths: out,
+					deferredDirectories,
 					truncated,
 				};
 			});

@@ -651,6 +651,39 @@ export const GitServiceLive = Layer.effect(
 				),
 			);
 
+		const ignoredDirectories: GitService["Service"]["ignoredDirectories"] = (
+			folderId,
+			worktreeId,
+		) =>
+			Effect.flatMap(resolvePathForWorktree(folderId, worktreeId), (cwd) =>
+				// `--ignored=matching` reports only paths that match an ignore rule.
+				// `ls-files --ignored --directory` would also report an untracked
+				// parent whose contents all happen to be ignored (e.g. a folder that
+				// holds just `.env`), hiding files the user expects to see.
+				run(folderId, cwd, [
+					"status",
+					"--porcelain=v1",
+					"-z",
+					"--ignored=matching",
+					"--untracked-files=normal",
+				]).pipe(
+					Effect.map(
+						(output): ReadonlySet<string> =>
+							new Set(
+								output
+									.split("\0")
+									.filter(
+										(entry) => entry.startsWith("!! ") && entry.endsWith("/"),
+									)
+									.map((entry) => entry.slice(3, -1)),
+							),
+					),
+					Effect.catchTag("GitNotARepoError", () =>
+						Effect.succeed<ReadonlySet<string>>(new Set()),
+					),
+				),
+			);
+
 		const status: GitService["Service"]["status"] = (folderId, worktreeId) =>
 			Effect.flatMap(resolvePathForWorktree(folderId, worktreeId), (cwd) =>
 				run(folderId, cwd, [
@@ -2993,6 +3026,7 @@ export const GitServiceLive = Layer.effect(
 
 		return {
 			isRepository,
+			ignoredDirectories,
 			log,
 			status,
 			branches,

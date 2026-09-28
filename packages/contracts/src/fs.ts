@@ -13,6 +13,11 @@ export class FsEntry extends Schema.Class<FsEntry>("FsEntry")({
 	name: Schema.String,
 	path: Schema.String,
 	kind: Schema.Literals(["file", "directory"]),
+	/**
+	 * A directory whose contents are loaded only on demand, such as
+	 * `node_modules` or a gitignored build/virtualenv directory.
+	 */
+	deferred: Schema.optional(Schema.Boolean),
 }) {}
 
 export class FsFolderNotFoundError extends Schema.TaggedErrorClass<FsFolderNotFoundError>()(
@@ -146,8 +151,8 @@ const FsCreateErrors = Schema.Union([
 /**
  * List one directory level. `path` is project-root-relative (use "" or omit
  * for the root). The right-pane tree calls this lazily as the user expands
- * directories — no recursive walk on the server. Skips `.git` and
- * `node_modules`; everything else is returned, sorted dirs-first then by name.
+ * directories — no recursive walk on the server. Skips `.git`; directories
+ * whose contents load on demand carry `deferred`. Sorted dirs-first then name.
  */
 export const FsTreeRpc = Rpc.make("fs.tree", {
 	payload: Schema.Struct({
@@ -306,9 +311,11 @@ export const FsRemoveRpc = Rpc.make("fs.remove", {
  * List every file path under the project/worktree root in one shot, for the
  * path-first `@pierre/trees` file tree (which wants the full path universe up
  * front and virtualizes the visible window itself). Paths are forward-slash,
- * project-root-relative, dirs-first-then-name sorted. Skips `.git`,
- * `node_modules`, and other noise dirs. Capped at `MAX_TREE_PATHS`; once the
- * cap is hit, `truncated` is `true` and the list stops early.
+ * project-root-relative, dirs-first-then-name sorted. Skips `.git` and other
+ * internal dirs. `node_modules` and gitignored directories are listed but not
+ * walked; they appear in `deferredDirectories` and load via `fs.tree` when
+ * expanded. Capped at `MAX_TREE_PATHS`; once the cap is hit, `truncated` is
+ * `true` and the list stops early.
  */
 export const FsListPathsRpc = Rpc.make("fs.listPaths", {
 	payload: Schema.Struct({
@@ -317,6 +324,7 @@ export const FsListPathsRpc = Rpc.make("fs.listPaths", {
 	}),
 	success: Schema.Struct({
 		paths: Schema.Array(Schema.String),
+		deferredDirectories: Schema.optional(Schema.Array(Schema.String)),
 		truncated: Schema.Boolean,
 	}),
 	error: FsErrors,

@@ -15,11 +15,11 @@ import {
 	resourceKeyId,
 } from "@zuse/client-runtime/resource-ref";
 import type { ResourceView } from "@zuse/client-runtime/resource-state";
-import type { EnvironmentId, FsTreeWatchEvent } from "@zuse/contracts";
+import type { EnvironmentId, FsEntry, FsTreeWatchEvent } from "@zuse/contracts";
 import { CommandId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { reconcileFileTreePaths } from "./file-tree-reconciliation.ts";
-import type { MemoizeClient } from "./rpc-client.ts";
+import { getRpcClient, type MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -28,6 +28,8 @@ import {
 
 export type FileTreeResourceData = Readonly<{
 	paths: ReadonlyArray<string>;
+	/** Listed directories whose contents load only when expanded. */
+	deferredDirectories?: ReadonlyArray<string>;
 	truncated: boolean;
 }>;
 
@@ -124,6 +126,7 @@ const applyChanges = (
 			const result = await reconcileFileTreePaths({
 				changedPaths,
 				knownPaths: new Set(current.paths),
+				deferredDirectories: new Set(current.deferredDirectories),
 				listDirectory: (path) =>
 					Effect.runPromise(
 						client["fs.tree"]({
@@ -138,11 +141,30 @@ const applyChanges = (
 			}
 			return {
 				paths: [...result.paths],
+				deferredDirectories: [...result.deferredDirectories],
 				truncated: current.truncated,
 			};
 		},
 		catch: (cause) => cause,
 	});
+
+/**
+ * One level of a deferred directory (e.g. `node_modules`), fetched when the
+ * user expands it. Deferred contents are not part of the watched snapshot.
+ */
+export const listDeferredDirectory = async (
+	ref: ExecutionRef,
+	path: string,
+): Promise<ReadonlyArray<FsEntry>> => {
+	const client = await getRpcClient(ref.environmentId);
+	return Effect.runPromise(
+		client["fs.tree"]({
+			folderId: ref.folderId,
+			worktreeId: ref.worktreeId,
+			path,
+		}),
+	);
+};
 
 class FileTreeContinuityGap extends Error {}
 

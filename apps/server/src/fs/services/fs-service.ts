@@ -46,6 +46,7 @@ export interface FsServiceShape {
 	) => Effect.Effect<
 		{
 			readonly paths: ReadonlyArray<string>;
+			readonly deferredDirectories: ReadonlyArray<string>;
 			readonly truncated: boolean;
 		},
 		TreeFailure

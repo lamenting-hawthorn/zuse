@@ -37,6 +37,52 @@ describe("file tree reconciliation", () => {
 		expect([...result.paths]).toContain("README.md");
 	});
 
+	it("adds a new deferred directory without walking it", async () => {
+		const listDirectory = vi.fn(async (path: string) =>
+			path === ""
+				? [
+						FsEntry.make({
+							name: "node_modules",
+							path: "node_modules",
+							kind: "directory",
+							deferred: true,
+						}),
+						file("README.md"),
+					]
+				: [file(`${path}/unexpected.js`)],
+		);
+		const result = await reconcileFileTreePaths({
+			changedPaths: ["node_modules"],
+			knownPaths: new Set(["README.md"]),
+			listDirectory,
+		});
+
+		expect(listDirectory).toHaveBeenCalledTimes(1);
+		expect(result.operations).toEqual([{ type: "add", path: "node_modules/" }]);
+		expect([...result.deferredDirectories]).toEqual(["node_modules"]);
+	});
+
+	it("does not list a known deferred directory when it changes", async () => {
+		const listDirectory = vi.fn(async () => [
+			FsEntry.make({
+				name: "dist",
+				path: "dist",
+				kind: "directory",
+				deferred: true,
+			}),
+		]);
+		const result = await reconcileFileTreePaths({
+			changedPaths: ["dist"],
+			knownPaths: new Set(["dist/"]),
+			deferredDirectories: new Set(["dist"]),
+			listDirectory,
+		});
+
+		expect(listDirectory).toHaveBeenCalledTimes(1);
+		expect(listDirectory).toHaveBeenCalledWith("");
+		expect(result.operations).toEqual([]);
+	});
+
 	it("removes a deleted directory and its known descendants locally", async () => {
 		const listDirectory = vi.fn(async () => [file("README.md")]);
 		const result = await reconcileFileTreePaths({
