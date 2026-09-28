@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Let idle cloud workspaces pause even when connected clients send RPC heartbeats, poll status, or receive subscription updates, while preserving activity from user actions and active agent turns.
+
 ## [0.22.1]
 
 ### Fixed

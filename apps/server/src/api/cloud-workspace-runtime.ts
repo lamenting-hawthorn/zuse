@@ -59,6 +59,7 @@ import {
 	WORKSPACE_GATEWAY_AUTH_EXPIRED_CLOSE,
 	WORKSPACE_GATEWAY_STALE_GENERATION_CLOSE,
 	WORKSPACE_GATEWAY_UPDATE_REQUIRED_CLOSE,
+	type WorkspaceGatewayFrame,
 	workspaceGatewayArrayBuffer,
 } from "@zuse/contracts";
 import type { CommandReceiptIdentity } from "@zuse/domain/engine/dispatch";
@@ -117,6 +118,7 @@ import {
 import { CloudCodexAuth } from "./cloud-codex-auth.ts";
 import { CloudProviderAuth } from "./cloud-provider-auth.ts";
 import { cloudStorageIncarnationId } from "./cloud-storage-incarnation.ts";
+import { makeCloudWorkspaceRpcActivity } from "./cloud-workspace-activity.ts";
 import {
 	makeCloudApiCommandPump,
 	runCloudApiTurnEventStream,
@@ -2581,11 +2583,11 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						).pipe(Effect.forkScoped({ startImmediately: true }));
 						return publisher;
 					});
-					const publishActivity = () => {
+					const observeRpcActivity = makeCloudWorkspaceRpcActivity(() => {
 						void Effect.runPromise(
 							summaryPublisher.publish("activity").pipe(Effect.ignore),
 						);
-					};
+					});
 					const apiCommandPump = yield* makeCloudApiCommandPump({
 						fetchCommands: Effect.suspend(() =>
 							requestJson({
@@ -2754,23 +2756,22 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							{ once: true },
 						);
 						socket.addEventListener("message", (event) => {
-							publishActivity();
 							if (
 								typeof event.data === "string" ||
 								event.data instanceof ArrayBuffer ||
 								ArrayBuffer.isView(event.data)
 							) {
+								const frame: WorkspaceGatewayFrame = {
+									direction: "runtime",
+									connectionId,
+									payload:
+										typeof event.data === "string"
+											? event.data
+											: workspaceGatewayArrayBuffer(event.data),
+								};
+								observeRpcActivity(frame);
 								try {
-									sendGateway(
-										encodeWorkspaceGatewayFrame({
-											direction: "runtime",
-											connectionId,
-											payload:
-												typeof event.data === "string"
-													? event.data
-													: workspaceGatewayArrayBuffer(event.data),
-										}),
-									);
+									sendGateway(encodeWorkspaceGatewayFrame(frame));
 								} catch {
 									socket.close(1009, "local RPC frame too large");
 								}
@@ -2826,7 +2827,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 										workspaceGatewayArrayBuffer(event.data),
 									);
 									if (frame?.direction !== "client") return;
-									publishActivity();
+									observeRpcActivity(frame);
 									const local = localSockets.get(frame.connectionId);
 									const pending = pendingLocalFrames.get(frame.connectionId);
 									// No frame buffer lives in the gateway. The runtime holds only

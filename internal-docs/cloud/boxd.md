@@ -57,7 +57,10 @@ publish with the same API key owner used by the Worker.
   without network activity. Activity includes packets on the runtime's own
   outbound gateway connection, so an agent working with the desktop closed is
   not hibernated mid-run, and the clock restarts on wake. The reconciler's own
-  idle pause still runs first. Build sandboxes get boxd's destroy timer
+  idle pause still runs first. Zuse refreshes that deadline for explicit user
+  actions and active agent turns, not RPC heartbeats, read polling, or passive
+  subscription responses. Leaving an idle chat connected therefore does not
+  count as continued work. Build sandboxes get boxd's destroy timer
   instead, which counts `createTimeoutSeconds` from the machine's start
   regardless of activity: a build that outlives the deadline is destroyed.
 - Every machine is isolated (no in-VM boxd CLI, integrations, or peers). Egress
