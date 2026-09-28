@@ -20,7 +20,9 @@ The diagnostic reads run concurrently with a two-second timeout.
 
 Recovery defers launching the runtime while memory is low. It rechecks at most
 every 30 seconds and stops after five minutes of persistent pressure. Confirmed
-OOM recovery is limited to three launches per ten-minute episode. An explicit
+OOM recovery is limited to three launches per ten-minute episode. The continuous
+pressure timer is separate from this OOM budget and clears when a healthy probe
+allows recovery; a later pressure event starts a fresh five-minute wait. An explicit
 retry after memory recovery failure begins a new episode on the same sandbox;
 it must not pick a newer template and discard the retained disk. Authenticated
 runtime readiness clears the normal lifecycle status. Existing fencing and

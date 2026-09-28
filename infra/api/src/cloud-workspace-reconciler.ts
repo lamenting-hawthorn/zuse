@@ -1269,15 +1269,31 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 			const waiting = workspace.statusCode === "runtime-memory-pressure";
 			const underPressure =
 				health.memory?.pressure === true || (waiting && health.memory === null);
+			const previousPressureSince = workspace.requestConfig.memoryPressureSince;
+			const pressureSince =
+				waiting && typeof previousPressureSince === "number"
+					? previousPressureSince
+					: nowMs;
+			workspace = {
+				...workspace,
+				requestConfig: {
+					...workspace.requestConfig,
+					memoryPressureSince: underPressure ? pressureSince : undefined,
+				},
+			};
 			if (underPressure || health.oom) {
 				const exhausted =
 					attempts >= MAX_MEMORY_RESTARTS ||
-					(underPressure && nowMs - startedAt >= MEMORY_PRESSURE_WAIT_MS);
+					(underPressure && nowMs - pressureSince >= MEMORY_PRESSURE_WAIT_MS);
 				const requestConfig = {
 					...workspace.requestConfig,
-					memoryRecoveryStartedAt: startedAt,
-					memoryRecoveryAttempts:
-						attempts + (underPressure || exhausted ? 0 : 1),
+					...(health.oom
+						? {
+								memoryRecoveryStartedAt: startedAt,
+								memoryRecoveryAttempts:
+									attempts + (underPressure || exhausted ? 0 : 1),
+							}
+						: {}),
 				};
 				if (underPressure || exhausted) {
 					yield* saveWorkspace({

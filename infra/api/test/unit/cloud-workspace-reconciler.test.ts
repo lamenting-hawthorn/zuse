@@ -1699,10 +1699,30 @@ describe("memory-aware runtime recovery", () => {
 		},
 		{
 			name: "persistent pressure stops",
+			continuingPressure: true,
 			available: 100,
 			kills: 0,
 			attempts: 0,
 			age: 301000,
+			status: "runtime-memory-recovery-failed",
+			launches: 0,
+		},
+		{
+			name: "new pressure does not inherit an earlier OOM or pressure deadline",
+			available: 100,
+			kills: 0,
+			attempts: 1,
+			age: 301000,
+			status: "runtime-memory-pressure",
+			launches: 0,
+		},
+		{
+			name: "continuous pressure expires even after the OOM window rolls over",
+			available: 100,
+			kills: 0,
+			attempts: 0,
+			age: 601000,
+			continuingPressure: true,
 			status: "runtime-memory-recovery-failed",
 			launches: 0,
 		},
@@ -1724,11 +1744,15 @@ describe("memory-aware runtime recovery", () => {
 					workspaceId: "memory-check",
 					state: "resuming",
 					desiredState: "ready",
-					statusCode: "resume-queued",
+					statusCode:
+						"continuingPressure" in input
+							? "runtime-memory-pressure"
+							: "resume-queued",
 					requestConfig: {
 						runtimeGeneration: 1,
 						memoryRecoveryAttempts: input.attempts,
 						memoryRecoveryStartedAt: Date.now() - input.age,
+						memoryPressureSince: Date.now() - input.age,
 					},
 				});
 				const before = yield* store.getLaunchIntent(
@@ -1842,6 +1866,7 @@ test("automatically restarts the retained runtime once memory pressure clears", 
 		}).pipe(Effect.provide(testLayer)),
 	);
 	expect(result.calls).toHaveLength(1);
+	expect(result.workspace?.requestConfig.memoryPressureSince).toBeUndefined();
 	expect(result.workspace).toMatchObject({
 		providerSandboxId: "source-memory-clears",
 		state: "provisioning",

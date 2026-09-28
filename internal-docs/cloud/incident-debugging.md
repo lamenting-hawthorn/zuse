@@ -39,7 +39,7 @@ logs, a PR, or the incident report. Avoid `set -x`, full environment dumps, and
 unfiltered process command lines: credentials can appear in arguments.
 
 When credentials, the installed app, or its SSH alias exist only on the user's
-Mac, use the available Mac bridge (`RunLocalCommand`) for those checks. Explain
+Mac, use the available remote-command bridge to the Mac for those checks. Explain
 that the resource is on the Mac. The cloud workspace cannot inspect a Mac app's
 logs or use its local SSH configuration by itself. Confirm which app/data folder
 is active; do not assume a historical Alpha/Beta path is still the current one.
