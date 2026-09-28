@@ -62,6 +62,7 @@ const makeElement = (tag: string): FakeElement => {
 				code: "",
 				key: "",
 				preventDefault: vi.fn(),
+				stopPropagation: vi.fn(),
 				...event,
 			};
 			for (const listener of listeners.get(type) ?? []) listener(value);
@@ -198,6 +199,15 @@ describe("GhosttySurface initialization", () => {
 			expect(output.at(-1)).toBe("\u001b[O");
 
 			const input = (surface as unknown as { input: FakeElement }).input;
+			const deleteLineEvent = {
+				key: "Backspace",
+				code: "Backspace",
+				metaKey: true,
+			};
+			input.dispatch("keydown", deleteLineEvent);
+			input.dispatch("keyup", deleteLineEvent);
+			expect(output.at(-1)).toBe("\x15");
+			expect(fakeEmulator.encodeKey).not.toHaveBeenCalled();
 			const selectAllEvent = { key: "a", code: "KeyA", metaKey: true };
 			input.dispatch("keydown", selectAllEvent);
 			expect(fakeEmulator.selectAll).toHaveBeenCalledOnce();

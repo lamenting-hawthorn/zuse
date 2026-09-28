@@ -1,3 +1,4 @@
+import "./fonts/fonts.css";
 import { copyText } from "../../lib/platform-capabilities.ts";
 import {
 	GhosttyEmulator,
@@ -6,7 +7,11 @@ import {
 	type TerminalPalette,
 	type TerminalSelectionInput,
 } from "./emulator.ts";
-import { ghosttyClipboardShortcut, ghosttyModifiers } from "./key-map.ts";
+import {
+	ghosttyClipboardShortcut,
+	ghosttyModifiers,
+	ghosttyShellShortcut,
+} from "./key-map.ts";
 
 type Disposable = Readonly<{ dispose: () => void }>;
 type DataListener = (data: string) => void;
@@ -105,8 +110,12 @@ export class GhosttySurface {
 	private reportedButton: number | null = null;
 	private forceFullPaint = true;
 	private disposed = false;
+	private readonly handleMetricsChange = (): void => {
+		this.forceFullPaint = true;
+		this.fit();
+	};
 	private readonly handleWindowBlur = (): void => {
-		this.stopSelectionAutoscroll();
+		this.endSelection();
 		this.emitFocus(false);
 	};
 	private readonly handleWindowFocus = (): void => {
@@ -124,6 +133,7 @@ export class GhosttySurface {
 		this.canvas = document.createElement("canvas");
 		this.canvas.className = "block h-full w-full cursor-text";
 		this.canvas.tabIndex = -1;
+		this.canvas.style.cssText = "touch-action:none;user-select:none";
 		const context = this.canvas.getContext("2d", { alpha: false });
 		if (context === null) throw new Error("Canvas 2D is unavailable");
 		this.context = context;
@@ -212,10 +222,7 @@ export class GhosttySurface {
 		const height = this.host.clientHeight;
 		if (width <= 0 || height <= 0) return;
 		this.context.font = this.font(false, false);
-		this.cellWidth = Math.max(
-			1,
-			Math.ceil(this.context.measureText("M").width),
-		);
+		this.cellWidth = Math.max(1, this.context.measureText("M").width);
 		this.cellHeight = Math.max(1, Math.ceil(FONT_SIZE * LINE_HEIGHT));
 		const cols = Math.max(
 			1,
@@ -299,6 +306,11 @@ export class GhosttySurface {
 		this.stopSelectionAutoscroll();
 		this.paintRequest = null;
 		this.cursorTimer = null;
+		window.removeEventListener("resize", this.handleMetricsChange);
+		document.fonts?.removeEventListener(
+			"loadingdone",
+			this.handleMetricsChange,
+		);
 		window.removeEventListener("blur", this.handleWindowBlur);
 		window.removeEventListener("focus", this.handleWindowFocus);
 		this.dataListeners.clear();
@@ -309,11 +321,16 @@ export class GhosttySurface {
 	}
 
 	private bindEvents(): void {
+		window.addEventListener("resize", this.handleMetricsChange);
+		document.fonts?.addEventListener("loadingdone", this.handleMetricsChange);
+		void document.fonts
+			?.load(this.font(false, false), "M\uf013")
+			.then(this.handleMetricsChange, () => undefined);
 		window.addEventListener("blur", this.handleWindowBlur);
 		window.addEventListener("focus", this.handleWindowFocus);
 		this.input.addEventListener("focus", () => this.emitFocus(true));
 		this.input.addEventListener("blur", () => {
-			this.stopSelectionAutoscroll();
+			this.endSelection();
 			this.emitFocus(false);
 		});
 		this.host.addEventListener("pointerdown", (event) => {
@@ -414,6 +431,7 @@ export class GhosttySurface {
 				this.canvas.releasePointerCapture(event.pointerId);
 			}
 		});
+		this.host.addEventListener("lostpointercapture", () => this.endSelection());
 		this.host.addEventListener("pointercancel", (event) => {
 			this.stopSelectionAutoscroll();
 			this.releaseReportedPointer(event);
@@ -458,8 +476,17 @@ export class GhosttySurface {
 		);
 		this.input.addEventListener("keydown", (event) => {
 			if (this.emulator === null || event.isComposing) return;
+			const shellShortcut = ghosttyShellShortcut(event);
+			if (shellShortcut !== null) {
+				this.suppressedKeyUps.add(event.code || event.key);
+				this.emitData(shellShortcut);
+				event.preventDefault();
+				event.stopPropagation();
+				return;
+			}
 			const clipboardShortcut = ghosttyClipboardShortcut(event);
 			if (clipboardShortcut !== null) {
+				event.stopPropagation();
 				this.suppressedKeyUps.add(event.code || event.key);
 				if (clipboardShortcut === "paste") {
 					// Leave the browser default enabled: it dispatches the trusted paste
@@ -473,13 +500,19 @@ export class GhosttySurface {
 				}
 				const selection = this.emulator.selectionText();
 				if (selection.length > 0) {
-					void copyText(selection).catch(() => undefined);
+					void copyText(selection)
+						.catch(() => undefined)
+						.finally(() => {
+							if (!this.disposed && document.activeElement === document.body)
+								this.focus();
+						});
 				}
 				event.preventDefault();
 				return;
 			}
 			const data = this.emulator.encodeKey(event);
 			if (data.length === 0) return;
+			event.stopPropagation();
 			for (const listener of this.dataListeners) listener(data);
 			event.preventDefault();
 		});
@@ -499,6 +532,12 @@ export class GhosttySurface {
 			for (const listener of this.dataListeners) listener(event.data);
 			this.input.value = "";
 		});
+		this.input.addEventListener("copy", (event) => {
+			const selection = this.emulator?.selectionText() ?? "";
+			if (selection.length === 0 || event.clipboardData === null) return;
+			event.clipboardData.setData("text/plain", selection);
+			event.preventDefault();
+		});
 		this.input.addEventListener("paste", (event) => {
 			if (this.emulator === null) return;
 			const text = event.clipboardData?.getData("text") ?? "";
@@ -508,6 +547,12 @@ export class GhosttySurface {
 			}
 			event.preventDefault();
 		});
+	}
+
+	private endSelection(): void {
+		this.stopSelectionAutoscroll();
+		if (this.selectionAnchor !== null) this.emulator?.selectionRelease(null);
+		this.selectionAnchor = null;
 	}
 
 	private terminalHasFocus(): boolean {
@@ -523,7 +568,7 @@ export class GhosttySurface {
 	}
 
 	private updateSelectionAutoscroll(input: TerminalSelectionInput): void {
-		const height = this.canvas.getBoundingClientRect().height;
+		const height = this.host.clientHeight;
 		if (
 			input.surfaceY > SELECTION_AUTOSCROLL_EDGE_PX &&
 			input.surfaceY <= height - SELECTION_AUTOSCROLL_EDGE_PX
@@ -597,28 +642,31 @@ export class GhosttySurface {
 		y: number;
 	} {
 		const bounds = this.canvas.getBoundingClientRect();
-		return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+		return {
+			x:
+				(event.clientX - bounds.left) *
+				(bounds.width > 0 ? this.host.clientWidth / bounds.width : 1),
+			y:
+				(event.clientY - bounds.top) *
+				(bounds.height > 0 ? this.host.clientHeight / bounds.height : 1),
+		};
 	}
 
 	private cellAt(event: MouseEvent | PointerEvent): { x: number; y: number } {
-		const bounds = this.canvas.getBoundingClientRect();
+		const point = this.surfacePoint(event);
 		return {
 			x: Math.max(
 				0,
 				Math.min(
 					this.cols - 1,
-					Math.floor(
-						(event.clientX - bounds.left - PADDING_X) / this.cellWidth,
-					),
+					Math.floor((point.x - PADDING_X) / this.cellWidth),
 				),
 			),
 			y: Math.max(
 				0,
 				Math.min(
 					this.rows - 1,
-					Math.floor(
-						(event.clientY - bounds.top - PADDING_Y) / this.cellHeight,
-					),
+					Math.floor((point.y - PADDING_Y) / this.cellHeight),
 				),
 			),
 		};
@@ -668,6 +716,14 @@ export class GhosttySurface {
 		}
 		context.textBaseline = "top";
 		for (const row of dirtyRows) this.drawRow(frame, row);
+		context.beginPath();
+		context.rect(
+			PADDING_X,
+			PADDING_Y,
+			frame.cols * this.cellWidth,
+			frame.rows * this.cellHeight,
+		);
+		context.clip();
 		if (frame.cursorVisible && (!frame.cursorBlinking || this.cursorOn)) {
 			this.drawCursor(frame);
 		}
@@ -691,9 +747,27 @@ export class GhosttySurface {
 	private drawRow(frame: TerminalFrame, row: number): void {
 		const line = frame.lines[row];
 		if (line === undefined) return;
+		// Clear the entire dirty row, including the margin beyond the last cell.
+		// Fallback emoji can be wider than their terminal cell allocation.
+		const rowY = PADDING_Y + row * this.cellHeight;
+		this.context.fillStyle = cssRgb(frame.background);
+		this.context.fillRect(0, rowY, this.host.clientWidth, this.cellHeight);
+		this.context.save();
+		this.context.beginPath();
+		this.context.rect(
+			PADDING_X,
+			rowY,
+			frame.cols * this.cellWidth,
+			this.cellHeight,
+		);
+		this.context.clip();
 		for (let col = 0; col < line.length; col += 1) {
 			const glyph = line[col];
-			if (glyph === undefined) continue;
+			if (
+				glyph === undefined ||
+				(!glyph.selected && sameRgb(glyph.background, frame.background))
+			)
+				continue;
 			this.context.fillStyle = glyph.selected
 				? this.palette.selection
 				: cssRgb(glyph.background);
@@ -731,6 +805,7 @@ export class GhosttySurface {
 			}
 			this.context.globalAlpha = 1;
 		}
+		this.context.restore();
 	}
 
 	private drawLine(x: number, y: number, color: Rgb): void {
@@ -819,6 +894,6 @@ export class GhosttySurface {
 	}
 
 	private font(bold: boolean, italic: boolean): string {
-		return `${italic ? "italic" : "normal"} ${bold ? 600 : 400} ${FONT_SIZE}px "SF Mono", "JetBrains Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace`;
+		return `${italic ? "italic" : "normal"} ${bold ? 600 : 400} ${FONT_SIZE}px "Geist Mono Variable", "Geist Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", "Symbols Nerd Font Mono", monospace`;
 	}
 }

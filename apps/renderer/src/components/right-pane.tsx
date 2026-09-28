@@ -1,5 +1,5 @@
 import { isHostedProduct } from "../lib/hosted-connect.ts";
-import { isInputComposing } from "../lib/input-composition.ts";
+import { WorkspacePanelTab } from "./workspace-panel-tab.tsx";
 import "@zuse/i18n/english/chat";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ChatRef, ExecutionRef } from "@zuse/client-runtime/resource-ref";
@@ -23,7 +23,7 @@ import {
 	MagicWand01Icon,
 } from "@zuse/icons/solid-rounded";
 import { latestProposedPlanMarkdown } from "@zuse/utils/proposed-plan";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
 	lazy,
 	Suspense,
@@ -805,17 +805,20 @@ export function RightPane({
 			{visiblePanels.length > 0 ? (
 				<div
 					ref={dockTabsRef}
-					className="workspace-panel-tabs flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[11px]"
+					className="workspace-panel-tabs flex shrink-0 items-center gap-0.5 overflow-x-auto text-[11px]"
 				>
 					{visiblePanels.map((panel) => {
 						const terminal =
 							panel.kind === "terminal" ? termList[panel.slot] : undefined;
 						return (
-							<PanelTab
+							<WorkspacePanelTab
 								key={panel.id}
 								active={panel.id === effectiveActiveId}
 								icon={PANEL_META[panel.kind].icon}
 								label={tabLabel(panel)}
+								closeLabel={uiMessage("chat:right_pane_close", {
+									label: tabLabel(panel),
+								})}
 								badge={tabBadge(panel)}
 								actions={
 									chatRef !== null && terminal !== undefined ? (
@@ -1195,69 +1198,6 @@ function AddPanelMenu({
 					: null}
 			</MenuPopup>
 		</Menu>
-	);
-}
-
-function PanelTab({
-	active,
-	icon,
-	label,
-	badge,
-	actions,
-	onSelect,
-	onClose,
-}: {
-	active: boolean;
-	icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
-	label: string;
-	badge?: React.ReactNode;
-	actions?: React.ReactNode;
-	onSelect: () => void;
-	onClose: () => void;
-}) {
-	const { message: uiMessage } = useUiMessages(["chat"]);
-
-	return (
-		<div
-			className={`group flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-[11px] transition-colors ${
-				active
-					? "bg-muted text-foreground"
-					: "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-			}`}
-		>
-			<button
-				type="button"
-				onClick={onSelect}
-				className="flex max-w-36 items-center gap-1.5"
-			>
-				<HugeiconsIcon icon={icon} className="size-3.5 shrink-0 opacity-80" />
-				<span className="truncate">{label}</span>
-				{badge}
-			</button>
-			{actions}
-			<button
-				type="button"
-				aria-label={uiMessage("chat:right_pane_close", {
-					label: String(label),
-				})}
-				onClick={(e) => {
-					e.stopPropagation();
-					onClose();
-				}}
-				onKeyDown={(e) => {
-					if (isInputComposing(e)) return;
-
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						e.stopPropagation();
-						onClose();
-					}
-				}}
-				className="flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-background hover:text-foreground group-hover:opacity-100"
-			>
-				<X className="size-3" strokeWidth={1.8} />
-			</button>
-		</div>
 	);
 }
 

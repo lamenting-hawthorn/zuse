@@ -121,6 +121,18 @@ describe("Ghostty terminal emulator", () => {
 				}),
 			).toBe("\u001b[<0;6;3m");
 
+			emulator.resize(80, 30, 6.6, 20, 528, 600);
+			expect(
+				emulator.encodeMouse({
+					action: "press",
+					button: 1,
+					modifiers: 0,
+					x: 79.5 * 6.6,
+					y: 40,
+					anyButtonPressed: true,
+				}),
+			).toBe("\u001b[<0;80;3M");
+
 			emulator.write("\u001b[?1000l");
 			expect(emulator.mouseTracking()).toBe(false);
 		} finally {
@@ -188,7 +200,9 @@ describe("Ghostty terminal emulator", () => {
 		}
 	});
 
-	it("uses Ghostty's click and drag selection semantics", async () => {
+	it.each([
+		10, 6.6,
+	])("uses Ghostty click and drag semantics at cell width %s", async (cellWidth) => {
 		const { GhosttyEmulator } = await import(
 			"../../src/terminal/ghostty/emulator.ts"
 		);
@@ -203,12 +217,12 @@ describe("Ghostty terminal emulator", () => {
 			() => {},
 		);
 		try {
-			emulator.resize(20, 4, 10, 20, 200, 80);
+			emulator.resize(20, 4, cellWidth, 20, 20 * cellWidth, 80);
 			emulator.write("hello world");
 			emulator.selectionPress({
 				x: 6,
 				y: 0,
-				surfaceX: 65,
+				surfaceX: 6.5 * cellWidth,
 				surfaceY: 10,
 				timeMs: 100,
 				rectangle: false,
@@ -217,7 +231,7 @@ describe("Ghostty terminal emulator", () => {
 			emulator.selectionPress({
 				x: 6,
 				y: 0,
-				surfaceX: 65,
+				surfaceX: 6.5 * cellWidth,
 				surfaceY: 10,
 				timeMs: 200,
 				rectangle: false,
@@ -228,7 +242,7 @@ describe("Ghostty terminal emulator", () => {
 			emulator.selectionPress({
 				x: 0,
 				y: 0,
-				surfaceX: 5,
+				surfaceX: 0.5 * cellWidth,
 				surfaceY: 10,
 				timeMs: 1_000,
 				rectangle: false,
@@ -236,13 +250,60 @@ describe("Ghostty terminal emulator", () => {
 			emulator.selectionDrag({
 				x: 4,
 				y: 0,
-				surfaceX: 49,
+				surfaceX: 4.9 * cellWidth,
 				surfaceY: 10,
 				timeMs: 1_050,
 				rectangle: false,
 			});
 			expect(emulator.selectionText()).toBe("hello");
 			emulator.selectionRelease({ x: 4, y: 0 });
+		} finally {
+			emulator.dispose();
+		}
+	});
+
+	it("selects the pointed row, including nonzero rows and reverse drags", async () => {
+		const { GhosttyEmulator } = await import(
+			"../../src/terminal/ghostty/emulator.ts"
+		);
+		const emulator = await GhosttyEmulator.create(
+			{
+				background: { r: 0, g: 0, b: 0 },
+				foreground: { r: 255, g: 255, b: 255 },
+				cursor: { r: 255, g: 255, b: 255 },
+				selection: "#456",
+				selectionForeground: { r: 255, g: 255, b: 255 },
+			},
+			() => {},
+		);
+		try {
+			emulator.resize(120, 24, 6.6, 15, 800, 364, 4, 2);
+			emulator.write("first\r\nsecond\r\nthird");
+			for (const [y, expected] of [
+				[0, "first"],
+				[1, "second"],
+				[2, "third"],
+			] as const) {
+				const end = expected.length - 1;
+				emulator.selectionPress({
+					x: end,
+					y,
+					surfaceX: 4 + (end + 0.9) * 6.6,
+					surfaceY: 2 + (y + 0.5) * 15,
+					timeMs: (y + 1) * 1000,
+					rectangle: false,
+				});
+				emulator.selectionDrag({
+					x: 0,
+					y,
+					surfaceX: 4.66,
+					surfaceY: 2 + (y + 0.5) * 15,
+					timeMs: (y + 1) * 1000 + 50,
+					rectangle: false,
+				});
+				expect(emulator.selectionText()).toBe(expected);
+				emulator.selectionRelease({ x: 0, y });
+			}
 		} finally {
 			emulator.dispose();
 		}

@@ -549,7 +549,7 @@ export function TerminalTabControls({
 					title: instance.title,
 				})}
 				title={`${instance.title}: ${error ?? runtimeFailure ?? status}`}
-				className="flex size-5 shrink-0 items-center justify-center rounded hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				className="flex size-4 shrink-0 items-center justify-center rounded hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<span
 					role="status"

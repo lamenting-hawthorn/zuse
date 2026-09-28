@@ -151,3 +151,32 @@ test("disable cancels and joins the scan before reconfiguration", async () => {
 		apply,
 	);
 });
+
+test("socket open timeouts retry automatically and clear the error after recovery", async () => {
+	const download = vi
+		.fn<() => Promise<SyncFile[]>>()
+		.mockRejectedValueOnce(
+			new Error('SocketOpenError: timeout waiting for "open"'),
+		)
+		.mockResolvedValue([]);
+	const apply = vi.fn(async () => {});
+	await withManager(
+		async (manager) => {
+			await advance(0);
+			await vi.waitFor(() =>
+				expect(manager.status("batch").state).toBe("error"),
+			);
+			expect(manager.status("batch").error).toContain("SocketOpenError");
+			expect(apply).not.toHaveBeenCalled();
+			await advance(15_000);
+			await vi.waitFor(() =>
+				expect(manager.status("batch").state).toBe("in-sync"),
+			);
+			expect(download).toHaveBeenCalledTimes(2);
+			expect(apply).toHaveBeenCalledOnce();
+			expect(manager.status("batch").error).toBeNull();
+		},
+		download,
+		apply,
+	);
+});

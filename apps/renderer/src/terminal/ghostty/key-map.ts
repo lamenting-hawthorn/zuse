@@ -131,6 +131,19 @@ export function ghosttyClipboardShortcut(
 	return null;
 }
 
+/** Command+Backspace uses the shell's kill-to-start binding, not Meta+DEL. */
+export function ghosttyShellShortcut(
+	event: ClipboardShortcutEvent,
+): string | null {
+	return event.metaKey &&
+		!event.ctrlKey &&
+		!event.altKey &&
+		!event.shiftKey &&
+		event.key === "Backspace"
+		? "\x15"
+		: null;
+}
+
 export function ghosttyKeyCode(code: string): number {
 	if (code.startsWith("Digit") && code.length === 6) {
 		const digit = Number(code.at(-1));

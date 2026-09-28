@@ -1662,8 +1662,16 @@ html[data-sidebar-dragging] * {
 	height: var(--workspace-gutter);
 }
 .workspace-panel-tabs {
+	padding: 8px 8px 4px;
 	background: var(--background);
 	border-radius: var(--workspace-radius) var(--workspace-radius) 0 0;
+}
+.workspace-panel-tab {
+	box-sizing: border-box;
+	height: 24px;
+	min-height: 24px;
+	max-height: 24px;
+	padding-block: 0;
 }
 .workspace-panel-body {
 	border-radius: 0 0 var(--workspace-radius) var(--workspace-radius);

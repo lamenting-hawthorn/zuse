@@ -1,3 +1,6 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+
 import {
 	AGENTS_RUNNING_COUNT_CHANNEL,
 	type CloudWorkspaceSshAccess,
@@ -38,6 +41,7 @@ import {
 } from "@zuse/contracts";
 import { contextBridge, type IpcRendererEvent, ipcRenderer } from "electron";
 import { createHostDescriptor } from "./host/descriptor.ts";
+import { TERMINAL_FOCUS_CHANNEL } from "./terminal-shortcuts.ts";
 
 let powerStateSubscriberCount = 0;
 let computerAwakeSubscriberCount = 0;
@@ -680,3 +684,14 @@ const bridge = {
 
 contextBridge.exposeInMainWorld("zuse", bridge);
 contextBridge.exposeInMainWorld("memoize", bridge);
+
+// The preload owns native focus routing, including renderer reloads and focus
+// changes caused by menus. No application-level keyboard state crosses IPC.
+const reportTerminalFocus = () => {
+	const focused = Boolean(
+		document.activeElement?.closest("[data-terminal-renderer]"),
+	);
+	ipcRenderer.send(TERMINAL_FOCUS_CHANNEL, focused);
+};
+document.addEventListener("focusin", reportTerminalFocus);
+document.addEventListener("focusout", reportTerminalFocus);

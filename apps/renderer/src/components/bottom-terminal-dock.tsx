@@ -1,10 +1,10 @@
+import { WorkspacePanelTab } from "./workspace-panel-tab.tsx";
 import "@zuse/i18n/english/chat";
-import { HugeiconsIcon } from "@hugeicons/react";
 import type { ChatRef } from "@zuse/client-runtime/resource-ref";
 import { EnvironmentId } from "@zuse/contracts";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { ComputerTerminal01Icon } from "@zuse/icons/solid-rounded";
-import { ChevronDown, Plus, X } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import {
 	type PointerEvent as ReactPointerEvent,
 	useEffect,
@@ -254,45 +254,28 @@ export function BottomTerminalDock({
 				}}
 				className="workspace-terminal-resizer absolute inset-x-0 z-10 m-0 cursor-row-resize border-0 outline-none focus-visible:bg-ring/40"
 			/>
-			<div className="workspace-panel-tabs flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto px-2 text-[11px]">
+			<div className="workspace-panel-tabs flex shrink-0 items-center gap-0.5 overflow-x-auto text-[11px]">
 				{terminals.map((terminal) => {
 					const active = terminal.id === activeTerminal?.id;
 					return (
-						<div
+						<WorkspacePanelTab
 							key={terminal.id}
-							className={`group flex h-7 shrink-0 items-center rounded px-1.5 transition-colors ${
-								active
-									? "bg-muted text-foreground"
-									: "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-							}`}
-						>
-							<button
-								type="button"
-								onClick={() => setActive(chatRef, terminal.id)}
-								className="flex h-7 max-w-36 items-center gap-1.5"
-							>
-								<HugeiconsIcon
-									icon={ComputerTerminal01Icon}
-									className="size-3.5 shrink-0 opacity-80"
+							active={active}
+							icon={ComputerTerminal01Icon}
+							label={terminal.title}
+							closeLabel={uiMessage("chat:terminal_close", {
+								title: terminal.title,
+							})}
+							onSelect={() => setActive(chatRef, terminal.id)}
+							onClose={() => closeBottomTerminalTab(chatRef, terminal.id)}
+							actions={
+								<TerminalTabControls
+									chatRef={chatRef}
+									instance={terminal}
+									placement="bottom"
 								/>
-								<span className="truncate">{terminal.title}</span>
-							</button>
-							<TerminalTabControls
-								chatRef={chatRef}
-								instance={terminal}
-								placement="bottom"
-							/>
-							<button
-								type="button"
-								aria-label={uiMessage("chat:terminal_close", {
-									title: terminal.title,
-								})}
-								onClick={() => closeBottomTerminalTab(chatRef, terminal.id)}
-								className="flex h-7 w-5 shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:bg-background hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-							>
-								<X className="size-3" strokeWidth={1.8} />
-							</button>
-						</div>
+							}
+						/>
 					);
 				})}
 				<button
@@ -305,7 +288,7 @@ export function BottomTerminalDock({
 						ownerLimitReached
 					}
 					title={ownerLimitReached ? ownerLimitMessage : undefined}
-					className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+					className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
 				>
 					<Plus className="size-3.5" strokeWidth={1.8} />
 				</button>
@@ -322,7 +305,7 @@ export function BottomTerminalDock({
 					type="button"
 					aria-label={uiMessage("chat:terminal_hide_bottom")}
 					onClick={() => setOpen(chatRef, false)}
-					className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+					className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
 				>
 					<ChevronDown className="size-3.5" />
 				</button>

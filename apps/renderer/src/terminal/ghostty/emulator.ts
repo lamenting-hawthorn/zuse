@@ -145,6 +145,8 @@ export class GhosttyEmulator {
 	private readonly mouseSize!: number;
 	private readonly mousePosition!: number;
 	private readonly selectionGeometry!: number;
+	private cellWidth = 1;
+	private paddingX = 0;
 	private readonly selectionPosition!: number;
 	private readonly selectionViewport!: number;
 	private readonly selection!: number;
@@ -354,10 +356,12 @@ export class GhosttyEmulator {
 				Math.max(1, Math.round(cellHeight)),
 			),
 		);
+		this.cellWidth = cellWidth;
+		this.paddingX = paddingX;
 		const layout = this.runtime.layout("GhosttyMouseEncoderSize");
 		for (const [field, value] of [
 			["size", layout.size],
-			["screen_width", screenWidth],
+			["screen_width", this.geometryX(screenWidth)],
 			["screen_height", screenHeight],
 			["cell_width", cellWidth],
 			["cell_height", cellHeight],
@@ -436,7 +440,7 @@ export class GhosttyEmulator {
 			this.mousePosition,
 			"GhosttyMousePosition",
 			"x",
-			input.x,
+			this.geometryX(input.x),
 		);
 		this.runtime.writeField(
 			this.mousePosition,
@@ -1214,6 +1218,16 @@ export class GhosttyEmulator {
 		);
 	}
 
+	// Ghostty geometry uses integer cell widths; preserve the same cell and
+	// within-cell fraction as the canvas instead of accumulating rounding drift.
+	private geometryX(x: number): number {
+		return (
+			Math.round(this.paddingX) +
+			((x - this.paddingX) * Math.max(1, Math.round(this.cellWidth))) /
+				this.cellWidth
+		);
+	}
+
 	private setGesturePosition(
 		event: Handle,
 		input: TerminalSelectionInput,
@@ -1222,7 +1236,7 @@ export class GhosttyEmulator {
 			this.selectionPosition,
 			"GhosttySurfacePosition",
 			"x",
-			input.surfaceX,
+			this.geometryX(input.surfaceX),
 		);
 		this.runtime.writeField(
 			this.selectionPosition,
@@ -1279,12 +1293,22 @@ export class GhosttyEmulator {
 		const reference = this.runtime.allocate(referenceLayout.size);
 		let succeeded = false;
 		try {
-			this.runtime.writeField(point, "GhosttyPoint", "tag", 1);
 			const value = pointLayout.fields.value;
 			if (value === undefined) throw new Error("Missing Ghostty point layout");
-			const view = this.runtime.view(point + value.offset, value.size);
-			view.setUint16(0, Math.max(0, x), true);
-			view.setUint16(2, Math.max(0, y), true);
+			this.runtime.bytes(point, pointLayout.size).fill(0);
+			this.runtime.writeField(point, "GhosttyPoint", "tag", 1);
+			this.runtime.writeField(
+				point + value.offset,
+				"GhosttyPointCoordinate",
+				"x",
+				Math.max(0, x),
+			);
+			this.runtime.writeField(
+				point + value.offset,
+				"GhosttyPointCoordinate",
+				"y",
+				Math.max(0, y),
+			);
 			this.runtime.writeField(
 				reference,
 				"GhosttyGridRef",

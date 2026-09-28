@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	ghosttyClipboardShortcut,
 	ghosttyKeyCode,
+	ghosttyShellShortcut,
 } from "../../src/terminal/ghostty/key-map.ts";
 
 describe("Ghostty browser key mapping", () => {
@@ -49,5 +50,27 @@ describe("Ghostty browser key mapping", () => {
 		expect(shortcut("a", { ctrlKey: true })).toBeNull();
 		expect(shortcut("c", { metaKey: true, altKey: true })).toBeNull();
 		expect(shortcut("f", { metaKey: true })).toBeNull();
+	});
+});
+
+describe("terminal shell shortcuts", () => {
+	it("maps only plain Command+Backspace to kill-to-start", () => {
+		const event = {
+			key: "Backspace",
+			metaKey: true,
+			ctrlKey: false,
+			altKey: false,
+			shiftKey: false,
+		};
+		expect(ghosttyShellShortcut(event)).toBe("\x15");
+		for (const modifiers of [
+			{ metaKey: false },
+			{ ctrlKey: true },
+			{ altKey: true },
+			{ shiftKey: true },
+		]) {
+			expect(ghosttyShellShortcut({ ...event, ...modifiers })).toBeNull();
+		}
+		expect(ghosttyShellShortcut({ ...event, key: "Delete" })).toBeNull();
 	});
 });

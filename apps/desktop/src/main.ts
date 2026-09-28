@@ -1,4 +1,5 @@
 import { CloudSyncFileBridge } from "./sync/cloud-sync-file-bridge.ts";
+import { installTerminalShortcutRouting } from "./terminal-shortcuts.ts";
 import "@zuse/i18n/english/desktop";
 import {
 	type ChildProcessWithoutNullStreams,
@@ -1973,6 +1974,7 @@ async function createMainWindow() {
 		elapsedMs: Math.round(performance.now() - startupStartedAt),
 		processElapsedMs: Math.round(performance.now() - desktopProcessStartedAt),
 	});
+	installTerminalShortcutRouting(mainWindow.webContents);
 	installPowerMeasurementMonitor();
 	const sampleWindowTransition = () => {
 		if (powerMeasurementMonitor?.getState().activeRecording !== null) {
