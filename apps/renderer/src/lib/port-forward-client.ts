@@ -57,3 +57,41 @@ export const ensurePortForward = async (
 	const forward = await tunnels.open({ environmentId, remotePort });
 	return forward.localPort;
 };
+
+// Serialize control-panel operations so turning forwarding off also closes
+// tunnels whose asynchronous SSH preparation was already in flight.
+const previewForwardTasks = new Map<string, Promise<unknown>>();
+const queuePreviewForward = <T>(
+	environmentId: string,
+	work: () => Promise<T>,
+): Promise<T> => {
+	const task = (previewForwardTasks.get(environmentId) ?? Promise.resolve())
+		.catch(() => {})
+		.then(work);
+	previewForwardTasks.set(environmentId, task);
+	void task
+		.finally(() => {
+			if (previewForwardTasks.get(environmentId) === task)
+				previewForwardTasks.delete(environmentId);
+		})
+		.catch(() => {});
+	return task;
+};
+export const ensurePreviewPortForward = (
+	environmentId: string,
+	port: number,
+	enabled: () => boolean,
+): Promise<number> =>
+	queuePreviewForward(environmentId, () => {
+		if (!enabled()) throw new Error("Port forwarding is disabled.");
+		return ensurePortForward(environmentId, port);
+	});
+export const closePreviewPortForwards = (
+	environmentId: string,
+): Promise<void> =>
+	queuePreviewForward(environmentId, async () => {
+		const tunnels = getTunnelsBridge();
+		if (!tunnels) return;
+		for (const tunnel of await tunnels.list(environmentId))
+			await tunnels.close(environmentId, tunnel.remotePort);
+	});

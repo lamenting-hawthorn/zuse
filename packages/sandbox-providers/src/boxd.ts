@@ -676,16 +676,28 @@ export const makeBoxdSandboxProvider = (
 		function* (providerSandboxId: string, port: number) {
 			const forwarded = yield* runCommand(
 				providerSandboxId,
-				`node -e ${shellQuote(BOX_PORT_FORWARDER)} ${port}`,
+				`node -e ${shellQuote(BOX_PORT_FORWARDER)} ${port}${port === 47_837 ? "" : " --preview"}`,
 			);
 			if (forwarded.exitCode !== 0) return yield* providerError("transient");
 			const routeName = `p${port}`;
+			// A previously published route can serve the port even when creation
+			// is unavailable. Never reuse auto mode: it can switch ports later.
+			const routeForPort = (routes: ReadonlyArray<ProxyRoute>) =>
+				routes.find(
+					(route) =>
+						route.name === routeName &&
+						route.port === port &&
+						route.portMode === "locked",
+				) ??
+				routes.find(
+					(route) => route.port === port && route.portMode === "locked",
+				);
 			const listRoutes = call("machines.proxies.list", () =>
 				client.machines.proxies.list(providerSandboxId),
 			);
 			let routes = yield* listRoutes;
 			let creation: SandboxProviderError | undefined;
-			if (!routes.some((route) => route.name === routeName)) {
+			if (routeForPort(routes) === undefined) {
 				// A concurrent resolution may have created it first; only a route
 				// that is still missing afterwards makes the failure the answer.
 				creation = yield* call("machines.proxies.create", () =>
@@ -698,7 +710,7 @@ export const makeBoxdSandboxProvider = (
 				);
 				routes = yield* listRoutes;
 			}
-			const route = routes.find((candidate) => candidate.name === routeName);
+			const route = routeForPort(routes);
 			if (route === undefined)
 				return yield* creation ?? providerError("transient");
 			return {

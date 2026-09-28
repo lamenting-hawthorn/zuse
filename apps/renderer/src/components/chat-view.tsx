@@ -9,6 +9,10 @@ import {
 	retryCloudHistory,
 	useCloudHistoryStatus,
 } from "../lib/session-timeline-client-bus.ts";
+import {
+	useBoxdPreviewEnabled,
+	usePreviewServers,
+} from "../lib/use-preview-servers.ts";
 import { ChatLoadingFallback } from "./chat-loading-fallback.tsx";
 import { ToolActivityTree } from "./tool-activity-tree.tsx";
 import "@zuse/i18n/english/chat";
@@ -196,6 +200,8 @@ export function ChatView({
 	useLayoutEffect(() => {
 		markRendererInteraction(sessionId, "first-react-commit");
 	}, [sessionId]);
+	const boxdPreviews = useBoxdPreviewEnabled(environmentId);
+	usePreviewServers(environmentId, boxdPreviews, boxdPreviews);
 	const prefersReducedMotion = usePrefersReducedMotion();
 	const cloudSummary = useCloudChatSummaryForSelection({
 		chatId: session.chatId,

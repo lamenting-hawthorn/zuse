@@ -1,4 +1,5 @@
 import { isInputComposing } from "../lib/input-composition.ts";
+import { usePreviewSettings } from "../store/preview-settings.ts";
 import "@zuse/i18n/english/chat";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { ChatRef } from "@zuse/client-runtime/resource-ref";
@@ -18,7 +19,6 @@ import {
 import { message as uiMessage } from "@zuse/i18n";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { StarIcon } from "@zuse/icons/solid-rounded";
-import { Effect } from "effect";
 import {
 	Camera,
 	Check,
@@ -63,11 +63,15 @@ import { getCloudPreviewUrl } from "../lib/cloud-preview-client.ts";
 import { useActiveEnvironmentEntities } from "../lib/environment-entity-hooks.ts";
 import { ensurePortForward } from "../lib/port-forward-client.ts";
 import { reportPowerBrowserSession } from "../lib/power-runtime-activity.ts";
+import type { DiscoveredPreview } from "../lib/preview-discovery.ts";
 import {
 	getLocalEnvironmentId,
-	getRpcClient,
 	isCloudWorkspaceEnvironment,
 } from "../lib/rpc-client.ts";
+import {
+	useBoxdPreviewEnabled,
+	usePreviewServers,
+} from "../lib/use-preview-servers.ts";
 import { useAnnotationsStore } from "../store/annotations.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { rightPaneRefFromKey, useUiStore } from "../store/ui.ts";
@@ -167,11 +171,7 @@ const annotationTools: ReadonlyArray<{
 ];
 
 /** A dev server row rendered by the empty state (see `PreviewServer`). */
-type PreviewServerInfo = {
-	readonly name: string;
-	readonly port: number;
-	readonly loopbackOnly: boolean;
-};
+type PreviewServerInfo = DiscoveredPreview;
 
 const fallbackLocalServers: ReadonlyArray<PreviewServerInfo> = [
 	{ name: "T3 Code", port: 3773, loopbackOnly: true },
@@ -468,6 +468,7 @@ export function BrowserPane({
 	const domainGrantsRef = useRef(new Set<string>());
 	const [url, setUrl] = useState<string>("");
 	const [inputValue, setInputValue] = useState<string>("");
+	const [showServers, setShowServers] = useState(false);
 	const [canGoBack, setCanGoBack] = useState(false);
 	const [canGoForward, setCanGoForward] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
@@ -546,10 +547,20 @@ export function BrowserPane({
 		useState<BrowserAnnotationStroke | null>(null);
 	const [annotationComment, setAnnotationComment] = useState("");
 	const [attachingAnnotation, setAttachingAnnotation] = useState(false);
-	const [previewServers, setPreviewServers] = useState<
-		ReadonlyArray<PreviewServerInfo>
-	>(() => (isLocalEnvironment ? fallbackLocalServers : []));
 	const hasLoadedPage = url !== "" && url !== "about:blank";
+	const boxdPreviews = useBoxdPreviewEnabled(environmentId);
+	const autoPublishPreviews = usePreviewSettings(
+		(state) => state.environments[environmentId]?.publish === true,
+	);
+	const detectedServers = usePreviewServers(
+		environmentId,
+		visible && (boxdPreviews || !hasLoadedPage || showServers),
+		boxdPreviews,
+	);
+	const previewServers =
+		detectedServers.length === 0 && isLocalEnvironment
+			? fallbackLocalServers
+			: detectedServers;
 	const viewportPreviewScale =
 		viewport.mode === "fill" ||
 		viewportStageSize.width === 0 ||
@@ -796,44 +807,6 @@ export function BrowserPane({
 			}),
 		);
 	};
-
-	// Discover dev servers on the chat's environment over its RPC connection —
-	// the same path serves local, SSH, and cloud. Poll while the empty state is
-	// visible so servers started after mount still appear. Stop after repeated
-	// failures so a broken remote connection is not re-dialed every tick; the
-	// poll restarts when the pane or environment changes.
-	useEffect(() => {
-		if (!visible || hasLoadedPage) return;
-		let cancelled = false;
-		let consecutiveFailures = 0;
-		const refresh = async (): Promise<void> => {
-			if (consecutiveFailures >= 3) return;
-			try {
-				const client = await getRpcClient(environmentId);
-				const result = await Effect.runPromise(
-					client["previews.listServers"](),
-				);
-				if (cancelled) return;
-				consecutiveFailures = 0;
-				// Local environments keep the placeholder suggestions when nothing
-				// is detected; remote lists reflect exactly what is listening.
-				setPreviewServers((current) =>
-					result.servers.length === 0 && isLocalEnvironment
-						? current
-						: result.servers,
-				);
-			} catch {
-				consecutiveFailures += 1;
-				if (!cancelled && !isLocalEnvironment) setPreviewServers([]);
-			}
-		};
-		void refresh();
-		const interval = setInterval(() => void refresh(), 5_000);
-		return () => {
-			cancelled = true;
-			clearInterval(interval);
-		};
-	}, [environmentId, visible, hasLoadedPage, isLocalEnvironment]);
 
 	// Wire navigation lifecycle events onto the underlying webview element.
 	// We attach via `addEventListener` because the webview tag isn't a real
@@ -1103,6 +1076,7 @@ export function BrowserPane({
 	const navigate = (next: string) => {
 		const resolved = resolveUrl(next);
 		if (resolved === null) return;
+		setShowServers(false);
 		setUrl(resolved);
 		setInputValue(resolved);
 		const wv = webviewRef.current as WebviewElement | null;
@@ -1585,6 +1559,15 @@ export function BrowserPane({
 					spellCheck={false}
 					className="flex-1 rounded bg-transparent px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/70 focus:bg-muted/40"
 				/>
+				<ToolbarButton
+					onClick={() => setShowServers((current) => !current)}
+					disabled={false}
+					ariaLabel={uiMessage(
+						"chat:browser_pane_dev_servers_on_this_environment",
+					)}
+				>
+					<Server className="size-3.5" strokeWidth={1.8} />
+				</ToolbarButton>
 				<select
 					value={viewport.mode}
 					onChange={(event) =>
@@ -1808,11 +1791,20 @@ export function BrowserPane({
 				ref={viewportStageRef}
 				className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
 			>
-				{!hasLoadedPage ? (
+				{!hasLoadedPage || showServers ? (
 					<BrowserEmptyState
 						servers={previewServers}
 						isRemote={!isLocalEnvironment}
+						publicLoopbackSupported={boxdPreviews}
 						onOpenServer={async (server) => {
+							if (boxdPreviews && autoPublishPreviews) {
+								const preview = await getCloudPreviewUrl(
+									environmentId,
+									server.port,
+								);
+								navigate(preview.url);
+								return;
+							}
 							const localPort = await ensurePortForward(
 								environmentId,
 								server.port,
@@ -3821,11 +3813,13 @@ function BrowserAgentOverlay({
 function BrowserEmptyState({
 	servers,
 	isRemote,
+	publicLoopbackSupported,
 	onOpenServer,
 	onCopyPublicLink,
 }: {
 	servers: ReadonlyArray<PreviewServerInfo>;
 	isRemote: boolean;
+	publicLoopbackSupported: boolean;
 	onOpenServer: (server: PreviewServerInfo) => Promise<void>;
 	/** Cloud workspaces only: mint and copy the public preview link. */
 	onCopyPublicLink: ((server: PreviewServerInfo) => Promise<void>) | null;
@@ -3878,23 +3872,30 @@ function BrowserEmptyState({
 										<span className="truncate text-sm font-semibold text-foreground">
 											{server.name}
 										</span>
-										<span className="text-sm text-muted-foreground">
+										<span
+											className="truncate text-sm text-muted-foreground"
+											title={server.publicUrl}
+										>
 											{busyPort === server.port
 												? uiMessage("chat:browser_pane_connecting")
-												: isRemote
-													? uiMessage("chat:browser_pane_port", {
-															value1: String(server.port),
-														})
-													: `localhost:${server.port}`}
+												: (server.publicUrl ??
+													(isRemote
+														? uiMessage("chat:browser_pane_port", {
+																value1: String(server.port),
+															})
+														: `localhost:${server.port}`))}
 										</span>
 									</span>
 								</button>
 								{onCopyPublicLink !== null ? (
 									<button
 										type="button"
-										disabled={server.loopbackOnly || busyPort !== null}
+										disabled={
+											(server.loopbackOnly && !publicLoopbackSupported) ||
+											busyPort !== null
+										}
 										title={
-											server.loopbackOnly
+											server.loopbackOnly && !publicLoopbackSupported
 												? uiMessage(
 														"chat:browser_pane_this_server_only_listens_on_127_0_0_1_restart_it_with_host_0_0_0_0_to",
 													)

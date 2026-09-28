@@ -4,11 +4,13 @@ const mocks = vi.hoisted(() => ({
 	prepare: vi.fn(),
 	open: vi.fn(),
 	list: vi.fn(),
+	close: vi.fn(),
 }));
 
 vi.mock("../../src/lib/bridge.ts", () => ({
 	getTunnelsBridge: () => ({
 		list: mocks.list,
+		close: mocks.close,
 		open: mocks.open,
 	}),
 }));
@@ -22,7 +24,11 @@ vi.mock("../../src/lib/rpc-client.ts", () => ({
 	isCloudWorkspaceEnvironment: () => true,
 }));
 
-import { ensurePortForward } from "../../src/lib/port-forward-client.ts";
+import {
+	closePreviewPortForwards,
+	ensurePortForward,
+	ensurePreviewPortForward,
+} from "../../src/lib/port-forward-client.ts";
 
 describe("port forward client", () => {
 	beforeEach(() => {
@@ -63,4 +69,43 @@ describe("port forward client", () => {
 		expect(mocks.prepare).toHaveBeenCalledTimes(1);
 		expect(mocks.open).toHaveBeenCalledTimes(1);
 	});
+});
+
+it("closes an in-flight forward before disabling completes", async () => {
+	vi.resetAllMocks();
+	let resolveOpen: (value: {
+		environmentId: string;
+		remotePort: number;
+		localPort: number;
+	}) => void = () => {};
+	mocks.prepare.mockResolvedValue({});
+	mocks.list
+		.mockResolvedValueOnce([])
+		.mockResolvedValueOnce([
+			{ environmentId: "disable-race", remotePort: 3001, localPort: 13001 },
+		]);
+	mocks.open.mockImplementationOnce(
+		() =>
+			new Promise((resolve) => {
+				resolveOpen = resolve;
+			}),
+	);
+	const opening = ensurePreviewPortForward("disable-race", 3001, () => true);
+	await vi.waitFor(() => expect(mocks.open).toHaveBeenCalled());
+	const closing = closePreviewPortForwards("disable-race");
+	resolveOpen({
+		environmentId: "disable-race",
+		remotePort: 3001,
+		localPort: 13001,
+	});
+	await opening;
+	await closing;
+	expect(mocks.close).toHaveBeenCalledWith("disable-race", 3001);
+});
+it("does not start a queued forward once disabled", async () => {
+	const before = mocks.open.mock.calls.length;
+	await expect(
+		ensurePreviewPortForward("disabled", 3001, () => false),
+	).rejects.toThrow("disabled");
+	expect(mocks.open.mock.calls.length).toBe(before);
 });

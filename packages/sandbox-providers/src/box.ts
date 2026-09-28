@@ -372,7 +372,7 @@ export const makeBoxSandboxProvider = (
 	): Effect.Effect<void, SandboxProviderError> =>
 		runCommand(
 			providerSandboxId,
-			`node -e ${shellQuote(BOX_PORT_FORWARDER)} ${port} && host ${port} --public >/dev/null`,
+			`node -e ${shellQuote(BOX_PORT_FORWARDER)} ${port}${port === 47_837 ? "" : " --preview"} && host ${port} --public >/dev/null`,
 		).pipe(
 			Effect.flatMap((result) =>
 				result.exitCode === 0

@@ -3528,7 +3528,8 @@ export const routeCloudWorkspaceRequest = (
 				return yield* Effect.fail(badRequest("invalid_preview_port"));
 			// The returned host is public-by-URL: anyone holding it reaches the
 			// port with no further auth. The high-entropy sandbox id is the trust
-			// model (like sharing a tunnel link); revocation is pause/restart.
+			// model (like sharing a tunnel link). Pausing does not revoke a route:
+			// providers such as boxd can wake the machine on inbound traffic.
 			const provider = yield* (yield* SandboxProviders)
 				.get(workspace.provider)
 				.pipe(

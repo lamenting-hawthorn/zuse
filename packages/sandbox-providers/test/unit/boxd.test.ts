@@ -977,6 +977,7 @@ describe("boxd sandbox provider", () => {
 			httpBaseUrl: "https://p3000.ws.boxd.sh",
 			wsBaseUrl: "wss://p3000.ws.boxd.sh",
 		});
+		expect(client.execs[0]?.params.command).toMatch(/ 3000 --preview$/u);
 		expect(client.methods("machines.proxies.create")[0]?.args).toEqual([
 			"vm_1",
 			"p3000",
@@ -985,6 +986,30 @@ describe("boxd sandbox provider", () => {
 		// A second resolution finds the route without creating it again.
 		await run(adapter.resolveEndpoint("vm_1", 3000));
 		expect(client.methods("machines.proxies.create")).toHaveLength(1);
+	});
+
+	test("reuses an existing pinned default preview without creating another route", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [
+			{ ...routeOf(machine, null, 3001), portMode: "locked" },
+		]);
+		await expect(
+			run(makeAdapter(client).resolveEndpoint(machine.id, 3001)),
+		).resolves.toEqual({
+			httpBaseUrl: "https://ws.boxd.sh",
+			wsBaseUrl: "wss://ws.boxd.sh",
+		});
+		expect(client.methods("machines.proxies.create")).toHaveLength(0);
+	});
+
+	test("does not reuse an auto-detected default route for a fixed port preview", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [routeOf(machine, null, 3001)]);
+		await expect(
+			run(makeAdapter(client).resolveEndpoint(machine.id, 3001)),
+		).resolves.toMatchObject({ httpBaseUrl: "https://p3001.ws.boxd.sh" });
 	});
 
 	test("surfaces a refused route instead of retrying it forever", async () => {
