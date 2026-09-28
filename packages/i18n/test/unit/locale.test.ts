@@ -32,9 +32,22 @@ describe("locale negotiation", () => {
 		expect(resolveLocale("system", ["xx", "fr-CA"], all)).toBe("fr");
 		expect(resolveLocale("de", ["ja-JP"], all)).toBe("de");
 	});
-	it("does not activate unreviewed languages in production", () => {
-		expect(availableLocales()).toContain("en");
+	it("enables shipped languages in production and keeps the pseudolocale in development", () => {
+		expect(availableLocales()).toEqual([
+			"en",
+			"fr",
+			"de",
+			"zh-Hans",
+			"zh-Hant",
+			"ja",
+			"ko",
+		]);
 		expect(availableLocales()).not.toContain("en-XA");
+		expect(availableLocales(true)).toContain("en-XA");
+		expect(resolveLocale("fr", ["en-US"])).toBe("fr");
+		expect(resolveLocale("system", ["ja-JP"])).toBe("ja");
+	});
+	it("falls back to English when a language is unavailable", () => {
 		expect(resolveLocale("fr", ["fr-FR"], ["en"])).toBe("en");
 	});
 });

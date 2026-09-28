@@ -99,7 +99,15 @@ describe("installation-local language preference", () => {
 		await state.refresh();
 		expect(state.get().locale).toBe("ja");
 	});
-	it("rejects unreviewed and malformed IPC values", async () => {
+	it("allows shipped translations in production and persists explicit choices", async () => {
+		const persist = vi.fn();
+		const state = controller({ preview: false, persist });
+		expect(state.get().locale).toBe("fr");
+		await state.set("ja");
+		expect(persist).toHaveBeenCalledWith("ja");
+		expect(state.get()).toMatchObject({ preference: "ja", locale: "ja" });
+	});
+	it("rejects the development pseudolocale and malformed IPC values", async () => {
 		const state = controller({ preview: false });
 		await expect(state.set("en-XA")).rejects.toThrow("Unsupported");
 		await expect(state.set({ locale: "en" })).rejects.toThrow("Unsupported");
@@ -114,7 +122,7 @@ describe("installation-local language preference", () => {
 	it("falls back to System if a preview language was disabled", () => {
 		expect(
 			controller({ preference: "en-XA", preview: false }).get(),
-		).toMatchObject({ preference: "system", locale: "en" });
+		).toMatchObject({ preference: "system", locale: "fr" });
 	});
 });
 
@@ -128,7 +136,7 @@ describe("automatic region fallback", () => {
 		await state.set("system");
 		expect(state.get().locale).toBe("zh-Hant");
 	});
-	it("does not let region override system languages or release gates", () => {
+	it("prioritizes system languages and supports region fallback in production", () => {
 		expect(controller({ country: () => "DE" }).get().locale).toBe("fr");
 		expect(
 			controller({
@@ -136,7 +144,7 @@ describe("automatic region fallback", () => {
 				country: () => "TW",
 				preview: false,
 			}).get().locale,
-		).toBe("en");
+		).toBe("zh-Hant");
 	});
 	it("retains a stored choice after restarting with a different region", async () => {
 		const directory = await mkdtemp(join(tmpdir(), "zuse-locale-restart-"));

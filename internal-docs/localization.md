@@ -1,9 +1,9 @@
 # Localization
 
 Zuse ships offline interface catalogs for English, French, German, Simplified Chinese,
-Traditional Chinese, Japanese, and Korean. English is enabled for production. The six
-other catalogs are machine translation drafts and must pass native-speaker review and
-screen QA before activation. `en-XA` is an expanded development pseudolocale.
+Traditional Chinese, Japanese, and Korean. All seven languages are enabled for production.
+The six non-English catalogs remain machine translation drafts pending native-speaker
+review and screen QA. `en-XA` is an expanded development-only pseudolocale.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ by English. An explicit saved choice always wins. Desktop detection stays offlin
 and requests neither GPS permissions nor an IP lookup.
 Explicit Chinese scripts take precedence over region: Taiwan, Hong Kong, and Macao
 resolve to Traditional; China, Singapore, and bare `zh` resolve to Simplified.
-Unsupported or unreviewed languages fall back to English. OS-owned controls can follow
+Unsupported languages fall back to English. OS-owned controls can follow
 the operating system's language.
 
 Feature English resources are registered alongside their consuming modules. Other
@@ -133,15 +133,16 @@ individual strings. Current drafts are not evidence of terminology approval.
 
 ## Review and progressive release
 
-`packages/i18n/review/desktop.json` is the activation gate. Each translation starts with `status: "draft"`,
+`packages/i18n/review/desktop.json` tracks review status independently of availability.
+Each translation starts with `status: "draft"`,
 a null reviewer, and draft provenance. `draftSourceRevision` records the English version
 used for the initial draft; it is not automatically advanced during regeneration.
 After native-speaker review and acceptance checks, set `status: "reviewed"`, record the
 reviewer's identity and the current English `sourceRevision`, and attach screen QA
 results to the reviewing PR. Never mark a draft reviewed just to enable the selector.
-CI rejects stale enabled translations, missing/obsolete keys, malformed placeholders,
-invalid plural structure, and unsafe rich-text markup. Development exposes drafts and
-the pseudolocale; packaged production exposes only reviewed languages.
+CI rejects stale reviewed translations, missing/obsolete keys, malformed placeholders,
+invalid plural structure, and unsafe rich-text markup. Packaged production exposes all
+registered languages except the pseudolocale, which is available only in development.
 
 For an additional language, extend the locale wire union and locale registry, add
 catalogs and draft review metadata, update negotiation/plural tests, and regenerate.
