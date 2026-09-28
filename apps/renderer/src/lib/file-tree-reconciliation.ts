@@ -15,6 +15,28 @@ const parentPath = (path: string): string => {
 const treePath = (entry: FsEntry): string =>
 	entry.kind === "directory" ? `${stripSlash(entry.path)}/` : entry.path;
 
+/** Refresh one deferred level, preserving descendants of surviving directories. */
+export const deferredDirectoryPaths = (
+	knownPaths: ReadonlySet<string>,
+	directory: string,
+	entries: ReadonlyArray<FsEntry>,
+): string[] => {
+	const children = entries.map(treePath);
+	const directories = new Set(children.filter((path) => path.endsWith("/")));
+	const prefix = `${stripSlash(directory)}/`;
+	return [
+		...new Set([
+			...[...knownPaths].filter(
+				(path) =>
+					!path.startsWith(prefix) ||
+					path === prefix ||
+					directories.has(path.slice(0, path.indexOf("/", prefix.length) + 1)),
+			),
+			...children,
+		]),
+	];
+};
+
 /**
  * Reconcile only directories touched by a filesystem watcher batch.
  *

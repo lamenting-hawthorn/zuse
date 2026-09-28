@@ -36,7 +36,10 @@ import {
 	dispatchFileTreeCommand,
 	listDeferredDirectory,
 } from "../lib/file-tree-client-bus.ts";
-import { fileTreeSnapshotOperations } from "../lib/file-tree-reconciliation.ts";
+import {
+	deferredDirectoryPaths,
+	fileTreeSnapshotOperations,
+} from "../lib/file-tree-reconciliation.ts";
 import { useFileTreeResource } from "../lib/file-tree-resource-hooks.ts";
 import { useGitChangesResource } from "../lib/git-workspace-client-bus.ts";
 import { useSettingsStore } from "../lib/settings-client-bus.ts";
@@ -456,35 +459,65 @@ function TreeView({
 	}, [model, paths]);
 
 	// Deferred directories (`node_modules`, gitignored build output) arrive
-	// empty; their children are fetched one level at a time the first time the
+	// empty; their children are fetched one level at a time each time the
 	// user opens them, and stay out of the watched snapshot.
 	const deferredRef = useRef<Set<string>>(new Set(deferredDirectories));
 	const loadedDeferredRef = useRef<Set<string>>(new Set());
+	const deferredPathsRef = useRef<Set<string>>(new Set());
+	const deferredRequestsRef = useRef<Map<string, object>>(new Map());
 	useEffect(() => {
 		for (const dir of deferredDirectories) deferredRef.current.add(dir);
 	}, [deferredDirectories]);
 	const loadDeferred = useCallback(
 		(dir: string) => {
+			const item = model.getItem(`${dir}/`);
+			if (item === null || !("isExpanded" in item) || !item.isExpanded())
+				return;
 			if (!deferredRef.current.has(dir) || loadedDeferredRef.current.has(dir))
 				return;
 			loadedDeferredRef.current.add(dir);
+			const request = {};
+			deferredRequestsRef.current.set(dir, request);
 			void listDeferredDirectory(executionRef, dir).then(
 				(entries) => {
-					const operations = entries.flatMap((entry) => {
-						const path =
-							entry.kind === "directory" ? `${entry.path}/` : entry.path;
+					if (deferredRequestsRef.current.get(dir) !== request) return;
+					const known = new Set(
+						[...deferredPathsRef.current].filter(
+							(path) => model.getItem(path) !== null,
+						),
+					);
+					const next = deferredDirectoryPaths(known, dir, entries);
+					const operations = fileTreeSnapshotOperations(known, next).filter(
+						(operation) => {
+							if (operation.type === "remove") return true;
+							const existing = model.getItem(operation.path);
+							return (
+								existing === null ||
+								existing.isDirectory() !== operation.path.endsWith("/")
+							);
+						},
+					);
+					deferredPathsRef.current = new Set(next);
+					for (const operation of operations) {
+						if (operation.type !== "remove" || !operation.path.endsWith("/"))
+							continue;
+						const removed = stripSlash(operation.path);
+						deferredRef.current.delete(removed);
+						loadedDeferredRef.current.delete(removed);
+						deferredRequestsRef.current.delete(removed);
+						dirPathsRef.current.delete(removed);
+					}
+					for (const entry of entries) {
 						if (entry.kind === "directory") {
 							// Everything inside a deferred directory loads on demand too.
 							deferredRef.current.add(entry.path);
 							dirPathsRef.current.add(entry.path);
 						}
-						return model.getItem(path) === null
-							? [{ type: "add" as const, path }]
-							: [];
-					});
+					}
 					if (operations.length > 0) model.batch(operations);
 				},
 				() => {
+					if (deferredRequestsRef.current.get(dir) !== request) return;
 					loadedDeferredRef.current.delete(dir);
 				},
 			);
@@ -496,9 +529,10 @@ function TreeView({
 		const loadExpanded = () => {
 			for (const dir of deferredRef.current) {
 				const item = model.getItem(`${dir}/`) ?? model.getItem(dir);
-				if (item === null) {
-					// Removed by a snapshot; reload if it comes back.
+				if (item === null || !("isExpanded" in item) || !item.isExpanded()) {
+					// Reopening must refresh unwatched contents; discard stale requests.
 					loadedDeferredRef.current.delete(dir);
+					deferredRequestsRef.current.delete(dir);
 					continue;
 				}
 				if (

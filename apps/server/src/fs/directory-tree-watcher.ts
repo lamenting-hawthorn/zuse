@@ -120,8 +120,8 @@ const watchPerDirectory = async (
 			return;
 		}
 		watcher.on("error", (error) => {
-			if (rel === "") options.onError(error);
-			else detach(rel);
+			if (rel !== "") detach(rel);
+			options.onError(error);
 		});
 		watchers.set(rel, watcher);
 		const entries = await readdir(abs, { withFileTypes: true }).catch(() => []);

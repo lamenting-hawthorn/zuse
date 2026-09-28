@@ -2,6 +2,7 @@ import { FileTree } from "@pierre/trees";
 import { FsEntry } from "@zuse/contracts";
 import { describe, expect, it, vi } from "vitest";
 import {
+	deferredDirectoryPaths,
 	fileTreeSnapshotOperations,
 	reconcileFileTreePaths,
 } from "../../src/lib/file-tree-reconciliation.ts";
@@ -139,6 +140,33 @@ describe("file tree reconciliation", () => {
 });
 
 describe("file tree snapshot mutations", () => {
+	it("refreshes deferred children, removes stale subtrees and preserves surviving descendants", () => {
+		const before = new Set([
+			"dist/old/",
+			"dist/old/stale.js",
+			"dist/keep/",
+			"dist/keep/live.js",
+			"dist/changed/",
+			"dist/changed/nested.js",
+			"dist/deleted.js",
+			"other/file.js",
+		]);
+		const next = deferredDirectoryPaths(before, "dist", [
+			directory("dist/keep"),
+			file("dist/changed"),
+			file("dist/new.js"),
+		]);
+		const model = new FileTree({ paths: ["dist/", ...before] });
+		model.batch(fileTreeSnapshotOperations(before, next));
+		expect(model.getItem("dist/old/")).toBeNull();
+		expect(model.getItem("dist/old/stale.js")).toBeNull();
+		expect(model.getItem("dist/deleted.js")).toBeNull();
+		expect(model.getItem("dist/changed")?.isDirectory()).toBe(false);
+		expect(model.getItem("dist/new.js")).not.toBeNull();
+		expect(model.getItem("dist/keep/live.js")).not.toBeNull();
+		expect(model.getItem("other/file.js")).not.toBeNull();
+		model.cleanUp();
+	});
 	it.each([
 		{
 			before: [
