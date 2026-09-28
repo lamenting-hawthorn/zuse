@@ -46,6 +46,7 @@ pairing, and user-managed remote environments keep their existing paths.
 | [Security](security.md) | Identity, authorization, credentials, encryption, and isolation |
 | [Public API](public-api.md) | API keys, integration endpoints, message delivery, and signed webhooks |
 | [Operations](operations.md) | Releases, environments, migrations, monitoring, incidents, and smoke tests |
+| [Incident debugging](incident-debugging.md) | Hands-on investigation of stuck chats: SSH, provider commands, logs, processes, data, and verified repair |
 | [API domain cutover](api-domain-cutover.md) | DNS ownership, issuer rollout, and rollback |
 | [Slack app guide](slack-app.md) | Installation, account connection, and automations |
 | [Slack app operations](slack-app-operations.md) | App registration, callbacks, queues, and rollout verification |

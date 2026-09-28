@@ -6,6 +6,8 @@ provisioning and cutover checklist lives in the
 and billing procedures live in
 [cloud billing operations](billing.md).
 
+For a stuck chat, start with the [hands-on incident investigation runbook](incident-debugging.md): API/provider checks, SSH and command access, guest logs, process diagnosis, data preservation, and recovery verification.
+
 Before changing runtime storage paths or repairing missing chat data, follow
 [runtime data recovery](runtime-data-recovery.md).
 
