@@ -1,10 +1,63 @@
 {
   "schemaVersion": 1,
-  "revision": 2026092201,
-  "generatedAt": "2026-09-22T00:00:00.000Z",
+  "revision": 2026092801,
+  "generatedAt": "2026-09-28T00:00:00.000Z",
   "providers": {
     "claude": {
       "models": [
+        {
+          "id": "claude-sonnet-5-5",
+          "label": "Sonnet 5.5",
+          "badgeLabel": "New",
+          "optionDescriptors": [
+            {
+              "kind": "select",
+              "id": "effort",
+              "label": "Reasoning",
+              "options": [
+                {
+                  "id": "low",
+                  "label": "Low"
+                },
+                {
+                  "id": "medium",
+                  "label": "Medium"
+                },
+                {
+                  "id": "high",
+                  "label": "High"
+                },
+                {
+                  "id": "xhigh",
+                  "label": "Extra High"
+                },
+                {
+                  "id": "max",
+                  "label": "Max"
+                },
+                {
+                  "id": "ultracode",
+                  "label": "Ultracode"
+                }
+              ],
+              "defaultId": "high"
+            },
+            {
+              "kind": "select",
+              "id": "contextWindow",
+              "label": "Context Window",
+              "options": [
+                {
+                  "id": "1m",
+                  "label": "1M"
+                }
+              ],
+              "defaultId": "1m"
+            }
+          ],
+          "supportsPlanMode": true,
+          "supportsWebSearch": "native"
+        },
         {
           "id": "claude-opus-5-5",
           "label": "Opus 5.5",
@@ -307,7 +360,10 @@
         "claude-opus-4.7": "claude-opus-4-7",
         "opus-4.6": "claude-opus-4-6",
         "claude-opus-4.6": "claude-opus-4-6",
-        "sonnet": "claude-sonnet-5",
+        "sonnet": "claude-sonnet-5-5",
+        "sonnet-5.5": "claude-sonnet-5-5",
+        "sonnet-5-5": "claude-sonnet-5-5",
+        "claude-sonnet-5.5": "claude-sonnet-5-5",
         "sonnet-5": "claude-sonnet-5",
         "claude-sonnet-5": "claude-sonnet-5",
         "sonnet-4.6": "claude-sonnet-4-6",
@@ -699,6 +755,26 @@
           "supportsPlanMode": true
         },
         {
+          "id": "claude-sonnet-5.5",
+          "label": "Claude Sonnet 5.5",
+          "badgeLabel": "New",
+          "optionDescriptors": [
+            {
+              "kind": "select",
+              "id": "contextWindow",
+              "label": "Context Window",
+              "options": [
+                {
+                  "id": "1m",
+                  "label": "1M"
+                }
+              ],
+              "defaultId": "1m"
+            }
+          ],
+          "supportsPlanMode": true
+        },
+        {
           "id": "claude-sonnet-5",
           "label": "Claude Sonnet 5",
           "optionDescriptors": [
@@ -752,6 +828,7 @@
         }
       ],
       "aliases": {
+        "claude-sonnet-5-5": "claude-sonnet-5.5",
         "claude-opus-5-5": "claude-opus-5.5",
         "claude-fable-5-1": "claude-fable-5.1",
         "claude-opus-4-8": "claude-opus-4.8",
@@ -801,6 +878,26 @@
         {
           "id": "claude-opus-5",
           "label": "Opus 5",
+          "supportsPlanMode": true
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "label": "Sonnet 5.5",
+          "badgeLabel": "New",
+          "optionDescriptors": [
+            {
+              "kind": "select",
+              "id": "contextWindow",
+              "label": "Context Window",
+              "options": [
+                {
+                  "id": "1m",
+                  "label": "1M"
+                }
+              ],
+              "defaultId": "1m"
+            }
+          ],
           "supportsPlanMode": true
         },
         {
@@ -1043,6 +1140,26 @@
           "supportsPlanMode": true
         },
         {
+          "id": "opencode/claude-sonnet-5-5",
+          "label": "OpenCode · Claude Sonnet 5.5",
+          "badgeLabel": "New",
+          "optionDescriptors": [
+            {
+              "kind": "select",
+              "id": "contextWindow",
+              "label": "Context Window",
+              "options": [
+                {
+                  "id": "1m",
+                  "label": "1M"
+                }
+              ],
+              "defaultId": "1m"
+            }
+          ],
+          "supportsPlanMode": true
+        },
+        {
           "id": "opencode/claude-sonnet-5",
           "label": "OpenCode · Claude Sonnet 5",
           "defaultModel": true,
@@ -1213,6 +1330,26 @@
     },
     "opencode2": {
       "models": [
+        {
+          "id": "opencode/claude-sonnet-5-5",
+          "label": "OpenCode 2 · Claude Sonnet 5.5",
+          "badgeLabel": "New",
+          "optionDescriptors": [
+            {
+              "kind": "select",
+              "id": "contextWindow",
+              "label": "Context Window",
+              "options": [
+                {
+                  "id": "1m",
+                  "label": "1M"
+                }
+              ],
+              "defaultId": "1m"
+            }
+          ],
+          "supportsPlanMode": true
+        },
         {
           "id": "opencode/claude-sonnet-5",
           "label": "OpenCode 2 · Claude Sonnet 5",
@@ -1457,6 +1594,12 @@
       "output": 25,
       "cacheRead": 0.5,
       "cacheCreate": 6.25
+    },
+    "claude-sonnet-5-5": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.2,
+      "cacheCreate": 2.5
     },
     "claude-sonnet-5": {
       "input": 3,

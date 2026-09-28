@@ -90,6 +90,7 @@ describe("bundled model catalog", () => {
 
 	it("makes Fable 5.1 the Claude default and keeps aliases routed", () => {
 		expect(modelsForProvider(catalog, "claude").map((m) => m.id)).toEqual([
+			"claude-sonnet-5-5",
 			"claude-opus-5-5",
 			"claude-fable-5-1",
 			"claude-fable-5",
@@ -98,7 +99,7 @@ describe("bundled model catalog", () => {
 		]);
 		expect(defaultModelFor(catalog, "claude")).toBe("claude-fable-5-1");
 		expect(visibleModelsForProvider(catalog, "claude")[0]?.id).toBe(
-			"claude-opus-5-5",
+			"claude-sonnet-5-5",
 		);
 		expect(isModelVisible(catalog, "claude", "claude-sonnet-5")).toBe(true);
 		expect(resolveModelSlug(catalog, "claude", "fable")).toBe(
@@ -147,6 +148,7 @@ describe("bundled model catalog", () => {
 			"claude-fable-5.1",
 			"claude-opus-5.5",
 			"claude-opus-5",
+			"claude-sonnet-5.5",
 			"claude-sonnet-5",
 			"gpt-6-astra",
 			"gpt-6-sol",
@@ -161,6 +163,22 @@ describe("bundled model catalog", () => {
 	});
 
 	it("routes the September releases and preserves their supported controls", () => {
+		for (const alias of [
+			"sonnet",
+			"sonnet-5.5",
+			"sonnet-5-5",
+			"claude-sonnet-5.5",
+		]) {
+			expect(resolveModelSlug(catalog, "claude", alias)).toBe(
+				"claude-sonnet-5-5",
+			);
+		}
+		expect(resolveModelSlug(catalog, "claude", "sonnet-5")).toBe(
+			"claude-sonnet-5",
+		);
+		expect(resolveModelSlug(catalog, "kiro", "claude-sonnet-5-5")).toBe(
+			"claude-sonnet-5.5",
+		);
 		for (const alias of ["opus", "opus-5.5", "opus-5-5", "claude-opus-5.5"]) {
 			expect(resolveModelSlug(catalog, "claude", alias)).toBe(
 				"claude-opus-5-5",
@@ -186,6 +204,7 @@ describe("bundled model catalog", () => {
 				"gpt-6-sol",
 				"gpt-6-luna",
 				"claude-opus-5-5",
+				"claude-sonnet-5-5",
 				"grok-4.7",
 			]) {
 				expect(

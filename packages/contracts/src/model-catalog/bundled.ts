@@ -28,13 +28,17 @@ import type { ModelCatalog } from "./schema.ts";
  */
 export const BUNDLED_MODEL_CATALOG = {
 	schemaVersion: 1,
-	revision: 2026092201,
-	generatedAt: "2026-09-22T00:00:00.000Z",
+	revision: 2026092801,
+	generatedAt: "2026-09-28T00:00:00.000Z",
 	providers: {
 		// Claude Code. Effort tiers and per-model knobs match the published
 		// Claude Agent SDK contract.
 		claude: {
 			models: [
+				claudeCodeModel("claude-sonnet-5-5", "Sonnet 5.5", {
+					badgeLabel: "New",
+					contextWindow: "1m",
+				}),
 				claudeCodeModel("claude-opus-5-5", "Opus 5.5", {
 					badgeLabel: "New",
 					contextWindow: "1m",
@@ -80,7 +84,10 @@ export const BUNDLED_MODEL_CATALOG = {
 				"claude-opus-4.7": "claude-opus-4-7",
 				"opus-4.6": "claude-opus-4-6",
 				"claude-opus-4.6": "claude-opus-4-6",
-				sonnet: "claude-sonnet-5",
+				sonnet: "claude-sonnet-5-5",
+				"sonnet-5.5": "claude-sonnet-5-5",
+				"sonnet-5-5": "claude-sonnet-5-5",
+				"claude-sonnet-5.5": "claude-sonnet-5-5",
 				"sonnet-5": "claude-sonnet-5",
 				"claude-sonnet-5": "claude-sonnet-5",
 				"sonnet-4.6": "claude-sonnet-4-6",
@@ -218,6 +225,13 @@ export const BUNDLED_MODEL_CATALOG = {
 					supportsPlanMode: true,
 				},
 				{
+					id: "claude-sonnet-5.5",
+					label: "Claude Sonnet 5.5",
+					badgeLabel: "New",
+					optionDescriptors: [staticContextWindowDescriptor("1m", "1M")],
+					supportsPlanMode: true,
+				},
+				{
 					id: "claude-sonnet-5",
 					label: "Claude Sonnet 5",
 					optionDescriptors: [staticContextWindowDescriptor("1m", "1M")],
@@ -251,6 +265,7 @@ export const BUNDLED_MODEL_CATALOG = {
 			],
 			// Common shorthand / hyphen-vs-dotted variants users may persist.
 			aliases: {
+				"claude-sonnet-5-5": "claude-sonnet-5.5",
 				"claude-opus-5-5": "claude-opus-5.5",
 				"claude-fable-5-1": "claude-fable-5.1",
 				"claude-opus-4-8": "claude-opus-4.8",
@@ -293,6 +308,13 @@ export const BUNDLED_MODEL_CATALOG = {
 					supportsPlanMode: true,
 				},
 				{ id: "claude-opus-5", label: "Opus 5", supportsPlanMode: true },
+				{
+					id: "claude-sonnet-5-5",
+					label: "Sonnet 5.5",
+					badgeLabel: "New",
+					optionDescriptors: [staticContextWindowDescriptor("1m", "1M")],
+					supportsPlanMode: true,
+				},
 				{
 					id: "claude-sonnet-5",
 					label: "Sonnet 5",
@@ -409,6 +431,13 @@ export const BUNDLED_MODEL_CATALOG = {
 					supportsPlanMode: true,
 				},
 				{
+					id: "opencode/claude-sonnet-5-5",
+					label: "OpenCode · Claude Sonnet 5.5",
+					badgeLabel: "New",
+					optionDescriptors: [staticContextWindowDescriptor("1m", "1M")],
+					supportsPlanMode: true,
+				},
+				{
 					id: "opencode/claude-sonnet-5",
 					label: "OpenCode · Claude Sonnet 5",
 					defaultModel: true,
@@ -478,6 +507,13 @@ export const BUNDLED_MODEL_CATALOG = {
 		// authoritative; this seed supplies curated labels until it loads.
 		opencode2: {
 			models: [
+				{
+					id: "opencode/claude-sonnet-5-5",
+					label: "OpenCode 2 · Claude Sonnet 5.5",
+					badgeLabel: "New",
+					optionDescriptors: [staticContextWindowDescriptor("1m", "1M")],
+					supportsPlanMode: true,
+				},
 				{
 					id: "opencode/claude-sonnet-5",
 					label: "OpenCode 2 · Claude Sonnet 5",
@@ -605,6 +641,12 @@ export const BUNDLED_MODEL_CATALOG = {
 			output: 25,
 			cacheRead: 0.5,
 			cacheCreate: 6.25,
+		},
+		"claude-sonnet-5-5": {
+			input: 2,
+			output: 10,
+			cacheRead: 0.2,
+			cacheCreate: 2.5,
 		},
 		"claude-sonnet-5": {
 			input: 3,
