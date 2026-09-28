@@ -13,6 +13,8 @@ describe("provider auth failure classification", () => {
 		"401 Unauthorized",
 		"Invalid authentication credentials",
 		"Please run /login",
+		"OAuth token has expired",
+		"authentication_error",
 	])("recognizes %s as recoverable before another submission", (reason) => {
 		expect(isProviderAuthenticationRequired(reason)).toBe(true);
 	});

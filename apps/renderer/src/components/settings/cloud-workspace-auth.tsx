@@ -1,3 +1,4 @@
+import { refreshCloudImages } from "../../lib/cloud-image-monitor.ts";
 import "@zuse/i18n/english/settings";
 import {
 	type CloudAuthLoginOperation,
@@ -269,21 +270,41 @@ export function CloudWorkspaceAuth() {
 
 	useEffect(() => {
 		void refresh();
+		const onFocus = () => void refresh();
+		window.addEventListener("focus", onFocus);
+		return () => window.removeEventListener("focus", onFocus);
 	}, [refresh]);
 
 	useEffect(() => {
 		if (operation?.state !== "authorizing") return;
-		const timer = window.setInterval(() => {
-			void runControlPlane((client) =>
-				client["cloud.auth.login.poll"]({
-					operationId: operation.operationId,
-				}),
-			).then((next) => {
+		let disposed = false;
+		let timer: ReturnType<typeof setTimeout>;
+		const poll = async () => {
+			try {
+				const next = await runControlPlane((client) =>
+					client["cloud.auth.login.poll"]({
+						operationId: operation.operationId,
+					}),
+				);
+				if (disposed) return;
 				setOperation(next);
-				if (next.state === "connected") void refresh();
-			});
-		}, 1_000);
-		return () => window.clearInterval(timer);
+				setError(null);
+				if (next.state === "connected") {
+					void refresh();
+					void refreshCloudImages().catch(() => undefined);
+				}
+				if (next.state !== "authorizing") return;
+			} catch {
+				if (disposed) return;
+				setError(uiMessage("settings:cloud_auth_poll_retry"));
+			}
+			timer = setTimeout(() => void poll(), 1_000);
+		};
+		timer = setTimeout(() => void poll(), 1_000);
+		return () => {
+			disposed = true;
+			clearTimeout(timer);
+		};
 	}, [operation?.operationId, operation?.state, refresh]);
 
 	const statusByProvider = useMemo(
@@ -295,14 +316,15 @@ export function CloudWorkspaceAuth() {
 		setBusy(`open:${providerId}`);
 		setError(null);
 		try {
-			if (status?.authorityState !== "ready") {
-				setStatus(
-					await runControlPlane((client) => client["cloud.auth.provision"]()),
-				);
-			}
+			setStatus(
+				await runControlPlane((client) => client["cloud.auth.provision"]()),
+			);
 			setSelectedProvider(providerId);
 			setMethod(providerId === "cursor" ? "api-key" : "subscription");
 			setOperation(null);
+			setSecret("");
+			setBaseUrl("");
+			setModelProvider("");
 		} catch (cause) {
 			setError(
 				authFailureMessage(
@@ -345,7 +367,9 @@ export function CloudWorkspaceAuth() {
 			setSecret("");
 			setSelectedProvider(null);
 			await refresh();
+			void refreshCloudImages().catch(() => undefined);
 		} catch {
+			await refresh();
 			setError(
 				"The provider rejected the credential or its real status check failed. The secret was not returned to the app.",
 			);
@@ -380,6 +404,9 @@ export function CloudWorkspaceAuth() {
 				client["cloud.auth.disconnect"]({ providerId }),
 			);
 			await refresh();
+			void refreshCloudImages().catch(() => undefined);
+		} catch {
+			setError(uiMessage("settings:cloud_auth_disconnect_failed"));
 		} finally {
 			setBusy(null);
 		}
@@ -647,6 +674,7 @@ export function CloudWorkspaceAuth() {
 											{uiMessage("settings:cloud_workspace_auth_setup_token")}
 										</span>
 										<Input
+											className="h-7"
 											id="cloud-auth-token"
 											type="password"
 											value={secret}
@@ -765,6 +793,7 @@ export function CloudWorkspaceAuth() {
 											{uiMessage("settings:cloud_workspace_auth_api_key")}
 										</span>
 										<Input
+											className="h-7"
 											id="cloud-auth-api-key"
 											type="password"
 											value={secret}
@@ -800,6 +829,7 @@ export function CloudWorkspaceAuth() {
 											{uiMessage("settings:cloud_workspace_auth_base_url")}
 										</span>
 										<Input
+											className="h-7"
 											id="cloud-auth-base-url"
 											type="url"
 											value={baseUrl}
@@ -824,6 +854,7 @@ export function CloudWorkspaceAuth() {
 											/>
 										</span>
 										<Input
+											className="h-7"
 											id="cloud-auth-provider-name"
 											value={modelProvider}
 											onChange={(event) =>
@@ -844,6 +875,7 @@ export function CloudWorkspaceAuth() {
 											)}
 										</span>
 										<Input
+											className="h-7"
 											id="cloud-auth-secret"
 											type="password"
 											value={secret}

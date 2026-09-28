@@ -14,6 +14,7 @@ import {
 	defaultFileViewForName,
 	isPreviewableFileName,
 } from "~/lib/file-preview";
+import { requestCloudSettingsLeave } from "../lib/cloud-settings-guard.ts";
 import { requestReviewLeave } from "../lib/review-edit-guard.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
 
@@ -526,7 +527,16 @@ const writePanels = (
 
 export const useUiStore = create<UiState>((set, get) => ({
 	view: "chat",
-	setView: (view) => set({ view }),
+	setView: (view) => {
+		if (
+			get().view === "settings" &&
+			get().settingsSection.kind === "machines" &&
+			view !== "settings" &&
+			!requestCloudSettingsLeave()
+		)
+			return;
+		set({ view });
+	},
 	settingsSection: { kind: "general" },
 	fileSearchOpen: false,
 	setFileSearchOpen: (fileSearchOpen) =>
@@ -535,7 +545,16 @@ export const useUiStore = create<UiState>((set, get) => ({
 				? { fileSearchOpen, chatSwitcherOpen: false }
 				: { fileSearchOpen },
 		),
-	setSettingsSection: (section) => set({ settingsSection: section }),
+	setSettingsSection: (section) => {
+		if (
+			get().view === "settings" &&
+			get().settingsSection.kind === "machines" &&
+			section.kind !== "machines" &&
+			!requestCloudSettingsLeave()
+		)
+			return;
+		set({ settingsSection: section });
+	},
 	activeMainTab: "chat",
 	usageScope: "global",
 	openFile: null,

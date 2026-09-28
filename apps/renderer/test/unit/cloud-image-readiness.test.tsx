@@ -104,3 +104,14 @@ describe("CloudImageReadiness", () => {
 		expect(markup).toContain("Rebuild image");
 	});
 });
+
+it("does not describe broker credential rotation as an image change", () => {
+	const current = {
+		...image("outdated"),
+		providerAuthDeliveryVersion: 1 as const,
+		providers: [
+			{ providerId: "claude", state: "connected" as const, verifiedAt: 400 },
+		],
+	};
+	expect(cloudImageChangeSummary(current, [project])).toEqual(["repositories"]);
+});

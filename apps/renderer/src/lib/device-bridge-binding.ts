@@ -61,18 +61,31 @@ export const bindCloudWorkspaceToLocalDevice = async (
 	workspaceId: string,
 	dependencies: CloudDeviceBindingDependencies = defaultBindingDependencies,
 ): Promise<boolean> => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const bind = async () => {
+		try {
+			const device = await dependencies.availableDevice();
+			if (device === null) return false;
+			await dependencies.bindDevice(workspaceId, device.deviceId);
+			return true;
+		} catch (cause) {
+			recordDiagnosticEvent({
+				level: "warn",
+				source: "renderer.device-bridge-binding",
+				message: "Cloud workspace device binding failed",
+				detail: cause instanceof Error ? cause.name : typeof cause,
+			});
+			return false;
+		}
+	};
 	try {
-		const device = await dependencies.availableDevice();
-		if (device === null) return false;
-		await dependencies.bindDevice(workspaceId, device.deviceId);
-		return true;
-	} catch (cause) {
-		recordDiagnosticEvent({
-			level: "warn",
-			source: "renderer.device-bridge-binding",
-			message: "Cloud workspace device binding failed",
-			detail: cause instanceof Error ? cause.name : typeof cause,
-		});
-		return false;
+		return await Promise.race([
+			bind(),
+			new Promise<boolean>((resolve) => {
+				timer = setTimeout(() => resolve(false), 500);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
 	}
 };

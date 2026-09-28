@@ -126,6 +126,7 @@ export class CloudProviderAuth {
 		const cached = this.cached.get(providerId);
 		if (
 			reason !== "unauthorized" &&
+			!this.recovering.has(providerId) &&
 			(reason !== "initial" || providerId === "grok") &&
 			cached !== undefined &&
 			cached.expiresAt > Date.now() + PROACTIVE_REFRESH_WINDOW_MS

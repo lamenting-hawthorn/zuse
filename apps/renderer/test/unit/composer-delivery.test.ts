@@ -257,6 +257,10 @@ describe("mailbox queue presentation", () => {
 		expect(result.waiting).toEqual([]);
 	});
 	it("keeps preparation in the queue before mailbox dispatch", () => {
+		expect(partitionCloudMessages([], [], [prompt])).toEqual({
+			transcript: [],
+			waiting: [prompt],
+		});
 		expect(partitionCloudMessages([prompt], [], [prompt])).toEqual({
 			transcript: [],
 			waiting: [prompt],

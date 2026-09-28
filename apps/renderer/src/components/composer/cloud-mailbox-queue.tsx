@@ -21,7 +21,10 @@ export function CloudMailboxQueue({
 	if (messages.length === 0) return null;
 	return (
 		<div>
-			<div className="border-b border-border/40 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+			<div
+				role="status"
+				className="border-b border-border/40 px-3 py-1.5 text-[11px] font-medium text-muted-foreground"
+			>
 				{message(
 					waitingForCloud
 						? "chat:cloud_queue_waiting_for_cloud"

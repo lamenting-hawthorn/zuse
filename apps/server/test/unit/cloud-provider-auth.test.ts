@@ -198,3 +198,40 @@ describe("CloudProviderAuth", () => {
 		auth.close();
 	});
 });
+
+test("recovery bypasses an unexpired cached grant after authorization fails", async () => {
+	const { pair, credentialPublicJwk, keyThumbprint } = await fixture();
+	let issueCount = 0;
+	let recovered = 0;
+	const auth = new CloudProviderAuth({
+		zuseAccountId: "account-1",
+		workspaceId: "workspace-1",
+		runtimeGeneration: 4,
+		credentialPublicJwk,
+		credentialPrivateKey: pair.privateKey,
+		onRecovered: () => {
+			recovered += 1;
+		},
+		issueGrant: async (providerId, request) => {
+			issueCount += 1;
+			if (issueCount === 2) throw new Error("claude-auth-reconnect-required");
+			return seal({
+				providerId,
+				request,
+				publicKey: pair.publicKey,
+				keyThumbprint,
+			});
+		},
+	});
+	try {
+		await auth.resolve("claude");
+		await expect(auth.resolve("claude", "unauthorized")).rejects.toThrow(
+			"reconnect-required",
+		);
+		await auth.resolve("claude", "proactive");
+		expect(issueCount).toBe(3);
+		expect(recovered).toBe(1);
+	} finally {
+		auth.close();
+	}
+});

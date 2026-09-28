@@ -1,4 +1,8 @@
 import { formatNumber as formatUiNumber } from "@zuse/i18n";
+import {
+	refreshCloudImages,
+	subscribeCloudImages,
+} from "../../lib/cloud-image-monitor.ts";
 import "@zuse/i18n/english/settings";
 import {
 	CLOUD_WORKSPACE_OFFER_ID,
@@ -79,9 +83,14 @@ export function CloudWorkspacePool() {
 		ReadonlyArray<CloudProviderOption>
 	>([]);
 	const [imageProviderId, setImageProviderId] = useState<string | undefined>();
+	const loadSequence = useRef(0);
 	const imageSelection = useRef(imageProviderId);
 	imageSelection.current = imageProviderId;
 	const [projects, setProjects] = useState<ReadonlyArray<CloudProject>>([]);
+	const [providerImages, setProviderImages] = useState<
+		readonly CloudAccountImage[]
+	>([]);
+	useEffect(() => subscribeCloudImages(setProviderImages), []);
 	const [accountImage, setAccountImage] = useState<CloudAccountImage | null>(
 		null,
 	);
@@ -140,6 +149,7 @@ export function CloudWorkspacePool() {
 	const load = useCallback(
 		async (refresh = false) => {
 			if (!isSignedIn) return;
+			const requestSequence = ++loadSequence.current;
 			let loadedSubscribed = false;
 			const workspaceData = Promise.allSettled([
 				loadCloudProviders(refresh),
@@ -188,7 +198,11 @@ export function CloudWorkspacePool() {
 					setProjects(projectResult.value.projects);
 				if (workspaceResult.status === "fulfilled")
 					setWorkspaces(workspaceResult.value.workspaces);
-				if (imageSelection.current !== imageProviderId) return;
+				if (
+					requestSequence !== loadSequence.current ||
+					imageSelection.current !== imageProviderId
+				)
+					return;
 				if (imageResult.status === "fulfilled")
 					setAccountImage(imageResult.value);
 				setImageError(
@@ -223,8 +237,8 @@ export function CloudWorkspacePool() {
 
 	useEffect(() => {
 		if (authLoading || !isSignedIn) return;
-		void load();
-		void loadGithubRepos();
+		void load(true);
+		void loadGithubRepos(true);
 		return subscribeControlPlaneSessionCache((key) => {
 			if (key === "cloud-workspace:github") void loadGithubRepos();
 			else if (key.startsWith("cloud-workspace:")) void load();
@@ -242,6 +256,7 @@ export function CloudWorkspacePool() {
 		try {
 			await operation();
 			await load(true);
+			void refreshCloudImages().catch(() => undefined);
 		} catch (cause) {
 			const message =
 				cause instanceof CloudWorkspaceOpError &&
@@ -458,7 +473,7 @@ export function CloudWorkspacePool() {
 					subscribed ? (
 						<Badge variant={serviceAvailable ? "success" : "warning"}>
 							{serviceAvailable
-								? uiMessage("settings:cloud_workspace_pool_ready")
+								? uiMessage("settings:cloud_workspace_pool_active")
 								: uiMessage("settings:cloud_workspace_pool_update_required")}
 						</Badge>
 					) : (
@@ -508,6 +523,56 @@ export function CloudWorkspacePool() {
 
 			{subscribed && serviceAvailable && view === "setup" ? (
 				<>
+					<CloudSettingsGroup
+						title={uiMessage("settings:cloud_setup_title")}
+						description={uiMessage("settings:cloud_setup_description")}
+					>
+						{[
+							[
+								uiMessage("settings:cloud_setup_github"),
+								uiMessage("settings:cloud_setup_github_description"),
+								githubAuthenticated && projects.length > 0,
+								"cloud-setup-github",
+							],
+							[
+								uiMessage("settings:cloud_setup_agent"),
+								uiMessage("settings:cloud_setup_agent_description"),
+								accountImage?.providers.some(
+									(provider) => provider.state === "connected",
+								),
+								"cloud-setup-auth",
+							],
+							[
+								uiMessage("settings:cloud_setup_image"),
+								uiMessage("settings:cloud_setup_image_description"),
+								accountImage?.state === "ready",
+								"cloud-setup-image",
+							],
+						].map(([title, description, done, target]) => (
+							<CloudSettingsRow
+								key={String(target)}
+								title={String(title)}
+								description={String(description)}
+								action={
+									<Button
+										className="h-7"
+										size="xs"
+										variant="ghost"
+										onClick={() =>
+											document
+												.getElementById(String(target))
+												?.scrollIntoView({ behavior: "smooth", block: "start" })
+										}
+									>
+										{done
+											? uiMessage("settings:cloud_setup_review")
+											: uiMessage("settings:cloud_setup_continue")}
+									</Button>
+								}
+							/>
+						))}
+					</CloudSettingsGroup>
+					<div id="cloud-setup-github" />
 					<CloudWorkspaceGithub
 						status={githubStatus}
 						loading={reposLoading}
@@ -530,8 +595,10 @@ export function CloudWorkspacePool() {
 						onAdd={(names) => void connectProjects(names)}
 						onRemove={(project) => void removeProject(project)}
 					/>
+					<div id="cloud-setup-auth" />
 					<CloudWorkspaceAuth />
 					<CloudApiKeys />
+					<div id="cloud-setup-image" />
 					<CloudSettingsGroup
 						title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
 						description={uiMessage(
@@ -559,6 +626,7 @@ export function CloudWorkspacePool() {
 								{providers.map((provider) => (
 									<option key={provider.providerId} value={provider.providerId}>
 										{cloudProviderLabel(provider.providerId)}
+										{` · ${providerImages.find((image) => image.providerId === provider.providerId)?.state ?? "checking"}`}
 									</option>
 								))}
 							</select>

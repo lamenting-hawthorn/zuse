@@ -140,7 +140,12 @@ export const partitionCloudMessages = (
 	if (waitingIds.size === 0) return { transcript: messages, waiting: [] };
 	return {
 		transcript: messages.filter((message) => !waitingIds.has(message.id)),
-		waiting: messages.filter((message) => waitingIds.has(message.id)),
+		waiting: [
+			...messages,
+			...preparingMessages.filter(
+				(pending) => !messages.some((message) => message.id === pending.id),
+			),
+		].filter((message) => waitingIds.has(message.id)),
 	};
 };
 

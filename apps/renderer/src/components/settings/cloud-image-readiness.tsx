@@ -30,6 +30,10 @@ export const cloudImageChangeSummary = (
 		);
 	const authenticationChanged = image.providers.some(
 		(provider) =>
+			image.providerAuthDeliveryVersion !== 1 &&
+			!(
+				image.codexAuthDeliveryVersion === 1 && provider.providerId === "codex"
+			) &&
 			provider.verifiedAt !== undefined &&
 			image.builtAt !== undefined &&
 			provider.verifiedAt > image.builtAt,
@@ -58,18 +62,34 @@ export function CloudImageReadiness({
 
 	const state = image?.state ?? "not-built";
 	const building = state === "building";
-	const disabled = projects.length === 0 || unavailable || building;
+	const disabled =
+		image === null ||
+		projects.length === 0 ||
+		unavailable ||
+		building ||
+		state === "auth-broken";
+
+	if (image === null)
+		return (
+			<CloudSettingsRow
+				title={
+					unavailable
+						? uiMessage("settings:cloud_image_status_unavailable")
+						: uiMessage("settings:cloud_image_checking")
+				}
+				description={uiMessage("settings:cloud_image_checking_description")}
+			/>
+		);
 
 	if (state === "ready") {
 		return (
 			<CloudSettingsRow
 				title={uiMessage("settings:cloud_image_readiness_cloud_image_ready")}
-				description={uiMessage(
-					"settings:cloud_image_readiness_repositories_runtime",
-					{
-						length: String(projects.length),
-					},
-				)}
+				description={
+					image.providerAuthDeliveryVersion === 1
+						? uiMessage("settings:cloud_image_auth_live")
+						: uiMessage("settings:cloud_image_auth_legacy")
+				}
 				action={
 					<>
 						<Badge variant="success">
@@ -136,7 +156,7 @@ export function CloudImageReadiness({
 				? "Add a repository before building your first cloud image."
 				: `${projects.length} ${projects.length === 1 ? "repository is" : "repositories are"} ready to include.`
 			: state === "auth-broken"
-				? "Agent authentication is invalid. Reconnect the affected agent below, then rebuild."
+				? "Reconnect the affected agent in Step 2. Image status will refresh automatically and show whether a rebuild is needed."
 				: `Changed: ${changes.join(", ")}.`;
 	const mode = requiresRebuild ? "rebuild" : (image?.buildMode ?? "update");
 	const actionLabel = notBuilt

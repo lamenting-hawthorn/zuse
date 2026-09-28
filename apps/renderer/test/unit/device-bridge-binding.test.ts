@@ -155,3 +155,17 @@ describe("cloud device binding", () => {
 		).resolves.toBe(false);
 	});
 });
+
+it("releases message dispatch within 500 ms when optional cloud binding stalls", async () => {
+	vi.useFakeTimers();
+	try {
+		const pending = bindCloudWorkspaceToLocalDevice("workspace-1", {
+			availableDevice: async () => connectedDevice(),
+			bindDevice: () => new Promise(() => {}),
+		});
+		await vi.advanceTimersByTimeAsync(500);
+		await expect(pending).resolves.toBe(false);
+	} finally {
+		vi.useRealTimers();
+	}
+});
