@@ -188,11 +188,22 @@ const isEmptyDirectory = async (path: string): Promise<boolean> => {
 	}
 };
 
+const isSymbolicLink = async (path: string): Promise<boolean> => {
+	try {
+		return (await fs.lstat(path)).isSymbolicLink();
+	} catch {
+		return false;
+	}
+};
+
 const prepareLocalFiles = async (
 	repoPath: string,
 	worktreePath: string,
 	includeGlobs: string,
-): Promise<string> => {
+): Promise<{
+	readonly output: string;
+	readonly sharesNodeModules: boolean;
+}> => {
 	let output = "";
 
 	const sourceNodeModules = Path.join(repoPath, "node_modules");
@@ -235,7 +246,10 @@ const prepareLocalFiles = async (
 
 	output += await linkIncludedFiles(repoPath, worktreePath, includeGlobs);
 
-	return output;
+	return {
+		output,
+		sharesNodeModules: await isSymbolicLink(targetNodeModules),
+	};
 };
 
 export const WorktreeServiceLive = Layer.effect(
@@ -1803,6 +1817,19 @@ export const WorktreeServiceLive = Layer.effect(
 				"",
 		});
 
+		// Worktrees whose node_modules is symlinked to the main checkout share one
+		// dependency directory. Concurrent installs (e.g. `bun install`) into it
+		// race and fail with EEXIST, so setup scripts for those worktrees run one
+		// at a time per repository.
+		const sharedNodeModulesLocks = new Map<string, Semaphore.Semaphore>();
+		const sharedNodeModulesLock = (repoPath: string): Semaphore.Semaphore => {
+			const existing = sharedNodeModulesLocks.get(repoPath);
+			if (existing !== undefined) return existing;
+			const created = Semaphore.makeUnsafe(1);
+			sharedNodeModulesLocks.set(repoPath, created);
+			return created;
+		};
+
 		const runSetupFor = Effect.fn("WorktreeService.runSetupFor")(function* (
 			worktreeId: WorktreeId,
 		) {
@@ -1830,7 +1857,7 @@ export const WorktreeServiceLive = Layer.effect(
         `.pipe(Effect.orDie);
 			emitStatus(worktreeId, "running", startedAtDate, null);
 
-			const prep = yield* Effect.tryPromise({
+			const prepared = yield* Effect.tryPromise({
 				try: () =>
 					prepareLocalFiles(
 						folder.path,
@@ -1843,6 +1870,8 @@ export const WorktreeServiceLive = Layer.effect(
 						reason: err instanceof Error ? err.message : String(err),
 					}),
 			});
+
+			const prep = prepared.output;
 
 			// Surface the prepareLocalFiles output immediately so the card isn't
 			// blank while the (possibly long) script runs.
@@ -1870,7 +1899,7 @@ export const WorktreeServiceLive = Layer.effect(
 					: updated;
 			}
 
-			const result = yield* runShellScript({
+			const runScript = runShellScript({
 				script,
 				cwd: worktree.path,
 				env: setupEnv(folder.path, worktree, settings.environmentVariables),
@@ -1891,6 +1920,9 @@ export const WorktreeServiceLive = Layer.effect(
 						}),
 				),
 			);
+			const result = prepared.sharesNodeModules
+				? yield* sharedNodeModulesLock(folder.path).withPermits(1)(runScript)
+				: yield* runScript;
 			const finishedAtDate = yield* DateTime.nowAsDate;
 			const finishedAt = finishedAtDate.toISOString();
 			const status = result.exitCode === 0 ? "succeeded" : "failed";
