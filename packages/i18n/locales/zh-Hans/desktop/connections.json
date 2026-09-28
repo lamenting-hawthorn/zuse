@@ -102,5 +102,6 @@
 	"preview_ports_number": "端口号",
 	"preview_ports_add": "添加端口",
 	"preview_ports_manual_help": "找不到服务器？添加端口，然后启用预览链接或本地转发。",
-	"preview_ports_public_help": "预览链接是公开的。关闭自动创建不会撤销已有链接。"
+	"preview_ports_public_help": "预览链接是公开的。关闭此选项会撤销已创建的链接。",
+	"preview_ports_revoke_pending": "正在撤销预览链接… 删除成功前，已分享的链接可能仍可公开访问。再次关闭以重试。"
 }

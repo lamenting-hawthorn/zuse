@@ -102,5 +102,6 @@
 	"preview_ports_number": "Portnummer",
 	"preview_ports_add": "Port hinzufügen",
 	"preview_ports_manual_help": "Server fehlt? Port hinzufügen und URLs oder lokale Weiterleitung aktivieren.",
-	"preview_ports_public_help": "Vorschaulinks sind öffentlich. Das Ausschalten widerruft bestehende Links nicht."
+	"preview_ports_public_help": "Vorschaulinks sind öffentlich. Ausschalten widerruft erstellte Links.",
+	"preview_ports_revoke_pending": "Vorschaulinks werden widerrufen… Geteilte Links können bis zur erfolgreichen Entfernung öffentlich bleiben. Zum Wiederholen erneut ausschalten."
 }

@@ -152,6 +152,11 @@ export interface SandboxProviderAdapter {
 		providerSandboxId: string,
 		port: number,
 	) => Effect.Effect<SandboxEndpoint, SandboxProviderError>;
+	/** Remove public routes to this preview port; unsupported providers must not claim success. */
+	readonly revokeEndpoint?: (
+		providerSandboxId: string,
+		port?: number,
+	) => Effect.Effect<void, SandboxProviderError>;
 	readonly pause: (
 		providerSandboxId: string,
 	) => Effect.Effect<void, SandboxProviderError>;

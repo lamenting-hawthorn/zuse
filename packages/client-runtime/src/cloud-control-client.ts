@@ -33,6 +33,7 @@ import {
 	CloudWorkspaceLaunch,
 	CloudWorkspaceList,
 	type CloudWorkspaceOpError,
+	CloudWorkspacePreviewRevoked,
 	CloudWorkspacePreviewUrl,
 	CloudWorkspaceSshAccess,
 	CommandAcceptance,
@@ -114,6 +115,16 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 			ApiPaths.cloudWorkspacePreviewUrl(input.workspaceId),
 			CloudWorkspacePreviewUrl,
 			"POST",
+			{ port: input.port },
+		),
+	"cloud.workspaces.revokePreviewUrl": (input: {
+		workspaceId: string;
+		port?: number;
+	}) =>
+		request(
+			ApiPaths.cloudWorkspacePreviewUrl(input.workspaceId),
+			CloudWorkspacePreviewRevoked,
+			"DELETE",
 			{ port: input.port },
 		),
 	"cloud.workspaces.watch": (input: {

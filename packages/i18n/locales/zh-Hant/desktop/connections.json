@@ -102,5 +102,6 @@
 	"preview_ports_number": "連接埠號碼",
 	"preview_ports_add": "新增連接埠",
 	"preview_ports_manual_help": "找不到伺服器？新增連接埠，然後啟用預覽連結或本機轉發。",
-	"preview_ports_public_help": "預覽連結是公開的。關閉自動建立不會撤銷現有連結。"
+	"preview_ports_public_help": "預覽連結是公開的。關閉此選項會撤銷已建立的連結。",
+	"preview_ports_revoke_pending": "正在撤銷預覽連結… 刪除成功前，已分享的連結可能仍可公開存取。再次關閉以重試。"
 }

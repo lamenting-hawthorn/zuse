@@ -102,5 +102,6 @@
 	"preview_ports_number": "포트 번호",
 	"preview_ports_add": "포트 추가",
 	"preview_ports_manual_help": "서버가 없나요? 포트를 추가한 후 URL 또는 로컬 전달을 켜세요.",
-	"preview_ports_public_help": "링크는 공개됩니다. 자동 생성을 꺼도 기존 링크는 취소되지 않습니다."
+	"preview_ports_public_help": "미리보기 링크는 공개됩니다. 끄면 발급된 링크를 해제합니다.",
+	"preview_ports_revoke_pending": "미리보기 링크 해제 중… 삭제에 성공할 때까지 공유된 링크가 공개 상태로 남을 수 있습니다. 다시 끄면 재시도합니다."
 }

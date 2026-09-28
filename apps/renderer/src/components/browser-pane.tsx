@@ -550,7 +550,9 @@ export function BrowserPane({
 	const hasLoadedPage = url !== "" && url !== "about:blank";
 	const boxdPreviews = useBoxdPreviewEnabled(environmentId);
 	const autoPublishPreviews = usePreviewSettings(
-		(state) => state.environments[environmentId]?.publish === true,
+		(state) =>
+			state.environments[environmentId]?.publish === true &&
+			state.environments[environmentId]?.revocationPending !== true,
 	);
 	const detectedServers = usePreviewServers(
 		environmentId,
@@ -1812,11 +1814,12 @@ export function BrowserPane({
 							navigate(`http://localhost:${localPort}`);
 						}}
 						onCopyPublicLink={
-							isCloudEnvironment
+							isCloudEnvironment && (!boxdPreviews || autoPublishPreviews)
 								? async (server) => {
 										const preview = await getCloudPreviewUrl(
 											environmentId,
 											server.port,
+											boxdPreviews,
 										);
 										await navigator.clipboard.writeText(preview.url);
 									}

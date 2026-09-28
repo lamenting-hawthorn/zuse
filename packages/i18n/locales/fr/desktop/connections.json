@@ -102,5 +102,6 @@
 	"preview_ports_number": "Numéro de port",
 	"preview_ports_add": "Ajouter",
 	"preview_ports_manual_help": "Serveur absent ? Ajoutez son port, puis activez les URL ou le transfert local.",
-	"preview_ports_public_help": "Les liens sont publics. Désactiver la création automatique ne révoque pas les liens existants."
+	"preview_ports_public_help": "Les liens sont publics. Désactiver cette option révoque les liens créés.",
+	"preview_ports_revoke_pending": "Révocation des liens… Les liens partagés peuvent rester publics tant que la suppression échoue. Désactivez à nouveau pour réessayer."
 }

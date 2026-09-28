@@ -5,11 +5,15 @@ export interface PreviewSettings {
 	readonly publish: boolean;
 	readonly forward: boolean;
 	readonly ports: readonly number[];
+	readonly publishedPorts: readonly number[];
+	readonly revocationPending: boolean;
 }
 export const DEFAULT_PREVIEW_SETTINGS: PreviewSettings = {
 	publish: false,
 	forward: false,
 	ports: [],
+	publishedPorts: [],
+	revocationPending: false,
 };
 
 const STORAGE_KEY = "zuse.preview-settings.v1";
@@ -41,6 +45,19 @@ const readSettings = (): Readonly<Record<string, PreviewSettings>> => {
 						id,
 						{
 							publish: entry.publish,
+							publishedPorts: [
+								...new Set<number>(
+									(Array.isArray(entry.publishedPorts)
+										? entry.publishedPorts
+										: entry.publish
+											? entry.ports
+											: []
+									).filter(isPreviewPort),
+								),
+							],
+							revocationPending:
+								entry.revocationPending === true ||
+								(entry.publish && !Array.isArray(entry.publishedPorts)),
 							forward: entry.forward,
 							ports: [...new Set<number>(entry.ports.filter(isPreviewPort))],
 						},
@@ -55,10 +72,14 @@ const readSettings = (): Readonly<Record<string, PreviewSettings>> => {
 /** Explicit per-workspace opt-in survives renderer restarts and reconnects. */
 export const usePreviewSettings = createAtomStore<{
 	readonly environments: Readonly<Record<string, PreviewSettings>>;
-	update: (environmentId: string, patch: Partial<PreviewSettings>) => void;
+	update: (
+		environmentId: string,
+		patch: Partial<PreviewSettings>,
+		requirePersistence?: boolean,
+	) => void;
 }>((set, get) => ({
 	environments: readSettings(),
-	update: (environmentId, patch) => {
+	update: (environmentId, patch, requirePersistence = false) => {
 		const environments = {
 			...get().environments,
 			[environmentId]: {
@@ -69,6 +90,7 @@ export const usePreviewSettings = createAtomStore<{
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(environments));
 		} catch (cause) {
+			if (requirePersistence) throw cause;
 			console.warn("[preview-settings] Could not save preferences", cause);
 		}
 		set({ environments });

@@ -102,5 +102,6 @@
 	"preview_ports_number": "Port number",
 	"preview_ports_add": "Add port",
 	"preview_ports_manual_help": "Missing a server? Add its port, then enable URLs or localhost forwarding.",
-	"preview_ports_public_help": "Preview links are public. Turning auto-creation off does not revoke existing links."
+	"preview_ports_public_help": "Preview links are public. Turning this off revokes issued links.",
+	"preview_ports_revoke_pending": "Revoking preview links… Previously shared links may remain public until removal succeeds. Retry by switching off again."
 }

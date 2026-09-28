@@ -102,5 +102,6 @@
 	"preview_ports_number": "ポート番号",
 	"preview_ports_add": "追加",
 	"preview_ports_manual_help": "サーバーが見つからない場合はポートを追加し、URLまたはローカル転送を有効にしてください。",
-	"preview_ports_public_help": "リンクは公開されます。自動作成をオフにしても既存のリンクは無効になりません。"
+	"preview_ports_public_help": "プレビューリンクは公開されます。オフにすると発行済みリンクを無効化します。",
+	"preview_ports_revoke_pending": "プレビューリンクを無効化中… 削除が完了するまで共有済みリンクは公開されたままの場合があります。再度オフにすると再試行します。"
 }

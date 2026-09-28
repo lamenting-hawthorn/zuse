@@ -4,7 +4,10 @@ import {
 	DEFAULT_PREVIEW_SETTINGS,
 	usePreviewSettings,
 } from "../store/preview-settings.ts";
-import { getCloudPreviewUrl } from "./cloud-preview-client.ts";
+import {
+	cloudPreviewPublication,
+	getCloudPreviewUrl,
+} from "./cloud-preview-client.ts";
 import { useCloudChatCatalogStore } from "./cloud-workspace-catalog.ts";
 import { ensurePreviewPortForward } from "./port-forward-client.ts";
 import { createPreviewDiscovery, EMPTY_PREVIEWS } from "./preview-discovery.ts";
@@ -44,7 +47,8 @@ export const usePreviewServers = (
 	const settings = usePreviewSettings(
 		(state) => state.environments[environmentId] ?? DEFAULT_PREVIEW_SETTINGS,
 	);
-	const autoPublish = publish && settings.publish;
+	const autoPublish =
+		publish && settings.publish && !settings.revocationPending;
 	const forward = settings.forward;
 	const portsKey = settings.ports.join(",");
 	const active = enabled && !unavailable;
@@ -54,8 +58,14 @@ export const usePreviewServers = (
 			if (!active) return () => {};
 			let discovery = discoveries.get(key);
 			if (discovery === undefined) {
+				const release = autoPublish
+					? cloudPreviewPublication(environmentId).retain()
+					: undefined;
 				discovery = createPreviewDiscovery({
-					onIdle: () => discoveries.delete(key),
+					onIdle: () => {
+						discoveries.delete(key);
+						release?.();
+					},
 
 					list: async () => {
 						// A user-entered port remains actionable even on an older runtime or

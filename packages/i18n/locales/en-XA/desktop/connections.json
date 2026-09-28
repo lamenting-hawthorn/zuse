@@ -102,5 +102,6 @@
 	"preview_ports_number": "⟦Pôôrt nüümbëër⟧",
 	"preview_ports_add": "⟦ÀÀdd pôôrt⟧",
 	"preview_ports_manual_help": "⟦Mïïssïïng àà sëërvëër? ÀÀdd ïïts pôôrt, thëën ëënààblëë ÜÜRLs ôôr lôôcààlhôôst fôôrwààrdïïng.⟧",
-	"preview_ports_public_help": "⟦Prëëvïïëëw lïïnks ààrëë püüblïïc. Tüürnïïng ààüütôô-crëëààtïïôôn ôôff dôôëës nôôt rëëvôôkëë ëëxïïstïïng lïïnks.⟧"
+	"preview_ports_public_help": "⟦Prëëvïïëëw lïïnks ààrëë püüblïïc. Tüürnïïng thïïs ôôff rëëvôôkëës ïïssüüëëd lïïnks.⟧",
+	"preview_ports_revoke_pending": "⟦Rëëvôôkïïng prëëvïïëëw lïïnks… Prëëvïïôôüüsly shààrëëd lïïnks màày rëëmààïïn püüblïïc üüntïïl rëëmôôvààl süüccëëëëds. Rëëtry by swïïtchïïng ôôff ààgààïïn.⟧"
 }

@@ -9,6 +9,7 @@ import {
 } from "@zuse/icons/solid-rounded";
 import { useState } from "react";
 import { getTunnelsBridge } from "../lib/bridge.ts";
+import { revokeCloudPreviewUrls } from "../lib/cloud-preview-client.ts";
 import { errorMessage } from "../lib/error-message.ts";
 import { openExternal } from "../lib/platform-capabilities.ts";
 import { closePreviewPortForwards } from "../lib/port-forward-client.ts";
@@ -38,6 +39,7 @@ export function PreviewPortsMenu({
 	const [open, setOpen] = useState(false);
 	const [portText, setPortText] = useState("");
 	const [closing, setClosing] = useState(false);
+	const [revoking, setRevoking] = useState(false);
 	const settings = usePreviewSettings(
 		(state) => state.environments[environmentId] ?? DEFAULT_PREVIEW_SETTINGS,
 	);
@@ -58,6 +60,20 @@ export function PreviewPortsMenu({
 			type: "error",
 			title: errorMessage(cause, message("connections:preview_ports_failed")),
 		});
+	const togglePublication = async (enabled: boolean) => {
+		if (enabled) {
+			update(environmentId, { publish: true });
+			return;
+		}
+		setRevoking(true);
+		try {
+			await revokeCloudPreviewUrls(environmentId);
+		} catch (cause) {
+			report(cause);
+		} finally {
+			setRevoking(false);
+		}
+	};
 	const toggleForwarding = async (enabled: boolean) => {
 		update(environmentId, { forward: enabled });
 		if (enabled) return;
@@ -119,9 +135,12 @@ export function PreviewPortsMenu({
 						{message("connections:preview_ports_auto_urls")}
 					</span>
 					<Switch
-						checked={settings.publish}
-						disabled={!boxd}
-						onCheckedChange={(publish) => update(environmentId, { publish })}
+						checked={settings.publish || settings.revocationPending}
+						disabled={
+							revoking ||
+							(!boxd && !settings.revocationPending && !settings.publish)
+						}
+						onCheckedChange={(enabled) => void togglePublication(enabled)}
 						aria-label={message("connections:preview_ports_auto_urls")}
 					/>
 				</div>
@@ -141,7 +160,11 @@ export function PreviewPortsMenu({
 					/>
 				</div>
 				<p className="px-2 py-1 text-[11px] text-muted-foreground">
-					{message("connections:preview_ports_auto_help")}
+					{message(
+						settings.revocationPending
+							? "connections:preview_ports_revoke_pending"
+							: "connections:preview_ports_auto_help",
+					)}
 				</p>
 				<div className="my-1 border-t border-border" />
 				<div className="flex h-7 items-center px-2 text-xs text-muted-foreground">
