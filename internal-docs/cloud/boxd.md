@@ -95,3 +95,9 @@ publish with the same API key owner used by the Worker.
   through a named proxy, round-trips a file, hibernates and wakes with the
   tagged process intact, replaces it through the fenced restart path,
   snapshots, forks from the snapshot, and deletes everything it made.
+
+## Incident investigation
+
+Use the [shared incident debugging runbook](incident-debugging.md), including its
+Boxd-specific access and lifecycle notes. The memory/recovery checks are shared;
+Boat API endpoints and snapshot-file procedures are not interchangeable with Boxd.

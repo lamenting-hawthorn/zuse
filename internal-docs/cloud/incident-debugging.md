@@ -2,7 +2,7 @@
 
 This is the hands-on investigation workflow: find the affected machine, establish
 which layer is failing, collect evidence, make the smallest repair, and verify the
-original conversation actually continues. It applies to Boat and E2B. The
+original conversation actually continues. It applies to Boat, E2B, and Boxd. The
 [memory test runbook](memory-pressure-testing.md) covers automated checks and
 staging verification after a code change; it is not the incident investigation.
 
@@ -67,6 +67,38 @@ The internal adapter ID can still be `box`. Use the current adapter/docs rather
 than guessing provider field names or treating the Box/Boat rename as a failure.
 For E2B, use the repository's E2B adapter/installed SDK with the existing sandbox
 ID. Do not allocate a new sandbox as a connectivity probe.
+
+### Boxd-specific access and lifecycle
+
+Boxd is a separate provider from Boat (`providerId: "boxd"`); do not send its
+machine ID or credentials to Boat's REST endpoints. Follow
+`packages/sandbox-providers/src/boxd.ts` and the installed SDK. The adapter uses
+`client.machines.get(id)` for metadata and
+`client.machines.exec(id, { command, timeout })` for guest commands; its exec
+timeout is in milliseconds, unlike the Boat example's `timeoutSeconds`.
+Confirm the configured organization and cluster/base URL before looking up a
+machine. See [Boxd operations](boxd.md) for configuration and limitations.
+
+The guest-level checks below still apply: Linux memory and kernel logs, process
+parents, tagged systemd service, runtime log, SQLite identity, gateway generation,
+and mailbox acknowledgement. Boxd shares Boat's tagged process helpers, so the
+unit-name discovery procedure also applies. Use the adapter/SDK file reader;
+Boat's snapshot-file REST example is not a Boxd recovery method.
+
+Record Boxd's native state before probing its proxy. The adapter distinguishes
+`hibernated`, `suspended`, and `stopped`, with wake, resume, and start operations
+respectively. Normal hibernation preserves processes; a stopped machine or resize
+boots cold. Inbound proxy traffic can wake a hibernated machine, so an HTTP/SSH
+probe is not necessarily passive. A failed connection during hibernation is not
+by itself a crash. Do not force a restart merely because a warm reconnect takes
+time, and do not resize as a diagnostic step.
+
+The memory detector and bounded recovery use the shared adapter interface, not
+Boat-specific endpoints, so they also apply to Boxd's Linux guest. This is code
+path coverage, not evidence of a successful live Boxd run. Repeat the staging
+scenarios on Boxd when enabled, including preserved-process hibernation, cold
+start, proxy wake, and unavailable diagnostic commands. A provider-wide outage
+still requires independent evidence; one failing machine does not establish it.
 
 Here is the shape of a bounded Boat command probe. Replace the two placeholders
 with the identified sandbox and a private local key file; the key is not placed

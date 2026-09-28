@@ -1,7 +1,7 @@
 # Testing cloud memory warnings and recovery
 
 This runbook covers the API recovery policy, Linux runtime telemetry, and desktop
-notice for Boat and E2B. Read [the behavior and limits](memory-pressure.md) and
+notice for Boat, E2B, and Boxd. Read [the behavior and limits](memory-pressure.md) and
 [runtime data recovery](runtime-data-recovery.md) first.
 
 ## 1. Establish the change and environment
@@ -77,11 +77,13 @@ not prove real provider uptime, production deployment, visual layout, or real
 end-to-end prompt delivery. Mailbox equality checks are not a substitute for
 observing a single execution on a live runtime.
 
-## 3. Validate staging on both providers
+## 3. Validate staging on enabled providers
 
 Deploy the additive API/runtime changes to staging and use a desktop build from
 the same revision. Record actual versions, rather than assuming the newest
-runtime was installed. Repeat these steps on Boat and E2B:
+runtime was installed. Repeat these steps on Boat and E2B, and on Boxd when enabled. For Boxd, also
+verify preserved-process hibernation versus cold start, and account for proxy
+traffic waking a hibernated guest (see [incident debugging](incident-debugging.md)).
 
 1. Create a chat through the API, send a harmless command, and record its IDs.
    Verify it appears in the desktop and produces a tool result.
