@@ -145,6 +145,15 @@ export const isForkableAssistantMessage = (message: Message): boolean =>
 	(!("parentItemId" in message.content) ||
 		message.content.parentItemId === undefined);
 
+/** Rows drawn as branches of a tool tree, with the connector on the left. */
+export const isToolTreeBranch = (message: Message): boolean =>
+	message.content._tag === "tool_use" || message.content._tag === "thinking";
+
+/** The reply that closes a turn — the only one that carries copy and fork. */
+export const findFinalAssistantMessage = (
+	body: ReadonlyArray<Message>,
+): Message | null => body.findLast(isForkableAssistantMessage) ?? null;
+
 export function deriveChatTimelineRows({
 	messages,
 	inFlight,
@@ -155,13 +164,6 @@ export function deriveChatTimelineRows({
 	readonly awaitingPlanApproval: boolean;
 }): ChatTimelineRow[] {
 	const normalizedMessages = normalizeTimelineMessages(messages);
-	const lastMessage = normalizedMessages.at(-1);
-	const streamingAssistantMessageId =
-		inFlight &&
-		lastMessage !== undefined &&
-		isForkableAssistantMessage(lastMessage)
-			? lastMessage.id
-			: null;
 	const turns: Array<{
 		user: Message | null;
 		body: Message[];
@@ -184,9 +186,10 @@ export function deriveChatTimelineRows({
 	for (const [index, turn] of turns.entries()) {
 		const isLastTurn = index === turns.length - 1;
 		const isLive = inFlight && isLastTurn;
+		// Copy and fork appear once the turn settles, on its final reply only.
+		const finalAssistant = isLive ? null : findFinalAssistantMessage(turn.body);
 		const showAssistantCommands = (message: Message): boolean =>
-			isForkableAssistantMessage(message) &&
-			message.id !== streamingAssistantMessageId;
+			message === finalAssistant;
 
 		if (turn.user !== null) {
 			rows.push({
@@ -251,7 +254,7 @@ export function deriveChatTimelineRows({
 				kind: "turn-summary",
 				id: `summary:${turn.user?.id ?? `turn-${index}`}`,
 				body: summaryBody,
-				showAssistantCommands: summaryBody.some(showAssistantCommands),
+				showAssistantCommands: finalAssistant !== null,
 			});
 			continue;
 		}
@@ -350,30 +353,49 @@ export function groupToolActivityRows(
 	let active:
 		| { kind: "tool-activity"; id: string; messages: Message[] }
 		| undefined;
+	// Thinking only joins a tree when a tool follows it; until then it is held
+	// here so thinking that leads straight into text stays a standalone row.
+	let leading: Extract<ChatTimelineRow, { kind: "message" }>[] = [];
 	for (const row of rows) {
 		const tag = row.kind === "message" ? row.message.content._tag : undefined;
+		const joinsActivity =
+			row.kind === "message" &&
+			(tag === "tool_result" ||
+				tag === "thinking" ||
+				tag === "usage" ||
+				tag === "context_usage" ||
+				tag === "usage_limit" ||
+				tag === "subagent_progress" ||
+				(row.message.content._tag === "assistant" &&
+					row.message.content.text.trim().length === 0));
 		if (
 			row.kind === "message" &&
-			(tag === "tool_use" ||
-				(active !== undefined &&
-					(tag === "tool_result" ||
-						tag === "thinking" ||
-						tag === "usage" ||
-						tag === "context_usage" ||
-						tag === "usage_limit" ||
-						tag === "subagent_progress" ||
-						(row.message.content._tag === "assistant" &&
-							row.message.content.text.trim().length === 0))))
+			(tag === "tool_use" || (active !== undefined && joinsActivity))
 		) {
 			if (active === undefined) {
-				active = { kind: "tool-activity", id: `tools:${row.id}`, messages: [] };
+				active = {
+					kind: "tool-activity",
+					id: `tools:${(leading[0] ?? row).id}`,
+					messages: leading.map((held) => held.message),
+				};
+				leading = [];
 				output.push(active);
 			}
 			active.messages.push(row.message);
-		} else {
-			active = undefined;
-			output.push(row);
+			continue;
 		}
+		if (
+			row.kind === "message" &&
+			active === undefined &&
+			(tag === "thinking" || (leading.length > 0 && joinsActivity))
+		) {
+			leading.push(row);
+			continue;
+		}
+		active = undefined;
+		output.push(...leading, row);
+		leading = [];
 	}
+	output.push(...leading);
 	return output;
 }

@@ -13,7 +13,10 @@ import { BubbleChatIcon, Wrench01Icon } from "@zuse/icons/solid-rounded";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { memo, useMemo, useState } from "react";
 import { cn } from "~/lib/utils";
-import { isForkableAssistantMessage } from "../lib/chat-timeline-rows.ts";
+import {
+	findFinalAssistantMessage,
+	isToolTreeBranch,
+} from "../lib/chat-timeline-rows.ts";
 import { groupMessages } from "../lib/group-messages.ts";
 
 import { AssistantMessageActions } from "./assistant-message-actions.tsx";
@@ -75,15 +78,6 @@ const aggregateFileStats = (body: ReadonlyArray<Message>): FileStat[] => {
 	return Array.from(map.entries()).map(([path, s]) => ({ path, ...s }));
 };
 
-const findFinalAssistant = (body: ReadonlyArray<Message>): Message | null => {
-	for (let i = body.length - 1; i >= 0; i--) {
-		const m = body[i];
-		if (m === undefined) continue;
-		if (isForkableAssistantMessage(m)) return m;
-	}
-	return null;
-};
-
 const MAX_PREVIEW_ICONS = 5;
 const MAX_FILE_CHIPS = 4;
 
@@ -120,6 +114,10 @@ function TurnSummaryImpl({
 		() => body.filter((m) => m.content._tag === "tool_use"),
 		[body, uiMessage],
 	);
+	const lastBranchId = useMemo(
+		() => body.findLast(isToolTreeBranch)?.id,
+		[body],
+	);
 	const messageCount = useMemo(
 		() =>
 			body.filter(
@@ -129,7 +127,7 @@ function TurnSummaryImpl({
 	);
 
 	const finalAssistant = useMemo(
-		() => findFinalAssistant(body),
+		() => findFinalAssistantMessage(body),
 		[body, uiMessage],
 	);
 	const fileStats = useMemo(() => aggregateFileStats(body), [body, uiMessage]);
@@ -258,8 +256,8 @@ function TurnSummaryImpl({
 							<div
 								key={group.message.id}
 								className={
-									group.message.content._tag === "tool_use"
-										? `tool-activity-branch ${group.message.id === toolUses.at(-1)?.id ? "tool-activity-last" : ""}`
+									isToolTreeBranch(group.message)
+										? `tool-activity-branch ${group.message.id === lastBranchId ? "tool-activity-last" : ""}`
 										: undefined
 								}
 							>
@@ -270,10 +268,6 @@ function TurnSummaryImpl({
 									readOnly={environmentId === undefined}
 									forkDestination={forkDestination}
 									sourceProjectId={sourceProjectId}
-									showAssistantCommands={
-										showAssistantCommands &&
-										isForkableAssistantMessage(group.message)
-									}
 								/>
 							</div>
 						) : (

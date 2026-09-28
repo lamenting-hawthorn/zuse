@@ -210,7 +210,7 @@ describe("chat timeline rows", () => {
 		).toEqual([true, false]);
 	});
 
-	it("keeps earlier assistant messages actionable during a live turn", () => {
+	it("hides every assistant command while its turn is live", () => {
 		const rows = deriveChatTimelineRows({
 			messages: [
 				message("u1", { _tag: "user", text: "active prompt" }),
@@ -235,7 +235,30 @@ describe("chat timeline rows", () => {
 			assistantRows.map((row) =>
 				row.kind === "message" ? row.showAssistantCommands : false,
 			),
-		).toEqual([true, false]);
+		).toEqual([false, false]);
+	});
+
+	it("keeps commands only on the final reply of a completed turn", () => {
+		const rows = deriveChatTimelineRows({
+			messages: [
+				message("u1", { _tag: "user", text: "prompt" }),
+				message("a1", { _tag: "assistant", text: "intermediate update" }),
+				message("a2", { _tag: "assistant", text: "final reply" }),
+			],
+			inFlight: false,
+			awaitingPlanApproval: false,
+		});
+
+		expect(
+			rows.flatMap((row) =>
+				row.kind === "message" && row.message.content._tag === "assistant"
+					? [[row.message.id, row.showAssistantCommands]]
+					: [],
+			),
+		).toEqual([
+			["a1", false],
+			["a2", true],
+		]);
 	});
 
 	it("collapses duplicate tool_use rows with the same provider item id", () => {
@@ -433,6 +456,48 @@ it("does not group across text or hide an unpaired tool error", () => {
 		"tool-activity",
 		"working",
 	]);
+});
+
+it("pulls thinking that leads into tools into the tree, but not before text", () => {
+	const thinking = (id: string) =>
+		message(id, {
+			_tag: "thinking",
+			itemId: id,
+			text: "Weighing options.",
+			redacted: false,
+		} as Message["content"]);
+	const messages = [
+		thinking("think-1"),
+		message("tool", {
+			_tag: "tool_use",
+			itemId: "read",
+			tool: "Read",
+			input: {},
+		} as Message["content"]),
+		thinking("think-2"),
+		message("text", { _tag: "assistant", text: "Done." }),
+		thinking("think-3"),
+		message("reply", { _tag: "assistant", text: "Answer." }),
+	];
+	const rows = deriveChatTimelineRows({
+		messages,
+		inFlight: true,
+		awaitingPlanApproval: false,
+	});
+	expect(rows.map((row) => row.kind)).toEqual([
+		"tool-activity",
+		"message",
+		"message",
+		"message",
+		"working",
+	]);
+	expect(rows[0]?.id).toBe("tools:message:think-1");
+	expect(rows[0]?.kind === "tool-activity" && rows[0].messages).toEqual(
+		messages.slice(0, 3),
+	);
+	expect(
+		rows.slice(1, 4).map((row) => row.kind === "message" && row.message.id),
+	).toEqual(["text", "think-3", "reply"]);
 });
 
 it("keeps tools together across invisible status and empty assistant rows", () => {

@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import type { ComponentProps } from "react";
 import { useId, useRef, useState } from "react";
+import { isToolTreeBranch } from "../lib/chat-timeline-rows.ts";
 import { MessageRow } from "./message-row.tsx";
 
 /** One disclosure owns the activity between text messages. */
@@ -19,9 +20,7 @@ export function ToolActivityTree({
 	const id = useId();
 	const reduce = useReducedMotion();
 	const initialIds = useRef(new Set(messages.map((item) => item.id)));
-	const lastToolId = messages.findLast(
-		(item) => item.content._tag === "tool_use",
-	)?.id;
+	const lastBranchId = messages.findLast(isToolTreeBranch)?.id;
 	const count = messages.filter((m) => m.content._tag === "tool_use").length;
 	return (
 		<div className="py-1">
@@ -65,8 +64,8 @@ export function ToolActivityTree({
 							}}
 							key={item.id}
 							className={
-								item.content._tag === "tool_use"
-									? `overflow-hidden tool-activity-branch ${item.id === lastToolId ? "tool-activity-last" : ""}`
+								isToolTreeBranch(item)
+									? `overflow-hidden tool-activity-branch ${item.id === lastBranchId ? "tool-activity-last" : ""}`
 									: "overflow-hidden"
 							}
 						>
