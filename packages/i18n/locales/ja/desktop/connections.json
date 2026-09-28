@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "ブラウザーのサインインを開く",
 	"auth_complete_workos_sign_in_in_your_browser": "ブラウザで WorkOS サインインを完了します。",
 	"auth_sign_in_failed": "サインインに失敗しました",
-	"cloud_workspace_info_inactive": "非アクティブ"
+	"cloud_workspace_info_inactive": "非アクティブ",
+	"cloud_memory_low": "クラウドマシンのメモリが不足しています。",
+	"cloud_memory_waiting": "メモリが解放されるのを待ってから再接続します…",
+	"cloud_memory_recovering": "クラウドマシンのメモリが不足しました。再接続中…",
+	"cloud_memory_failed": "メモリ不足のため、自動復旧を停止しました。",
+	"cloud_memory_advice": "同時に実行するテストやビルドを減らすようエージェントに依頼するか、メモリ容量の大きいマシンを使用してください。"
 }

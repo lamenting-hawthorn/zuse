@@ -276,3 +276,30 @@ describe("cloud workspace runtime ready status", () => {
 		});
 	});
 });
+
+it("accepts spontaneous recovery during memory backoff without undoing pause", () => {
+	expect(
+		runtimeActivityLifecycle({
+			state: "resuming",
+			desiredState: "ready",
+			runtimeState: "offline",
+			statusCode: "runtime-memory-pressure",
+		}),
+	).toEqual({
+		state: "ready",
+		runtimeState: "online",
+		statusCode: "agent-running",
+	});
+	expect(
+		runtimeActivityLifecycle({
+			state: "resuming",
+			desiredState: "paused",
+			runtimeState: "offline",
+			statusCode: "runtime-memory-pressure",
+		}),
+	).toEqual({
+		state: "resuming",
+		runtimeState: "offline",
+		statusCode: "runtime-memory-pressure",
+	});
+});

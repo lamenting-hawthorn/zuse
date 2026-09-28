@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "⟦ÔÔpëënïïng brôôwsëër sïïgn-ïïn⟧",
 	"auth_complete_workos_sign_in_in_your_browser": "⟦Côômplëëtëë WôôrkÔÔS sïïgn-ïïn ïïn yôôüür brôôwsëër.⟧",
 	"auth_sign_in_failed": "⟦Sïïgn-ïïn fààïïlëëd⟧",
-	"cloud_workspace_info_inactive": "⟦ÏÏnààctïïvëë⟧"
+	"cloud_workspace_info_inactive": "⟦ÏÏnààctïïvëë⟧",
+	"cloud_memory_low": "⟦Yôôüür clôôüüd mààchïïnëë ïïs rüünnïïng lôôw ôôn mëëmôôry.⟧",
+	"cloud_memory_waiting": "⟦Wààïïtïïng fôôr mëëmôôry tôô frëëëë üüp bëëfôôrëë rëëcôônnëëctïïng…⟧",
+	"cloud_memory_recovering": "⟦Yôôüür clôôüüd mààchïïnëë rààn ôôüüt ôôf mëëmôôry. Rëëcôônnëëctïïng…⟧",
+	"cloud_memory_failed": "⟦ÀÀüütôômààtïïc rëëcôôvëëry stôôppëëd bëëcààüüsëë ôôf mëëmôôry prëëssüürëë.⟧",
+	"cloud_memory_advice": "⟦ÀÀsk yôôüür ààgëënt tôô rüün fëëwëër tëësts ôôr büüïïlds ààt ôôncëë, ôôr üüsëë àà lààrgëër mààchïïnëë.⟧"
 }

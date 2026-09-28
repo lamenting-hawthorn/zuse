@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "브라우저 로그인 열기",
 	"auth_complete_workos_sign_in_in_your_browser": "브라우저에서 WorkOS 로그인을 완료하세요.",
 	"auth_sign_in_failed": "로그인 실패",
-	"cloud_workspace_info_inactive": "비활성"
+	"cloud_workspace_info_inactive": "비활성",
+	"cloud_memory_low": "클라우드 머신의 메모리가 부족합니다.",
+	"cloud_memory_waiting": "메모리가 확보되면 다시 연결합니다…",
+	"cloud_memory_recovering": "클라우드 머신의 메모리가 소진되었습니다. 다시 연결하는 중…",
+	"cloud_memory_failed": "메모리 부족으로 자동 복구가 중단되었습니다.",
+	"cloud_memory_advice": "에이전트에게 테스트나 빌드를 동시에 적게 실행하도록 요청하거나 더 큰 머신을 사용하세요."
 }

@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "打开浏览器登录",
 	"auth_complete_workos_sign_in_in_your_browser": "在浏览器中完成 WorkOS 登录。",
 	"auth_sign_in_failed": "登录失败",
-	"cloud_workspace_info_inactive": "未激活"
+	"cloud_workspace_info_inactive": "未激活",
+	"cloud_memory_low": "云机器的可用内存不足。",
+	"cloud_memory_waiting": "正在等待内存释放后重新连接…",
+	"cloud_memory_recovering": "云机器内存已耗尽。正在重新连接…",
+	"cloud_memory_failed": "由于内存不足，自动恢复已停止。",
+	"cloud_memory_advice": "请让智能体减少同时运行的测试或构建，或使用内存更大的机器。"
 }

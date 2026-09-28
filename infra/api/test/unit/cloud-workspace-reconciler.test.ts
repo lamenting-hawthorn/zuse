@@ -1667,3 +1667,184 @@ test.each([
 	);
 	expect(schedule).toHaveBeenCalledTimes(preservesProcessesOnResume ? 0 : 1);
 });
+
+describe("memory-aware runtime recovery", () => {
+	test.each([
+		{
+			name: "pressure waits",
+			available: 100,
+			kills: 0,
+			attempts: 0,
+			age: 0,
+			status: "runtime-memory-pressure",
+			launches: 0,
+		},
+		{
+			name: "confirmed OOM restarts",
+			available: 2000000,
+			kills: 1,
+			attempts: 0,
+			age: 0,
+			status: "runtime-memory-recovering",
+			launches: 1,
+		},
+		{
+			name: "repeated OOM stops",
+			available: 2000000,
+			kills: 1,
+			attempts: 3,
+			age: 1000,
+			status: "runtime-memory-recovery-failed",
+			launches: 0,
+		},
+		{
+			name: "persistent pressure stops",
+			available: 100,
+			kills: 0,
+			attempts: 0,
+			age: 301000,
+			status: "runtime-memory-recovery-failed",
+			launches: 0,
+		},
+		{
+			name: "ordinary disconnect stays ordinary",
+			available: 2000000,
+			kills: 0,
+			attempts: 0,
+			age: 0,
+			status: "resume-runtime-restarting",
+			launches: 1,
+		},
+	])("$name without replacing the sandbox or queued message", async (input) => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const store = yield* CloudWorkspaceStore;
+				const control = yield* FakeSandboxProviderControlService;
+				const workspace = yield* seedWorkspace({
+					workspaceId: "memory-check",
+					state: "resuming",
+					desiredState: "ready",
+					statusCode: "resume-queued",
+					requestConfig: {
+						runtimeGeneration: 1,
+						memoryRecoveryAttempts: input.attempts,
+						memoryRecoveryStartedAt: Date.now() - input.age,
+					},
+				});
+				const before = yield* store.getLaunchIntent(
+					workspace.workspaceId,
+					Date.now(),
+				);
+				const providers = yield* SandboxProviders;
+				const replacement = {
+					...providers,
+					get: (id: string) =>
+						providers.get(id).pipe(
+							Effect.map((adapter) => ({
+								...adapter,
+								readTextFile: (_id: string, path: string) =>
+									Effect.succeed(
+										path === "/proc/meminfo"
+											? `MemTotal: 4096000 kB\nMemAvailable: ${input.available} kB`
+											: path === "/proc/vmstat"
+												? `oom_kill ${input.kills}`
+												: path === "/proc/sys/kernel/random/boot_id"
+													? "boot"
+													: path.endsWith("runtime-memory.json")
+														? JSON.stringify({
+																bootId: "boot",
+																generation: "1",
+																oomKills: 0,
+															})
+														: "",
+									),
+							})),
+						),
+				};
+				yield* reconcileCloudWorkspace(workspace.workspaceId).pipe(
+					Effect.provideService(SandboxProviders, replacement),
+				);
+				// A fast observer must respect the pressure backoff and not launch anything.
+				if (input.status === "runtime-memory-pressure")
+					yield* reconcileCloudWorkspace(workspace.workspaceId).pipe(
+						Effect.provideService(SandboxProviders, replacement),
+					);
+				return {
+					before,
+					after: yield* store.getLaunchIntent(
+						workspace.workspaceId,
+						Date.now(),
+					),
+					workspace: yield* store.getWorkspace(workspace.workspaceId),
+					launches: yield* Ref.get(control.startProcessCalls),
+					resumes: yield* Ref.get(control.resumeInputs),
+				};
+			}).pipe(Effect.provide(testLayer)),
+		);
+		expect(result.workspace?.statusCode).toBe(input.status);
+		expect(result.launches).toHaveLength(input.launches);
+		expect(result.resumes).toHaveLength(0);
+		expect(result.workspace?.providerSandboxId).toBe("source-memory-check");
+		expect(result.after).toEqual(result.before);
+	});
+});
+
+test("automatically restarts the retained runtime once memory pressure clears", async () => {
+	const result = await Effect.runPromise(
+		Effect.gen(function* () {
+			const store = yield* CloudWorkspaceStore;
+			const control = yield* FakeSandboxProviderControlService;
+			const workspace = yield* seedWorkspace({
+				workspaceId: "memory-clears",
+				state: "resuming",
+				desiredState: "ready",
+				statusCode: "resume-queued",
+				requestConfig: { runtimeGeneration: 1 },
+			});
+			const providers = yield* SandboxProviders;
+			let available = 100;
+			const replacement = {
+				...providers,
+				get: (id: string) =>
+					providers.get(id).pipe(
+						Effect.map((adapter) => ({
+							...adapter,
+							readTextFile: (_id: string, path: string) =>
+								Effect.succeed(
+									path === "/proc/meminfo"
+										? `MemTotal: 4096000 kB\nMemAvailable: ${available} kB`
+										: "",
+								),
+						})),
+					),
+			};
+			const reconcile = reconcileCloudWorkspace(workspace.workspaceId).pipe(
+				Effect.provideService(SandboxProviders, replacement),
+			);
+			yield* reconcile;
+			const waiting = yield* store.getWorkspace(workspace.workspaceId);
+			expect(waiting?.statusCode).toBe("runtime-memory-pressure");
+			expect(yield* Ref.get(control.startProcessCalls)).toHaveLength(0);
+			if (!waiting) throw new Error("workspace missing");
+			// Simulate the next scheduled check, without sleeping or changing the queue.
+			available = 2000000;
+			yield* store.saveWorkspace({
+				...waiting,
+				revision: waiting.revision + 1,
+				updatedAtMs: waiting.updatedAtMs + 1,
+				nextActionAtMs: Date.now() - 1,
+			});
+			yield* reconcile;
+			return {
+				workspace: yield* store.getWorkspace(workspace.workspaceId),
+				calls: yield* Ref.get(control.startProcessCalls),
+			};
+		}).pipe(Effect.provide(testLayer)),
+	);
+	expect(result.calls).toHaveLength(1);
+	expect(result.workspace).toMatchObject({
+		providerSandboxId: "source-memory-clears",
+		state: "provisioning",
+		statusCode: "resume-runtime-restarting",
+	});
+});

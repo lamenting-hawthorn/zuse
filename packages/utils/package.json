@@ -23,7 +23,8 @@
 		"./rpc-payload-metrics": "./src/rpc-payload-metrics.ts",
 		"./structural-tuple-key": "./src/structural-tuple-key.ts",
 		"./zuse-user-data": "./src/zuse-user-data.ts",
-		"./reaper": "./src/reaper.ts"
+		"./reaper": "./src/reaper.ts",
+		"./linux-memory": "./src/linux-memory.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

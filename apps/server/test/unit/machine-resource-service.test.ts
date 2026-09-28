@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+	accumulateResourceSample,
 	type ResourceSnapshot,
 	toSample,
 } from "../../src/machine/machine-resource-service.ts";
@@ -44,4 +45,31 @@ describe("machine resource sampling", () => {
 		expect(sample.cpuPercent).toBeGreaterThanOrEqual(0);
 		expect(sample.cpuPercent).toBeLessThanOrEqual(100);
 	});
+});
+
+test("warns after sustained pressure and clears immediately when memory recovers", () => {
+	let state = {
+		counters: undefined as ResourceSnapshot["counters"] | undefined,
+		pressureSamples: 0,
+	};
+	for (const [pressure, expected] of [
+		[true, false],
+		[true, false],
+		[true, true],
+		[false, false],
+		[true, false],
+	] as const) {
+		const [next, samples] = accumulateResourceSample(state, {
+			...snapshot({ idle: 1, total: 2, cores: 2 }),
+			memoryPressure: pressure,
+		});
+		state = next;
+		expect(samples[0]?.memoryPressure).toBe(expected);
+	}
+	expect(
+		accumulateResourceSample(
+			state,
+			snapshot({ idle: 1, total: 2, cores: 2 }),
+		)[1][0]?.memoryPressure,
+	).toBeUndefined();
 });

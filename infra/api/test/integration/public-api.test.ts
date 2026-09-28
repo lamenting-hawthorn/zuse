@@ -615,6 +615,78 @@ describe("public API (/v1/api)", () => {
 		}
 	});
 
+	test("memory recovery retry retains the sandbox and resets only its retry budget", async () => {
+		const runtime = await makeRuntime();
+		try {
+			const store = await runtime.runPromise(CloudWorkspaceStore);
+			await seedReadyProject(runtime, store);
+			const headers = { ...WORKOS_HEADERS, "content-type": "application/json" };
+			const created = await json<{ workspace: { workspaceId: string } }>(
+				await serve(runtime, "/v1/cloud/workspaces", {
+					method: "POST",
+					headers,
+					body: JSON.stringify({
+						projectId: "project-1",
+						providerId: PROVIDER_ID,
+						baseRef: "origin/main",
+						agent: "codex",
+						model: "gpt-5",
+						firstMessage: "Inspect",
+						idempotencyKey: "memory-retry",
+					}),
+				}),
+				201,
+			);
+			const workspace = await runtime.runPromise(
+				store.getWorkspace(created.workspace.workspaceId),
+			);
+			if (!workspace) throw new Error("workspace missing");
+			await runtime.runPromise(
+				store.saveWorkspace({
+					...workspace,
+					providerSandboxId: "keep-this-disk",
+					state: "failed",
+					statusCode: "runtime-memory-recovery-failed",
+					requestConfig: {
+						...workspace.requestConfig,
+						memoryRecoveryStartedAt: 1,
+						memoryRecoveryAttempts: 3,
+					},
+					revision: workspace.revision + 1,
+					updatedAtMs: workspace.updatedAtMs + 1,
+				}),
+			);
+			const response = await serve(
+				runtime,
+				`/v1/cloud/workspaces/${workspace.workspaceId}/resume`,
+				{
+					method: "POST",
+					headers,
+					body: JSON.stringify({
+						workspaceId: workspace.workspaceId,
+						commandId: "retry-memory",
+					}),
+				},
+			);
+			expect(`${response.status}: ${await response.text()}`).toMatch(/^200:/);
+			const saved = await runtime.runPromise(
+				store.getWorkspace(workspace.workspaceId),
+			);
+			expect(saved).toMatchObject({
+				providerSandboxId: "keep-this-disk",
+				state: "resuming",
+				buildId: workspace.buildId,
+				requestConfig: {
+					memoryRecoveryAttempts: 0,
+					runtimeSessionRecoveryPending: true,
+				},
+			});
+			expect(saved?.requestConfig.memoryRecoveryStartedAt).toBeGreaterThan(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	test.each([
 		"standard",
 		"large",

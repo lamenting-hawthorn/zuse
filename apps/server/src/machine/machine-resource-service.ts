@@ -1,7 +1,11 @@
-import { statfs } from "node:fs/promises";
+import { readFile, rename, statfs, writeFile } from "node:fs/promises";
 import { cpus, freemem, totalmem } from "node:os";
-
 import { MachineResourceSample } from "@zuse/contracts";
+import {
+	linuxMemory,
+	linuxOomKills,
+	RUNTIME_MEMORY_BASELINE_PATH,
+} from "@zuse/utils/linux-memory";
 import { Context, Duration, Effect, Layer, Schedule, Stream } from "effect";
 
 const MIN_INTERVAL_MS = 2_000;
@@ -19,6 +23,7 @@ export interface ResourceSnapshot {
 	readonly counters: CpuCounters;
 	readonly memTotalBytes: number;
 	readonly memUsedBytes: number;
+	readonly memoryPressure?: boolean;
 	readonly diskTotalBytes: number;
 	readonly diskUsedBytes: number;
 	readonly diskPath: string;
@@ -42,7 +47,11 @@ const cpuCountersFromOs = (): CpuCounters => {
 
 /** One point-in-time reading; the stream derives CPU use from two snapshots. */
 const readSnapshot = Effect.promise(async (): Promise<ResourceSnapshot> => {
-	const memTotalBytes = totalmem();
+	const memory =
+		process.platform === "linux"
+			? linuxMemory(await readFile("/proc/meminfo", "utf8").catch(() => ""))
+			: null;
+	const memTotalBytes = memory?.total ?? totalmem();
 	const diskPath = process.cwd();
 	const disk = await statfs(diskPath).catch(() => null);
 	const diskTotalBytes = disk === null ? 0 : disk.bsize * disk.blocks;
@@ -52,7 +61,8 @@ const readSnapshot = Effect.promise(async (): Promise<ResourceSnapshot> => {
 		sampledAt: Date.now(),
 		counters: cpuCountersFromOs(),
 		memTotalBytes,
-		memUsedBytes: Math.max(memTotalBytes - freemem(), 0),
+		memUsedBytes: memory?.used ?? Math.max(memTotalBytes - freemem(), 0),
+		memoryPressure: memory?.pressure,
 		diskTotalBytes,
 		diskUsedBytes,
 		diskPath,
@@ -74,10 +84,37 @@ export const toSample = (
 		cpuPercent: Math.min(Math.max(busyRatio * 100, 0), 100),
 		memTotalBytes: snapshot.memTotalBytes,
 		memUsedBytes: snapshot.memUsedBytes,
+		memoryPressure: snapshot.memoryPressure,
 		diskTotalBytes: snapshot.diskTotalBytes,
 		diskUsedBytes: snapshot.diskUsedBytes,
 		diskPath: snapshot.diskPath,
 	});
+};
+
+interface SampleState {
+	readonly counters: CpuCounters | undefined;
+	readonly pressureSamples: number;
+}
+
+export const accumulateResourceSample = (
+	previous: SampleState,
+	snapshot: ResourceSnapshot,
+): [SampleState, MachineResourceSample[]] => {
+	const pressureSamples = snapshot.memoryPressure
+		? Math.min(previous.pressureSamples + 1, 3)
+		: 0;
+	return [
+		{ counters: snapshot.counters, pressureSamples },
+		[
+			toSample(previous.counters, {
+				...snapshot,
+				memoryPressure:
+					snapshot.memoryPressure === undefined
+						? undefined
+						: pressureSamples >= 3,
+			}),
+		],
+	];
 };
 
 export interface MachineResourceServiceShape {
@@ -89,24 +126,59 @@ export class MachineResourceService extends Context.Service<
 	MachineResourceServiceShape
 >()("zuse/MachineResourceService") {}
 
-export const MachineResourceServiceLive = Layer.succeed(
+// Persist once per runtime launch, even when no UI is watching resource samples.
+// Diagnostics never prevent runtime startup. Atomic replacement avoids torn reads.
+const recordMemoryBaseline = async () => {
+	if (
+		process.env.ZUSE_RUNTIME_KIND !== "cloud-workspace" ||
+		process.platform !== "linux"
+	)
+		return;
+	try {
+		const [bootId, vmstat] = await Promise.all([
+			readFile("/proc/sys/kernel/random/boot_id", "utf8"),
+			readFile("/proc/vmstat", "utf8"),
+		]);
+		const oomKills = linuxOomKills(vmstat);
+		if (oomKills === undefined) return;
+		const temporary = `${RUNTIME_MEMORY_BASELINE_PATH}.${process.pid}.tmp`;
+		await writeFile(
+			temporary,
+			JSON.stringify({
+				bootId: bootId.trim(),
+				oomKills,
+				generation: process.env.ZUSE_RUNTIME_GENERATION,
+			}),
+			{ mode: 0o600 },
+		);
+		await rename(temporary, RUNTIME_MEMORY_BASELINE_PATH);
+	} catch {
+		/* Older templates may not expose the diagnostics directory. */
+	}
+};
+
+export const MachineResourceServiceLive = Layer.effect(
 	MachineResourceService,
-	MachineResourceService.of({
-		watch: (intervalMs) => {
-			const interval = Math.min(
-				Math.max(intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS),
-				MAX_INTERVAL_MS,
-			);
-			return Stream.fromEffect(readSnapshot).pipe(
-				Stream.repeat(Schedule.spaced(Duration.millis(interval))),
-				Stream.mapAccum(
-					(): CpuCounters | undefined => undefined,
-					(previous, snapshot) => [
-						snapshot.counters,
-						[toSample(previous, snapshot)],
-					],
-				),
-			);
-		},
-	}),
+	Effect.promise(recordMemoryBaseline).pipe(
+		Effect.map(() =>
+			MachineResourceService.of({
+				watch: (intervalMs) => {
+					const interval = Math.min(
+						Math.max(intervalMs ?? DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS),
+						MAX_INTERVAL_MS,
+					);
+					return Stream.fromEffect(readSnapshot).pipe(
+						Stream.repeat(Schedule.spaced(Duration.millis(interval))),
+						Stream.mapAccum(
+							() => ({
+								counters: undefined as CpuCounters | undefined,
+								pressureSamples: 0,
+							}),
+							accumulateResourceSample,
+						),
+					);
+				},
+			}),
+		),
+	),
 );

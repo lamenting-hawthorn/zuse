@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "Ouverture de la connexion au navigateur",
 	"auth_complete_workos_sign_in_in_your_browser": "Connectez-vous à WorkOS dans votre navigateur.",
 	"auth_sign_in_failed": "Échec de la connexion",
-	"cloud_workspace_info_inactive": "Inactif"
+	"cloud_workspace_info_inactive": "Inactif",
+	"cloud_memory_low": "La mémoire de votre machine cloud est presque pleine.",
+	"cloud_memory_waiting": "En attente de mémoire libre avant la reconnexion…",
+	"cloud_memory_recovering": "Votre machine cloud a manqué de mémoire. Reconnexion…",
+	"cloud_memory_failed": "La récupération automatique a été interrompue faute de mémoire.",
+	"cloud_memory_advice": "Demandez à votre agent de lancer moins de tests ou de compilations à la fois, ou utilisez une machine plus puissante."
 }

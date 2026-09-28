@@ -1031,7 +1031,8 @@ export const runtimeActivityLifecycle = (
 	>,
 ) =>
 	workspace.desiredState === "ready" &&
-	workspace.statusCode === "resume-runtime-waking"
+	(workspace.statusCode === "resume-runtime-waking" ||
+		workspace.statusCode === "runtime-memory-pressure")
 		? ({
 				state: "ready",
 				runtimeState: "online",
@@ -3597,8 +3598,10 @@ export const routeCloudWorkspaceRequest = (
 					: yield* decodeBody(CloudWorkspaceActionRequest, request);
 			const recoverRuntime =
 				action === "resume" &&
-				"recoverRuntime" in actionRequest &&
-				actionRequest.recoverRuntime === true;
+				(("recoverRuntime" in actionRequest &&
+					actionRequest.recoverRuntime === true) ||
+					(workspace.statusCode === "runtime-memory-recovery-failed" &&
+						workspace.providerSandboxId !== undefined));
 			// A client socket failure does not prove the runtime or its agent died.
 			// Mailbox runtimes can acknowledge readiness over their independent HTTP
 			// control channel, so use the same verification as a preserved warm resume.
@@ -3735,6 +3738,17 @@ export const routeCloudWorkspaceRequest = (
 			};
 			const received: CloudWorkspaceRecord = {
 				...updated,
+				// An explicit retry starts a new bounded episode on the same disk.
+				...((action === "resume" || action === "restart") &&
+				workspace.statusCode === "runtime-memory-recovery-failed"
+					? {
+							requestConfig: {
+								...updated.requestConfig,
+								memoryRecoveryStartedAt: nowMs,
+								memoryRecoveryAttempts: 0,
+							},
+						}
+					: {}),
 				...(action === "archive"
 					? {
 							archiveRequestedAtMs: nowMs,

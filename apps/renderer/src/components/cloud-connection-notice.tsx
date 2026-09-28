@@ -13,6 +13,10 @@ import {
 } from "../lib/cloud-connection-presentation.ts";
 import { cloudFailurePresentation } from "../lib/cloud-failure-presentation.ts";
 import {
+	cloudMemoryNotice,
+	shouldObserveCloudMemory,
+} from "../lib/cloud-memory-notice.ts";
+import {
 	cloudSummaryActiveSessionId,
 	cloudSummaryForChat,
 	useCloudChatCatalogStore,
@@ -23,6 +27,7 @@ import {
 	rearmRegisteredCloudConnection,
 } from "../lib/cloud-workspaces.ts";
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
+import { useMachineResources } from "../lib/machine-resources-client-bus.ts";
 import { usePlatformOnline } from "../lib/network-status.ts";
 import {
 	getRendererClientBus,
@@ -123,13 +128,36 @@ export function CloudConnectionNotice() {
 	useEffect(() => {
 		if (summary !== null) rearmRegisteredCloudConnection(summary);
 	}, [summary, shell.connection]);
-	if (summary === null || !online) return null;
-	const activity = deriveCloudChatActivity({
+	const activity =
+		summary === null
+			? "idle"
+			: deriveCloudChatActivity({
+					summary,
+					connection: shell.connection,
+					runtime,
+					timeline: timeline.view,
+				});
+	// Only observe an already-connected, active turn. A resource subscription
+	// must never wake paused compute or keep an idle sandbox alive.
+	const observeMemory = shouldObserveCloudMemory(
 		summary,
-		connection: shell.connection,
-		runtime,
-		timeline: timeline.view,
-	});
+		shell.connection,
+		activity,
+	);
+	const resources = useMachineResources(
+		observeMemory && summary !== null
+			? { environmentId: EnvironmentId.make(summary.workspaceId) }
+			: null,
+		"connect",
+	);
+	if (summary === null || !online) return null;
+	const memoryNotice = cloudMemoryNotice(
+		summary.statusCode,
+		observeMemory &&
+			resources.sync === "live" &&
+			resources.connection === "connected" &&
+			resources.data?.sample.memoryPressure === true,
+	);
 	const presentation = cloudConnectionPresentation(
 		summary,
 		activity,
@@ -173,7 +201,8 @@ export function CloudConnectionNotice() {
 		!blockedAuth &&
 		!inviteRequired &&
 		!betaCheckUnavailable &&
-		typedConnectionFailure === null
+		typedConnectionFailure === null &&
+		memoryNotice === null
 	)
 		return null;
 	const retry = () => {
@@ -207,16 +236,22 @@ export function CloudConnectionNotice() {
 							title: typedConnectionFailure.headline,
 							detail: typedConnectionFailure.message,
 						}
-					: presentation === "hidden"
-						? null
-						: copy[presentation];
+					: memoryNotice !== null
+						? {
+								title: uiMessage(memoryNotice.title),
+								detail: uiMessage("connections:cloud_memory_advice"),
+							}
+						: presentation === "hidden"
+							? null
+							: copy[presentation];
 	if (value === null) return null;
 	const busy =
 		!blockedAuth &&
 		typedConnectionFailure === null &&
 		!inviteRequired &&
 		!betaCheckUnavailable &&
-		(presentation === "resuming" || presentation === "updating");
+		(presentation === "resuming" || presentation === "updating") &&
+		memoryNotice?.busy !== false;
 	return (
 		<TrayPill
 			flush

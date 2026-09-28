@@ -19,6 +19,13 @@ import { allocatedComputeCostMicros } from "./cloud-billing.ts";
 import { CloudBillingStore } from "./cloud-billing-store.ts";
 import { githubInstallationGrants } from "./cloud-github-app.ts";
 import { deleteCloudTranscriptObjects } from "./cloud-transcript.ts";
+import {
+	MAX_MEMORY_RESTARTS,
+	MEMORY_PRESSURE_WAIT_MS,
+	MEMORY_RECHECK_MS,
+	MEMORY_RECOVERY_WINDOW_MS,
+	readCloudMemory,
+} from "./cloud-workspace-memory.ts";
 import { cloudRepositoryWorkspacePath } from "./cloud-workspace-paths.ts";
 import { nextCloudWorkspaceRuntimeFence } from "./cloud-workspace-runtime-fence.ts";
 import {
@@ -1242,6 +1249,59 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 				providerSandboxId,
 				config.keepAliveTimeoutSeconds,
 			);
+		// An "online" row may describe a dead consumer until its heartbeat expires.
+		// Probe once recovery has already decided to replace it; never delay a
+		// required mailbox fence. Provider and disk state stay untouched.
+		if (running && workspace.requestConfig.cloudMailboxFenceRequired !== true) {
+			const health = yield* readCloudMemory(
+				provider,
+				providerSandboxId,
+				workspace.requestConfig.runtimeGeneration,
+			);
+			const previousStart = workspace.requestConfig.memoryRecoveryStartedAt;
+			const inWindow =
+				typeof previousStart === "number" &&
+				nowMs - previousStart < MEMORY_RECOVERY_WINDOW_MS;
+			const startedAt = inWindow ? previousStart : nowMs;
+			const previousAttempts = workspace.requestConfig.memoryRecoveryAttempts;
+			const attempts =
+				inWindow && typeof previousAttempts === "number" ? previousAttempts : 0;
+			const waiting = workspace.statusCode === "runtime-memory-pressure";
+			const underPressure =
+				health.memory?.pressure === true || (waiting && health.memory === null);
+			if (underPressure || health.oom) {
+				const exhausted =
+					attempts >= MAX_MEMORY_RESTARTS ||
+					(underPressure && nowMs - startedAt >= MEMORY_PRESSURE_WAIT_MS);
+				const requestConfig = {
+					...workspace.requestConfig,
+					memoryRecoveryStartedAt: startedAt,
+					memoryRecoveryAttempts:
+						attempts + (underPressure || exhausted ? 0 : 1),
+				};
+				if (underPressure || exhausted) {
+					yield* saveWorkspace({
+						...workspace,
+						requestConfig,
+						state: exhausted ? "failed" : "resuming",
+						statusCode: exhausted
+							? "runtime-memory-recovery-failed"
+							: "runtime-memory-pressure",
+						nextActionAtMs: exhausted
+							? Number.MAX_SAFE_INTEGER
+							: nowMs + MEMORY_RECHECK_MS,
+						revision: workspace.revision + 1,
+						updatedAtMs: nowMs,
+					});
+					return;
+				}
+				workspace = {
+					...workspace,
+					requestConfig,
+					statusCode: "runtime-memory-recovering",
+				};
+			}
+		}
 		const boot = yield* issueWorkspaceRuntimeBoot(nowMs);
 		yield* Effect.all(
 			[
@@ -1297,7 +1357,10 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 			runtimeCredentialHash: undefined,
 			runtimeState: "offline",
 			state: "provisioning",
-			statusCode: "resume-runtime-restarting",
+			statusCode:
+				workspace.statusCode === "runtime-memory-recovering"
+					? "runtime-memory-recovering"
+					: "resume-runtime-restarting",
 			requestConfig: {
 				...resetMailboxWakeObservation(
 					withoutRuntimeBootstrapReceipt(workspace.requestConfig),
@@ -1824,7 +1887,8 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 			// The request observer invokes reconciliation every 250 ms regardless of
 			// nextActionAtMs. Preserve the warm reconnect window on that path too.
 			if (
-				workspace.statusCode === "resume-runtime-waking" &&
+				(workspace.statusCode === "resume-runtime-waking" ||
+					workspace.statusCode === "runtime-memory-pressure") &&
 				nowMs < workspace.nextActionAtMs
 			)
 				return;
@@ -1851,7 +1915,10 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 				yield* saveWorkspace({
 					...workspace,
 					state: "failed",
-					statusCode: "runtime-connection-timeout",
+					statusCode:
+						workspace.statusCode === "runtime-memory-recovering"
+							? "runtime-memory-recovery-failed"
+							: "runtime-connection-timeout",
 					runtimeState: "offline",
 					runtimeCredentialHash: undefined,
 					runtimeBootTokenHash: undefined,

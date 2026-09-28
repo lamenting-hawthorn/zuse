@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "開啟瀏覽器登入",
 	"auth_complete_workos_sign_in_in_your_browser": "在瀏覽器中完成 WorkOS 登入。",
 	"auth_sign_in_failed": "登入失敗",
-	"cloud_workspace_info_inactive": "未啟用"
+	"cloud_workspace_info_inactive": "未啟用",
+	"cloud_memory_low": "雲端機器的可用記憶體不足。",
+	"cloud_memory_waiting": "正在等待記憶體釋放後重新連線…",
+	"cloud_memory_recovering": "雲端機器記憶體已耗盡。正在重新連線…",
+	"cloud_memory_failed": "由於記憶體不足，自動復原已停止。",
+	"cloud_memory_advice": "請讓代理減少同時執行的測試或建置，或使用記憶體更大的機器。"
 }

@@ -74,5 +74,10 @@
 	"auth_opening_browser_sign_in": "Browser-Anmeldung öffnen",
 	"auth_complete_workos_sign_in_in_your_browser": "Schließen Sie die WorkOS-Anmeldung in Ihrem Browser ab.",
 	"auth_sign_in_failed": "Die Anmeldung ist fehlgeschlagen",
-	"cloud_workspace_info_inactive": "Inaktiv"
+	"cloud_workspace_info_inactive": "Inaktiv",
+	"cloud_memory_low": "Der Arbeitsspeicher deiner Cloud-Maschine wird knapp.",
+	"cloud_memory_waiting": "Warten auf freien Arbeitsspeicher vor dem erneuten Verbinden…",
+	"cloud_memory_recovering": "Deiner Cloud-Maschine ist der Arbeitsspeicher ausgegangen. Verbindung wird wiederhergestellt…",
+	"cloud_memory_failed": "Die automatische Wiederherstellung wurde wegen Speichermangels angehalten.",
+	"cloud_memory_advice": "Bitte deinen Agenten, weniger Tests oder Builds gleichzeitig auszuführen, oder verwende eine größere Maschine."
 }

@@ -469,6 +469,8 @@ export class MachineResourceSample extends Schema.Class<MachineResourceSample>(
 	cpuPercent: Schema.Number,
 	memTotalBytes: Schema.Number,
 	memUsedBytes: Schema.Number,
+	/** Absent on older runtimes and hosts without Linux memory accounting. */
+	memoryPressure: Schema.optional(Schema.Boolean),
 	diskTotalBytes: Schema.Number,
 	diskUsedBytes: Schema.Number,
 	/** Filesystem the disk numbers describe (the workspace root when present). */

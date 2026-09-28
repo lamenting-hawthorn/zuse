@@ -27376,5 +27376,55 @@
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_low": {
+		"source": "Your cloud machine is running low on memory.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 23
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_waiting": {
+		"source": "Waiting for memory to free up before reconnecting…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 16
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_recovering": {
+		"source": "Your cloud machine ran out of memory. Reconnecting…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 18
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_failed": {
+		"source": "Automatic recovery stopped because of memory pressure.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 20
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_advice": {
+		"source": "Ask your agent to run fewer tests or builds at once, or use a larger machine.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
+				"line": 242
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	}
 }
