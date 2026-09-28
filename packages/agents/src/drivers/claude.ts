@@ -620,7 +620,7 @@ const translate = (
 			}
 		}
 		if (Array.isArray(content)) {
-			for (const block of content) {
+			for (const [blockIndex, block] of content.entries()) {
 				blockTypes.push(String((block as { type?: unknown }).type));
 				if (block.type === "text" && typeof block.text === "string") {
 					// An unauthenticated `claude` surfaces "Not logged in · Please run
@@ -639,7 +639,10 @@ const translate = (
 					if (streamed) continue;
 					out.push({
 						_tag: "AssistantMessage",
-						itemId: nextItemId(),
+						itemId:
+							messageId !== null
+								? (`${messageId}:text:${blockIndex}` as AgentItemId)
+								: nextItemId(),
 						text: block.text,
 						parentItemId,
 					});

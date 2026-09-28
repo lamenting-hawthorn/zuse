@@ -209,6 +209,56 @@ describe("Claude partial-message durability", () => {
 			},
 			{ _tag: "ToolUse", itemId: "tool-1" },
 		]);
+		expect(rows[1]?.itemId).toBe(rows[0]?.itemId);
+		expect(rows[3]?.itemId).toBe(rows[2]?.itemId);
+	});
+
+	it("reuses text row IDs when an unstreamed snapshot is replayed", () => {
+		const snapshot = (id: string) => ({
+			type: "assistant",
+			message: {
+				id,
+				role: "assistant",
+				content: [
+					{ type: "text", text: "first" },
+					{ type: "text", text: "second" },
+				],
+			},
+			parent_tool_use_id: null,
+		});
+		const events = translateClaudeSdkMessages([
+			snapshot("message-1"),
+			snapshot("message-1"),
+			snapshot("message-2"),
+		] as never);
+
+		expect(events).toMatchObject([
+			{ _tag: "AssistantMessage", itemId: "message-1:text:0", text: "first" },
+			{ _tag: "AssistantMessage", itemId: "message-1:text:1", text: "second" },
+			{ _tag: "AssistantMessage", itemId: "message-1:text:0", text: "first" },
+			{ _tag: "AssistantMessage", itemId: "message-1:text:1", text: "second" },
+			{ _tag: "AssistantMessage", itemId: "message-2:text:0", text: "first" },
+			{ _tag: "AssistantMessage", itemId: "message-2:text:1", text: "second" },
+		]);
+	});
+
+	it("generates distinct text row IDs when snapshots have no message ID", () => {
+		const snapshot = {
+			type: "assistant",
+			message: {
+				role: "assistant",
+				content: [{ type: "text", text: "reply" }],
+			},
+			parent_tool_use_id: null,
+		};
+		const events = translateClaudeSdkMessages([snapshot, snapshot] as never);
+
+		expect(events).toMatchObject([
+			{ _tag: "AssistantMessage", itemId: expect.any(String), text: "reply" },
+			{ _tag: "AssistantMessage", itemId: expect.any(String), text: "reply" },
+		]);
+		const rows = events.filter((event) => event._tag === "AssistantMessage");
+		expect(rows[0]?.itemId).not.toBe(rows[1]?.itemId);
 	});
 
 	it("still emits text and thinking from snapshots that never streamed", () => {

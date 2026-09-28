@@ -2045,6 +2045,7 @@ function SubagentWaitDetail({ view }: { readonly view: SubagentWaitView }) {
 	);
 }
 
+/** Render expandable thinking with a teaser, or a placeholder for hidden content. */
 export function ThinkingRow({
 	text,
 	redacted,

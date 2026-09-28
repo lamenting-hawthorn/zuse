@@ -154,6 +154,7 @@ export const findFinalAssistantMessage = (
 	body: ReadonlyArray<Message>,
 ): Message | null => body.findLast(isForkableAssistantMessage) ?? null;
 
+/** Build turn rows, exposing reply commands only on each settled turn's final reply. */
 export function deriveChatTimelineRows({
 	messages,
 	inFlight,
