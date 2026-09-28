@@ -22,6 +22,7 @@ export const cloudAccessForwardFailure = (cause: unknown): boolean => {
 export const ensurePortForward = async (
 	environmentId: string,
 	remotePort: number,
+	owner?: "preview",
 ): Promise<number> => {
 	if (environmentId === getLocalEnvironmentId()) return remotePort;
 	const tunnels = getTunnelsBridge();
@@ -31,7 +32,17 @@ export const ensurePortForward = async (
 	const live = (await tunnels.list(environmentId)).find(
 		(forward) => forward.remotePort === remotePort,
 	);
-	if (live !== undefined) return live.localPort;
+	if (live !== undefined)
+		return (
+			await tunnels.open({
+				environmentId,
+				remotePort,
+				...(isCloudWorkspaceEnvironment(environmentId)
+					? { cloudWorkspaceId: environmentId }
+					: {}),
+				...(owner ? { owner } : {}),
+			})
+		).localPort;
 	if (isCloudWorkspaceEnvironment(environmentId)) {
 		await prepareCloudWorkspaceSsh(environmentId);
 		try {
@@ -39,6 +50,7 @@ export const ensurePortForward = async (
 				environmentId,
 				remotePort,
 				cloudWorkspaceId: environmentId,
+				...(owner ? { owner } : {}),
 			});
 			return forward.localPort;
 		} catch (cause) {
@@ -50,11 +62,16 @@ export const ensurePortForward = async (
 				environmentId,
 				remotePort,
 				cloudWorkspaceId: environmentId,
+				...(owner ? { owner } : {}),
 			});
 			return forward.localPort;
 		}
 	}
-	const forward = await tunnels.open({ environmentId, remotePort });
+	const forward = await tunnels.open({
+		environmentId,
+		remotePort,
+		...(owner ? { owner } : {}),
+	});
 	return forward.localPort;
 };
 
@@ -84,7 +101,7 @@ export const ensurePreviewPortForward = (
 ): Promise<number> =>
 	queuePreviewForward(environmentId, () => {
 		if (!enabled()) throw new Error("Port forwarding is disabled.");
-		return ensurePortForward(environmentId, port);
+		return ensurePortForward(environmentId, port, "preview");
 	});
 export const closePreviewPortForwards = (
 	environmentId: string,
@@ -92,6 +109,5 @@ export const closePreviewPortForwards = (
 	queuePreviewForward(environmentId, async () => {
 		const tunnels = getTunnelsBridge();
 		if (!tunnels) return;
-		for (const tunnel of await tunnels.list(environmentId))
-			await tunnels.close(environmentId, tunnel.remotePort);
+		await tunnels.closePreviews(environmentId);
 	});

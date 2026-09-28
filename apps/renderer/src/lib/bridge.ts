@@ -426,7 +426,9 @@ export interface TunnelsBridge {
 		readonly environmentId: string;
 		readonly remotePort: number;
 		readonly cloudWorkspaceId?: string;
+		readonly owner?: "preview";
 	}) => Promise<PortForwardSummary>;
+	readonly closePreviews: (environmentId: string) => Promise<void>;
 	readonly close: (environmentId: string, remotePort: number) => Promise<void>;
 	readonly list: (
 		environmentId?: string,

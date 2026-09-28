@@ -5,12 +5,14 @@ const mocks = vi.hoisted(() => ({
 	open: vi.fn(),
 	list: vi.fn(),
 	close: vi.fn(),
+	closePreviews: vi.fn(),
 }));
 
 vi.mock("../../src/lib/bridge.ts", () => ({
 	getTunnelsBridge: () => ({
 		list: mocks.list,
 		close: mocks.close,
+		closePreviews: mocks.closePreviews,
 		open: mocks.open,
 	}),
 }));
@@ -39,9 +41,18 @@ describe("port forward client", () => {
 		mocks.list.mockResolvedValue([
 			{ environmentId: "workspace_a", remotePort: 3000, localPort: 31_234 },
 		]);
+		mocks.open.mockResolvedValue({
+			environmentId: "workspace_a",
+			remotePort: 3000,
+			localPort: 31_234,
+		});
 		expect(await ensurePortForward("workspace_a", 3000)).toBe(31_234);
 		expect(mocks.prepare).not.toHaveBeenCalled();
-		expect(mocks.open).not.toHaveBeenCalled();
+		expect(mocks.open).toHaveBeenCalledWith({
+			environmentId: "workspace_a",
+			remotePort: 3000,
+			cloudWorkspaceId: "workspace_a",
+		});
 	});
 
 	it("performs at most one credential-refresh retry", async () => {
@@ -100,7 +111,11 @@ it("closes an in-flight forward before disabling completes", async () => {
 	});
 	await opening;
 	await closing;
-	expect(mocks.close).toHaveBeenCalledWith("disable-race", 3001);
+	expect(mocks.closePreviews).toHaveBeenCalledWith("disable-race");
+	expect(mocks.close).not.toHaveBeenCalled();
+	expect(mocks.open).toHaveBeenCalledWith(
+		expect.objectContaining({ owner: "preview" }),
+	);
 });
 it("does not start a queued forward once disabled", async () => {
 	const before = mocks.open.mock.calls.length;
