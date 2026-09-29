@@ -240,29 +240,90 @@ describe("macOS update installation handoff", () => {
 		expect(app.exit).not.toHaveBeenCalled();
 	});
 
-	it("times out stalled staging without exiting and allows another attempt", async () => {
+	it("keeps timed-out native staging serialized and never quits on late completion", async () => {
 		const updater = await start();
 		const { app, autoUpdater: nativeUpdater } = await import("electron");
 		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
 		updater.installUpdate();
-		await vi.advanceTimersByTimeAsync(3 * 60_000 - 1);
-		expect(updater.getIsInstallingUpdate()).toBe(true);
-		await vi.advanceTimersByTimeAsync(1);
+		await vi.advanceTimersByTimeAsync(3 * 60_000);
 		expect(updater.getIsInstallingUpdate()).toBe(false);
+		expect(updater.getLastStatus()).toMatchObject({
+			kind: "error",
+			retryable: false,
+		});
+		updater.triggerUpdateCheck();
+		updater.installUpdate();
+		await vi.advanceTimersByTimeAsync(6 * 60 * 60_000);
+		expect(updater.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
+		expect(nativeUpdater.checkForUpdates).toHaveBeenCalledOnce();
+		await expect(
+			state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "stable"),
+		).rejects.toThrow();
+		nativeUpdater.emit("update-downloaded");
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(app.exit).not.toHaveBeenCalled();
+		expect(nativeUpdater.quitAndInstall).not.toHaveBeenCalled();
+		expect(updater.getLastStatus()).toEqual({
+			kind: "ready",
+			version: state.target,
+		});
+		// Squirrel owns the staged version until restart; a feed switch must not
+		// relabel it or schedule a second native download.
+		await expect(
+			state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "stable"),
+		).rejects.toThrow();
+		updater.triggerUpdateCheck();
+		updater.installUpdate();
+		expect(nativeUpdater.checkForUpdates).toHaveBeenCalledOnce();
+		expect(nativeUpdater.quitAndInstall).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		"error",
+		"update-not-available",
+	])("releases timed-out staging only after native %s", async (event) => {
+		const updater = await start();
+		const { autoUpdater: nativeUpdater } = await import("electron");
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		updater.installUpdate();
+		await vi.advanceTimersByTimeAsync(3 * 60_000);
+		if (event === "error")
+			updater.autoUpdater.emit("error", new Error("native staging failed"));
+		else nativeUpdater.emit(event);
 		expect(updater.getLastStatus()).toMatchObject({
 			kind: "error",
 			retryable: true,
 		});
-		nativeUpdater.emit("update-downloaded");
-		nativeUpdater.emit("before-quit-for-update");
-		await vi.advanceTimersByTimeAsync(4_000);
-		expect(app.exit).not.toHaveBeenCalled();
-		expect(nativeUpdater.quitAndInstall).not.toHaveBeenCalled();
-		await state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "preview");
+		await state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "stable");
 		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
 		updater.installUpdate();
+		expect(nativeUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
 		nativeUpdater.emit("update-downloaded");
 		expect(nativeUpdater.quitAndInstall).toHaveBeenCalledOnce();
+	});
+
+	it("retries a failed native quit without replacing the staged update", async () => {
+		const updater = await start();
+		const { autoUpdater: nativeUpdater } = await import("electron");
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		vi.mocked(nativeUpdater.quitAndInstall).mockImplementationOnce(() => {
+			throw new Error("quit failed");
+		});
+		updater.installUpdate();
+		nativeUpdater.emit("update-downloaded");
+		expect(updater.getIsInstallingUpdate()).toBe(false);
+		await expect(
+			state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "stable"),
+		).rejects.toThrow();
+		updater.triggerUpdateCheck();
+		expect(updater.getLastStatus()).toEqual({
+			kind: "ready",
+			version: state.target,
+		});
+		updater.installUpdate();
+		expect(nativeUpdater.quitAndInstall).toHaveBeenCalledTimes(2);
+		expect(nativeUpdater.checkForUpdates).toHaveBeenCalledOnce();
+		expect(updater.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
 	});
 
 	it("clears the staging deadline after successful staging", async () => {

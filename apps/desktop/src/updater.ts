@@ -83,8 +83,8 @@ const UPDATE_POLL_MS = 6 * 60 * 60 * 1000;
 // the toast and menu would otherwise sit forever showing the last percent.
 const DOWNLOAD_STALL_MS = 60_000;
 
-// Local ZIP staging may take time to unpack and validate, but must not lock
-// update checks and retries indefinitely if Squirrel never responds.
+// Local ZIP staging may take time to unpack and validate. Surface a recovery
+// message if Squirrel never responds instead of silently waiting forever.
 const NATIVE_STAGING_TIMEOUT_MS = 3 * 60_000;
 
 let lastStatus: UpdateStatus = { kind: "idle" };
@@ -98,6 +98,16 @@ let automaticCheckRetryTimer: NodeJS.Timeout | null = null;
 // update-driven quit doesn't pop the "N agents are running — quit anyway?"
 // confirmation (the user already opted into restarting from the toast).
 let installingUpdate = false;
+// Native checks cannot be cancelled. Keep ownership of the feed through a
+// timeout and, once staged, until restart: Squirrel cannot replace that bundle.
+let nativeStage: {
+	kind: "pending" | "timed-out" | "ready";
+	version: string;
+} | null = null;
+
+function updateFeedLocked(): boolean {
+	return installingUpdate || nativeStage !== null;
+}
 
 /**
  * True once `installUpdate()` has kicked off the quit-and-install sequence.
@@ -139,7 +149,12 @@ export function installPendingUpdateOnQuit(): boolean {
  * install as a user quit and block it behind the agent confirmation.
  */
 export function installUpdate(): void {
-	if (coordinator.switching || lastStatus.kind !== "ready" || installingUpdate)
+	if (
+		coordinator.switching ||
+		lastStatus.kind !== "ready" ||
+		installingUpdate ||
+		(nativeStage !== null && nativeStage.kind !== "ready")
+	)
 		return;
 	installingUpdate = true;
 	clearAutomaticCheckRetry();
@@ -149,9 +164,15 @@ export function installUpdate(): void {
 			// needs to fetch, unpack, and validate it. Own the native callbacks so
 			// a failed attempt cannot leave a stale quit callback on a later retry.
 			nativeUpdater.once("before-quit-for-update", armInstallExitWatchdog);
+			if (nativeStage?.kind === "ready") {
+				nativeUpdater.quitAndInstall();
+				return;
+			}
+			nativeStage = { kind: "pending", version: lastStatus.version };
+			nativeUpdater.once("update-not-available", nativeStagingUnavailable);
 			nativeUpdater.once("update-downloaded", quitAfterNativeStaging);
 			nativeStagingTimer = setTimeout(
-				() => failUpdateInstall(new Error("Native update staging timed out")),
+				nativeStagingTimedOut,
 				NATIVE_STAGING_TIMEOUT_MS,
 			);
 			nativeStagingTimer.unref();
@@ -167,6 +188,28 @@ export function installUpdate(): void {
 
 let installExitTimer: NodeJS.Timeout | null = null;
 let nativeStagingTimer: NodeJS.Timeout | null = null;
+
+/** Report a slow native operation without pretending the operation was cancelled. */
+function nativeStagingTimedOut(): void {
+	clearNativeStagingTimer();
+	if (nativeStage?.kind !== "pending") return;
+	nativeStage.kind = "timed-out";
+	installingUpdate = false;
+	nativeUpdater.removeListener(
+		"before-quit-for-update",
+		armInstallExitWatchdog,
+	);
+	emit({
+		kind: "error",
+		message:
+			"Update preparation is taking longer than expected. Wait, or restart Zuse to try again.",
+		retryable: false,
+	});
+}
+
+function nativeStagingUnavailable(): void {
+	failUpdateInstall(new Error("The native updater found no update to stage"));
+}
 
 /** Remove the staging deadline before handing off or releasing an attempt. */
 function clearNativeStagingTimer(): void {
@@ -192,6 +235,19 @@ function armInstallExitWatchdog(): void {
 /** Finish native staging and transfer responsibility to the quit watchdog. */
 function quitAfterNativeStaging(): void {
 	clearNativeStagingTimer();
+	nativeUpdater.removeListener(
+		"update-not-available",
+		nativeStagingUnavailable,
+	);
+	if (nativeStage === null) return;
+	const timedOut = nativeStage.kind === "timed-out";
+	nativeStage.kind = "ready";
+	if (timedOut) {
+		// The old restart request expired. Make this exact staged version ready
+		// for an explicit restart instead of quitting unexpectedly much later.
+		emit({ kind: "ready", version: nativeStage.version });
+		return;
+	}
 	try {
 		nativeUpdater.quitAndInstall();
 	} catch (error) {
@@ -202,6 +258,7 @@ function quitAfterNativeStaging(): void {
 /** Release timers and callbacks so an unsuccessful install can be retried. */
 function failUpdateInstall(error: unknown): void {
 	clearNativeStagingTimer();
+	if (nativeStage?.kind !== "ready") nativeStage = null;
 	if (installExitTimer !== null) clearTimeout(installExitTimer);
 	installExitTimer = null;
 	if (process.platform === "darwin") {
@@ -210,6 +267,10 @@ function failUpdateInstall(error: unknown): void {
 			armInstallExitWatchdog,
 		);
 		nativeUpdater.removeListener("update-downloaded", quitAfterNativeStaging);
+		nativeUpdater.removeListener(
+			"update-not-available",
+			nativeStagingUnavailable,
+		);
 	}
 	installingUpdate = false;
 	console.error("[zuse:updater] install failed", error);
@@ -288,7 +349,11 @@ function runUpdateCheck(
 	kind: "automatic" | "manual",
 	attempt = 0,
 ): Promise<void> {
-	if (installingUpdate) return Promise.resolve();
+	if (updateFeedLocked()) {
+		if (!installingUpdate && nativeStage?.kind === "ready")
+			emit({ kind: "ready", version: nativeStage.version });
+		return Promise.resolve();
+	}
 	if (kind === "manual") clearAutomaticCheckRetry();
 	if (updateCheckInFlight !== null) return updateCheckInFlight;
 
@@ -298,7 +363,7 @@ function runUpdateCheck(
 		.then(() =>
 			coordinator.run(
 				async () => {
-					if (installingUpdate) return;
+					if (updateFeedLocked()) return;
 					configureChannel();
 					const result = await autoUpdater.checkForUpdates();
 					if (
@@ -442,7 +507,7 @@ export function startAutoUpdater(window: UpdaterWindow): void {
 	autoUpdater.on("error", (err: Error) => {
 		if (coordinator.switching) return;
 		clearStallTimer();
-		if (installingUpdate) {
+		if (updateFeedLocked()) {
 			failUpdateInstall(err);
 			return;
 		}
@@ -556,7 +621,10 @@ function registerChannelHandlers(): void {
 	});
 	ipcMain.handle(UPDATE_CHANNEL_SET, async (_event, channel: unknown) => {
 		await initialization;
-		if (installingUpdate) throw new Error("An update is already installing");
+		if (updateFeedLocked())
+			throw new Error(
+				"An update is already installing. Restart Zuse before changing channels.",
+			);
 		await coordinator.setChannel(channel);
 		await updateCheckInFlight;
 		if (app.isPackaged) void runUpdateCheck("manual");
