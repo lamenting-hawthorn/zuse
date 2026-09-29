@@ -738,6 +738,8 @@ describe("codexReasoningEffort", () => {
 		);
 		expect(codexReasoningEffort(descriptor("gpt-5.4"), "xhigh")).toBeNull();
 		expect(codexReasoningEffort(descriptor("gpt-6-astra"), "max")).toBe("max");
+		expect(codexReasoningEffort(descriptor("gpt-6.1-sol"), "max")).toBe("max");
+		expect(codexReasoningEffort(descriptor("gpt-6.1-sol"), "ultra")).toBeNull();
 		expect(codexReasoningEffort(liveDescriptor(["low", "high"]), "xhigh")).toBe(
 			null,
 		);
