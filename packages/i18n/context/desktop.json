@@ -6318,7 +6318,7 @@
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"chat:message_row_to_resolve_sign_in_to_we_apos_ll_validate_the_login_automati_sentence": {
-		"source": "To resolve, sign in to {{label}}. We&apos;ll validate the login automatically.",
+		"source": "To resolve, sign in to {{label}}. We'll validate the login automatically.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/message-row.tsx",
@@ -11161,7 +11161,7 @@
 		"context": "onboarding interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"onboarding:done_you_apos_re_all_set": {
-		"source": "You&apos;re all set",
+		"source": "You're all set",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/onboarding/steps/done.tsx",
@@ -11251,7 +11251,7 @@
 		"context": "onboarding interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"onboarding:maximize_scanning_this_month_apos_s_local_agent_logs": {
-		"source": "Scanning this month&apos;s local agent logs...",
+		"source": "Scanning this month's local agent logs...",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/onboarding/steps/maximize.tsx",
@@ -11726,7 +11726,7 @@
 		"context": "onboarding interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"onboarding:done_start_a_chat_from_the_sidebar_whenever_you_apos_re_ready_rep_sentence": {
-		"source": "Start a chat from the sidebar whenever you&apos;re ready. Replay this flow anytime from <part0>Settings → General</part0>.",
+		"source": "Start a chat from the sidebar whenever you're ready. Replay this flow anytime from <part0>Settings → General</part0>.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/onboarding/steps/done.tsx",
@@ -11786,7 +11786,7 @@
 		"context": "onboarding interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"onboarding:provider_sessions_will_fail_if_your_plan_doesn_apos_t_include_subscri_sentence": {
-		"source": "Sessions will fail if your plan doesn&apos;t include {{plan}}. Subscribe (or confirm your existing plan) before using {{value}}.",
+		"source": "Sessions will fail if your plan doesn't include {{plan}}. Subscribe (or confirm your existing plan) before using {{value}}.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/onboarding/steps/provider.tsx",
@@ -16055,7 +16055,7 @@
 		"context": "providers interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"providers:provider_card_sessions_will_fail_if_your_plan_doesn_apos_t_include_subscri_sentence": {
-		"source": "Sessions will fail if your plan doesn&apos;t include {{value}}. Subscribe (or confirm your existing plan) before using {{value2}}.",
+		"source": "Sessions will fail if your plan doesn't include {{value}}. Subscribe (or confirm your existing plan) before using {{value2}}.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/provider-card.tsx",
@@ -26781,7 +26781,7 @@
 		"context": "tools interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"tools:tool_row_the_model_produced_a_thinking_block_the_sdk_forwarded_its_signed_recei": {
-		"source": "The model produced a thinking block (the SDK forwarded its signed receipt) but the underlying text was filtered out by Anthropic&apos;s agent SDK before it reached us. We can&apos;t expose the actual thoughts without bypassing the official SDK.",
+		"source": "The model produced a thinking block (the SDK forwarded its signed receipt) but the underlying text was filtered out by Anthropic's agent SDK before it reached us. We can't expose the actual thoughts without bypassing the official SDK.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-row.tsx",
@@ -27262,7 +27262,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 172
+				"line": 107
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27272,7 +27272,15 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 243
+				"line": 177
+			},
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 195
+			},
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 264
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27282,7 +27290,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 266
+				"line": 220
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27292,7 +27300,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 271
+				"line": 225
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27302,7 +27310,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 273
+				"line": 227
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27312,7 +27320,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 274
+				"line": 228
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27322,7 +27330,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 300
+				"line": 286
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27380,6 +27388,10 @@
 	"usage:usage_dashboard_refresh_usage": {
 		"source": "Refresh usage",
 		"locations": [
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 277
+			},
 			{
 				"path": "apps/renderer/src/components/usage-dashboard.tsx",
 				"line": 214
@@ -27776,7 +27788,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 144
+				"line": 79
+			},
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 146
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27786,7 +27802,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 169
+				"line": 104
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27956,7 +27972,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 156
+				"line": 91
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27966,7 +27982,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 253
+				"line": 205
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27976,7 +27992,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
-				"line": 268
+				"line": 222
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27994,6 +28010,18 @@
 	"usage:usage_dashboard_usage_limits": {
 		"source": "Usage limits",
 		"locations": [
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 178
+			},
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 251
+			},
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 295
+			},
 			{
 				"path": "apps/renderer/src/components/usage-dashboard.tsx",
 				"line": 549
@@ -28017,6 +28045,116 @@
 			{
 				"path": "apps/renderer/src/components/usage-dashboard.tsx",
 				"line": 1245
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_menu_credits": {
+		"source": "{{value}} credits left",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 142
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_menu_stale": {
+		"source": "Refresh failed. Showing previous readings; they may be out of date.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 257
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_menu_failed": {
+		"source": "Could not load usage limits. Try refreshing.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/usage/usage-limits-submenu.tsx",
+				"line": 258
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_unavailable_account": {
+		"source": "Not available for this account",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 13
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_unavailable_scope": {
+		"source": "Usage limits unavailable for this scope",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 15
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_sign_in_kiro": {
+		"source": "Sign in with kiro-cli login to see limits",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 18
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_sign_in": {
+		"source": "Sign in to {{provider}} to see limits",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 19
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_expired_kiro": {
+		"source": "Session expired: run kiro-cli login",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 23
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_expired": {
+		"source": "{{provider}} session expired: sign in again",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 24
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_load_failed": {
+		"source": "Could not load limits: try again",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 26
+			}
+		],
+		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"usage:usage_limits_no_data": {
+		"source": "No usage data available",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/usage-limits-display.ts",
+				"line": 27
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."

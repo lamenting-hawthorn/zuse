@@ -1,3 +1,5 @@
+import { loadCloudAuth } from "../lib/cloud-workspace-session-cache.ts";
+import { isHostedProduct } from "../lib/hosted-connect.ts";
 import "@zuse/i18n/english/providers";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type {
@@ -219,6 +221,10 @@ export function ModelPicker(props: ModelPickerProps) {
 	useEffect(() => {
 		onOpenChange?.(open);
 	}, [open, onOpenChange]);
+
+	useEffect(() => {
+		if (open && isHostedProduct()) void loadCloudAuth().catch(() => undefined);
+	}, [open]);
 
 	// Reset transient state every time the popover opens.
 	useEffect(() => {
@@ -620,7 +626,7 @@ export function ModelPicker(props: ModelPickerProps) {
 										role="status"
 										aria-live="polite"
 									>
-										{availabilityLoading || !availabilityLoaded
+										{!availabilityLoaded
 											? uiMessage(
 													"providers:model_picker_checking_available_agents",
 												)
