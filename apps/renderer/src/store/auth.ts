@@ -1,4 +1,4 @@
-import { hostedAccountId, isHostedProduct } from "../lib/hosted-connect.ts";
+import { hostedAccountId } from "../lib/hosted-connect.ts";
 import "@zuse/i18n/english/connections";
 import { type AuthState, CommandId, EnvironmentId } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";

@@ -9,7 +9,6 @@ import {
 } from "@zuse/contracts";
 import { Schema } from "effect";
 import { createAtomStore as create } from "../state/atom-store.ts";
-import { isHostedProduct } from "./hosted-connect.ts";
 import { rendererAccountSnapshot } from "./renderer-account.ts";
 import {
 	rendererWorkspaceSnapshot,

@@ -39,11 +39,11 @@ import {
 } from "../lib/cloud-sync-client-bus.ts";
 import { cloudSummaryForChat } from "../lib/cloud-workspace-catalog.ts";
 import { ensureCloudWorkspaceAttached } from "../lib/cloud-workspaces.ts";
+import { makeCommittedAuthority } from "../lib/committed-authority.ts";
 import {
 	useActiveSessionById,
 	useEnvironmentChat,
 } from "../lib/environment-entity-hooks.ts";
-import { makeCommittedAuthority } from "../lib/committed-authority.ts";
 import {
 	useGitPrDetailsResource,
 	useGitWorkspaceResource,

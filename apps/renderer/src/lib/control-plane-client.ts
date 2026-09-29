@@ -53,12 +53,14 @@ export const runCloudControl = <Result>(
 export const controlPlaneClient = (): Promise<MemoizeClient> =>
 	getControlPlaneRpcClient();
 
-type SessionCacheEntry = Readonly<{
-	promise: Promise<unknown>;
+type SessionCacheEntry = {
+	value?: Promise<unknown>;
+	pending?: Promise<unknown>;
 	expiresAt: number;
-}>;
+};
 
 const sessionCaches = new Map<string, Map<string, SessionCacheEntry>>();
+const cacheListeners = new Set<(key: string) => void>();
 subscribeRendererAccount(() => sessionCaches.clear());
 
 export const subscribeControlPlaneSessionCache = (
@@ -93,29 +95,45 @@ export const runCachedControlPlane = <Result>(
 		sessionCaches.set(partition, sessionCache);
 	}
 	const cache = sessionCache;
-	if (!options?.refresh) {
-		const cached = cache.get(key);
-		if (cached !== undefined && cached.expiresAt > Date.now()) {
-			return cached.promise.then((value) => {
-				assertRendererAccountCurrent(account);
-				assertRendererWorkspaceCurrent(workspace);
-				return value as Result;
-			});
-		}
+	const previous = cache.get(key);
+	const entry: SessionCacheEntry = options?.refresh
+		? { value: previous?.value, expiresAt: previous?.expiresAt ?? 0 }
+		: (previous ?? { expiresAt: 0 });
+	const current = (value: unknown): Result => {
+		assertRendererAccountCurrent(account);
+		assertRendererWorkspaceCurrent(workspace);
+		return value as Result;
+	};
+	if (!options?.refresh && entry.value && entry.expiresAt > Date.now()) {
+		return entry.value.then(current);
 	}
-
-	const request = runCloudControl(effect).catch((cause) => {
-		if (cache.get(key)?.promise === request) cache.delete(key);
-		throw cause;
-	});
-	cache.set(key, {
-		promise: request,
-		expiresAt:
-			options?.maxAgeMs === undefined
-				? Number.POSITIVE_INFINITY
-				: Date.now() + options.maxAgeMs,
-	});
-	return request;
+	if (!entry.pending) {
+		cache.set(key, entry);
+		entry.pending = runCloudControl(effect).then(
+			(value) => {
+				current(value);
+				if (
+					sessionCaches.get(partition) === cache &&
+					cache.get(key) === entry
+				) {
+					entry.value = Promise.resolve(value);
+					entry.pending = undefined;
+					entry.expiresAt =
+						Date.now() + (options?.maxAgeMs ?? Number.POSITIVE_INFINITY);
+					for (const listener of cacheListeners) listener(key);
+				}
+				return value;
+			},
+			(cause) => {
+				if (cache.get(key) === entry) {
+					entry.pending = undefined;
+					if (!entry.value) cache.delete(key);
+				}
+				throw cause;
+			},
+		);
+	}
+	return entry.pending as Promise<Result>;
 };
 
 export const clearControlPlaneSessionCache = (prefix?: string): void => {

@@ -48,12 +48,17 @@ import { cloudCommandTransport } from "./cloud-command-transport.ts";
 import { cloudFailurePresentation } from "./cloud-failure-presentation.ts";
 import { markCloudFetch } from "./cloud-fetch-timing.ts";
 import { isPlatformOnline } from "./network-status.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
 import {
 	type RendererAccountSnapshot,
 	rendererAccountSnapshot,
 	subscribeRendererAccount,
 } from "./renderer-account.ts";
 import { createRendererCommandAuthority } from "./renderer-command-authority.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "./renderer-workspace.ts";
 import {
 	acquireRendererRpcSession,
 	environmentRequiresNetwork,
@@ -1222,8 +1227,14 @@ const makeTimelineDriver = (
 		reportFailure,
 		backgroundHistory: (ref) => isCloudTimelineEnvironment(ref.environmentId),
 		onHead: (ref, frame) => {
-			if (frame.cursor)
-				rememberCloudTimelineHead(ref, frame.projection, frame.cursor);
+			const namespace = rendererResourceCacheNamespace(ref.environmentId);
+			if (frame.cursor && namespace !== null)
+				rememberCloudTimelineHead(
+					ref,
+					frame.projection,
+					frame.cursor,
+					namespace,
+				);
 		},
 	});
 
@@ -1263,7 +1274,16 @@ export const rendererResourceCacheNamespace = (
 	if (authority === "device") return undefined;
 	return authority === rendererAccountSnapshot() &&
 		typeof authority.subject === "string"
-		? JSON.stringify(["account", authority.subject])
+		? JSON.stringify(
+				environmentId === "local" && isHostedProduct()
+					? [
+							"account",
+							authority.subject,
+							"workspace",
+							rendererWorkspaceSnapshot().key,
+						]
+					: ["account", authority.subject],
+			)
 		: null;
 };
 
@@ -1333,6 +1353,10 @@ let rendererClientBus = createBus();
 const unsubscribeResourceAccount = subscribeRendererAccount(() =>
 	rendererClientBus.refreshResourceNamespaces(),
 );
+const unsubscribeResourceWorkspace = subscribeRendererWorkspace(() =>
+	rendererClientBus.refreshResourceNamespaces(),
+);
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeResourceWorkspace);
 if (import.meta.hot) import.meta.hot.dispose(unsubscribeResourceAccount);
 const optimisticRestorationByResource = new Map<string, Promise<void>>();
 reportPassiveSessionFault = (environmentId, fault, expectedGeneration) =>
@@ -1351,11 +1375,12 @@ const olderSessionMessageLoads = makeSessionMessagePager({
 	allowLiveAdvance: (ref) => isCloudTimelineEnvironment(ref.environmentId),
 	readPage: async (ref, client, cursor, beforeSequence, signal) => {
 		const cloud = isCloudTimelineEnvironment(ref.environmentId);
+		const namespace = rendererResourceCacheNamespace(ref.environmentId);
 		// The synchronizer validates the authoritative head before history starts.
 		const cached =
-			cloud && cursor !== null
+			cloud && cursor !== null && namespace !== null
 				? await sessionTimelineCache
-						?.loadHistoryPage(ref, cursor, beforeSequence)
+						?.loadHistoryPage(ref, cursor, beforeSequence, namespace)
 						.catch(() => null)
 				: null;
 		if (cached) return cached;
@@ -1375,9 +1400,15 @@ const olderSessionMessageLoads = makeSessionMessagePager({
 					}),
 					{ signal },
 				));
-		if (!signal?.aborted && cloud && cursor !== null && page)
+		if (
+			!signal?.aborted &&
+			cloud &&
+			cursor !== null &&
+			page &&
+			namespace !== null
+		)
 			await sessionTimelineCache
-				?.saveHistoryPage(ref, cursor, beforeSequence, page)
+				?.saveHistoryPage(ref, cursor, beforeSequence, page, namespace)
 				.catch(() => undefined);
 		return page;
 	},

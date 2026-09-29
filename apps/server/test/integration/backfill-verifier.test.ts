@@ -6,7 +6,7 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { describe, expect, test } from "vitest";
 import { verifyBackfillDatabase } from "../../src/persistence/backfill-verifier.ts";
-import { MigrationsLive } from "../../src/persistence/migrations.ts";
+import { MigrationsThrough0059Live } from "../../src/persistence/migrations.ts";
 
 describe("backfill verifier", () => {
 	test("rebuilds a synthetic legacy database byte-for-byte", async () => {
@@ -14,15 +14,16 @@ describe("backfill verifier", () => {
 		const filename = join(directory, "source.sqlite");
 		const sqlite = sqliteLayer({ filename, disableWAL: true });
 		const runtime = ManagedRuntime.make(
-			Layer.merge(sqlite, MigrationsLive.pipe(Layer.provide(sqlite))),
+			Layer.merge(
+				sqlite,
+				MigrationsThrough0059Live.pipe(Layer.provide(sqlite)),
+			),
 		);
 		try {
 			await runtime.runPromise(
 				Effect.gen(function* () {
 					const sql = yield* SqlClient.SqlClient;
 					// Seed the pre-recency schema so the verifier exercises its backfill.
-					yield* sql`ALTER TABLE chats DROP COLUMN last_user_message_at`;
-					yield* sql`DELETE FROM effect_sql_migrations WHERE migration_id = 60`;
 					const createdAt = "2026-01-01T00:00:00.000Z";
 					const messageAt = "2026-01-02T00:00:00.000Z";
 					const sessionUpdatedAt = "2026-01-03T00:00:00.000Z";

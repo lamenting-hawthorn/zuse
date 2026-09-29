@@ -78,12 +78,12 @@ import {
 	registerCloudChatCatalogRefresh,
 	useCloudChatCatalogStore,
 } from "./cloud-workspace-catalog.ts";
-import { isHostedProduct } from "./hosted-connect.ts";
-import { hostedProjectFolderId } from "./hosted-workspace.ts";
 import {
 	type EnvironmentShellData,
 	environmentShellResourceKey,
 } from "./environment-shell-client-bus.ts";
+import { isHostedProduct } from "./hosted-connect.ts";
+import { hostedProjectFolderId } from "./hosted-workspace.ts";
 import {
 	assertRendererAccountCurrent,
 	type RendererAccountSnapshot,
@@ -261,7 +261,14 @@ const registerCloudEnvironmentResolver = (summary: CloudChatSummary): void => {
 					});
 				}
 			}
-			rememberCloudTimelineHead(ref, payload.projection, payload.cursor);
+			const namespace = rendererResourceCacheNamespace(ref.environmentId);
+			if (namespace !== null)
+				rememberCloudTimelineHead(
+					ref,
+					payload.projection,
+					payload.cursor,
+					namespace,
+				);
 
 			return {
 				data: payload.projection,
@@ -751,7 +758,11 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 				const result = await Effect.runPromise(
 					client["cloud.chats.list"]({ scope: "all" }),
 				);
-				if (generation !== catalogGeneration || rendererAccountSnapshot() !== account) return;
+				if (
+					generation !== catalogGeneration ||
+					rendererAccountSnapshot() !== account
+				)
+					return;
 				removeDeletedCloudPlaceholders(reconcileCloudChatCatalog(result.chats));
 				for (const summary of result.chats) {
 					const accepted =
@@ -855,6 +866,7 @@ const unsubscribeCatalogAccount = useCloudChatCatalogStore.subscribe(
 	},
 );
 const unsubscribeAccount = subscribeRendererAccount(() => {
+	catalogGeneration++;
 	for (const cleanup of cloudResolverCleanups) cleanup();
 	cloudResolverCleanups.clear();
 	registeredCloudEnvironments.clear();

@@ -157,7 +157,7 @@ export async function flushRendererDiagnostics(): Promise<void> {
 			acknowledge();
 			return;
 		}
-		const [{ getRpcClient }, { Effect }] = await Promise.all([
+		const [{ getControlPlaneRpcClient }, { Effect }] = await Promise.all([
 			import("./rpc-client.ts"),
 			import("effect"),
 		]);

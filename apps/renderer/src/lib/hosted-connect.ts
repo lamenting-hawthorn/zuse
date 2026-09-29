@@ -16,9 +16,9 @@ import { Schema } from "effect";
 
 import { rendererApiUrl } from "./api-url.ts";
 import {
+	decodeHostedJwtPayload,
 	type HostedSession,
 	hostedAccountId,
-	decodeHostedJwtPayload,
 	hostedAuthState,
 	jwtExpiry,
 	publishHostedAuth,
@@ -38,8 +38,10 @@ export {
 	subscribeHostedAuth,
 } from "./hosted-session.ts";
 export { isHostedProduct } from "./platform-capabilities.ts";
+
 import { isHostedProduct } from "./platform-capabilities.ts";
-export const hostedAccountUser = (): AuthUser | null => readSession()?.user ?? null;
+export const hostedAccountUser = (): AuthUser | null =>
+	readSession()?.user ?? null;
 export const hostedCacheDatabaseName = (base: string): string =>
 	isHostedProduct() ? `${base}:hosted:${hostedAccountId()}` : base;
 
@@ -62,7 +64,10 @@ let apiAccess: { readonly token: string; readonly expiresAt: number } | null =
 	null;
 
 export type HostedEndpointLease = {
-	readonly select: (environmentId: string) => Promise<void>;
+	readonly select: (
+		environmentId: string,
+		initial?: () => Promise<string>,
+	) => Promise<void>;
 	readonly next: () => Promise<string>;
 	readonly clear: () => void;
 };
@@ -78,13 +83,16 @@ export const createHostedEndpointLease = (
 		return endpoint;
 	};
 	return {
-		select: async (environmentId) => {
+		select: async (environmentId, initial) => {
 			const selection: NonNullable<typeof selected> = {
 				environmentId,
 				endpoint: null,
 			};
 			selected = selection;
-			selection.endpoint = await load(selection);
+			const endpoint =
+				initial === undefined ? await load(selection) : await initial();
+			if (selection !== selected) throw new Error("hosted_environment_changed");
+			selection.endpoint = endpoint;
 		},
 		next: async () => {
 			if (selected === null) {
@@ -165,6 +173,7 @@ const clearHostedSession = (): void => {
 	// A tombstone also prevents a still-open legacy tab from migrating old tokens.
 	localStorage.setItem(SESSION_KEY, "null");
 	sessionStorage.removeItem(SESSION_KEY);
+	publishHostedAuth();
 };
 
 /** Reload account-owned state when another tab signs out or changes account. */
@@ -237,7 +246,7 @@ const authenticate = async (
 	if (
 		epoch !== sessionEpoch ||
 		(grant.grantType === "refresh_token" &&
-		readSession()?.refreshToken !== grant.refreshToken)
+			readSession()?.refreshToken !== grant.refreshToken)
 	)
 		throw new Error("hosted_auth_changed");
 	return writeSession({
@@ -470,7 +479,8 @@ const apiFetch = async (
 	const target = `${rendererApiUrl()}${path}`;
 	const proof = await signDpopProof({ method: init.method, url: target });
 	assertRendererAccountCurrent(account);
-	const workosToken = init.token === undefined ? await hostedAccessToken() : null;
+	const workosToken =
+		init.token === undefined ? await hostedAccessToken() : null;
 	assertRendererAccountCurrent(account);
 	if (init.token === undefined && workosToken === null) {
 		throw new Error("hosted_signed_out");
@@ -489,7 +499,6 @@ const apiFetch = async (
 				: { "content-type": "application/json" }),
 		},
 		body: init.body === undefined ? undefined : JSON.stringify(init.body),
-		signal: AbortSignal.timeout(15_000),
 	});
 	assertRendererAccountCurrent(account);
 	return response;
@@ -646,7 +655,6 @@ export const hostedConnectGrantEndpoint = (grant: ApiConnectGrant): string => {
 
 const fetchHostedGrant = async (
 	environmentId: string,
-	options: { lease?: boolean } = {},
 ): Promise<ApiConnectGrant> => {
 	const account = rendererAccountSnapshot();
 	const token = await ensureApiAccess();
@@ -680,8 +688,11 @@ export const connectHostedEnvironment = async (
 	environmentId: string,
 	options: { lease?: boolean } = {},
 ): Promise<ApiConnectGrant> => {
-	const grant = await fetchHostedGrant(environmentId);
-	if (options.lease !== false) await rpcEndpointLease.select(environmentId);
+	if (options.lease === false) return fetchHostedGrant(environmentId);
+	const grant = fetchHostedGrant(environmentId);
+	await rpcEndpointLease.select(environmentId, async () =>
+		hostedConnectGrantEndpoint(await grant),
+	);
 	return grant;
 };
 

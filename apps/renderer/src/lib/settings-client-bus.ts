@@ -41,9 +41,9 @@ import {
 	updateBrowserDevicePreferences,
 	useBrowserDevicePreferences,
 } from "./browser-device-preferences.ts";
+import { hostedAccountId } from "./hosted-session.ts";
 import { useOrganizationWorkspaces } from "./organization-workspaces.ts";
 import { isHostedProduct } from "./platform-capabilities.ts";
-import { hostedAccountId } from "./hosted-session.ts";
 import {
 	rendererWorkspaceSnapshot,
 	subscribeRendererWorkspace,
@@ -555,7 +555,9 @@ const workspaceProjection = (device: SettingsSlice): SettingsSlice => ({
 	...(nativePersonal() ? device : FALLBACK),
 	...workspaceDefaults,
 	...Schema.decodeUnknownSync(DevicePreferences)(
-		isHostedProduct() ? { ...hostedSettings(), ...useBrowserDevicePreferences.getState() } : device,
+		isHostedProduct()
+			? { ...hostedSettings(), ...useBrowserDevicePreferences.getState() }
+			: device,
 	),
 	...(financeOnlyWorkspace()
 		? {}

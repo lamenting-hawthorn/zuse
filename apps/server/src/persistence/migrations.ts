@@ -1,4 +1,5 @@
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
 import * as Migrator from "effect/unstable/sql/Migrator";
 import { Migration0001Initial } from "./migrations/0001_initial.ts";
 import { Migration0002Permissions } from "./migrations/0002_permissions.ts";
@@ -57,10 +58,10 @@ import { Migration0054ProviderEffectOutcomes } from "./migrations/0054_provider_
 import { Migration0055StagingApiOrigin } from "./migrations/0055_staging_api_origin.ts";
 import { Migration0056DeviceBridge } from "./migrations/0056_device_bridge.ts";
 import { Migration0057DeviceBridgeDefaultAccess } from "./migrations/0057_device_bridge_default_access.ts";
+import { Migration0058CollaborationFoundation } from "./migrations/0058_collaboration_foundation.ts";
 import { Migration0058QuestionAnswerDeliveries } from "./migrations/0058_question_answer_deliveries.ts";
 import { Migration0059EventSequenceIndex } from "./migrations/0059_event_sequence_index.ts";
 import { Migration0060ChatUserMessageTime } from "./migrations/0060_chat_user_message_time.ts";
-import { Migration0058CollaborationFoundation } from "./migrations/0058_collaboration_foundation.ts";
 
 /**
  * Runs every numbered migration on boot. `fromRecord` keys must match
@@ -139,13 +140,17 @@ const MigrationDefinitionsThrough0054 = {
 	"0054_provider_effect_outcomes": Migration0054ProviderEffectOutcomes,
 } as const;
 
-const MigrationDefinitions = {
+const MigrationDefinitionsThrough0059 = {
 	...MigrationDefinitionsThrough0054,
 	"0055_staging_api_origin": Migration0055StagingApiOrigin,
 	"0056_device_bridge": Migration0056DeviceBridge,
 	"0057_device_bridge_default_access": Migration0057DeviceBridgeDefaultAccess,
 	"0058_question_answer_deliveries": Migration0058QuestionAnswerDeliveries,
 	"0059_event_sequence_index": Migration0059EventSequenceIndex,
+} as const;
+
+const MigrationDefinitions = {
+	...MigrationDefinitionsThrough0059,
 	"0060_chat_user_message_time": Migration0060ChatUserMessageTime,
 	"0061_collaboration_foundation": Migration0058CollaborationFoundation,
 } as const;
@@ -165,7 +170,41 @@ export const MigrationsThrough0054Live = Layer.effectDiscard(
 );
 
 export const MigrationsLive = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		const tables =
+			yield* sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'`;
+		if (tables.length > 0) {
+			// Earlier branch builds used 58, then 59, for collaboration.
+			// Apply the intervening main migrations before advancing the ledger.
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const legacy = yield* sql<{
+						migration_id: number;
+					}>`SELECT migration_id FROM effect_sql_migrations WHERE migration_id IN (58, 59) AND name = 'collaboration_foundation'`;
+					if (legacy.length === 0) return;
+					if (legacy[0]?.migration_id === 58) {
+						yield* Migration0058QuestionAnswerDeliveries;
+						yield* sql`UPDATE effect_sql_migrations SET name = 'question_answer_deliveries' WHERE migration_id = 58`;
+						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (59, 'event_sequence_index')`;
+					} else {
+						yield* sql`UPDATE effect_sql_migrations SET name = 'event_sequence_index' WHERE migration_id = 59`;
+					}
+					yield* Migration0059EventSequenceIndex;
+					yield* Migration0060ChatUserMessageTime;
+					yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (60, 'chat_user_message_time'), (61, 'collaboration_foundation')`;
+				}),
+			);
+		}
+		yield* Migrator.make({})({
+			loader: Migrator.fromRecord(MigrationDefinitions),
+		});
+	}),
+);
+
+/** Main's pre-recency schema boundary for upgrade compatibility tests. */
+export const MigrationsThrough0059Live = Layer.effectDiscard(
 	Migrator.make({})({
-		loader: Migrator.fromRecord(MigrationDefinitions),
+		loader: Migrator.fromRecord(MigrationDefinitionsThrough0059),
 	}),
 );

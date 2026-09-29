@@ -851,9 +851,9 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				rendererWorkspaceSnapshot() !== workspace
 			)
 				return null;
+			if (shellRuntimes.get(catalogKey) !== runtime)
+				throw new Error("Environment activation was superseded.");
 			if (activeShellKey !== null && activeShellKey !== catalogKey) {
-				if (shellRuntimes.get(catalogKey) !== runtime)
-					throw new Error("Environment activation was superseded.");
 				const previous = shellRuntimes.get(activeShellKey);
 				if (previous !== undefined) {
 					previous.requestedActivation = "cache-only";

@@ -159,7 +159,6 @@ export const decideEnvironmentPermission = async (
 	decision: PermissionDecision,
 	environmentId?: EnvironmentId,
 ): Promise<void> => {
-	const account = rendererAccountSnapshot();
 	const selectedEnvironmentId =
 		environmentId ??
 		EnvironmentId.make(

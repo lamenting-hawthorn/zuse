@@ -1,7 +1,10 @@
 import { CommandId, EnvironmentId } from "@zuse/contracts";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { isLocalDeviceConnectionReady, localDeviceCommand } from "../../src/lib/local-device-client-bus.ts";
+import {
+	isLocalDeviceConnectionReady,
+	localDeviceCommand,
+} from "../../src/lib/local-device-client-bus.ts";
 import { registerWebSocketEnvironment } from "../../src/lib/rpc-client.ts";
 import {
 	getRendererClientBus,

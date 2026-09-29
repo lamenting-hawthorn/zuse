@@ -8,7 +8,7 @@ vi.mock("../../src/lib/hosted-connect.ts", () => ({
 	isHostedProduct: () => false,
 }));
 vi.mock("../../src/lib/rpc-client.ts", () => ({
-	getRpcClient: async () => ({ "diagnostics.ingest": ingest }),
+	getControlPlaneRpcClient: async () => ({ "diagnostics.ingest": ingest }),
 }));
 vi.mock("effect", () => ({ Effect: { runPromise } }));
 

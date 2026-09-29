@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createHostedEndpointLease,
 	hostedAccessToken,
-	hostedAccountUser,
 	hostedAccountRequest,
+	hostedAccountUser,
 	hostedAuthState,
 	hostedAuthTokenEndpoint,
 	hostedSignedIn,
 	isHostedProduct,
-	removeHostedComputer,
 	listHostedEnvironments,
+	removeHostedComputer,
 	resolveHostedWorkosClientId,
 	subscribeHostedAuth,
 } from "../../src/lib/hosted-connect.ts";
@@ -169,7 +169,7 @@ describe("hosted account ownership", () => {
 		const response = Promise.withResolvers<Response>();
 		vi.spyOn(globalThis, "fetch").mockReturnValue(response.promise);
 		const pending = hostedSignedIn();
-		sessionStorage.removeItem(key);
+		localStorage.setItem(key, "null");
 		response.resolve(
 			Response.json({ access_token: token, refresh_token: "rotated", user }),
 		);
@@ -404,7 +404,13 @@ it("keeps the refresh credential through a temporary network failure", async () 
 				Response.json({
 					access_token: "recovered",
 					refresh_token: "rotated",
-					user: null,
+					user: {
+						id: "recovered-user",
+						email: "test@example.test",
+						firstName: null,
+						lastName: null,
+						profilePictureUrl: null,
+					},
 				}),
 			),
 	);

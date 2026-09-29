@@ -20,8 +20,11 @@ import {
 import {
 	beginHostedSignIn,
 	completeHostedSignIn,
+	connectHostedEnvironment,
 	hostedSignedIn,
 	isHostedProduct,
+	listHostedEnvironments,
+	registerHostedClient,
 	watchHostedAccountChanges,
 } from "../lib/hosted-connect.ts";
 import { rendererPlatformCapabilities } from "../lib/platform-capabilities.ts";

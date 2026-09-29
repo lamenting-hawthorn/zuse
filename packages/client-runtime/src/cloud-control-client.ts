@@ -17,10 +17,8 @@ import {
 	type CloudAuthProvider,
 	CloudAuthProviderStatus,
 	CloudAuthStatus,
-	type CloudBillingCapRequest,
 	CloudBillingSummary,
 	CloudBillingUsagePage,
-	type CloudBillingUsageRequest,
 	CloudChatChanges,
 	CloudChatList,
 	type CloudCommandEnvelope,
@@ -147,8 +145,10 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 			"POST",
 			{ action: input.action, targetDeviceId: input.targetDeviceId },
 		),
-	"cloud.settings.get": () => request(ApiPaths.cloudSettings, WorkspaceSettings),
-	"cloud.settings.update": (input: WorkspaceSettingsUpdate) => request(ApiPaths.cloudSettings, WorkspaceSettings, "PUT", input),
+	"cloud.settings.get": () =>
+		request(ApiPaths.cloudSettings, WorkspaceSettings),
+	"cloud.settings.update": (input: WorkspaceSettingsUpdate) =>
+		request(ApiPaths.cloudSettings, WorkspaceSettings, "PUT", input),
 	"cloud.chats.watch": (input: { cursor?: number }) =>
 		streamCloudCatalogChanges(
 			(cursor) =>
@@ -439,29 +439,4 @@ export const streamCloudCatalogChanges = <E>(
 				}),
 			);
 		}),
-	);
-
-export const streamCloudWorkspaceLifecycle = <E>(
-	read: Effect.Effect<CloudWorkspace, E>,
-	afterRevision?: number,
-): Stream.Stream<CloudWorkspace, E> =>
-	Stream.fromEffect(read).pipe(
-		Stream.repeat(Schedule.spaced("500 millis")),
-		Stream.retry(
-			Schedule.exponential("250 millis").pipe(
-				Schedule.modifyDelay(({ duration }) =>
-					Effect.succeed(
-						Duration.millis(Math.min(Duration.toMillis(duration), 10_000)),
-					),
-				),
-				Schedule.jittered,
-			),
-		),
-		Stream.mapAccum(
-			() => afterRevision ?? -1,
-			(appliedRevision, workspace) => {
-				if (workspace.revision <= appliedRevision) return [appliedRevision, []];
-				return [workspace.revision, [workspace]];
-			},
-		),
 	);

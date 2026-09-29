@@ -637,7 +637,14 @@ export const MachineControlServiceLive: Layer.Layer<
 					afterRevision,
 				),
 			createCloudWorkspace: (input) =>
-				request(input.forkSource === undefined ? ApiPaths.cloudWorkspaces : ApiPaths.cloudWorkspacesFork, CloudWorkspaceLaunch, "POST", input),
+				request(
+					input.forkSource === undefined
+						? ApiPaths.cloudWorkspaces
+						: ApiPaths.cloudWorkspacesFork,
+					CloudWorkspaceLaunch,
+					"POST",
+					input,
+				),
 			cloudSharing: (workspaceId) =>
 				request(ApiPaths.cloudWorkspaceSharing(workspaceId), ChatSharingState),
 			updateCloudSharing: (workspaceId, input) =>

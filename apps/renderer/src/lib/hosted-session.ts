@@ -15,7 +15,8 @@ let authRaw: string | null | undefined;
 let authState: AuthState = { _tag: "SignedOut" };
 
 export const hostedAuthState = (): AuthState => {
-	const raw = localStorage.getItem(SESSION_KEY) ?? sessionStorage.getItem(SESSION_KEY);
+	const raw =
+		localStorage.getItem(SESSION_KEY) ?? sessionStorage.getItem(SESSION_KEY);
 	if (raw === authRaw) return authState;
 	let next: AuthState = { _tag: "SignedOut" };
 	try {
@@ -90,7 +91,8 @@ export const readSession = (): HostedSession | null => {
 		}
 		if (raw === null) return null;
 		const value = JSON.parse(raw) as Partial<HostedSession>;
-		return value !== null && typeof value.accessToken === "string" &&
+		return value !== null &&
+			typeof value.accessToken === "string" &&
 			typeof value.refreshToken === "string" &&
 			typeof value.expiresAt === "number"
 			? (value as HostedSession)

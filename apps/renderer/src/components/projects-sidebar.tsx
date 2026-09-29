@@ -5,11 +5,11 @@ import {
 } from "../lib/hosted-workspace.ts";
 import { isInputComposing } from "../lib/input-composition.ts";
 import { openProjectSetupDialog } from "../lib/project-setup-dialog-state.ts";
-import { HostedLaptopSection } from "./hosted-sidebar.tsx";
 import {
 	rendererWorkspaceSnapshot,
 	subscribeRendererWorkspace,
 } from "../lib/renderer-workspace.ts";
+import { HostedLaptopSection } from "./hosted-sidebar.tsx";
 import {
 	organizationWorkspacesAvailable,
 	WorkspaceSwitcher,
@@ -290,8 +290,16 @@ export function ProjectsSidebar() {
 	const storedFolders = useWorkspaceStore((s) => s.folders);
 	const selectedFolderId = useWorkspaceStore((s) => s.selectedFolderId);
 	const loading = useWorkspaceStore((s) => s.loading);
-	const remove = useWorkspaceStore((s) => s.remove);
-	const select = useWorkspaceStore((s) => s.select);
+	const removeFolder = useWorkspaceStore((s) => s.remove);
+	const remove = async (id: FolderId) => {
+		if (isHostedProduct()) openProjectSetupDialog();
+		else await removeFolder(id);
+	};
+	const selectFolder = useWorkspaceStore((s) => s.select);
+	const select = async (id: FolderId) => {
+		if (isHostedProduct()) selectHostedCloudHome(id);
+		else await selectFolder(id);
+	};
 	const storedCatalogEntries = useEnvironmentCatalogStore((s) => s.entries);
 	const catalogEntries = useMemo(
 		() =>
@@ -330,14 +338,14 @@ export function ProjectsSidebar() {
 		originsByFolder: origins,
 		sessionsByProject,
 		folders: cloudFolders,
-	} = useEnvironmentEntities(activeEnvironmentId);
+	} = useEnvironmentEntities(isHostedProduct() ? "local" : activeEnvironmentId);
 	const folders = isHostedProduct() ? cloudFolders : workspaceFolders;
 	useEffect(() => {
 		if (isHostedProduct())
 			void refreshHostedProjects().catch((cause) =>
 				toastManager.add({ type: "error", title: formatError(cause) }),
 			);
-	}, []);
+	}, [workspaceScope]);
 	const storedCloudChats = useCloudChatCatalogStore((s) => s.summaries);
 	const cloudChats = CLOUD_WORKSPACE_BETA_AVAILABLE
 		? storedCloudChats
@@ -737,7 +745,9 @@ export function ProjectsSidebar() {
 					</>
 				)}
 			</ul>
-			{isHostedProduct() && <HostedLaptopSection />}
+			{isHostedProduct() && workspaceScope.scope.kind === "personal" && (
+				<HostedLaptopSection />
+			)}
 			<SidebarFooter />
 			{organize.groupDialog !== null ? (
 				<Suspense fallback={null}>

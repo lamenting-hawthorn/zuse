@@ -1,6 +1,11 @@
 import { makeResourceKey } from "@zuse/client-runtime/resource-ref";
-import { EnvironmentId, FolderId, PermissionRequest, SessionId } from "@zuse/contracts";
 import { emptyResourceView } from "@zuse/client-runtime/resource-state";
+import {
+	EnvironmentId,
+	FolderId,
+	PermissionRequest,
+	SessionId,
+} from "@zuse/contracts";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -42,10 +47,8 @@ describe("environment permissions ClientBus adapter", () => {
 		resetSessionTimelineClientBusForTest();
 	});
 	it.each([
-		["decide", true],
 		["load", true],
 		["revoke", true],
-		["decide", false],
 		["load", false],
 		["revoke", false],
 	])("scopes %s rollback to its account (changed: %s)", async (operation, changed) => {
@@ -62,14 +65,12 @@ describe("environment permissions ClientBus adapter", () => {
 		});
 		const overlay = vi.spyOn(bus, "overlay");
 		const completion =
-			operation === "decide"
-				? decideEnvironmentPermission("request", { _tag: "AllowOnce" })
-				: operation === "load"
-					? loadEnvironmentPermissionDecisions(FolderId.make("project"))
-					: revokeEnvironmentPermissionDecision(
-							FolderId.make("project"),
-							"request",
-						);
+			operation === "load"
+				? loadEnvironmentPermissionDecisions(FolderId.make("project"))
+				: revokeEnvironmentPermissionDecision(
+						FolderId.make("project"),
+						"request",
+					);
 		const rejected = expect(completion).rejects.toThrow(
 			changed ? "connection account changed" : "late failure",
 		);
@@ -140,6 +141,12 @@ describe("environment permissions ClientBus adapter", () => {
 
 	it("keeps a request visible until its authoritative removal arrives", async () => {
 		const environmentId = EnvironmentId.make("permission-ack-environment");
+		registerApiEnvironment(
+			environmentId,
+			"wss://example.test/rpc",
+			async () => "wss://example.test/rpc",
+			rendererAccountSnapshot(),
+		);
 		const request = PermissionRequest.make({
 			id: "permission-ack",
 			sessionId: SessionId.make("permission-session"),

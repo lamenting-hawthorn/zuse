@@ -1598,11 +1598,17 @@ export class ClientBus<Client> {
 		return true;
 	}
 
-	private persist(entry: ResourceEntry, view: ResourceView<unknown>): Promise<void> {
+	private persist(
+		entry: ResourceEntry,
+		view: ResourceView<unknown>,
+	): Promise<void> {
 		if (view.data === null) return Promise.resolve();
 		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
 		if (namespace === null) return Promise.resolve();
-		if (namespace === undefined && this.options.coalescePersistence?.(entry.key)) {
+		if (
+			namespace === undefined &&
+			this.options.coalescePersistence?.(entry.key)
+		) {
 			const pending = entry.pendingPersistence !== null;
 			entry.pendingPersistence = view;
 			if (pending) return entry.persistenceTail;

@@ -155,6 +155,7 @@ describe("filesystem service", () => {
 				Effect.flatMap(FsService, (service) => service.listPaths(folderId)),
 			);
 			expect(paths).toEqual({
+				deferredDirectories: [],
 				paths: [
 					"alias/",
 					"alias/child.txt",

@@ -7,9 +7,9 @@ import {
 	acceptedWorkosIssuers,
 	expectedWorkosClientId,
 	isAcceptedWorkosIssuer,
-	workosVerificationKeys,
 	WorkosVerifier,
 	WorkosVerifierLive,
+	workosVerificationKeys,
 } from "../../src/workos.ts";
 
 test("token exchange returns only the authenticated user's normalized profile", async () => {

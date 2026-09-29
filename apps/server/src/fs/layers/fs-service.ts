@@ -359,7 +359,8 @@ export const FsServiceLive = Layer.effect(
 					let timer: ReturnType<typeof setTimeout> | null = null;
 					const pending = new Set<string>();
 					let ignoredDirs = yield* ignoredDirectories(folderId, worktreeId);
-					let handle: Awaited<ReturnType<typeof watchDirectoryTree>> | null = null;
+					let handle: Awaited<ReturnType<typeof watchDirectoryTree>> | null =
+						null;
 					// Register cleanup before acquiring native resources so failed
 					// attachment and request cancellation also release the queue.
 					yield* Effect.addFinalizer(() =>

@@ -1,6 +1,11 @@
-import { CloudWorkspaceForkRequest, SessionId, ApiPaths, CloudWorkspaceOpError } from "@zuse/contracts";
+import {
+	ApiPaths,
+	CloudWorkspaceForkRequest,
+	CloudWorkspaceOpError,
+	SessionId,
+} from "@zuse/contracts";
 import { Effect, Schema, Stream } from "effect";
-import { describe, expect, it, vi, test } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 import {
 	type CloudControlRequest,
 	makeCloudControlClient,
@@ -91,6 +96,7 @@ describe("cloud control HTTP routing", () => {
 			{},
 		);
 	});
+});
 
 test.each([
 	"not-allowed",
@@ -127,11 +133,6 @@ test("cloud management preserves billing, repository, and lifecycle mutation pay
 		visibility: "private" as const,
 		idempotencyKey: "repo:1",
 	};
-	const prepare = {
-		projectId: "project/a",
-		providerId: "provider",
-		idempotencyKey: "build:1",
-	};
 	const deletion = { workspaceId: "workspace/a", commandId: "delete:1" };
 	const effects: Array<Effect.Effect<unknown, unknown>> = [
 		client["machines.checkout"](checkout),
@@ -141,7 +142,6 @@ test("cloud management preserves billing, repository, and lifecycle mutation pay
 		client["cloud.github.disconnect"]({ installationId: 42 }),
 		client["cloud.projects.connect"](repository),
 		client["cloud.projects.remove"]({ projectId: "project/a" }),
-		client["cloud.projects.prepare"](prepare),
 		client["cloud.workspaces.list"]({ projectId: "project/a&b" }),
 		client["cloud.workspaces.delete"](deletion),
 	];
@@ -161,11 +161,6 @@ test("cloud management preserves billing, repository, and lifecycle mutation pay
 			path: ApiPaths.cloudProject("project/a"),
 			method: "DELETE",
 			body: undefined,
-		},
-		{
-			path: ApiPaths.cloudProjectPrepare("project/a"),
-			method: "POST",
-			body: prepare,
 		},
 		{
 			path: `${ApiPaths.cloudWorkspaces}?projectId=project%2Fa%26b`,

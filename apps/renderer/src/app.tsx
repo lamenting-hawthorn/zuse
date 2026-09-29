@@ -1,13 +1,12 @@
 import { CloudBuildMonitor } from "./components/cloud-build-monitor.tsx";
 import { Spinner } from "./components/ui/spinner.tsx";
 import { useCloudOnboarding } from "./hooks/use-cloud-onboarding.ts";
-import { isHostedProduct } from "./lib/hosted-connect.ts";
 import { SurfaceFallback } from "./shell/surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
 
 import { Effect } from "effect";
 
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { TooltipProvider } from "./components/ui/tooltip-provider.tsx";
 import { useAuth } from "./hooks/use-auth.ts";
@@ -26,11 +25,14 @@ import { AppearanceController } from "./lib/appearance.tsx";
 import { installClientBusOnlineBridge } from "./lib/client-bus-online.ts";
 import { prefetchCloudWorkspaceSession } from "./lib/cloud-workspace-session-cache.ts";
 import { clearControlPlaneSessionCache } from "./lib/control-plane-client.ts";
-
+import { useOrganizationWorkspaces } from "./lib/organization-workspaces.ts";
 import { markRendererStartupMilestone } from "./lib/performance-marks.ts";
 import { isHostedProduct } from "./lib/platform-capabilities.ts";
-
 import { installQueueOnlineRecovery } from "./lib/queue-recovery.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "./lib/renderer-workspace.ts";
 
 import { getRpcClient } from "./lib/rpc-client.ts";
 
@@ -121,12 +123,33 @@ function AmbientSurfaces() {
  */
 export function App({ onReady }: { readonly onReady?: () => void }) {
 	const { isSignedIn, user } = useAuth();
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
+	const organizationId =
+		workspace.scope.kind === "organization"
+			? workspace.scope.organizationId
+			: null;
+	const organization = useOrganizationWorkspaces((state) =>
+		organizationId !== null
+			? state.organizations.find((org) => org.id === organizationId)
+			: undefined,
+	);
+	const canConfigureCloud =
+		workspace.scope.kind === "personal" || organization?.role === "admin";
+	const onboardingOwner =
+		user === null || user === undefined
+			? null
+			: workspace.scope.kind === "personal"
+				? user.id
+				: JSON.stringify([user.id, workspace.key]);
 	const onboardingCompleted = useSettingsStore(
 		(state) => state.onboardingCompleted,
 	);
 	const cloudOnboarding = useCloudOnboarding(
-		isSignedIn ? (user?.id ?? null) : null,
-		onboardingCompleted,
+		isSignedIn ? onboardingOwner : null,
+		onboardingCompleted && canConfigureCloud,
 	);
 	return (
 		<>
@@ -135,7 +158,9 @@ export function App({ onReady }: { readonly onReady?: () => void }) {
 				onReady={onReady}
 				cloudOnboarding={cloudOnboarding}
 			/>
-			{onboardingCompleted ? <CloudBuildMonitor /> : null}
+			{onboardingCompleted && canConfigureCloud ? (
+				<CloudBuildMonitor key={workspace.key} />
+			) : null}
 		</>
 	);
 }

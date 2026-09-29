@@ -27,9 +27,9 @@ import {
 	SignJWT,
 } from "jose";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import * as CloudAuthAuthority from "../../src/cloud-auth-authority.ts";
 import { routeCloudWorkspaceRequest } from "../../src/cloud-workspace-routes.ts";
 import { CloudWorkspaceStore } from "../../src/cloud-workspace-store.ts";
-import * as CloudAuthAuthority from "../../src/cloud-auth-authority.ts";
 import * as Config from "../../src/config.ts";
 import type { ApiContext } from "../../src/handler.ts";
 import {
@@ -457,6 +457,7 @@ describe("@zuse/api", () => {
 				true,
 				{},
 				SandboxProvidersFake,
+				undefined,
 				true,
 			),
 		);
@@ -571,6 +572,7 @@ describe("@zuse/api", () => {
 				false,
 				{ allowlistedAccountIds: new Set(["organization:org_a", "user_a"]) },
 				SandboxProvidersFake,
+				undefined,
 				true,
 			),
 		);
@@ -663,6 +665,7 @@ describe("@zuse/api", () => {
 					]),
 				},
 				SandboxProvidersFake,
+				undefined,
 				true,
 			),
 		);

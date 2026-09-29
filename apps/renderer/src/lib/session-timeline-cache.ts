@@ -92,8 +92,9 @@ export const rememberCloudTimelineHead = (
 	ref: SessionRef,
 	projection: SessionTimelineProjection,
 	cursor: SessionStreamCursor,
+	namespace?: string,
 ): void => {
-	cloudHeads.set(environmentSessionCacheKey(ref), {
+	cloudHeads.set(environmentSessionCacheKey(ref, namespace), {
 		epoch: cursor.epoch,
 		firstId: projection.messages[0]?.id,
 		olderSequence: projection.olderMessageSequence ?? null,
@@ -101,8 +102,9 @@ export const rememberCloudTimelineHead = (
 };
 const cloudHeadEntry = (
 	entry: SessionTimelineCacheEntry,
+	namespace?: string,
 ): SessionTimelineCacheEntry => {
-	const head = cloudHeads.get(environmentSessionCacheKey(entry.ref));
+	const head = cloudHeads.get(environmentSessionCacheKey(entry.ref, namespace));
 	if (!head || head.epoch !== entry.cursor.epoch) return entry;
 	const index = entry.projection.messages.findIndex(
 		(message) => message.id === head.firstId,
@@ -126,9 +128,10 @@ const historyPageKey = (
 	ref: SessionRef,
 	cursor: SessionStreamCursor,
 	before: number,
+	namespace?: string,
 ) =>
 	JSON.stringify([
-		environmentSessionCacheKey(ref),
+		environmentSessionCacheKey(ref, namespace),
 		cursor.epoch,
 		cursor.version,
 		before,
@@ -240,8 +243,11 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		}
 	}
 
-	async save(fullEntry: SessionTimelineCacheEntry, namespace?: string): Promise<void> {
-		const entry = cloudHeadEntry(fullEntry);
+	async save(
+		fullEntry: SessionTimelineCacheEntry,
+		namespace?: string,
+	): Promise<void> {
+		const entry = cloudHeadEntry(fullEntry, namespace);
 		const storageKey = environmentSessionCacheKey(entry.ref, namespace);
 		const database = await this.db();
 		const transaction = database.transaction(
@@ -283,13 +289,14 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		ref: SessionRef,
 		cursor: SessionStreamCursor,
 		before: number,
+		namespace?: string,
 	): Promise<HistoryPage | null> {
 		const database = await this.db();
 		const transaction = database.transaction(HISTORY_STORE_NAME, "readonly");
 		const record = await requestResult(
 			transaction
 				.objectStore(HISTORY_STORE_NAME)
-				.get(historyPageKey(ref, cursor, before)),
+				.get(historyPageKey(ref, cursor, before, namespace)),
 		);
 		await transactionComplete(transaction);
 		if (!record) return null;
@@ -304,6 +311,7 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		cursor: SessionStreamCursor,
 		before: number,
 		page: HistoryPage,
+		namespace?: string,
 	): Promise<void> {
 		const database = await this.db();
 		const encoded = Schema.encodeSync(HistoryPage)(page);
@@ -311,11 +319,13 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 			[HISTORY_STORE_NAME, METADATA_STORE_NAME],
 			"readwrite",
 		);
-		const key = historyPageKey(ref, cursor, before);
+		const key = historyPageKey(ref, cursor, before, namespace);
 		const bytes = JSON.stringify(encoded).length;
-		transaction
-			.objectStore(HISTORY_STORE_NAME)
-			.put({ key, resource: environmentSessionCacheKey(ref), page: encoded });
+		transaction.objectStore(HISTORY_STORE_NAME).put({
+			key,
+			resource: environmentSessionCacheKey(ref, namespace),
+			page: encoded,
+		});
 		transaction.objectStore(METADATA_STORE_NAME).put({
 			sessionId: `history:${key}`,
 			historyKey: key,

@@ -747,13 +747,22 @@ export function MainShell() {
 															</Suspense>
 														) : null}
 														<Suspense fallback={<ComposerFallback />}>
-															{selectedChat?.readOnly === true ? <p role="status" className="py-3 text-center text-xs text-muted-foreground">{uiMessage("shell:shared_session_read_only")}</p> : <ChatComposer
-																key={selectedSession.id}
-																session={selectedSession}
-																environmentId={selectedEnvironmentId}
-																constrain={false}
-																directoryUnavailable={directoryUnavailable}
-															/>}
+															{selectedChat?.readOnly === true ? (
+																<p
+																	role="status"
+																	className="py-3 text-center text-xs text-muted-foreground"
+																>
+																	{uiMessage("shell:shared_session_read_only")}
+																</p>
+															) : (
+																<ChatComposer
+																	key={selectedSession.id}
+																	session={selectedSession}
+																	environmentId={selectedEnvironmentId}
+																	constrain={false}
+																	directoryUnavailable={directoryUnavailable}
+																/>
+															)}
 														</Suspense>
 													</div>
 												</div>

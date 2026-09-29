@@ -1,4 +1,3 @@
-import type { CloudControlClient } from "@zuse/client-runtime/cloud-control-client";
 import {
 	isRpcCredentialExpired,
 	makeRpcClientSession,
@@ -18,7 +17,7 @@ import {
 	WIRE_PROTOCOL_VERSION,
 	type WorkspaceScope,
 } from "@zuse/contracts";
-import { Effect, Layer, type Stream } from "effect";
+import { Effect, Layer } from "effect";
 import {
 	type RpcClient,
 	type RpcGroup,
@@ -30,7 +29,6 @@ import { requestBrowserWebSocketUrl } from "./browser-session.ts";
 import { cloudFailurePresentation } from "./cloud-failure-presentation.ts";
 import { recordDiagnosticEvent } from "./diagnostics-recorder.ts";
 import { electronClientProtocolLayer } from "./electron-client-protocol.ts";
-import { isHostedProduct } from "./hosted-connect.ts";
 import { isPlatformOnline, subscribePlatformOnline } from "./network-status.ts";
 import { isHostedProduct } from "./platform-capabilities.ts";
 import {
@@ -662,6 +660,7 @@ export const environmentBelongsToWorkspace = (
 	environmentId: string,
 	scope: WorkspaceScope = rendererWorkspaceSnapshot().scope,
 ): boolean =>
+	(environmentId === LOCAL_ENVIRONMENT_KEY && isHostedProduct()) ||
 	workspaceScopeKey(
 		getCloudWorkspaceScope(environmentId) ?? { kind: "personal" },
 	) === workspaceScopeKey(scope);
