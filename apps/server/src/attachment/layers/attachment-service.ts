@@ -6,6 +6,7 @@ import {
 import {
 	AttachmentTooLargeError,
 	ContextWriteError,
+	MAX_ATTACHMENT_BYTES,
 	SessionNotFoundError,
 } from "@zuse/contracts";
 import { Effect, FileSystem, Layer, Path } from "effect";
@@ -16,12 +17,6 @@ import {
 	resolveSessionCwd,
 } from "../../context/context-files.ts";
 import { extForUpload } from "../image-mime.ts";
-
-/**
- * Per-attachment cap, validated client-side and re-validated here. Matches
- * the spec — see `specs/0.03-MVP/features/composer.md` "Attachments".
- */
-const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
 const sessionSegment = (sessionId: string): string =>
 	sessionId

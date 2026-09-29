@@ -14,6 +14,41 @@ describe("workspace attachment previews", () => {
 	beforeEach(() => {
 		dispatch.mockReset();
 	});
+	it("routes every ZIP chunk to the owning cloud session", async () => {
+		const ref = { environmentId: EnvironmentId.make("cloud-zip"), sessionId };
+		const bytes = new Uint8Array(7 * 1024 * 1024);
+		dispatch.mockImplementation(async ({ payload }) => ({
+			result:
+				payload.offset + payload.bytes.length === bytes.length
+					? {
+							id: "uploaded-zip",
+							mimeType: "application/zip",
+							sizeBytes: bytes.length,
+							ext: "zip",
+						}
+					: null,
+		}));
+		await expect(
+			uploadAttachmentBytes(ref, {
+				bytes,
+				mimeType: "application/zip",
+				originalName: "archive.zip",
+			}),
+		).resolves.toEqual({
+			id: "uploaded-zip",
+			mimeType: "application/zip",
+			originalName: "archive.zip",
+		});
+		expect(dispatch).toHaveBeenCalledTimes(4);
+		for (const [command] of dispatch.mock.calls) {
+			expect(command).toMatchObject({
+				ref,
+				kind: "attachments.uploadChunk",
+				retry: "never",
+				payload: { sessionId, originalName: "archive.zip" },
+			});
+		}
+	});
 	it("reuses uploaded image bytes without downloading them again", async () => {
 		const ref = {
 			environmentId: EnvironmentId.make("uploaded-preview"),

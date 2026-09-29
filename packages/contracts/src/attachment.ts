@@ -3,6 +3,31 @@ import { Rpc } from "effect/unstable/rpc";
 
 import { SessionId, SessionNotFoundError } from "./session.ts";
 
+export const MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
+// Base64 and RPC framing must fit comfortably inside the cloud gateway's 8 MiB limit.
+export const ATTACHMENT_CHUNK_BYTES = 2 * 1024 * 1024;
+
+export const AttachmentUploadResult = Schema.Struct({
+	id: Schema.String,
+	sizeBytes: Schema.Number,
+	mimeType: Schema.String,
+	ext: Schema.String,
+});
+export type AttachmentUploadResult = typeof AttachmentUploadResult.Type;
+
+const AttachmentUploadFields = {
+	sessionId: SessionId,
+	bytes: Schema.Uint8ArrayFromBase64,
+	mimeType: Schema.String,
+	originalName: Schema.String,
+	rootPath: Schema.optional(Schema.String),
+};
+
+export class AttachmentUploadError extends Schema.TaggedErrorClass<AttachmentUploadError>()(
+	"AttachmentUploadError",
+	{ sessionId: SessionId, reason: Schema.String },
+) {}
+
 export class AttachmentTooLargeError extends Schema.TaggedErrorClass<AttachmentTooLargeError>()(
 	"AttachmentTooLargeError",
 	{
@@ -29,7 +54,7 @@ export class AttachmentNotFoundError extends Schema.TaggedErrorClass<AttachmentN
 ) {}
 
 /**
- * Upload an image attachment for a session. Bytes land in the workspace's
+ * Upload a file attachment for a session. Bytes land in the workspace's
  * gitignored `.context/files/` directory; the returned id is what the
  * renderer stores on `ComposerInput.attachments` and renders via
  * `zuse://attachments/<id>`.
@@ -37,24 +62,33 @@ export class AttachmentNotFoundError extends Schema.TaggedErrorClass<AttachmentN
  * `rootPath` is an optional fallback workspace root the renderer already
  * knows. The server prefers to resolve the cwd from `sessionId`, but for a
  * brand-new chat whose session row does not exist yet the fallback keeps
- * drop/paste working; when neither resolves, the upload falls back to the
- * legacy userData attachments directory.
+ * drop/paste working; when neither resolves, the upload reports
+ * SessionNotFoundError so startup can wait for the workspace to be ready.
  */
 export const AttachmentUploadRpc = Rpc.make("attachments.upload", {
-	payload: Schema.Struct({
-		sessionId: SessionId,
-		bytes: Schema.Uint8ArrayFromBase64,
-		mimeType: Schema.String,
-		originalName: Schema.String,
-		rootPath: Schema.optional(Schema.String),
-	}),
-	success: Schema.Struct({
-		id: Schema.String,
-		sizeBytes: Schema.Number,
-		mimeType: Schema.String,
-		ext: Schema.String,
-	}),
+	payload: Schema.Struct(AttachmentUploadFields),
+	success: AttachmentUploadResult,
 	error: Schema.Union([
+		AttachmentTooLargeError,
+		AttachmentBadMimeError,
+		SessionNotFoundError,
+	]),
+});
+
+export const AttachmentUploadChunk = Schema.Struct({
+	...AttachmentUploadFields,
+	uploadId: Schema.String.check(Schema.isMaxLength(128)),
+	offset: Schema.Number,
+	totalBytes: Schema.Number,
+});
+export type AttachmentUploadChunk = typeof AttachmentUploadChunk.Type;
+
+/** Sequential chunks; only the final response publishes an attachment. */
+export const AttachmentUploadChunkRpc = Rpc.make("attachments.uploadChunk", {
+	payload: AttachmentUploadChunk,
+	success: Schema.NullOr(AttachmentUploadResult),
+	error: Schema.Union([
+		AttachmentUploadError,
 		AttachmentTooLargeError,
 		AttachmentBadMimeError,
 		SessionNotFoundError,

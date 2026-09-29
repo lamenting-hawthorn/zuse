@@ -26,7 +26,11 @@ import {
 	EnvironmentConnectRpc,
 	EnvironmentsListRpc,
 } from "./api.ts";
-import { AttachmentReadRpc, AttachmentUploadRpc } from "./attachment.ts";
+import {
+	AttachmentReadRpc,
+	AttachmentUploadChunkRpc,
+	AttachmentUploadRpc,
+} from "./attachment.ts";
 import {
 	AuthGetSessionRpc,
 	AuthSessionChangesRpc,
@@ -622,6 +626,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	MessagesQueueFlushRpc,
 	MessagesQueueResumeRpc,
 	AttachmentUploadRpc,
+	AttachmentUploadChunkRpc,
 	AttachmentReadRpc,
 	ContextSaveTextRpc,
 	SkillListRpc,
