@@ -926,5 +926,7 @@
 	"cloud_build_needed": "⟦ïïmààgëë büüïïld nëëëëdëëd⟧",
 	"cloud_auth_poll_retry": "⟦ÀÀüüthôôrïïzààtïïôôn stààtüüs côôüüld nôôt bëë rëëfrëëshëëd. Rëëtryïïng…⟧",
 	"cloud_auth_disconnect_failed": "⟦Côôüüld nôôt dïïscôônnëëct thëë ààgëënt. Try ààgààïïn.⟧",
-	"cloud_image_leave_warning": "⟦Yôôüür clôôüüd ïïmààgëë hààs üünbüüïïlt chààngëës. Lëëààvëë Sëëttïïngs? Yôôüü cààn fïïnïïsh büüïïldïïng frôôm thëë clôôüüd rëëmïïndëër ààt ààny tïïmëë.⟧"
+	"cloud_image_leave_warning": "⟦Yôôüür clôôüüd ïïmààgëë hààs üünbüüïïlt chààngëës. Lëëààvëë Sëëttïïngs? Yôôüü cààn fïïnïïsh büüïïldïïng frôôm thëë clôôüüd rëëmïïndëër ààt ààny tïïmëë.⟧",
+	"cloud_setup_later": "⟦Fïïnïïsh lààtëër⟧",
+	"cloud_setup_finish": "⟦Stààrt üüsïïng Clôôüüd⟧"
 }

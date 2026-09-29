@@ -3,6 +3,11 @@ import {
 	refreshCloudImages,
 	subscribeCloudImages,
 } from "../../lib/cloud-image-monitor.ts";
+import {
+	CLOUD_CHECKOUT_STARTED,
+	type CloudSetupProgress,
+	type CloudSetupStep,
+} from "../../lib/cloud-onboarding.ts";
 import "@zuse/i18n/english/settings";
 import {
 	CLOUD_WORKSPACE_OFFER_ID,
@@ -73,16 +78,30 @@ const formatUsdMicros = (micros: number): string =>
 		maximumFractionDigits: 2,
 	});
 
-export function CloudWorkspacePool() {
+export function CloudWorkspacePool({
+	onboarding,
+}: {
+	readonly onboarding?: {
+		readonly step: CloudSetupStep;
+		readonly imageProviderId?: string;
+		readonly onProgress: (
+			progress: CloudSetupProgress,
+			loaded: boolean,
+		) => void;
+	};
+} = {}) {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
 	const { isLoading: authLoading, isSignedIn, signIn, signingIn } = useAuth();
+	const [setupLoading, setSetupLoading] = useState(true);
 	const [entitlementSubscribed, setEntitlementSubscribed] = useState(false);
 	const [serviceAvailable, setServiceAvailable] = useState(true);
 	const [providers, setProviders] = useState<
 		ReadonlyArray<CloudProviderOption>
 	>([]);
-	const [imageProviderId, setImageProviderId] = useState<string | undefined>();
+	const [imageProviderId, setImageProviderId] = useState<string | undefined>(
+		onboarding?.imageProviderId,
+	);
 	const loadSequence = useRef(0);
 	const imageSelection = useRef(imageProviderId);
 	imageSelection.current = imageProviderId;
@@ -230,6 +249,8 @@ export function CloudWorkspacePool() {
 						serviceAvailable: false,
 					}).serviceError,
 				);
+			} finally {
+				setSetupLoading(false);
 			}
 		},
 		[isSignedIn, imageProviderId],
@@ -244,6 +265,36 @@ export function CloudWorkspacePool() {
 			else if (key.startsWith("cloud-workspace:")) void load();
 		});
 	}, [authLoading, isSignedIn, load, loadGithubRepos]);
+
+	const githubReady = githubAuthenticated && projects.length > 0;
+	const authReady =
+		accountImage?.providers.some(
+			(provider) => provider.state === "connected",
+		) ?? false;
+	const imageReady = accountImage?.state === "ready";
+	const onProgress = onboarding?.onProgress;
+	useEffect(() => {
+		onProgress?.(
+			{ github: githubReady, auth: authReady, image: imageReady },
+			accountImage !== null && githubStatus !== null,
+		);
+	}, [
+		onProgress,
+		githubReady,
+		authReady,
+		imageReady,
+		accountImage !== null,
+		githubStatus !== null,
+	]);
+	useEffect(() => {
+		if (onboarding === undefined) return;
+		const refresh = () => {
+			void load(true);
+			void loadGithubRepos(true);
+		};
+		window.addEventListener("focus", refresh);
+		return () => window.removeEventListener("focus", refresh);
+	}, [onboarding !== undefined, load, loadGithubRepos]);
 
 	const run = async (
 		name: string,
@@ -279,6 +330,7 @@ export function CloudWorkspacePool() {
 			const result = await runControlPlane((client) =>
 				client["machines.checkout"]({ offerId: CLOUD_WORKSPACE_OFFER_ID }),
 			);
+			window.dispatchEvent(new Event(CLOUD_CHECKOUT_STARTED));
 			await openExternal(result.checkoutUrl);
 		});
 
@@ -456,6 +508,11 @@ export function CloudWorkspacePool() {
 
 	return (
 		<>
+			{onboarding !== undefined && setupLoading ? (
+				<p role="status" className="py-3 text-xs text-muted-foreground">
+					{uiMessage("common:loading")}
+				</p>
+			) : null}
 			{error === null ? null : (
 				<div
 					role="alert"
@@ -464,50 +521,52 @@ export function CloudWorkspacePool() {
 					{error}
 				</div>
 			)}
-			<CloudSettingsGroup
-				title={uiMessage("settings:cloud_workspace_pool_cloud_access")}
-				description={uiMessage(
-					"settings:cloud_workspace_pool_cloud_workspaces_keep_agents_running_when_this_app_or_your_laptop_is_o",
-				)}
-				action={
-					subscribed ? (
-						<Badge variant={serviceAvailable ? "success" : "warning"}>
-							{serviceAvailable
-								? uiMessage("settings:cloud_workspace_pool_active")
-								: uiMessage("settings:cloud_workspace_pool_update_required")}
-						</Badge>
-					) : (
-						<Button
-							size="xs"
-							className={COMPACT_CLOUD_ACTION}
-							loading={busy === "checkout"}
-							onClick={() => void checkout()}
-						>
-							{uiMessage("settings:cloud_workspace_pool_subscribe_40_month")}
-						</Button>
-					)
-				}
-			>
-				<CloudSettingsRow
-					title={
-						subscribed
-							? uiMessage(
-									"settings:cloud_workspace_pool_cloud_workspace_is_ready",
-								)
-							: uiMessage(
-									"settings:cloud_workspace_pool_enable_cloud_workspace",
-								)
-					}
+			{onboarding === undefined ? (
+				<CloudSettingsGroup
+					title={uiMessage("settings:cloud_workspace_pool_cloud_access")}
 					description={uiMessage(
-						"settings:cloud_workspace_pool_each_chat_gets_an_isolated_workspace_compute_pauses_when_it_is_not_nee",
+						"settings:cloud_workspace_pool_cloud_workspaces_keep_agents_running_when_this_app_or_your_laptop_is_o",
 					)}
 					action={
-						<Cloud className="size-4 text-muted-foreground" aria-hidden />
+						subscribed ? (
+							<Badge variant={serviceAvailable ? "success" : "warning"}>
+								{serviceAvailable
+									? uiMessage("settings:cloud_workspace_pool_active")
+									: uiMessage("settings:cloud_workspace_pool_update_required")}
+							</Badge>
+						) : (
+							<Button
+								size="xs"
+								className={COMPACT_CLOUD_ACTION}
+								loading={busy === "checkout"}
+								onClick={() => void checkout()}
+							>
+								{uiMessage("settings:cloud_workspace_pool_subscribe_40_month")}
+							</Button>
+						)
 					}
-				/>
-			</CloudSettingsGroup>
+				>
+					<CloudSettingsRow
+						title={
+							subscribed
+								? uiMessage(
+										"settings:cloud_workspace_pool_cloud_workspace_is_ready",
+									)
+								: uiMessage(
+										"settings:cloud_workspace_pool_enable_cloud_workspace",
+									)
+						}
+						description={uiMessage(
+							"settings:cloud_workspace_pool_each_chat_gets_an_isolated_workspace_compute_pauses_when_it_is_not_nee",
+						)}
+						action={
+							<Cloud className="size-4 text-muted-foreground" aria-hidden />
+						}
+					/>
+				</CloudSettingsGroup>
+			) : null}
 
-			{subscribed && serviceAvailable ? (
+			{onboarding === undefined && subscribed && serviceAvailable ? (
 				<SegmentedTabs
 					value={view}
 					onValueChange={setView}
@@ -523,146 +582,107 @@ export function CloudWorkspacePool() {
 
 			{subscribed && serviceAvailable && view === "setup" ? (
 				<>
-					<CloudSettingsGroup
-						title={uiMessage("settings:cloud_setup_title")}
-						description={uiMessage("settings:cloud_setup_description")}
-					>
-						{[
-							[
-								uiMessage("settings:cloud_setup_github"),
-								uiMessage("settings:cloud_setup_github_description"),
-								githubAuthenticated && projects.length > 0,
-								"cloud-setup-github",
-							],
-							[
-								uiMessage("settings:cloud_setup_agent"),
-								uiMessage("settings:cloud_setup_agent_description"),
-								accountImage?.providers.some(
-									(provider) => provider.state === "connected",
-								),
-								"cloud-setup-auth",
-							],
-							[
-								uiMessage("settings:cloud_setup_image"),
-								uiMessage("settings:cloud_setup_image_description"),
-								accountImage?.state === "ready",
-								"cloud-setup-image",
-							],
-						].map(([title, description, done, target]) => (
-							<CloudSettingsRow
-								key={String(target)}
-								title={String(title)}
-								description={String(description)}
-								action={
-									<Button
-										className="h-7"
-										size="xs"
-										variant="ghost"
-										onClick={() =>
-											document
-												.getElementById(String(target))
-												?.scrollIntoView({ behavior: "smooth", block: "start" })
-										}
-									>
-										{done
-											? uiMessage("settings:cloud_setup_review")
-											: uiMessage("settings:cloud_setup_continue")}
-									</Button>
+					{onboarding === undefined || onboarding.step === "github" ? (
+						<>
+							<CloudWorkspaceGithub
+								status={githubStatus}
+								loading={reposLoading}
+								busy={busy}
+								onInstall={() => void installGithub()}
+								onManage={(installationId) => void manageGithub(installationId)}
+								onRefresh={() => void loadGithubRepos(true)}
+								onDisconnect={(installationId) =>
+									void disconnectGithub(installationId)
 								}
 							/>
-						))}
-					</CloudSettingsGroup>
-					<div id="cloud-setup-github" />
-					<CloudWorkspaceGithub
-						status={githubStatus}
-						loading={reposLoading}
-						busy={busy}
-						onInstall={() => void installGithub()}
-						onManage={(installationId) => void manageGithub(installationId)}
-						onRefresh={() => void loadGithubRepos(true)}
-						onDisconnect={(installationId) =>
-							void disconnectGithub(installationId)
-						}
-					/>
-					<CloudWorkspaceRepositories
-						projects={projects}
-						repositories={githubRepos}
-						githubAuthenticated={githubAuthenticated}
-						loading={reposLoading}
-						busy={busy}
-						error={projectError}
-						onRefresh={() => void loadGithubRepos(true)}
-						onAdd={(names) => void connectProjects(names)}
-						onRemove={(project) => void removeProject(project)}
-					/>
-					<div id="cloud-setup-auth" />
-					<CloudWorkspaceAuth />
-					<CloudApiKeys />
-					<div id="cloud-setup-image" />
-					<CloudSettingsGroup
-						title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
-						description={uiMessage(
-							"settings:cloud_workspace_pool_build_the_reusable_environment_that_starts_every_new_cloud_chat",
-						)}
-					>
-						<CloudSettingsRow
-							title={uiMessage("settings:cloud_machine_provider")}
+							<CloudWorkspaceRepositories
+								projects={projects}
+								repositories={githubRepos}
+								githubAuthenticated={githubAuthenticated}
+								loading={reposLoading}
+								busy={busy}
+								error={projectError}
+								onRefresh={() => void loadGithubRepos(true)}
+								onAdd={(names) => void connectProjects(names)}
+								onRemove={(project) => void removeProject(project)}
+							/>
+						</>
+					) : null}
+					{onboarding === undefined || onboarding.step === "auth" ? (
+						<>
+							<CloudWorkspaceAuth />
+							<CloudApiKeys />
+						</>
+					) : null}
+					{onboarding === undefined || onboarding.step === "image" ? (
+						<CloudSettingsGroup
+							title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
+							description={uiMessage(
+								"settings:cloud_workspace_pool_build_the_reusable_environment_that_starts_every_new_cloud_chat",
+							)}
 						>
-							<select
-								aria-label={uiMessage("settings:cloud_machine_provider")}
-								className="h-7 rounded-md bg-muted px-2 text-xs"
-								disabled={busy !== null}
-								value={
-									imageProviderId ??
-									accountImage?.providerId ??
-									providers[0]?.providerId ??
-									""
-								}
-								onChange={(event) => {
-									setAccountImage(null);
-									setImageProviderId(event.target.value);
-								}}
+							<CloudSettingsRow
+								title={uiMessage("settings:cloud_machine_provider")}
 							>
-								{providers.map((provider) => (
-									<option key={provider.providerId} value={provider.providerId}>
-										{cloudProviderLabel(provider.providerId)}
-										{` · ${providerImages.find((image) => image.providerId === provider.providerId)?.state ?? "checking"}`}
-									</option>
-								))}
-							</select>
-						</CloudSettingsRow>
-						<CloudImageReadiness
-							image={accountImage}
-							projects={projects}
-							busy={busy}
-							unavailable={imageError !== null || providers.length === 0}
-							onBuild={(mode) => void buildAccountImage(mode)}
-						/>
-						{imageError === null ? null : (
-							<div className="flex items-center justify-between gap-3 bg-destructive/10 px-3 py-2">
-								<p role="alert" className="text-xs text-destructive">
-									{imageError}
-								</p>
-								<Button
-									size="xs"
-									variant="ghost"
-									className={COMPACT_CLOUD_ACTION}
-									onClick={() => void load(true)}
+								<select
+									aria-label={uiMessage("settings:cloud_machine_provider")}
+									className="h-7 rounded-md bg-muted px-2 text-xs"
+									disabled={busy !== null}
+									value={
+										imageProviderId ??
+										accountImage?.providerId ??
+										providers[0]?.providerId ??
+										""
+									}
+									onChange={(event) => {
+										setAccountImage(null);
+										setImageProviderId(event.target.value);
+									}}
 								>
-									{uiMessage("common:retry")}
-								</Button>
-							</div>
-						)}
-						{imageError === null && providers.length === 0 ? (
-							<p
-								role="status"
-								className="px-3 py-2 text-[11px] text-muted-foreground"
-							>
-								{uiMessage("settings:cloud_workspace_pool_setup_unavailable")}
-							</p>
-						) : null}
-						<CloudImageBuildHistory builds={accountImage?.builds ?? []} />
-					</CloudSettingsGroup>
+									{providers.map((provider) => (
+										<option
+											key={provider.providerId}
+											value={provider.providerId}
+										>
+											{cloudProviderLabel(provider.providerId)}
+											{` · ${providerImages.find((image) => image.providerId === provider.providerId)?.state ?? "checking"}`}
+										</option>
+									))}
+								</select>
+							</CloudSettingsRow>
+							<CloudImageReadiness
+								image={accountImage}
+								projects={projects}
+								busy={busy}
+								unavailable={imageError !== null || providers.length === 0}
+								onBuild={(mode) => void buildAccountImage(mode)}
+							/>
+							{imageError === null ? null : (
+								<div className="flex items-center justify-between gap-3 bg-destructive/10 px-3 py-2">
+									<p role="alert" className="text-xs text-destructive">
+										{imageError}
+									</p>
+									<Button
+										size="xs"
+										variant="ghost"
+										className={COMPACT_CLOUD_ACTION}
+										onClick={() => void load(true)}
+									>
+										{uiMessage("common:retry")}
+									</Button>
+								</div>
+							)}
+							{imageError === null && providers.length === 0 ? (
+								<p
+									role="status"
+									className="px-3 py-2 text-[11px] text-muted-foreground"
+								>
+									{uiMessage("settings:cloud_workspace_pool_setup_unavailable")}
+								</p>
+							) : null}
+							<CloudImageBuildHistory builds={accountImage?.builds ?? []} />
+						</CloudSettingsGroup>
+					) : null}
 				</>
 			) : null}
 

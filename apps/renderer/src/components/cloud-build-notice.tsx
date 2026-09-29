@@ -1,3 +1,7 @@
+import {
+	CLOUD_CHECKOUT_STARTED,
+	requestCloudOnboarding,
+} from "../lib/cloud-onboarding.ts";
 import "@zuse/i18n/english/settings";
 import type { CloudAccountImage } from "@zuse/contracts";
 import { useMessages } from "@zuse/i18n/react";
@@ -13,8 +17,12 @@ import { cloudProviderLabel } from "../lib/cloud-provider-presentation.ts";
 import { useUiStore } from "../store/ui.ts";
 import { Button } from "./ui/button.tsx";
 
-/** Shell-owned polling survives closing Settings and reconnects after sleep. */
-export function CloudBuildNotice() {
+/** App-owned polling survives closing Settings and reconnects after sleep. */
+export function CloudBuildNotice({
+	hidden = false,
+}: {
+	readonly hidden?: boolean;
+}) {
 	const { message: uiMessage } = useMessages(["settings"]);
 	const { isSignedIn, user } = useAuth();
 	const [images, setImages] = useState<readonly CloudAccountImage[]>([]);
@@ -28,6 +36,7 @@ export function CloudBuildNotice() {
 		let disposed = false;
 		let running = false;
 		let wasBuilding = false;
+		let checkoutUntil = 0;
 		let timer: ReturnType<typeof setTimeout>;
 		const poll = async () => {
 			if (running || disposed) return;
@@ -37,6 +46,7 @@ export function CloudBuildNotice() {
 			try {
 				const next = await refreshCloudImages();
 				if (disposed) return;
+				if (next.length > 0) checkoutUntil = 0;
 				building = next.some((image) => image.state === "building");
 				if (wasBuilding && !building) setCompleted(true);
 				wasBuilding = building;
@@ -47,7 +57,10 @@ export function CloudBuildNotice() {
 			} finally {
 				running = false;
 				if (!disposed)
-					timer = setTimeout(() => void poll(), building ? 2_000 : 15_000);
+					timer = setTimeout(
+						() => void poll(),
+						building || Date.now() < checkoutUntil ? 2_000 : 15_000,
+					);
 			}
 		};
 		const unsubscribe = subscribeCloudImages((next) => {
@@ -61,12 +74,18 @@ export function CloudBuildNotice() {
 		});
 		void poll();
 		const wake = () => void poll();
+		const checkout = () => {
+			checkoutUntil = Date.now() + 10 * 60_000;
+			wake();
+		};
+		window.addEventListener(CLOUD_CHECKOUT_STARTED, checkout);
 		window.addEventListener("focus", wake);
 		window.addEventListener("online", wake);
 		return () => {
 			disposed = true;
 			unsubscribe();
 			clearTimeout(timer);
+			window.removeEventListener(CLOUD_CHECKOUT_STARTED, checkout);
 			window.removeEventListener("focus", wake);
 			window.removeEventListener("online", wake);
 			resetCloudImageMonitor();
@@ -79,7 +98,8 @@ export function CloudBuildNotice() {
 				(image.state !== "not-built" ||
 					!images.some((candidate) => candidate.generation !== undefined))),
 	);
-	if (!isSignedIn || (pending.length === 0 && !completed)) return null;
+	if (hidden || !isSignedIn || (pending.length === 0 && !completed))
+		return null;
 	return (
 		<div
 			role="status"
@@ -108,6 +128,10 @@ export function CloudBuildNotice() {
 				className="h-7 shrink-0"
 				size="xs"
 				onClick={() => {
+					if (images.every((image) => image.generation === undefined)) {
+						requestCloudOnboarding();
+						return;
+					}
 					useUiStore.getState().setSettingsSection({ kind: "machines" });
 					useUiStore.getState().setView("settings");
 					setCompleted(false);

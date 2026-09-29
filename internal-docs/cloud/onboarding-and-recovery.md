@@ -6,9 +6,16 @@ refer to sandbox compute rather than one provider. An external checkout product
 name must also be managed in the billing service; this checkout did not include
 access to that external product configuration.
 
-The desktop setup guide follows GitHub installation/repository selection, agent
-authentication, and a provider-specific image build. Each provider owns an image;
-switching the selector must load its status before offering a build. The shell
+The app-wide cloud onboarding wizard follows GitHub installation/repository
+selection, agent authentication, and a provider-specific image build. It opens
+when an account gains a Cloud Workspace entitlement and has not completed setup.
+The app root checks payment activation on focus and every two seconds while
+checkout is pending. Completion is stored per account, with existing server
+images preventing repeat onboarding on other devices. Finish later defers setup
+for the current app session; the floating reminder reopens it. On return, setup
+resumes at the first unfinished step and selects any image still building.
+Settings retain the shared controls for ongoing management. Each provider owns an image;
+switching the selector must load its status before offering a build. The app root
 monitors image status independently of the settings page, refreshing active
 builds every two seconds after each completed request, and idle status every
 15 seconds. Focus and network recovery also refresh status. Cached data remains

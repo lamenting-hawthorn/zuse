@@ -1,4 +1,3 @@
-import { CloudBuildNotice } from "../components/cloud-build-notice.tsx";
 import { SurfaceFallback } from "./surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
 
@@ -565,7 +564,6 @@ export function MainShell() {
 	return (
 		<div className="workspace-shell flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-sidebar text-foreground">
 			<ActiveGitWorkspaceLease />
-			<CloudBuildNotice />
 			<Group
 				id={PANEL_GROUP_ID}
 				orientation="horizontal"

@@ -1,3 +1,5 @@
+import { CloudBuildNotice } from "./components/cloud-build-notice.tsx";
+import { useCloudOnboarding } from "./hooks/use-cloud-onboarding.ts";
 import { isHostedProduct } from "./lib/hosted-connect.ts";
 import { SurfaceFallback } from "./shell/surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
@@ -72,6 +74,12 @@ const OnboardingWizard = lazy(() =>
 	})),
 );
 
+const CloudOnboardingWizard = lazy(() =>
+	import("./components/onboarding/cloud-onboarding-wizard.tsx").then(
+		(module) => ({ default: module.CloudOnboardingWizard }),
+	),
+);
+
 const SettingsPage = lazy(() =>
 	import("./components/settings-page.tsx").then((module) => ({
 		default: module.SettingsPage,
@@ -105,11 +113,27 @@ function AmbientSurfaces() {
  * settings from being observed as real product state.
  */
 export function App({ onReady }: { readonly onReady?: () => void }) {
+	const { isSignedIn, user } = useAuth();
 	const onboardingCompleted = useSettingsStore(
 		(state) => state.onboardingCompleted,
 	);
+	const cloudOnboarding = useCloudOnboarding(
+		isSignedIn ? (user?.id ?? null) : null,
+		onboardingCompleted,
+	);
 	return (
-		<ReadyApp onboardingCompleted={onboardingCompleted} onReady={onReady} />
+		<>
+			<ReadyApp
+				onboardingCompleted={onboardingCompleted}
+				onReady={onReady}
+				cloudOnboarding={cloudOnboarding}
+			/>
+			{onboardingCompleted ? (
+				<TooltipProvider>
+					<CloudBuildNotice hidden={cloudOnboarding.open} />
+				</TooltipProvider>
+			) : null}
+		</>
 	);
 }
 
@@ -127,9 +151,11 @@ function StartupReadySignal({
 }
 
 function ReadyApp({
+	cloudOnboarding,
 	onboardingCompleted,
 	onReady,
 }: {
+	readonly cloudOnboarding: ReturnType<typeof useCloudOnboarding>;
 	readonly onboardingCompleted: boolean;
 	readonly onReady?: () => void;
 }) {
@@ -279,6 +305,28 @@ function ReadyApp({
 				<div className="relative flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-background text-foreground">
 					<Suspense fallback={<SurfaceFallback />}>
 						<OnboardingWizard />
+						<StartupReadySignal onReady={onReady} />
+					</Suspense>
+				</div>
+			</TooltipProvider>
+		);
+	}
+
+	if (cloudOnboarding.open) {
+		return (
+			<TooltipProvider>
+				<AppearanceController />
+				<div className="relative z-50 flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-background text-foreground">
+					<Suspense fallback={<SurfaceFallback />}>
+						<CloudOnboardingWizard
+							key={user?.id}
+							imageProviderId={cloudOnboarding.imageProviderId}
+							onFinish={() => {
+								cloudOnboarding.finish();
+								useUiStore.getState().setView("chat");
+							}}
+							onDefer={cloudOnboarding.defer}
+						/>
 						<StartupReadySignal onReady={onReady} />
 					</Suspense>
 				</div>

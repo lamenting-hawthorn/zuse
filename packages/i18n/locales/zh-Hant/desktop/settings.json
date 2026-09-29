@@ -926,5 +926,7 @@
 	"cloud_build_needed": "image build needed",
 	"cloud_auth_poll_retry": "Authorization status could not be refreshed. Retrying…",
 	"cloud_auth_disconnect_failed": "Could not disconnect the agent. Try again.",
-	"cloud_image_leave_warning": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time."
+	"cloud_image_leave_warning": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time.",
+	"cloud_setup_later": "Finish later",
+	"cloud_setup_finish": "Start using Cloud"
 }
