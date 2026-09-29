@@ -932,5 +932,7 @@
 	"cloud_images_no_builds": "⟦Nôô büüïïlds yëët. Sëëlëëct thïïs prôôvïïdëër àànd büüïïld ïïts ïïmààgëë tôô gëët stààrtëëd.⟧",
 	"cloud_images_selected_description": "⟦Büüïïld ààn ïïmààgëë fôôr thëë sëëlëëctëëd prôôvïïdëër. ËËxïïstïïng chààts këëëëp thëëïïr cüürrëënt ëënvïïrôônmëënt.⟧",
 	"cloud_images_recommended": "⟦Rëëcôômmëëndëëd⟧",
-	"cloud_images_view_logs": "⟦{{provider}} büüïïld lôôgs⟧"
+	"cloud_images_view_logs": "⟦{{provider}} büüïïld lôôgs⟧",
+	"settings_page_provider_update_notifications": "⟦Prôôvïïdëër üüpdààtëë nôôtïïfïïcààtïïôôns⟧",
+	"settings_page_provider_update_notifications_description": "⟦Shôôw àà nôôtïïfïïcààtïïôôn whëën àà nëëwëër vëërsïïôôn ôôf ààn ààgëënt prôôvïïdëër ïïs ààvààïïlààblëë. ÔÔff by dëëfààüült.⟧"
 }
