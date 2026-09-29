@@ -10,7 +10,7 @@ import {
 	type ResourceView,
 } from "@zuse/client-runtime/resource-state";
 import type { ResolvedModelCatalog } from "@zuse/contracts";
-import { Cause, Effect, Fiber, Stream } from "effect";
+import { Cause, Duration, Effect, Fiber, Schedule, Stream } from "effect";
 import { useMemo } from "react";
 import type { MemoizeClient } from "./rpc-client.ts";
 import { registerRendererResourceDriver } from "./session-timeline-client-bus.ts";
@@ -20,6 +20,8 @@ export type ModelCatalogStreamData = Readonly<{
 	catalog: ResolvedModelCatalog;
 }>;
 type ModelCatalogStreamKey = ResourceKey<ModelCatalogStreamData>;
+
+const RETRY_MAX_DELAY_MS = 30_000;
 
 const keyFor = (ref: EnvironmentRef): ModelCatalogStreamKey =>
 	makeResourceKey("model-catalog", ref);
@@ -42,24 +44,38 @@ const makeDriver = (): ResourceDriver<
 			active = true;
 			const epoch = `model-catalog:${context.generation}:${crypto.randomUUID()}`;
 			let version = 0;
-			const program = Stream.runForEach(
-				context.client["model.catalog.stream"]({}),
-				(catalog) =>
-					Effect.sync(() => {
-						if (!active || !context.isCurrent()) return;
-						version += 1;
-						context.emit({
-							data: { catalog },
-							cursor: { epoch, version },
-							resetEpoch: version === 1,
-							sync: "live",
-						});
-					}),
+			// A dropped stream on a still-connected environment would otherwise
+			// silence catalog updates until the next reconnect, so resubscribe
+			// with capped backoff. Each resubscription replays the current
+			// catalog, which the store ignores when unchanged.
+			const updates = context.client["model.catalog.stream"]({}).pipe(
+				Stream.retry(
+					Schedule.exponential("1 second").pipe(
+						Schedule.modifyDelay(({ duration }) =>
+							Effect.succeed(
+								Duration.millis(
+									Math.min(Duration.toMillis(duration), RETRY_MAX_DELAY_MS),
+								),
+							),
+						),
+					),
+				),
+			);
+			const program = Stream.runForEach(updates, (catalog) =>
+				Effect.sync(() => {
+					if (!active || !context.isCurrent()) return;
+					version += 1;
+					context.emit({
+						data: { catalog },
+						cursor: { epoch, version },
+						resetEpoch: version === 1,
+						sync: "live",
+					});
+				}),
 			).pipe(
 				// Catalog updates are an enhancement over the one-shot
-				// `model.catalog` load. A runtime that predates the stream must
-				// never be treated as a connection fault; the picker keeps the
-				// catalog it already has.
+				// `model.catalog` load. A defect must never be treated as a
+				// connection fault; the picker keeps the catalog it already has.
 				Effect.catchCause((cause) =>
 					Effect.sync(() => {
 						if (active && !Cause.hasInterruptsOnly(cause)) {

@@ -135,6 +135,11 @@ const sameCatalog = (
 ): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 const pendingLoads = new Map<string, Promise<void>>();
+/**
+ * Bumped for every pushed catalog. A pulled answer that started before a push
+ * is older than what the stream already delivered, so it must not win.
+ */
+let pushSequence = 0;
 
 const initial = (() => {
 	dropLegacyInventoryCaches();
@@ -183,9 +188,16 @@ export const useModelCatalogStore = create<State>((set, get) => {
 			return;
 		}
 		set({ loading: true, error: null });
+		const startedAtPush = pushSequence;
 		const run = (async () => {
 			try {
 				const next = await fetchCatalog(environmentId, refresh);
+				if (pushSequence !== startedAtPush) {
+					if (environmentId === activeEnvironmentId()) {
+						set({ loading: false });
+					}
+					return;
+				}
 				applyServerCatalog(environmentId, next, { loading: false });
 			} catch (err) {
 				// Old server without the RPC, or a transport blip: keep showing
@@ -220,8 +232,11 @@ export const useModelCatalogStore = create<State>((set, get) => {
 			await load(false);
 		},
 		refresh: () => load(true),
-		receive: (environmentId, catalog) =>
-			applyServerCatalog(environmentId, catalog),
+		receive: (environmentId, catalog) => {
+			if (environmentId !== activeEnvironmentId()) return;
+			pushSequence += 1;
+			applyServerCatalog(environmentId, catalog);
+		},
 	};
 });
 

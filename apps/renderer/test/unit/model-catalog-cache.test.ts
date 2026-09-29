@@ -75,4 +75,25 @@ describe("model catalog cache", () => {
 		expect(useModelCatalogStore.getState().catalog).toBe(before);
 		expect(useModelCatalogStore.getState().loadedEnvironmentId).toBeNull();
 	});
+
+	it("keeps a pushed catalog over a fetch that started before it", async () => {
+		const initial = bundledResolvedModelCatalog();
+		let resolveFetch: (value: { result: typeof initial }) => void = () => {};
+		mocks.dispatch.mockReturnValue(
+			new Promise((resolve) => {
+				resolveFetch = resolve;
+			}),
+		);
+		const load = useModelCatalogStore.getState().ensureLoaded();
+
+		const pushed = { ...initial, revision: initial.revision + 2 };
+		useModelCatalogStore
+			.getState()
+			.receive(EnvironmentId.make("local"), pushed);
+		resolveFetch({ result: { ...initial, revision: initial.revision + 1 } });
+		await load;
+
+		expect(useModelCatalogStore.getState().catalog).toEqual(pushed);
+		expect(useModelCatalogStore.getState().loading).toBe(false);
+	});
 });
