@@ -3,11 +3,9 @@ import { ExtensionId, ExtensionListItem } from "@zuse/contracts";
 import { expect, it, vi } from "vitest";
 import { emptyCollector } from "../../src/lib/extension-client-lifecycle.ts";
 import { evaluateExtension } from "../../src/lib/extension-evaluator.ts";
-import { ExtensionRegistry } from "../../src/lib/extension-registry.tsx";
+import { ExtensionRegistry } from "../../src/lib/extension-registrations.ts";
+import { createExtensionRegistryStore } from "../../src/lib/extension-registry.tsx";
 
-vi.mock("../../src/lib/extension-client-bus.ts", () => ({
-	useExtensionCatalog: vi.fn(),
-}));
 vi.mock("../../src/lib/extension-evaluator.ts", () => ({
 	evaluateExtension: vi.fn(),
 }));
@@ -25,7 +23,8 @@ it("keeps the working registration on failure and only disposes it after a succe
 	vi.mocked(evaluateExtension)
 		.mockResolvedValueOnce(original)
 		.mockRejectedValueOnce(new Error("bad candidate"));
-	const registry = new ExtensionRegistry();
+	const store = createExtensionRegistryStore();
+	const registry = new ExtensionRegistry(store);
 	const item = ExtensionListItem.make({
 		id,
 		manifest: {
@@ -53,7 +52,7 @@ it("keeps the working registration on failure and only disposes it after a succe
 	});
 	const sync = (bundle: string) =>
 		new Promise<void>((resolve) => {
-			const unsubscribe = registry.subscribe(() => {
+			const unsubscribe = store.subscribe(() => {
 				unsubscribe();
 				resolve();
 			});
@@ -66,10 +65,8 @@ it("keeps the working registration on failure and only disposes it after a succe
 	const error = vi.spyOn(console, "error").mockImplementation(() => {});
 	try {
 		await sync("bad");
-		expect(registry.getSnapshot()[0]?.contributions).toBe(
-			original.contributions,
-		);
-		expect(registry.getSnapshot()[0]?.error).toContain("bad candidate");
+		expect(store.getSnapshot()[0]?.contributions).toBe(original.contributions);
+		expect(store.getSnapshot()[0]?.error).toContain("bad candidate");
 		expect(dispose).not.toHaveBeenCalled();
 		vi.mocked(evaluateExtension).mockImplementationOnce(async () => {
 			expect(dispose).not.toHaveBeenCalled();
@@ -82,7 +79,15 @@ it("keeps the working registration on failure and only disposes it after a succe
 		});
 		await sync("next");
 		expect(dispose).toHaveBeenCalledOnce();
-		expect(registry.getSnapshot()[0]?.error).toBeNull();
+		expect(store.getSnapshot()[0]?.error).toBeNull();
+		await new Promise<void>((resolve) => {
+			const unsubscribe = store.subscribe(() => {
+				unsubscribe();
+				resolve();
+			});
+			registry.sync({ globallyEnabled: false, items: [] });
+		});
+		expect(store.getSnapshot()).toEqual([]);
 	} finally {
 		error.mockRestore();
 	}

@@ -46,6 +46,17 @@ const defaultRouteAssets = collectRouteAssets(
 	"src/application.tsx",
 );
 
+// Appearance subscribers must not eagerly load extension activation and catalog RPC.
+const extensionController = manifest["src/lib/extension-host-controller.tsx"];
+if (
+	!extensionController?.isDynamicEntry ||
+	defaultRouteAssets.includes(extensionController.file)
+) {
+	throw new Error(
+		"Extension activation must remain outside the default route bundle.",
+	);
+}
+
 // Offline catalogs must be packaged, without pulling inactive languages into startup.
 const localizationRoot = resolve(
 	import.meta.dirname,
