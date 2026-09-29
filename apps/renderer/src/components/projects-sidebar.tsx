@@ -156,7 +156,6 @@ import { ProjectAddMenu } from "./project-add-menu.tsx";
 import { ProviderIcon } from "./provider-icons.tsx";
 import { AgentActivityOrb } from "./ui/agent-activity-orb.tsx";
 import { Spinner } from "./ui/spinner";
-import { UsageLimitsMenu } from "./usage/usage-limits-submenu.tsx";
 
 const CLOUD_WORKSPACE_BETA_AVAILABLE = cloudWorkspaceBetaAvailable();
 const EMPTY_CLOUD_CHATS: ReadonlyArray<CloudChatSummary> = [];
@@ -168,6 +167,11 @@ const RenameDialog = lazy(() =>
 const ComputerSwitcher = lazy(() =>
 	import("./computer-switcher.tsx").then((module) => ({
 		default: module.ComputerSwitcher,
+	})),
+);
+const UsageLimitsMenu = lazy(() =>
+	import("./usage/usage-limits-submenu.tsx").then((module) => ({
+		default: module.UsageLimitsMenu,
 	})),
 );
 
@@ -1161,7 +1165,11 @@ function SidebarFooter() {
 			<SidebarAccount />
 			<div className="flex items-center gap-0.5">
 				{!isHostedProduct() && <SidebarAgentCount />}
-				{!isHostedProduct() && <UsageLimitsMenu />}
+				{!isHostedProduct() && (
+					<Suspense fallback={<span className="size-7" />}>
+						<UsageLimitsMenu />
+					</Suspense>
+				)}
 				<SidebarFooterIcon
 					icon={Settings01Icon}
 					label={uiMessage("common:settings")}
