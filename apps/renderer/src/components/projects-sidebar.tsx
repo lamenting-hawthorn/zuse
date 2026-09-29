@@ -147,7 +147,6 @@ import { useRegisterPane } from "../store/pane-focus.ts";
 import { subscribeSessionTerminals } from "../store/session-runtime.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useUiStore } from "../store/ui.ts";
-import { useUsageStore } from "../store/usage.ts";
 import { useWorkspaceStore } from "../store/workspace.ts";
 import { EMPTY_WORKTREES, useWorktreesStore } from "../store/worktrees.ts";
 import { openAddComputerDialog } from "./add-computer-dialog.tsx";
@@ -157,6 +156,7 @@ import { ProjectAddMenu } from "./project-add-menu.tsx";
 import { ProviderIcon } from "./provider-icons.tsx";
 import { AgentActivityOrb } from "./ui/agent-activity-orb.tsx";
 import { Spinner } from "./ui/spinner";
+import { UsageLimitsMenu } from "./usage/usage-limits-submenu.tsx";
 
 const CLOUD_WORKSPACE_BETA_AVAILABLE = cloudWorkspaceBetaAvailable();
 const EMPTY_CLOUD_CHATS: ReadonlyArray<CloudChatSummary> = [];
@@ -1155,23 +1155,13 @@ function SidebarFooter() {
 	const { message: uiMessage } = useUiMessages(["common", "projects"]);
 
 	const setView = useUiStore((state) => state.setView);
-	const openUsage = useUiStore((state) => state.openUsage);
-	const prefetchUsage = useUsageStore((state) => state.prefetch);
 
 	return (
 		<div className="flex h-9 items-center justify-between px-2">
 			<SidebarAccount />
 			<div className="flex items-center gap-0.5">
 				{!isHostedProduct() && <SidebarAgentCount />}
-				{!isHostedProduct() && (
-					<SidebarFooterIcon
-						icon={Analytics01Icon}
-						label={uiMessage("projects:projects_sidebar_usage")}
-						onPointerEnter={() => void prefetchUsage(null)}
-						onFocus={() => void prefetchUsage(null)}
-						onClick={() => openUsage("global")}
-					/>
-				)}
+				{!isHostedProduct() && <UsageLimitsMenu />}
 				<SidebarFooterIcon
 					icon={Settings01Icon}
 					label={uiMessage("common:settings")}

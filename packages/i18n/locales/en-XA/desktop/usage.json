@@ -72,5 +72,16 @@
 	"usage_dashboard_no_usage_has_been_recorded_yet": "⟦Nôô üüsààgëë hààs bëëëën rëëcôôrdëëd yëët.⟧",
 	"usage_dashboard_usage_limits": "⟦ÜÜsààgëë lïïmïïts⟧",
 	"usage_dashboard_view_all": "⟦Vïïëëw ààll {{value1}}⟧",
-	"usage_dashboard_page_summary": "⟦{{range}} ôôf {{total}}⟧"
+	"usage_dashboard_page_summary": "⟦{{range}} ôôf {{total}}⟧",
+	"usage_limits_menu_credits": "⟦{{value}} crëëdïïts lëëft⟧",
+	"usage_limits_menu_stale": "⟦Rëëfrëësh fààïïlëëd. Shôôwïïng prëëvïïôôüüs rëëààdïïngs; thëëy màày bëë ôôüüt ôôf dààtëë.⟧",
+	"usage_limits_menu_failed": "⟦Côôüüld nôôt lôôààd üüsààgëë lïïmïïts. Try rëëfrëëshïïng.⟧",
+	"usage_limits_unavailable_account": "⟦Nôôt ààvààïïlààblëë fôôr thïïs ààccôôüünt⟧",
+	"usage_limits_unavailable_scope": "⟦ÜÜsààgëë lïïmïïts üünààvààïïlààblëë fôôr thïïs scôôpëë⟧",
+	"usage_limits_sign_in_kiro": "⟦Sïïgn ïïn wïïth kïïrôô-clïï lôôgïïn tôô sëëëë lïïmïïts⟧",
+	"usage_limits_sign_in": "⟦Sïïgn ïïn tôô {{provider}} tôô sëëëë lïïmïïts⟧",
+	"usage_limits_expired_kiro": "⟦Sëëssïïôôn ëëxpïïrëëd: rüün kïïrôô-clïï lôôgïïn⟧",
+	"usage_limits_expired": "⟦{{provider}} sëëssïïôôn ëëxpïïrëëd: sïïgn ïïn ààgààïïn⟧",
+	"usage_limits_load_failed": "⟦Côôüüld nôôt lôôààd lïïmïïts: try ààgààïïn⟧",
+	"usage_limits_no_data": "⟦Nôô üüsààgëë dààtàà ààvààïïlààblëë⟧"
 }

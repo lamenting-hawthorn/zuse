@@ -72,5 +72,16 @@
 	"usage_dashboard_no_usage_has_been_recorded_yet": "使用状況はまだ記録されていません。",
 	"usage_dashboard_usage_limits": "使用制限",
 	"usage_dashboard_view_all": "すべて表示（{{value1}}）",
-	"usage_dashboard_page_summary": "{{range}} / {{total}}"
+	"usage_dashboard_page_summary": "{{range}} / {{total}}",
+	"usage_limits_menu_credits": "残り {{value}} クレジット",
+	"usage_limits_menu_stale": "更新に失敗しました。以前のデータを表示しています。最新ではない可能性があります。",
+	"usage_limits_menu_failed": "使用量の上限を読み込めませんでした。再度更新してください。",
+	"usage_limits_unavailable_account": "このアカウントでは利用できません",
+	"usage_limits_unavailable_scope": "このスコープでは使用量の上限を取得できません",
+	"usage_limits_sign_in_kiro": "kiro-cli login でサインインすると上限を確認できます",
+	"usage_limits_sign_in": "{{provider}} にサインインすると上限を確認できます",
+	"usage_limits_expired_kiro": "セッションの有効期限が切れました：kiro-cli login を実行してください",
+	"usage_limits_expired": "{{provider}} のセッションの有効期限が切れました：再度サインインしてください",
+	"usage_limits_load_failed": "上限を読み込めませんでした：再試行してください",
+	"usage_limits_no_data": "使用量データがありません"
 }
