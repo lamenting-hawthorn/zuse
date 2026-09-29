@@ -30,7 +30,8 @@
 		"./reactors/conversation": "./src/reactors/conversation.ts",
 		"./queries/session-queries": "./src/queries/session-queries.ts",
 		"./queries/session-timeline-snapshot": "./src/queries/session-timeline-snapshot.ts",
-		"./queries/sql-session-queries": "./src/queries/sql-session-queries.ts"
+		"./queries/sql-session-queries": "./src/queries/sql-session-queries.ts",
+		"./conversation/transcript": "./src/conversation/transcript.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

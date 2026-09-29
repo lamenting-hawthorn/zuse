@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "⟦Côôüüld nôôt cààncëël thëë qüüëëüüëëd mëëssààgëë. Try ààgààïïn.⟧",
 	"cloud_queue_waiting_for_cloud": "⟦Wààïïtïïng fôôr clôôüüd tôô stààrt⟧",
 	"cloud_history_loading": "⟦Lôôààdïïng ëëààrlïïëër mëëssààgëës…⟧",
-	"cloud_history_retry": "⟦Côôüüldn’t lôôààd ëëààrlïïëër mëëssààgëës · Rëëtry⟧"
+	"cloud_history_retry": "⟦Côôüüldn’t lôôààd ëëààrlïïëër mëëssààgëës · Rëëtry⟧",
+	"fork_menu_fork_in_new_tab": "⟦Fôôrk ïïn nëëw tààb⟧",
+	"fork_menu_new_tab_on_this_machine": "⟦ÔÔpëën àà nëëw tààb ôôn thïïs mààchïïnëë wïïth thëë côônvëërsààtïïôôn thrôôüügh thïïs mëëssààgëë.⟧",
+	"fork_menu_fork_in_new_machine": "⟦Fôôrk ïïn nëëw mààchïïnëë⟧",
+	"fork_menu_new_machine_description": "⟦Clôônëë thïïs mààchïïnëë àànd côôntïïnüüëë thëë côônvëërsààtïïôôn ïïn àà sëëpààrààtëë chààt.⟧",
+	"fork_menu_forking_in_new_machine": "⟦Fôôrkïïng ïïn nëëw mààchïïnëë⟧"
 }

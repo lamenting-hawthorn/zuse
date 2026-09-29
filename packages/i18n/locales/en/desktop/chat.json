@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "Could not cancel the queued message. Try again.",
 	"cloud_queue_waiting_for_cloud": "Waiting for cloud to start",
 	"cloud_history_loading": "Loading earlier messages…",
-	"cloud_history_retry": "Couldn’t load earlier messages · Retry"
+	"cloud_history_retry": "Couldn’t load earlier messages · Retry",
+	"fork_menu_fork_in_new_tab": "Fork in new tab",
+	"fork_menu_new_tab_on_this_machine": "Open a new tab on this machine with the conversation through this message.",
+	"fork_menu_fork_in_new_machine": "Fork in new machine",
+	"fork_menu_new_machine_description": "Clone this machine and continue the conversation in a separate chat.",
+	"fork_menu_forking_in_new_machine": "Forking in new machine"
 }

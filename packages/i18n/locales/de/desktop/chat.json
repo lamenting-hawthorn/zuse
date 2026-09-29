@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "Die Nachricht konnte nicht aus der Warteschlange entfernt werden. Versuche es erneut.",
 	"cloud_queue_waiting_for_cloud": "Warten auf den Start der Cloud",
 	"cloud_history_loading": "Frühere Nachrichten werden geladen…",
-	"cloud_history_retry": "Frühere Nachrichten konnten nicht geladen werden · Erneut versuchen"
+	"cloud_history_retry": "Frühere Nachrichten konnten nicht geladen werden · Erneut versuchen",
+	"fork_menu_fork_in_new_tab": "In neuen Tab forken",
+	"fork_menu_new_tab_on_this_machine": "Öffnen Sie auf diesem Rechner einen neuen Tab mit der Unterhaltung bis zu dieser Nachricht.",
+	"fork_menu_fork_in_new_machine": "In neuen Rechner forken",
+	"fork_menu_new_machine_description": "Klonen Sie diesen Rechner und setzen Sie die Unterhaltung in einem separaten Chat fort.",
+	"fork_menu_forking_in_new_machine": "Neuer Rechner wird geforkt"
 }

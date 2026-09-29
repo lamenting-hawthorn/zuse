@@ -13,12 +13,17 @@ import { Cause, Clock, Data, Duration, Effect } from "effect";
 import GITHUB_AUTH_SOURCE from "../../cloud-sandboxes/github-auth.sh";
 import PROJECT_BUILDER_SOURCE from "../../cloud-sandboxes/project-builder.sh";
 import WORKSPACE_BOOTSTRAP_SOURCE from "../../cloud-sandboxes/workspace-bootstrap.sh";
+import WORKSPACE_FORK_PREPARE_SOURCE from "../../cloud-sandboxes/workspace-fork-prepare.sh";
 import WORKSPACE_REPOSITORY_SOURCE from "../../cloud-sandboxes/workspace-repository.sh";
 import { snapshotCloudAuthAuthority } from "./cloud-auth-authority.ts";
 import { allocatedComputeCostMicros } from "./cloud-billing.ts";
 import { CloudBillingStore } from "./cloud-billing-store.ts";
 import { githubInstallationGrants } from "./cloud-github-app.ts";
 import { deleteCloudTranscriptObjects } from "./cloud-transcript.ts";
+import {
+	forkCloudWorkspaceMachine,
+	machineForkSource,
+} from "./cloud-workspace-fork.ts";
 import {
 	MAX_MEMORY_RESTARTS,
 	MEMORY_PRESSURE_WAIT_MS,
@@ -365,10 +370,16 @@ export const cloudWorkspaceHasRetainedRuntimeData = (
 	workspace.statusCode === "agent-running";
 
 export const WORKSPACE_RUNTIME_RESUME_SCRIPT = `set -e; timing() { echo "[cloud-timing] workspaceId=$ZUSE_CLOUD_WORKSPACE_ID generation=$ZUSE_RUNTIME_GENERATION stage=$1 atMs=$(date +%s%3N)" >> /var/lib/zuse/workspace/runtime.log; }; timing runtime.shell-start; runtime=/opt/zuse/current/bin.mjs; fallback=/usr/local/bin/zuse; log=/var/lib/zuse/workspace/runtime.log; rm -f /var/lib/zuse/workspace/failed /var/lib/zuse/workspace/credentials-ready /var/lib/zuse/workspace/credentials-ready-event; if [ -n "\${ZUSE_RUNTIME_MANIFEST_URL:-}" ] && [ -f "\${ZUSE_RUNTIME_PUBLIC_KEY_FILE:-}" ]; then timing runtime.update-start; ZUSE_RUNTIME_INSTALL_ONLY=1 ZUSE_RUNTIME_SKIP_TOOLCHAIN=1 node /usr/local/lib/zuse/runtime-updater.mjs >> "$log" 2>&1; timing runtime.update-end; fi; if [ ! -f /var/lib/zuse/workspace/repository-ready ]; then
-(
+if bash <<'ZUSE_WORKSPACE_REPOSITORY' >> "$log" 2>&1
 ${WORKSPACE_REPOSITORY_SOURCE}
-)
+ZUSE_WORKSPACE_REPOSITORY
+then
 touch /var/lib/zuse/workspace/repository-ready
+else
+printf 'syncing-repository\n' >/var/lib/zuse/workspace/failure-phase
+touch /var/lib/zuse/workspace/failed
+exit 1
+fi
 fi
 timing runtime.exec; if [ -f "$runtime" ]; then exec node "$runtime" serve >> "$log" 2>&1; else exec "$fallback" serve --foreground >> "$log" 2>&1 </dev/null; fi`;
 const providerLabel = (kind: "build" | "workspace", id: string): string =>
@@ -1405,6 +1416,9 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 					ZUSE_CLOUD_WORKSPACE_ROOT: workspaceRoot,
 					ZUSE_BRANCH: workspace.branch,
 					ZUSE_BASE_REF: workspace.baseRef,
+					...(machineForkSource(workspace) === undefined
+						? {}
+						: { ZUSE_FORK_CHECKOUT: "1" }),
 					ZUSE_REPOSITORY_URL: project.repositoryUrl,
 					ZUSE_RUNTIME_KIND: "cloud-workspace",
 					ZUSE_HOST: "127.0.0.1",
@@ -1446,6 +1460,23 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 		const apiConfig = yield* ApiConfiguration;
 		const nowMs = yield* Clock.currentTimeMillis;
 		const destructiveLifecycle = destructiveMailboxLifecycle(workspace);
+		if (
+			workspace.requestConfig.forkNetworkRestorePending === true &&
+			workspace.providerSandboxId !== undefined
+		) {
+			yield* provider.setNetwork(workspace.providerSandboxId, { kind: "open" });
+			yield* saveWorkspace({
+				...workspace,
+				requestConfig: {
+					...workspace.requestConfig,
+					forkNetworkRestorePending: undefined,
+				},
+				revision: workspace.revision + 1,
+				updatedAtMs: nowMs,
+				nextActionAtMs: nowMs,
+			});
+			return;
+		}
 		if (destructiveLifecycle !== null) {
 			const destructionFence = workspaceDestructionFence(workspace);
 			let lifecyclePrepared = workspace;
@@ -1727,6 +1758,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 		}
 
 		if (workspace.state === "queued") {
+			const machineFork = machineForkSource(workspace);
 			const build = yield* store.getBuild(workspace.buildId);
 			const project = yield* store.getProject(workspace.projectId);
 			if (build === null || project === null) return;
@@ -1756,9 +1788,42 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 				: null;
 			const sandbox =
 				recovered ??
-				(preparedSnapshotAvailable
-					? yield* provider
-							.fork({
+				(machineFork !== undefined
+					? yield* forkCloudWorkspaceMachine(
+							workspace,
+							provider,
+							label,
+							config.keepAliveTimeoutSeconds,
+						)
+					: preparedSnapshotAvailable
+						? yield* provider
+								.fork({
+									sandboxId: workspace.workspaceId,
+									providerLabel: label,
+									metadata: {
+										"zuse-account-id": workspace.accountId,
+										"zuse-resource-kind": "workspace",
+										"zuse-project-id": workspace.projectId,
+										"zuse-build-id": workspace.buildId,
+										"zuse-workspace-id": workspace.workspaceId,
+									},
+									sizeId: workspaceSizeId(workspace),
+									snapshotId: build.snapshotId as string,
+									timeoutSeconds: config.keepAliveTimeoutSeconds,
+									env: {},
+									network: { kind: "open" },
+									onTimeout: "pause",
+								})
+								.pipe(
+									measureCloudStage(
+										{
+											workspaceId: workspace.workspaceId,
+											provider: provider.providerId,
+										},
+										"provider.fork",
+									),
+								)
+						: yield* provider.create({
 								sandboxId: workspace.workspaceId,
 								providerLabel: label,
 								metadata: {
@@ -1769,37 +1834,23 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 									"zuse-workspace-id": workspace.workspaceId,
 								},
 								sizeId: workspaceSizeId(workspace),
-								snapshotId: build.snapshotId as string,
 								timeoutSeconds: config.keepAliveTimeoutSeconds,
 								env: {},
 								network: { kind: "open" },
 								onTimeout: "pause",
-							})
-							.pipe(
-								measureCloudStage(
-									{
-										workspaceId: workspace.workspaceId,
-										provider: provider.providerId,
-									},
-									"provider.fork",
-								),
-							)
-					: yield* provider.create({
-							sandboxId: workspace.workspaceId,
-							providerLabel: label,
-							metadata: {
-								"zuse-account-id": workspace.accountId,
-								"zuse-resource-kind": "workspace",
-								"zuse-project-id": workspace.projectId,
-								"zuse-build-id": workspace.buildId,
-								"zuse-workspace-id": workspace.workspaceId,
-							},
-							sizeId: workspaceSizeId(workspace),
-							timeoutSeconds: config.keepAliveTimeoutSeconds,
-							env: {},
-							network: { kind: "open" },
-							onTimeout: "pause",
-						}));
+							}));
+			// Persist the native child before preparation so failed forks can still be
+			// inspected and deleted through the normal workspace lifecycle.
+			const allocatedWorkspace =
+				machineFork === undefined
+					? workspace
+					: {
+							...workspace,
+							providerSandboxId: sandbox.providerSandboxId,
+							revision: workspace.revision + 1,
+							updatedAtMs: yield* Clock.currentTimeMillis,
+						};
+			if (machineFork !== undefined) yield* saveWorkspace(allocatedWorkspace);
 			// Allocation retries can recover a machine near its original TTL, or
 			// one that already paused. Give bootstrap a fresh running window.
 			if (sandbox.state === "paused")
@@ -1814,6 +1865,59 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 					sandbox.providerSandboxId,
 					config.keepAliveTimeoutSeconds,
 				);
+			if (machineFork !== undefined) {
+				if (workspace.provider !== "boxd" || provider.forkMachine === undefined)
+					return yield* new SandboxProviderError({ code: "rejected" });
+				// The native fork inherited host quarantine. Retire copied runtime
+				// workers before rekeying; retain VM memory for other processes.
+				yield* provider.setNetwork(sandbox.providerSandboxId, {
+					kind: "quarantined",
+				});
+				const marker = `/var/lib/zuse/fork-source/${workspace.workspaceId}/prepared`;
+				if (
+					!(yield* provider.pathExists(
+						sandbox.providerSandboxId,
+						marker,
+						"zuse",
+					))
+				) {
+					yield* provider.replaceProcess(
+						sandbox.providerSandboxId,
+						workspaceRuntimeProcessSelector(),
+						{
+							command: "/bin/bash",
+							args: ["-c", WORKSPACE_FORK_PREPARE_SOURCE],
+							user: "zuse",
+							env: {
+								ZUSE_CLOUD_WORKSPACE_ID: workspace.workspaceId,
+								ZUSE_FORK_CHAT_ID: machineFork.chatId,
+								ZUSE_FORK_SESSION_ID: machineFork.sessionId,
+								ZUSE_FORK_MESSAGE_ID: machineFork.messageId,
+							},
+						},
+					);
+					const deadline = (yield* Clock.currentTimeMillis) + 30_000;
+					while (
+						!(yield* provider.pathExists(
+							sandbox.providerSandboxId,
+							marker,
+							"zuse",
+						))
+					) {
+						if (
+							yield* provider.pathExists(
+								sandbox.providerSandboxId,
+								marker.replace(/prepared$/, "failed"),
+								"zuse",
+							)
+						)
+							return yield* new SandboxProviderError({ code: "rejected" });
+						if ((yield* Clock.currentTimeMillis) >= deadline)
+							return yield* new SandboxProviderError({ code: "transient" });
+						yield* Effect.sleep(Duration.millis(250));
+					}
+				}
+			}
 			const allocatedAtMs = yield* Clock.currentTimeMillis;
 			const boot = yield* issueWorkspaceRuntimeBoot(allocatedAtMs);
 			const api = yield* ApiConfiguration;
@@ -1823,7 +1927,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 					| undefined) ?? {};
 			const runtimeFence = nextCloudWorkspaceRuntimeFence(workspace);
 			yield* saveWorkspace({
-				...workspace,
+				...allocatedWorkspace,
 				providerSandboxId: sandbox.providerSandboxId,
 				runtimeBootTokenHash: boot.tokenHash,
 				runtimeBootTokenExpiresAtMs: boot.expiresAtMs,
@@ -1846,7 +1950,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 					},
 				},
 				nextActionAtMs: allocatedAtMs + RUNTIME_CONNECTION_TIMEOUT_MS,
-				revision: workspace.revision + 1,
+				revision: allocatedWorkspace.revision + 1,
 				updatedAtMs: allocatedAtMs,
 			});
 			yield* Effect.all(
@@ -1866,7 +1970,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 				],
 				{ concurrency: "unbounded", discard: true },
 			);
-			const startRuntime = provider.startProcess(sandbox.providerSandboxId, {
+			const runtimeOptions = {
 				command: "/bin/bash",
 				args: [WORKSPACE_BOOTSTRAP_FILE],
 				tag: WORKSPACE_RUNTIME_PROCESS.tag,
@@ -1883,9 +1987,18 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 					ZUSE_CLOUD_WORKSPACE_ROOT: workspaceRoot,
 					ZUSE_RUNTIME_GENERATION: String(runtimeFence.runtimeGeneration),
 					ZUSE_GATEWAY_EPOCH: String(runtimeFence.gatewayEpoch),
+					...(machineFork === undefined ? {} : { ZUSE_FORK_CHECKOUT: "1" }),
 				},
 				user: "zuse",
-			});
+			};
+			const startRuntime =
+				machineFork === undefined
+					? provider.startProcess(sandbox.providerSandboxId, runtimeOptions)
+					: provider.replaceProcess(
+							sandbox.providerSandboxId,
+							workspaceRuntimeProcessSelector(),
+							runtimeOptions,
+						);
 			// Assert the workspace invariant on every allocation path before the
 			// runtime starts. A recovered sandbox may retain the
 			// policy from its original creation or resume, and starting these in
@@ -2122,11 +2235,17 @@ export const reconcileCloudWorkspace = (workspaceId: string) =>
 		const store = yield* CloudWorkspaceStore;
 		const nowMs = yield* Clock.currentTimeMillis;
 		const leaseOwner = crypto.randomUUID();
+		// Native forks include readiness and a stopped-writer import preparation.
+		const pending = yield* store.getWorkspace(workspaceId);
+		const leaseMs =
+			pending?.requestConfig.machineFork === undefined
+				? RECONCILE_LEASE_MS
+				: 10 * 60_000;
 		const workspace = yield* store.claimWorkspace(
 			workspaceId,
 			leaseOwner,
 			nowMs,
-			nowMs + RECONCILE_LEASE_MS,
+			nowMs + leaseMs,
 		);
 		if (workspace === null) return;
 		let expectedRevision = workspace.revision;

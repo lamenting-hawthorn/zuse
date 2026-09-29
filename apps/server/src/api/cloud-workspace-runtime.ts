@@ -32,6 +32,7 @@ import {
 	ChatId,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+	CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
 	CLOUD_TRANSCRIPT_CHECKPOINT_SCHEMA_VERSION,
 	type CloudAuthProvider,
 	CloudRuntimeAssetDownload,
@@ -104,6 +105,8 @@ import {
 	MessageService,
 	SessionService,
 	type SessionServiceShape,
+	TranscriptService,
+	type TranscriptServiceShape,
 } from "../conversation/services/conversation-services.ts";
 import { CloudDeviceCommandClient } from "../device-bridge/cloud-client.ts";
 import { LanAuthService } from "../lan-auth/services/lan-auth-service.ts";
@@ -275,6 +278,13 @@ const BootstrapResponse = Schema.Struct({
 			permissions: Schema.Array(Schema.String),
 			firstMessage: Schema.optional(Schema.String),
 			pendingRename: Schema.optional(Schema.String),
+			forkSource: Schema.optional(
+				Schema.Struct({
+					chatId: Schema.String,
+					sessionId: Schema.String,
+					messageId: Schema.String,
+				}),
+			),
 		}),
 	),
 	sealedTranscriptKey: Schema.String,
@@ -1937,6 +1947,8 @@ const removeBootToken = (path: string | undefined) =>
 			}).pipe(Effect.ignore);
 
 export const startCloudWorkspaceLaunchIntent = (input: {
+	readonly transcripts?: TranscriptServiceShape;
+	readonly workspaceId?: string;
 	readonly workspaces: WorkspaceServiceShape;
 	readonly chats: ChatServiceShape;
 	readonly chatId: string;
@@ -1961,6 +1973,27 @@ export const startCloudWorkspaceLaunchIntent = (input: {
 				.pipe(Effect.mapError(() => fail("workspace_registration_failed"))));
 		const title = input.launchIntent.pendingRename ?? input.launchIntent.title;
 		const commandId = input.launchIntent.commandId;
+		const fork = input.launchIntent.forkSource;
+		if (fork !== undefined) {
+			if (input.transcripts === undefined || input.workspaceId === undefined)
+				return yield* Effect.fail(fail("workspace_machine_fork_unavailable"));
+			yield* input.transcripts
+				.forkSession({
+					sourceSessionId: SessionId.make(fork.sessionId),
+					fromMessageId: MessageId.make(fork.messageId),
+					destination: "chat",
+					chatId: ChatId.make(input.chatId),
+					initialSessionId: SessionId.make(input.sessionId),
+					commandId,
+					sourceSnapshot: {
+						databasePath: `/var/lib/zuse/fork-source/${input.workspaceId}/user-data/zuse.sqlite`,
+						chatId: ChatId.make(fork.chatId),
+						projectId: FolderId.make(folder.id),
+					},
+				})
+				.pipe(Effect.mapError(() => fail("workspace_machine_fork_failed")));
+			return;
+		}
 		yield* input.chats
 			.createChat({
 				chatId: ChatId.make(input.chatId),
@@ -2050,6 +2083,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 	| LanAuthService
 	| AttachmentService
 	| WorkspaceService
+	| TranscriptService
 	| ChatService
 	| MessageService
 	| SessionService
@@ -2066,6 +2100,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 					const attachments = yield* AttachmentService;
 					const workspaces = yield* WorkspaceService;
 					const chats = yield* ChatService;
+					const transcripts = yield* TranscriptService;
 					const messages = yield* MessageService;
 					const sessions = yield* SessionService;
 					const sql = yield* SqlClient.SqlClient;
@@ -2111,7 +2146,10 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							body: {
 								credentialPublicJwk,
 								signingPublicJwk,
-								capabilities: [CLOUD_RUNTIME_API_ASSETS_CAPABILITY],
+								capabilities: [
+									CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+									CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
+								],
 							},
 						}),
 					);
@@ -3010,6 +3048,8 @@ export const makeCloudWorkspaceRuntimeLayer = (
 
 					if (launchIntent !== undefined) {
 						const started = yield* startCloudWorkspaceLaunchIntent({
+							transcripts,
+							workspaceId: config.workspaceId,
 							workspaces,
 							chats,
 							chatId: bootstrap.chatId,

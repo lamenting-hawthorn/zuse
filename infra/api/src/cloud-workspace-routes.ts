@@ -3,6 +3,7 @@ import {
 	ApiPaths,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+	CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
 	CLOUD_RUNTIME_TURN_REPLY_MAX_LENGTH,
 	CloudAccountImageBuildRequest,
 	CloudAuthConfigureRequest,
@@ -90,6 +91,7 @@ import {
 } from "./cloud-transcript.ts";
 import {
 	CloudWorkspaceLaunchIntentCipher,
+	hasCloudWorkspaceInitialMessage,
 	makeCloudWorkspaceLaunchIntent,
 	selectCloudWorkspaceInitialMessageDelivery,
 } from "./cloud-workspace-launch-intent.ts";
@@ -1262,19 +1264,54 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 	if (project === null || project.accountId !== accountId)
 		return yield* Effect.fail(notFound("cloud_project_not_found"));
 	const provider = yield* selectedProvider(body.providerId);
+	const forkSource =
+		body.forkSource === undefined
+			? null
+			: yield* store.getWorkspace(body.forkSource.workspaceId);
+	if (body.forkSource !== undefined) {
+		if (forkSource === null || forkSource.accountId !== accountId)
+			return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+		if (
+			provider.providerId !== "boxd" ||
+			forkSource.provider !== "boxd" ||
+			provider.forkMachine === undefined
+		)
+			return yield* Effect.fail(badRequest("cloud_machine_fork_unavailable"));
+		if (
+			forkSource.projectId !== body.projectId ||
+			forkSource.state !== "ready" ||
+			forkSource.desiredState !== "ready" ||
+			forkSource.providerSandboxId === undefined
+		)
+			return yield* Effect.fail(conflict("cloud_fork_source_not_ready"));
+		if (
+			!runtimeBootstrapReceiptFromConfig(
+				forkSource.requestConfig,
+			)?.capabilities?.includes(CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY)
+		)
+			return yield* Effect.fail(conflict("cloud_fork_runtime_update_required"));
+		if (
+			body.branch !== undefined ||
+			hasCloudWorkspaceInitialMessage(body) ||
+			body.sizeId !== undefined
+		)
+			return yield* Effect.fail(badRequest("cloud_fork_configuration_invalid"));
+	}
 	if (
 		body.sizeId !== undefined &&
 		!provider.sizes.some((size) => size.sizeId === body.sizeId)
 	)
 		return yield* Effect.fail(badRequest("cloud_size_unavailable"));
-	const accountBuild = yield* store.getActiveAccountBuild(
-		accountId,
-		provider.providerId,
-	);
+	const accountBuild =
+		forkSource !== null
+			? yield* store.getBuild(forkSource.buildId)
+			: yield* store.getActiveAccountBuild(accountId, provider.providerId);
 	if (
 		project.state !== "ready" ||
-		accountBuild?.snapshotId === undefined ||
-		accountBuild.templateVersion !== provider.templateVersion ||
+		accountBuild === null ||
+		(forkSource === null && accountBuild.snapshotId === undefined) ||
+		(forkSource === null &&
+			accountBuild.templateVersion !== provider.templateVersion) ||
 		!storedBuildRepositories(
 			accountBuild,
 			accountImageRepositories([project]),
@@ -1334,6 +1371,16 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		permissions: body.permissions ?? [],
 		request: { ...body, initialMessageDelivery },
 	});
+	const machineFork =
+		body.forkSource === undefined || forkSource === null
+			? undefined
+			: {
+					workspaceId: forkSource.workspaceId,
+					providerSandboxId: forkSource.providerSandboxId as string,
+					chatId: forkSource.chatId,
+					sessionId: body.forkSource.sessionId,
+					messageId: body.forkSource.messageId,
+				};
 	const { commandId, turnId, title } = launchIntent;
 	const transcriptKey = yield* createCloudTranscriptKey(
 		accountId,
@@ -1353,14 +1400,16 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		chatId,
 		initialSessionId,
 		branch,
-		baseRef: body.baseRef,
+		baseRef: forkSource?.branch ?? body.baseRef,
 		state: "queued",
 		desiredState: "ready",
 		statusCode: "provisioning-queued",
 		wrappedTranscriptKey: transcriptKey.envelope,
 		idempotencyKey: body.idempotencyKey,
 		requestConfig: {
-			localDeviceId: body.localDeviceId,
+			...(machineFork === undefined ? {} : { machineFork }),
+			localDeviceId:
+				body.localDeviceId ?? forkSource?.requestConfig.localDeviceId,
 			title,
 			agent: body.agent,
 			codexAuthMode,
@@ -1368,7 +1417,9 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 			initialTurnId: turnId,
 			authGrantRequired: false,
 			model: body.model,
-			...(body.sizeId === undefined ? {} : { sizeId: body.sizeId }),
+			...((body.sizeId ?? forkSource?.requestConfig.sizeId) === undefined
+				? {}
+				: { sizeId: body.sizeId ?? forkSource?.requestConfig.sizeId }),
 			runtimeMode: body.runtimeMode ?? DEFAULT_RUNTIME_MODE,
 			permissions: body.permissions ?? [],
 			...(body.publicApiRequestDigest === undefined
@@ -1397,7 +1448,10 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		turnId,
 		commandId,
 		ciphertext: yield* launchIntentCipher
-			.encrypt(accountId, workspaceId, launchIntent)
+			.encrypt(accountId, workspaceId, {
+				...launchIntent,
+				...(machineFork === undefined ? {} : { forkSource: machineFork }),
+			})
 			.pipe(
 				Effect.mapError(() =>
 					serviceUnavailable("cloud_workspace_launch_intent_unavailable"),
@@ -3556,8 +3610,17 @@ export const routeCloudWorkspaceRequest = (
 			});
 		}
 
-		if (method === "POST" && path === ApiPaths.cloudWorkspaces) {
+		if (
+			method === "POST" &&
+			(path === ApiPaths.cloudWorkspaces ||
+				path === ApiPaths.cloudWorkspacesFork)
+		) {
 			const body = yield* decodeBody(CloudWorkspaceCreateRequest, request);
+			if (
+				(path === ApiPaths.cloudWorkspacesFork) !==
+				(body.forkSource !== undefined)
+			)
+				return yield* Effect.fail(badRequest("cloud_fork_endpoint_required"));
 			const { workspace: launchedWorkspace, created } =
 				yield* createCloudWorkspaceForAccount(principal.accountId, body, nowMs);
 			const response = json(

@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "待機中のメッセージをキャンセルできませんでした。再試行してください。",
 	"cloud_queue_waiting_for_cloud": "クラウドの起動を待機中",
 	"cloud_history_loading": "以前のメッセージを読み込み中…",
-	"cloud_history_retry": "以前のメッセージを読み込めませんでした · 再試行"
+	"cloud_history_retry": "以前のメッセージを読み込めませんでした · 再試行",
+	"fork_menu_fork_in_new_tab": "新しいタブにフォーク",
+	"fork_menu_new_tab_on_this_machine": "このマシンで、このメッセージまでの会話を含む新しいタブを開きます。",
+	"fork_menu_fork_in_new_machine": "新しいマシンにフォーク",
+	"fork_menu_new_machine_description": "このマシンを複製し、別のチャットで会話を続けます。",
+	"fork_menu_forking_in_new_machine": "新しいマシンにフォーク中"
 }

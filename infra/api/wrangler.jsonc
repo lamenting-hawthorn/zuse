@@ -21,7 +21,8 @@
 				"**/project-builder.sh",
 				"**/workspace-bootstrap.sh",
 				"**/github-auth.sh",
-				"**/workspace-repository.sh"
+				"**/workspace-repository.sh",
+				"**/workspace-fork-prepare.sh"
 			],
 			"fallthrough": true
 		}

@@ -3137,7 +3137,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 193
+				"line": 218
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3147,7 +3147,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 199
+				"line": 227
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3157,7 +3157,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 214
+				"line": 244
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3167,7 +3167,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 221
+				"line": 253
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5690,11 +5690,15 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 95
+				"line": 105
 			},
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 129
+				"line": 139
+			},
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 164
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5704,7 +5708,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 97
+				"line": 107
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5714,7 +5718,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 106
+				"line": 116
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5724,7 +5728,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 131
+				"line": 142
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5734,7 +5738,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 160
+				"line": 183
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6277,7 +6281,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 178
+				"line": 201
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27426,5 +27430,59 @@
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_fork_in_new_tab": {
+		"source": "Fork in new tab",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 219
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_new_tab_on_this_machine": {
+		"source": "Open a new tab on this machine with the conversation through this message.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 229
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_fork_in_new_machine": {
+		"source": "Fork in new machine",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 245
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_new_machine_description": {
+		"source": "Clone this machine and continue the conversation in a separate chat.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 156
+			},
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 255
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_forking_in_new_machine": {
+		"source": "Forking in new machine",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 153
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	}
 }

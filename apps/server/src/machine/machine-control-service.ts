@@ -567,7 +567,14 @@ export const MachineControlServiceLive: Layer.Layer<
 					afterRevision,
 				),
 			createCloudWorkspace: (input) =>
-				request(ApiPaths.cloudWorkspaces, CloudWorkspaceLaunch, "POST", input),
+				request(
+					input.forkSource === undefined
+						? ApiPaths.cloudWorkspaces
+						: ApiPaths.cloudWorkspacesFork,
+					CloudWorkspaceLaunch,
+					"POST",
+					input,
+				),
 			connectCloudWorkspace: (workspaceId) =>
 				request(
 					ApiPaths.cloudWorkspaceConnectionTicket(workspaceId),

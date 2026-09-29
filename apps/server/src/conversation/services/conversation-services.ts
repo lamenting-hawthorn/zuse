@@ -183,6 +183,15 @@ export interface CreateChatInput {
  * A forked branch of an existing conversation. See `SessionForkRpc`.
  */
 export interface ForkSessionInput {
+	/** Internal bootstrap only; never accepted by the public session.fork RPC. */
+	readonly sourceSnapshot?: {
+		readonly databasePath: string;
+		readonly chatId: ChatId;
+		readonly projectId: FolderId;
+	};
+	readonly chatId?: ChatId;
+	readonly initialSessionId?: SessionId;
+	readonly commandId?: string;
 	readonly sourceSessionId: SessionId;
 	readonly fromMessageId: MessageId;
 	readonly destination: ForkDestination;

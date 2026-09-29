@@ -17,7 +17,11 @@ import {
 	cloudFailurePresentation,
 	cloudInteractionFailure,
 } from "../lib/cloud-failure-presentation.ts";
-import { cloudSummaryForChat } from "../lib/cloud-workspace-catalog.ts";
+import {
+	cloudSummaryForChat,
+	cloudSummaryForSelection,
+	localProjectForCloudChat,
+} from "../lib/cloud-workspace-catalog.ts";
 import {
 	activeSessionById,
 	activeSessionsByProject,
@@ -28,6 +32,7 @@ import { formatError } from "../lib/format-error.ts";
 import { upsertLatestEntity } from "../lib/latest-entity.ts";
 import { markRendererInteraction } from "../lib/performance-marks.ts";
 import { getActiveEnvironment } from "../lib/rpc-client.ts";
+import { sessionForkDestinations } from "../lib/session-fork.ts";
 import {
 	dispatchSessionCommand,
 	getRendererClientBus,
@@ -119,7 +124,7 @@ type SessionsState = {
 	}) => Promise<{
 		chatId: ChatId;
 		sessionId: SessionId;
-		forkMode: ForkMode;
+		forkMode: ForkMode | "machine";
 	} | null>;
 	/**
 	 * Patch the cached `Session.status` for a session. Called by the
@@ -238,7 +243,10 @@ const environmentForSessionCommand = (
 ): EnvironmentId => {
 	if (explicit !== undefined) return explicit;
 	const session = activeSessionById(sessionId);
-	const cloud = session === null ? null : cloudSummaryForChat(session.chatId);
+	const cloud = cloudSummaryForSelection({
+		chatId: session?.chatId ?? null,
+		sessionId,
+	});
 	return EnvironmentId.make(cloud?.workspaceId ?? getActiveEnvironment());
 };
 
@@ -555,6 +563,39 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 	fork: async (input) => {
 		set({ error: null });
 		try {
+			const source = activeSessionById(input.sourceSessionId);
+			const cloud = cloudSummaryForSelection({
+				chatId: source?.chatId ?? null,
+				sessionId: input.sourceSessionId,
+			});
+			if (!sessionForkDestinations(cloud).includes(input.destination)) {
+				throw new Error(
+					"This fork destination is unavailable for this cloud workspace.",
+				);
+			}
+			const environmentId = environmentForSessionCommand(input.sourceSessionId);
+			if (cloud !== null) {
+				const { ensureCloudWorkspaceAttached } = await import(
+					"../lib/cloud-workspaces.ts"
+				);
+				await ensureCloudWorkspaceAttached(cloud);
+				if (input.destination === "chat") {
+					const projectId =
+						source?.projectId ?? localProjectForCloudChat(cloud.chatId);
+					if (projectId === null)
+						throw new Error("The source project is no longer available.");
+					const { forkCloudMachine } = await import(
+						"../lib/cloud-machine-fork.ts"
+					);
+					return await forkCloudMachine({
+						cloud,
+						projectId,
+						source,
+						sourceSessionId: input.sourceSessionId,
+						fromMessageId: input.fromMessageId,
+					});
+				}
+			}
 			const commandId = nextCommandId("session-fork");
 			const { result } = await dispatchTimelineCommand<
 				{
@@ -585,9 +626,18 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
 					title: input.title,
 				},
 				"never",
+				environmentId,
 			);
-			const { chat, session, forkMode } = result;
-			const projectId = session.projectId;
+			const { forkMode } = result;
+			const projectId =
+				cloud === null
+					? result.session.projectId
+					: (source?.projectId ??
+						localProjectForCloudChat(result.chat.id) ??
+						result.session.projectId);
+			// Runtime folder IDs differ from the desktop's repository IDs.
+			const session = { ...result.session, projectId };
+			const chat = { ...result.chat, projectId };
 			// Insert + select the forked session.
 			overlayActiveEnvironmentShell((shell) => {
 				const existing = shell.sessionsByProject[projectId] ?? [];

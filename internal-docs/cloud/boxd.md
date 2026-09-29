@@ -87,6 +87,53 @@ publish with the same API key owner used by the Worker.
 
 ## Verification
 
+### Conversation forks
+
+Boxd workspaces expose **Fork in new tab** (same machine) and **Fork in
+new machine** (new chat and machine). Other cloud providers do not expose
+these actions. Local tab/worktree behavior is unchanged.
+
+The desktop uses a dedicated `cloud.workspaces.fork` RPC and
+`POST /v1/cloud/workspaces/fork` endpoint. Older desktop servers and hosted
+APIs reject this operation instead of dropping fork metadata and creating an
+empty image restore. Deploy the API and compatible runtime before enabling
+the action in a desktop build.
+
+A local preview of the selected conversation is staged before opening the new
+chat and persisted in the existing timeline cache. It contains no inherited
+running turn, queue, or interaction state; the authoritative child checkpoint
+replaces it when available.
+
+Machine forks use the native SDK `machines.fork`, preserving the machine's
+disk and memory rather than restoring the project image. The SDK documents
+that native forks inherit the source egress allowlist. The lifecycle owner
+leases the source and persists a network-recovery intent, briefly applies a
+host-enforced quarantine, forks, and restores the parent's networking.
+A reconciler restores it if the worker disappears. Snapshot restores cannot
+use this mechanism because they do not inherit the allowlist.
+
+Within the quarantined child, the copied Zuse runtime and its managed agent
+processes are stopped and restarted with a fresh workspace identity. Other
+machine processes retain their cloned memory. The complete stopped database
+directory (including WAL) is verified and retained under
+`/var/lib/zuse/fork-source/<new-workspace-id>/user-data`; copied queues are
+never attached as the child's live database. The selected conversation through
+the fork point is imported using the shared transcript-fork behavior, including
+native provider continuation where supported. Stable import IDs make retries
+idempotent. Provider session files, attachments, local commits, staged changes,
+and untracked files remain available. The new branch starts at captured HEAD.
+
+The source runtime must advertise `machine-fork-v1`; older runtimes need an
+update before machine forking. Enrollment uses the existing bootstrap flow
+with a fresh token, transcript key, gateway fence, and SSH identity.
+This implements the identity isolation described in
+[fork identity ADR 0033](../../specs/cloud-platform/decisions/0033-fork-identity.md),
+with the current storage behavior described in its implementation note.
+See the installed SDK README or
+[SDK documentation](https://www.npmjs.com/package/@boxd-sh/sdk).
+
+### Provider checks
+
 - Unit: `bun --filter @zuse/sandbox-providers test:unit` (fake SDK client) and
   `bun --filter @zuse/api test:unit`.
 - Live: `BOXD_API_KEY=... BOXD_ORG=<org> BOXD_TEMPLATE_SNAPSHOT=zuse-base-v<N>

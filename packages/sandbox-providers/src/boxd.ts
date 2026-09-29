@@ -9,6 +9,7 @@ import {
 	type ExecResult,
 	type Machine,
 	type MachineCreateParams,
+	type MachineForkParams,
 	type MachineResizeParams,
 	NotFoundError,
 	PermissionDeniedError,
@@ -62,6 +63,8 @@ export interface BoxdSandboxConfig {
 export interface BoxdSandboxClient {
 	readonly machines: {
 		create(params: MachineCreateParams): Promise<Machine>;
+		fork(id: string, params: MachineForkParams): Promise<Machine>;
+		setEgressAllow(id: string, entries: string[]): Promise<string[]>;
 		get(id: string): Promise<Machine>;
 		delete(id: string): Promise<void>;
 		start(id: string): Promise<void>;
@@ -201,13 +204,14 @@ const machineSizeOf = (machine: Machine): BoxdMachineSize | undefined =>
 		(size) => BOXD_MACHINE_RESOURCES[size].vcpuCount === machine.resources.vcpu,
 	);
 
-// boxd has no per-machine network policy; every machine is `isolated` (no
-// peers, no in-VM control plane) with open egress. Reject anything else
-// before allocating rather than silently granting unrestricted access.
+// Snapshot restore starts unrestricted. Only native machine forks inherit
+// the source's host-enforced egress allowlist; never promise safe snapshot quarantine.
 const validateNetwork = (network: SandboxNetworkPolicy) =>
 	network.kind === "open"
 		? Effect.void
 		: Effect.fail(providerError("rejected"));
+
+export const BOXD_FORK_QUARANTINE = "zuse-fork-quarantine.invalid";
 
 // Snapshot restores replay the captured machine and refuse create-time env.
 // Every caller passes an empty map; a non-empty one would be silently lost.
@@ -249,7 +253,9 @@ export const boxdSandboxClientFor = (
 export const makeBoxdSandboxProvider = (
 	config: BoxdSandboxConfig,
 	client: BoxdSandboxClient = boxdSandboxClientFor(config),
-): SandboxProviderAdapter => {
+): SandboxProviderAdapter & {
+	readonly forkMachine: NonNullable<SandboxProviderAdapter["forkMachine"]>;
+} => {
 	const org = config.org;
 	const machineSize = config.machineSize ?? "default";
 	const readyDeadlineMs = config.readyDeadlineMs ?? 120_000;
@@ -844,6 +850,65 @@ export const makeBoxdSandboxProvider = (
 		return yield* providerError("transient");
 	});
 
+	const setNetwork = (id: string, network: SandboxNetworkPolicy) => {
+		if (network.kind === "restricted") return providerError("rejected");
+		return call("machines.setEgressAllow", () =>
+			client.machines.setEgressAllow(
+				id,
+				network.kind === "open" ? [] : [BOXD_FORK_QUARANTINE],
+			),
+		).pipe(Effect.asVoid);
+	};
+
+	const forkMachine: NonNullable<SandboxProviderAdapter["forkMachine"]> = (
+		input,
+	) =>
+		Effect.gen(function* () {
+			const source = yield* ready(input.sourceSandboxId);
+			if (!source.networking.isolated || source.networking.networks.length > 0)
+				return yield* providerError("rejected");
+			const name = boxdMachineName(input.providerLabel);
+			// The lifecycle owner persists a source-network recovery intent before
+			// this call, so a worker crash cannot leave the parent fenced forever.
+			return yield* Effect.gen(function* () {
+				yield* setNetwork(source.id, { kind: "quarantined" });
+				// boxd documents a one-second propagation window before enforcement.
+				yield* Effect.sleep(Duration.millis(1_100));
+				const created = yield* call("machines.fork", () =>
+					client.machines.fork(source.id, {
+						name,
+						isolated: true,
+						config: { autoSuspendTimeout: 0 },
+					}),
+				);
+				yield* call("machines.setAutoHibernateTimeout", () =>
+					client.machines.setAutoHibernateTimeout(
+						created.id,
+						clampIdleSeconds(input.timeoutSeconds),
+					),
+				);
+				const child = yield* ready(created.id);
+				if (
+					child.egressAllow.length !== 1 ||
+					child.egressAllow[0] !== BOXD_FORK_QUARANTINE
+				) {
+					yield* kill(child.id);
+					return yield* providerError("rejected");
+				}
+				return {
+					providerSandboxId: child.id,
+					providerLabel: input.providerLabel,
+					state: "running" as const,
+				};
+			}).pipe(
+				Effect.ensuring(
+					call("machines.setEgressAllow", () =>
+						client.machines.setEgressAllow(source.id, source.egressAllow),
+					).pipe(Effect.orDie),
+				),
+			);
+		});
+
 	return {
 		providerId: BOXD_PROVIDER_ID,
 		displayName: "boxd",
@@ -886,6 +951,7 @@ export const makeBoxdSandboxProvider = (
 				onTimeout: input.onTimeout,
 			}),
 		recoverByLabel,
+		forkMachine,
 		startProcess,
 		replaceProcess,
 		pathExists,
@@ -904,7 +970,7 @@ export const makeBoxdSandboxProvider = (
 					clampIdleSeconds(timeoutSeconds),
 				),
 			),
-		setNetwork: (_providerSandboxId, network) => validateNetwork(network),
+		setNetwork,
 		snapshot,
 		kill,
 		deleteSnapshot,

@@ -10,9 +10,11 @@ import type {
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Loading02Icon } from "@zuse/icons/solid-rounded";
 import { GitBranchIcon } from "@zuse/icons/stroke-rounded";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
+import { useCloudChatSummaryForSelection } from "../lib/cloud-workspaces.ts";
 import { activeSessionById } from "../lib/environment-entities.ts";
+import { sessionForkDestinations } from "../lib/session-fork.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useWorktreesStore } from "../store/worktrees.ts";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "./ui/menu.tsx";
@@ -76,16 +78,24 @@ export function ForkButton({
 	const { message: uiMessage } = useUiMessages(["chat"]);
 
 	const [forking, setForking] = useState(false);
+	const pending = useRef(false);
 	const fork = useSessionsStore((state) => state.fork);
+	const source = activeSessionById(sourceSessionId);
+	const cloud = useCloudChatSummaryForSelection({
+		chatId: source?.chatId ?? null,
+		sessionId: sourceSessionId,
+	});
+	const destinations = sessionForkDestinations(cloud, fixedDestination);
 
 	const run = async (destination: ForkDestination) => {
-		if (forking) return;
+		if (pending.current || !destinations.includes(destination)) return;
+		pending.current = true;
 		setForking(true);
 
 		let createdWorktree: Worktree | null = null;
 		let projectId = sourceProjectId ?? null;
 		try {
-			if (destination === "chat") {
+			if (destination === "chat" && cloud === null) {
 				if (projectId === null) {
 					const source = activeSessionById(sourceSessionId);
 					projectId = source?.projectId ?? null;
@@ -127,9 +137,9 @@ export function ForkButton({
 				}
 				toastManager.add({
 					title: uiMessage("chat:fork_menu_fork_failed"),
-					description: uiMessage(
-						"chat:fork_menu_could_not_branch_this_conversation",
-					),
+					description:
+						useSessionsStore.getState().error ??
+						uiMessage("chat:fork_menu_could_not_branch_this_conversation"),
 					type: "error",
 				});
 				return;
@@ -137,18 +147,31 @@ export function ForkButton({
 			toastManager.add({
 				title:
 					destination === "tab"
-						? "Forked in this chat"
-						: "Forked into a new worktree",
+						? "Forked in a new tab"
+						: cloud === null
+							? "Forked into a new worktree"
+							: uiMessage("chat:fork_menu_forking_in_new_machine"),
 				description:
-					result.forkMode === "resume"
-						? "The new branch continues with full agent memory."
-						: `The conversation through this ${label} was copied into the new branch.`,
+					result.forkMode === "machine"
+						? uiMessage("chat:fork_menu_new_machine_description")
+						: result.forkMode === "resume"
+							? "The new branch continues with full agent memory."
+							: `The conversation through this ${label} was copied into the new branch.`,
 				type: "success",
 			});
+		} catch (error) {
+			toastManager.add({
+				title: uiMessage("chat:fork_menu_fork_failed"),
+				description: error instanceof Error ? error.message : String(error),
+				type: "error",
+			});
 		} finally {
+			pending.current = false;
 			setForking(false);
 		}
 	};
+
+	if (destinations.length === 0) return null;
 
 	return (
 		<Menu>
@@ -181,7 +204,7 @@ export function ForkButton({
 				</TooltipPopup>
 			</Tooltip>
 			<MenuPopup align="start" className="min-w-52 bg-glass border-glass">
-				{fixedDestination !== "chat" ? (
+				{destinations.includes("tab") ? (
 					<Tooltip>
 						<TooltipTrigger
 							render={
@@ -190,18 +213,24 @@ export function ForkButton({
 									className="gap-2.5 px-2 py-1.5"
 								>
 									<ForkSplitIcon className="size-4" />
-									<span>{uiMessage("chat:fork_menu_fork_in_this_chat")}</span>
+									<span>
+										{cloud === null
+											? uiMessage("chat:fork_menu_fork_in_this_chat")
+											: uiMessage("chat:fork_menu_fork_in_new_tab")}
+									</span>
 								</MenuItem>
 							}
 						/>
 						<TooltipPopup side="right" align="start" className="max-w-64">
-							{uiMessage(
-								"chat:fork_menu_open_a_new_session_tab_that_shares_this_chat_and_its_current_worktree",
-							)}
+							{cloud === null
+								? uiMessage(
+										"chat:fork_menu_open_a_new_session_tab_that_shares_this_chat_and_its_current_worktree",
+									)
+								: uiMessage("chat:fork_menu_new_tab_on_this_machine")}
 						</TooltipPopup>
 					</Tooltip>
 				) : null}
-				{fixedDestination !== "tab" ? (
+				{destinations.includes("chat") ? (
 					<Tooltip>
 						<TooltipTrigger
 							render={
@@ -211,15 +240,19 @@ export function ForkButton({
 								>
 									<HugeiconsIcon icon={GitBranchIcon} className="size-4" />
 									<span>
-										{uiMessage("chat:fork_menu_fork_into_a_new_worktree")}
+										{cloud === null
+											? uiMessage("chat:fork_menu_fork_into_a_new_worktree")
+											: uiMessage("chat:fork_menu_fork_in_new_machine")}
 									</span>
 								</MenuItem>
 							}
 						/>
 						<TooltipPopup side="right" align="start" className="max-w-64">
-							{uiMessage(
-								"chat:fork_menu_create_a_separate_chat_in_an_isolated_git_worktree_for_parallel_work",
-							)}
+							{cloud === null
+								? uiMessage(
+										"chat:fork_menu_create_a_separate_chat_in_an_isolated_git_worktree_for_parallel_work",
+									)
+								: uiMessage("chat:fork_menu_new_machine_description")}
 						</TooltipPopup>
 					</Tooltip>
 				) : null}

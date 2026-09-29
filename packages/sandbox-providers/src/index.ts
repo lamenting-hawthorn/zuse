@@ -120,6 +120,12 @@ export interface SandboxProviderAdapter {
 	readonly recoverByLabel: (
 		providerLabel: string,
 	) => Effect.Effect<ProviderSandbox | null, SandboxProviderError>;
+	/** Native live-machine fork. The child stays quarantined until explicitly opened. */
+	readonly forkMachine?: (input: {
+		readonly sourceSandboxId: string;
+		readonly providerLabel: string;
+		readonly timeoutSeconds: number;
+	}) => Effect.Effect<ProviderSandbox, SandboxProviderError>;
 	readonly startProcess: (
 		providerSandboxId: string,
 		input: SandboxProcessInput,

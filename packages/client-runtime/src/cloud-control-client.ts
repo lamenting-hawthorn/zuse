@@ -30,6 +30,7 @@ import {
 	CloudWorkspaceConnection,
 	type CloudWorkspaceCreateRequest,
 	CloudWorkspaceDataKey,
+	type CloudWorkspaceForkRequest,
 	CloudWorkspaceLaunch,
 	CloudWorkspaceList,
 	type CloudWorkspaceOpError,
@@ -230,7 +231,16 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 	"cloud.workspaces.get": (input: { workspaceId: string }) =>
 		request(ApiPaths.cloudWorkspace(input.workspaceId), CloudWorkspace),
 	"cloud.workspaces.create": (input: CloudWorkspaceCreateRequest) =>
-		request(ApiPaths.cloudWorkspaces, CloudWorkspaceLaunch, "POST", input),
+		request(
+			input.forkSource === undefined
+				? ApiPaths.cloudWorkspaces
+				: ApiPaths.cloudWorkspacesFork,
+			CloudWorkspaceLaunch,
+			"POST",
+			input,
+		),
+	"cloud.workspaces.fork": (input: CloudWorkspaceForkRequest) =>
+		request(ApiPaths.cloudWorkspacesFork, CloudWorkspaceLaunch, "POST", input),
 	"cloud.workspaces.connect": (input: { workspaceId: string }) =>
 		request(
 			ApiPaths.cloudWorkspaceConnectionTicket(input.workspaceId),

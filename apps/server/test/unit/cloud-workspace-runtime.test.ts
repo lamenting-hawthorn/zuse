@@ -573,6 +573,53 @@ describe("cloud workspace bootstrap", () => {
 		);
 	});
 
+	it("launches a machine fork from the retained database with stable target identities", async () => {
+		const forkSession = vi.fn(() =>
+			Effect.succeed({ chat: {}, session: {}, forkMode: "resume" }),
+		);
+		const createChat = vi.fn();
+		await Effect.runPromise(
+			startCloudWorkspaceLaunchIntent({
+				workspaces: {
+					list: () => Effect.succeed([{ id: "folder", path: "/repo" }]),
+				} as never,
+				chats: { createChat } as never,
+				transcripts: { forkSession } as never,
+				workspaceId: "child",
+				chatId: "new-chat",
+				sessionId: "new-session",
+				workspaceRoot: "/repo",
+				launchIntent: {
+					commandId: "launch:child",
+					turnId: "turn:child",
+					title: "Fork",
+					agent: "codex",
+					model: "gpt-5",
+					permissions: [],
+					forkSource: {
+						chatId: "source-chat",
+						sessionId: "source-session",
+						messageId: "point",
+					},
+				},
+			}),
+		);
+		expect(createChat).not.toHaveBeenCalled();
+		expect(forkSession).toHaveBeenCalledWith({
+			sourceSessionId: "source-session",
+			fromMessageId: "point",
+			destination: "chat",
+			chatId: "new-chat",
+			initialSessionId: "new-session",
+			commandId: "launch:child",
+			sourceSnapshot: {
+				databasePath: "/var/lib/zuse/fork-source/child/user-data/zuse.sqlite",
+				chatId: "source-chat",
+				projectId: "folder",
+			},
+		});
+	});
+
 	it("replays a launch intent with one stable domain command and turn", async () => {
 		const createChat = vi.fn(() =>
 			Effect.succeed({

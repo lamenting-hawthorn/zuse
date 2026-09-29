@@ -17,7 +17,17 @@ export interface CloudWorkspaceLaunchIntent {
 	readonly permissions: ReadonlyArray<string>;
 	readonly firstMessage?: string;
 	readonly pendingRename?: string;
+	readonly forkSource?: {
+		readonly chatId: string;
+		readonly sessionId: string;
+		readonly messageId: string;
+	};
 }
+
+/** Keep inspection of the sealed launch payload at its existing boundary. */
+export const hasCloudWorkspaceInitialMessage = (request: {
+	readonly firstMessage?: string;
+}) => request.firstMessage !== undefined;
 
 export const selectCloudWorkspaceInitialMessageDelivery = (input: {
 	readonly mailboxEnabled: boolean;
@@ -106,6 +116,13 @@ const Intent = Schema.Struct({
 	permissions: Schema.Array(Schema.String),
 	firstMessage: Schema.optional(Schema.String),
 	pendingRename: Schema.optional(Schema.String),
+	forkSource: Schema.optional(
+		Schema.Struct({
+			chatId: Schema.String,
+			sessionId: Schema.String,
+			messageId: Schema.String,
+		}),
+	),
 });
 
 const failure = (reason: string) =>

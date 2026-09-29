@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "대기 중인 메시지를 취소하지 못했습니다. 다시 시도하세요.",
 	"cloud_queue_waiting_for_cloud": "클라우드 시작 대기 중",
 	"cloud_history_loading": "이전 메시지 불러오는 중…",
-	"cloud_history_retry": "이전 메시지를 불러올 수 없습니다 · 다시 시도"
+	"cloud_history_retry": "이전 메시지를 불러올 수 없습니다 · 다시 시도",
+	"fork_menu_fork_in_new_tab": "새 탭으로 포크",
+	"fork_menu_new_tab_on_this_machine": "이 머신에서 이 메시지까지의 대화를 포함하는 새 탭을 엽니다.",
+	"fork_menu_fork_in_new_machine": "새 머신으로 포크",
+	"fork_menu_new_machine_description": "이 머신을 복제하고 별도의 채팅에서 대화를 계속합니다.",
+	"fork_menu_forking_in_new_machine": "새 머신으로 포크 중"
 }
