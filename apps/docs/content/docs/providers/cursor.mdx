@@ -19,8 +19,8 @@ Open **Settings → Providers → Cursor**, enter a Cursor API key, and save it.
 
 Zuse performs a bounded readiness check against the SDK. Provider status distinguishes:
 
-- **Ready** — the key was verified and the SDK returned a usable model.
-- **Needs attention** — the key was saved but could not be verified, commonly because the service was unreachable.
+- **Ready** — the SDK successfully streamed a short readiness response.
+- **Needs attention** — the key was saved but the readiness check failed. A sandbox startup failure is reported separately from connectivity failures.
 - **Error** — the provider explicitly rejected the key.
 
 An unverified key is not treated as invalid. You can recheck after connectivity recovers; the live session remains authoritative.
