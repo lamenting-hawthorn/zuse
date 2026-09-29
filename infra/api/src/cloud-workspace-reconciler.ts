@@ -56,6 +56,7 @@ const RETRY_MS = 5_000;
 // baked runtime must enroll promptly; leaving this at minutes turns a broken
 // runtime into a permanently spinning composer until the recovery cron runs.
 export const RUNTIME_CONNECTION_TIMEOUT_MS = 10_000;
+export const RUNTIME_INSTALL_TIMEOUT_MS = 120_000;
 const RECONCILE_LEASE_MS = 2 * 60 * 1_000;
 const PROJECT_BUILD_TIMEOUT_MS = 15 * 60 * 1_000;
 export const ARCHIVED_WORKSPACE_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -371,7 +372,7 @@ export const cloudWorkspaceHasRetainedRuntimeData = (
 	workspace.statusCode === "agent-starting" ||
 	workspace.statusCode === "agent-running";
 
-export const WORKSPACE_RUNTIME_RESUME_SCRIPT = `set -e; timing() { echo "[cloud-timing] workspaceId=$ZUSE_CLOUD_WORKSPACE_ID generation=$ZUSE_RUNTIME_GENERATION stage=$1 atMs=$(date +%s%3N)" >> /var/lib/zuse/workspace/runtime.log; }; timing runtime.shell-start; runtime=/opt/zuse/current/bin.mjs; fallback=/usr/local/bin/zuse; log=/var/lib/zuse/workspace/runtime.log; rm -f /var/lib/zuse/workspace/failed /var/lib/zuse/workspace/credentials-ready /var/lib/zuse/workspace/credentials-ready-event; if [ -n "\${ZUSE_RUNTIME_MANIFEST_URL:-}" ] && [ -f "\${ZUSE_RUNTIME_PUBLIC_KEY_FILE:-}" ]; then timing runtime.update-start; ZUSE_RUNTIME_INSTALL_ONLY=1 ZUSE_RUNTIME_SKIP_TOOLCHAIN=1 node /usr/local/lib/zuse/runtime-updater.mjs >> "$log" 2>&1; timing runtime.update-end; fi; if [ ! -f /var/lib/zuse/workspace/repository-ready ]; then
+export const WORKSPACE_RUNTIME_RESUME_SCRIPT = `set -e; timing() { echo "[cloud-timing] workspaceId=$ZUSE_CLOUD_WORKSPACE_ID generation=$ZUSE_RUNTIME_GENERATION stage=$1 atMs=$(date +%s%3N)" >> /var/lib/zuse/workspace/runtime.log; }; timing runtime.shell-start; runtime=/opt/zuse/current/bin.mjs; fallback=/usr/local/bin/zuse; log=/var/lib/zuse/workspace/runtime.log; rm -f /var/lib/zuse/workspace/failed /var/lib/zuse/workspace/credentials-ready /var/lib/zuse/workspace/credentials-ready-event; if [ -n "\${ZUSE_RUNTIME_MANIFEST_URL:-}" ] && [ -f "\${ZUSE_RUNTIME_PUBLIC_KEY_FILE:-}" ]; then timing runtime.update-start; if ZUSE_RUNTIME_INSTALL_ONLY=1 ZUSE_RUNTIME_SKIP_TOOLCHAIN=1 node /usr/local/lib/zuse/runtime-updater.mjs >> "$log" 2>&1; then timing runtime.update-end; else printf 'updating-runtime\n' >/var/lib/zuse/workspace/failure-phase; touch /var/lib/zuse/workspace/failed; exit 1; fi; fi; if [ ! -f /var/lib/zuse/workspace/repository-ready ]; then
 if bash <<'ZUSE_WORKSPACE_REPOSITORY' >> "$log" 2>&1
 ${WORKSPACE_REPOSITORY_SOURCE}
 ZUSE_WORKSPACE_REPOSITORY
@@ -399,6 +400,7 @@ export const withoutRuntimeBootstrapReceipt = (
 ): Readonly<Record<string, unknown>> => {
 	const {
 		runtimeBootstrapReceipt: _receipt,
+		runtimeInstallPending: _install,
 		startupFailureDiagnostic: _failure,
 		...rest
 	} = config;
@@ -419,7 +421,12 @@ const workspaceStartupDeadlineMs = (
 		typeof timings?.allocatedAt === "number"
 			? timings.allocatedAt
 			: workspace.createdAtMs;
-	return (enrolledAt ?? allocatedAt) + RUNTIME_CONNECTION_TIMEOUT_MS;
+	return enrolledAt !== undefined
+		? enrolledAt + RUNTIME_CONNECTION_TIMEOUT_MS
+		: allocatedAt +
+				(workspace.requestConfig.runtimeInstallPending === true
+					? RUNTIME_INSTALL_TIMEOUT_MS
+					: RUNTIME_CONNECTION_TIMEOUT_MS);
 };
 
 const workspaceStartupTimedOut = (
@@ -1397,9 +1404,14 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 				),
 				...runtimeFence,
 				runtimeSessionRecoveryPending: true,
+				runtimeInstallPending: config.runtimeManifestUrl !== undefined,
 				startupTimings: { ...timings, allocatedAt: preparedAtMs },
 			},
-			nextActionAtMs: preparedAtMs + RUNTIME_CONNECTION_TIMEOUT_MS,
+			nextActionAtMs:
+				preparedAtMs +
+				(config.runtimeManifestUrl === undefined
+					? RUNTIME_CONNECTION_TIMEOUT_MS
+					: RUNTIME_INSTALL_TIMEOUT_MS),
 			lastActivityAtMs: preparedAtMs,
 			runningSinceMs: nowMs,
 			revision: workspace.revision + 1,

@@ -6,12 +6,9 @@ import {
 	NearbyPairingRequest,
 	PairingError,
 	PairingStartResult,
-	WIRE_PROTOCOL_VERSION,
-	WireProtocolRejected,
-	WireWelcome,
 } from "@zuse/contracts";
 import { Effect, Layer } from "effect";
-
+import { acceptWireHandshake } from "../transports/wire-compatibility.ts";
 import {
 	buildAdvertisedEndpoints,
 	resolveDefaultEnvironmentEndpoint,
@@ -94,17 +91,7 @@ const PairingResolveNearbyRequest = MemoizeRpcs.toLayerHandler(
 
 const ConnectHandshake = MemoizeRpcs.toLayerHandler(
 	"connect.handshake",
-	({ protocolVersion }) =>
-		protocolVersion === WIRE_PROTOCOL_VERSION
-			? Effect.succeed(
-					WireWelcome.make({ protocolVersion: WIRE_PROTOCOL_VERSION }),
-				)
-			: Effect.fail(
-					new WireProtocolRejected({
-						expectedVersion: WIRE_PROTOCOL_VERSION,
-						receivedVersion: protocolVersion,
-					}),
-				),
+	({ protocolVersion }) => acceptWireHandshake(protocolVersion),
 );
 
 const ConnectDescribe = MemoizeRpcs.toLayerHandler("connect.describe", () =>

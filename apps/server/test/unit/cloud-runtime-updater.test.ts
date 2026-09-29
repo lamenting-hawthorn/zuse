@@ -18,7 +18,9 @@ afterEach(async () => {
 });
 
 describe("cloud runtime updater status", () => {
-	test("matches the installed runtime against the desktop app target", async () => {
+	test.each([
+		4, 6,
+	])("checks the installed runtime against API protocol %i", async (protocol) => {
 		const directory = await mkdtemp(join(tmpdir(), "zuse-updater-status-"));
 		temporaryDirectories.push(directory);
 		const release = join(directory, "release");
@@ -73,23 +75,34 @@ describe("cloud runtime updater status", () => {
 		}
 
 		try {
-			const result = await execFileAsync(
+			const operation = execFileAsync(
 				process.execPath,
 				[
 					join(import.meta.dirname, "../../scripts/runtime-updater.mjs"),
-					"--check",
+					...(protocol === 4 ? ["--check"] : []),
 				],
 				{
 					env: {
 						...process.env,
 						ZUSE_CURRENT_LINK: current,
+						ZUSE_RUNTIME_INSTALL_ONLY: "1",
 						ZUSE_RUNTIME_MANIFEST_URL: `http://127.0.0.1:${address.port}/manifest`,
 						ZUSE_RUNTIME_PUBLIC_KEY_FILE: publicKeyFile,
-						ZUSE_RUNTIME_WIRE_PROTOCOL: "4",
+						ZUSE_RUNTIME_WIRE_PROTOCOL: String(protocol),
+						ZUSE_RUNTIME_UPDATE_STATUS_FILE: join(directory, "status.json"),
 						ZUSE_RUNTIME_DESIRED_APP_VERSION: "0.17.1",
 					},
 				},
 			);
+			if (protocol === 6) {
+				await expect(operation).rejects.toMatchObject({
+					stderr: expect.stringContaining(
+						"Runtime wire protocol is incompatible",
+					),
+				});
+				return;
+			}
+			const result = await operation;
 			const status = JSON.parse(result.stdout);
 			expect(status).toMatchObject({
 				state: "update-available",
@@ -104,5 +117,5 @@ describe("cloud runtime updater status", () => {
 				server.close((error) => (error ? reject(error) : resolve())),
 			);
 		}
-	});
+	}, 15_000);
 });
