@@ -5,7 +5,10 @@ import type { SqlError } from "effect/unstable/sql/SqlError";
 import { CompleteSessionCreatedEvent } from "../core/session-fields.js";
 import type { StoredEvent } from "../engine/dispatch.js";
 import type { ProjectorDefinition } from "../engine/projector-runner.js";
-import { updateChatLastMessage } from "./chat-last-message-projection.js";
+import {
+	updateChatLastMessage,
+	updateChatLastUserMessage,
+} from "./chat-last-message-projection.js";
 
 export class SessionProjectionDecodeError extends Schema.TaggedErrorClass<SessionProjectionDecodeError>()(
 	"SessionProjectionDecodeError",
@@ -171,6 +174,7 @@ export const makeSqlSessionProjector = (
 						 ${event.inputJson}, ${createdAt}, ${createdAt}, ${event.ready ? 1 : 0})
 					ON CONFLICT(id) DO NOTHING
 				`;
+				yield* updateChatLastUserMessage(sql, record.streamId, event.createdAt);
 				return;
 			}
 			case "QueuedTurnUpdated": {
@@ -340,6 +344,13 @@ export const makeSqlSessionProjector = (
 					{ _tag: "Session", sessionId: record.streamId },
 					event.createdAt,
 				);
+				if (event.role === "user") {
+					yield* updateChatLastUserMessage(
+						sql,
+						record.streamId,
+						event.createdAt,
+					);
+				}
 				return;
 			}
 			case "ProviderAttached":

@@ -907,6 +907,8 @@ export class Chat extends Schema.Class<Chat>("Chat")({
 	 * `lastMessageAt` is null until the first message; `lastReadAt` is seeded to
 	 * the creation time so a freshly created chat starts read.
 	 */
+	/** Latest user message across all threads; used for sidebar recency. */
+	lastUserMessageAt: Schema.optional(Schema.NullOr(Schema.DateFromString)),
 	lastMessageAt: Schema.NullOr(Schema.DateFromString),
 	lastReadAt: Schema.NullOr(Schema.DateFromString),
 	createdAt: Schema.DateFromString,

@@ -1,3 +1,4 @@
+import { compareChatRecency } from "@zuse/client-runtime/chat-recency";
 import type {
 	Chat,
 	Folder,
@@ -57,7 +58,7 @@ export type LogicalProjectGroup = {
 	readonly displayName: string;
 	readonly origin: GitOriginInfo | null;
 	readonly members: ReadonlyArray<LogicalProjectMember>;
-	/** Merged across members, newest `updatedAt` first. Archived chats excluded. */
+	/** Merged across members, latest user message first. Archived chats excluded. */
 	readonly chats: ReadonlyArray<LogicalChatRef>;
 	readonly environmentPresence: "local-only" | "remote-only" | "mixed";
 };
@@ -265,9 +266,8 @@ export const buildLogicalProjectGroups = (input: {
 			displayName,
 			origin: group.origin,
 			members,
-			chats: [...group.chats].sort(
-				(left, right) =>
-					right.chat.updatedAt.getTime() - left.chat.updatedAt.getTime(),
+			chats: [...group.chats].sort((left, right) =>
+				compareChatRecency(left.chat, right.chat),
 			),
 			environmentPresence:
 				localCount === members.length

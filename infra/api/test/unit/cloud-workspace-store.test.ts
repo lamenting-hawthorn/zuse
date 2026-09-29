@@ -2278,6 +2278,7 @@ describe("cloud workspace store", () => {
 					summaryRevision: 1,
 					title: "Fresh title",
 					lastActivityAtMs: 1_000,
+					lastUserMessageAtMs: 500,
 					activeSessionId: "session-summary",
 					sessionHeadVersion: 8,
 					updatedAtMs: 1_000,
@@ -2312,6 +2313,7 @@ describe("cloud workspace store", () => {
 			summary: {
 				title: "Newest title",
 				lastActivityAtMs: 1_000,
+				lastUserMessageAtMs: 500,
 				sessionHeadVersion: 8,
 			},
 		});

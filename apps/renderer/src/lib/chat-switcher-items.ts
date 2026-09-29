@@ -1,3 +1,4 @@
+import { compareChatRecency } from "@zuse/client-runtime/chat-recency";
 import "@zuse/i18n/english/shell";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { Chat, Command } from "@zuse/contracts";
@@ -52,9 +53,6 @@ const SETTINGS_ROWS: ReadonlyArray<ChatSwitcherSettingsRow> =
 		section: item.section,
 	}));
 
-const recencyOf = ({ chat }: ChatSwitcherChatRow): number =>
-	(chat.lastMessageAt ?? chat.updatedAt ?? chat.createdAt).getTime();
-
 /** Keep the landing view small without excluding older chats from search. */
 export function chatSwitcherSections(
 	chats: ReadonlyArray<ChatSwitcherChatRow>,
@@ -101,7 +99,7 @@ export function chatSwitcherSections(
 		{
 			label: uiMessage("shell:chat_switcher_items_recent_chats"),
 			rows: availableChats
-				.sort((a, b) => recencyOf(b) - recencyOf(a))
+				.sort((a, b) => compareChatRecency(a.chat, b.chat))
 				.slice(0, RECENT_LIMIT),
 		},
 		{

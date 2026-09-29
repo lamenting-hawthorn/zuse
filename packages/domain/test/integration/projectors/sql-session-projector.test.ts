@@ -79,6 +79,67 @@ describe("SqlSessionProjector", () => {
 		});
 	});
 
+	test("advances user recency only for user messages and never regresses on replay", async () => {
+		const snapshots = await run(
+			Effect.gen(function* () {
+				yield* createDomainTestSchema();
+				const sql = yield* SqlClient.SqlClient;
+				yield* sql`INSERT INTO chats (id, updated_at) VALUES ('chat-1', '1970-01-01T00:00:00.000Z')`;
+				const projector = makeSqlSessionProjector(sql);
+				yield* projector.apply(
+					stored(1, { _tag: "SessionCreated", ...sessionCreation }),
+				);
+				const snapshots = [];
+				for (const [index, [role, createdAt]] of (
+					[
+						["user", 20],
+						["assistant", 40],
+						["user", 60],
+						["user", 10],
+					] as const
+				).entries()) {
+					yield* projector.apply(
+						stored(index + 2, {
+							_tag: "MessagePersisted",
+							messageId: `message-${index}`,
+							turnId: null,
+							role,
+							kind: "text",
+							contentJson: "{}",
+							parentItemId: null,
+							createdAt,
+						}),
+					);
+					const rows = yield* sql<{
+						last_user_message_at: string | null;
+						last_message_at: string | null;
+					}>`SELECT last_user_message_at, last_message_at FROM chats`;
+					snapshots.push(rows[0]);
+				}
+				yield* projector.apply(
+					stored(10, {
+						_tag: "QueuedTurnEnqueued",
+						queueId: "queued-1",
+						position: 0,
+						inputJson: "{}",
+						ready: true,
+						createdAt: 80,
+					}),
+				);
+				const queued = yield* sql<{
+					last_user_message_at: string | null;
+					last_message_at: string | null;
+				}>`SELECT last_user_message_at, last_message_at FROM chats`;
+				snapshots.push(queued[0]);
+				return snapshots;
+			}),
+		);
+		expect(snapshots.map((row) => row?.last_user_message_at)).toEqual(
+			[20, 20, 60, 60, 80].map((time) => new Date(time).toISOString()),
+		);
+		expect(snapshots[1]?.last_message_at).toBe(new Date(40).toISOString());
+	});
+
 	test("rebuilds a complete session and byte-identical message row", async () => {
 		const result = await run(
 			Effect.gen(function* () {

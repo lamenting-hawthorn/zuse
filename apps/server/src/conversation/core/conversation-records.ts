@@ -54,6 +54,7 @@ export interface ChatRow extends ConversationRow {
 	readonly origin_session_id: string | null;
 	readonly archived_worktree_json: string | null;
 	readonly last_message_at: string | null;
+	readonly last_user_message_at?: string | null;
 	readonly last_read_at: string | null;
 }
 
@@ -187,6 +188,10 @@ export const chatFromRow = (row: ChatRow): Chat =>
 				? null
 				: SessionId.make(row.origin_session_id),
 		archivedAt: row.archived_at === null ? null : new Date(row.archived_at),
+		lastUserMessageAt:
+			row.last_user_message_at == null
+				? null
+				: new Date(row.last_user_message_at),
 		lastMessageAt:
 			row.last_message_at === null ? null : new Date(row.last_message_at),
 		lastReadAt: row.last_read_at === null ? null : new Date(row.last_read_at),

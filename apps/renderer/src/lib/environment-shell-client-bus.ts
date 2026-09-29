@@ -1,3 +1,4 @@
+import { compareChatRecency } from "@zuse/client-runtime/chat-recency";
 import type {
 	ResourceDriver,
 	ResourceLease,
@@ -292,16 +293,11 @@ const pruneProjectMap = <Value>(
 		folders.map((folder) => [folder.id, map[folder.id] ?? empty()]),
 	);
 
-const chatSortTime = (chat: Chat): number =>
-	(chat.updatedAt ?? chat.createdAt).getTime();
-
 const upsertChat = (
 	chats: ReadonlyArray<Chat>,
 	chat: Chat,
 ): ReadonlyArray<Chat> =>
-	[...upsertLatestEntity(chats, chat)].sort(
-		(left, right) => chatSortTime(right) - chatSortTime(left),
-	);
+	[...upsertLatestEntity(chats, chat)].sort(compareChatRecency);
 
 /**
  * One driver owns every environment-shell stream. Workspace frames switch the

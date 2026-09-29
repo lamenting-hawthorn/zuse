@@ -44,7 +44,7 @@ const createSchema = Effect.gen(function* () {
 			id TEXT PRIMARY KEY, project_id TEXT, worktree_id TEXT, title TEXT,
 			title_provenance TEXT NOT NULL DEFAULT 'manual',
 			active_session_id TEXT, origin_session_id TEXT, archived_at TEXT,
-			archived_worktree_json TEXT, last_message_at TEXT, last_read_at TEXT,
+			archived_worktree_json TEXT, last_message_at TEXT, last_user_message_at TEXT, last_read_at TEXT,
 			created_at TEXT, updated_at TEXT
 		)
 	`;

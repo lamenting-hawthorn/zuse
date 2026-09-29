@@ -41,6 +41,7 @@ const chat = (
 		title: id,
 		archivedAt: archived ? new Date(updatedAt) : null,
 		updatedAt: new Date(updatedAt),
+		createdAt: new Date(updatedAt),
 	}) as unknown as Chat;
 
 const session = (chatId: string, status: string): Session =>
@@ -201,6 +202,31 @@ describe("buildLogicalProjectGroups", () => {
 			"remote-old",
 		]);
 		expect(refs.map((ref) => ref.remote)).toEqual([true, false, true]);
+	});
+
+	it("keeps running chats ordered by user input, then promotes a new user message", () => {
+		const older = {
+			...chat("older", "lf-1", "2026-08-01T00:00:00Z"),
+			lastUserMessageAt: new Date("2026-08-05T00:00:00Z"),
+			updatedAt: new Date("2026-08-09T00:00:00Z"),
+			lastMessageAt: new Date("2026-08-09T00:00:00Z"),
+		};
+		const newer = {
+			...chat("newer", "lf-1", "2026-08-02T00:00:00Z"),
+			lastUserMessageAt: new Date("2026-08-06T00:00:00Z"),
+		};
+		const order = (chats: Chat[]) =>
+			build({
+				activeFolders: [folder("lf-1", "zuse")],
+				activeChatsByProject: { "lf-1": chats },
+			})[0]?.chats.map((ref) => ref.chat.id);
+		expect(order([older, newer])).toEqual(["newer", "older"]);
+		expect(
+			order([
+				{ ...older, lastUserMessageAt: new Date("2026-08-10T00:00:00Z") },
+				newer,
+			]),
+		).toEqual(["older", "newer"]);
 	});
 
 	it("anchors remote badges to the physical desktop, not the active environment", () => {

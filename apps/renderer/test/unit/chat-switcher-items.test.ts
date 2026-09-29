@@ -38,9 +38,12 @@ describe("quick open sections", () => {
 		expect(chats).toEqual(originalOrder);
 	});
 
-	it("uses last-message activity before update time and excludes archived chats", () => {
-		const active = chatRow(1, { lastMessageAt: new Date(100) });
-		const updated = chatRow(5);
+	it("uses user-message recency despite agent activity and excludes archived chats", () => {
+		const active = chatRow(1, { lastUserMessageAt: new Date(100) });
+		const updated = chatRow(5, {
+			lastMessageAt: new Date(200),
+			updatedAt: new Date(200),
+		});
 		const archived = chatRow(200, { archivedAt: new Date() });
 		expect(
 			chatSwitcherSections([updated, archived, active], "")[0]?.rows,

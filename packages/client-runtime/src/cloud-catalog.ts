@@ -108,6 +108,10 @@ export const cloudChatPlaceholder = (
 		originSessionId: null,
 		archivedAt:
 			summary.archivedAt === undefined ? null : new Date(summary.archivedAt),
+		lastUserMessageAt:
+			summary.lastUserMessageAt == null
+				? null
+				: new Date(summary.lastUserMessageAt),
 		lastMessageAt:
 			summary.lastMessageAt === null ? null : new Date(summary.lastMessageAt),
 		lastReadAt: summary.unread ? new Date(0) : new Date(summary.updatedAt),

@@ -1,3 +1,4 @@
+import { compareChatRecency } from "@zuse/client-runtime/chat-recency";
 import {
 	Chat,
 	type ChatArchiveJob,
@@ -489,16 +490,11 @@ const findChatProject = (
 	return null;
 };
 
-const chatSortTime = (chat: Chat): number =>
-	(chat.updatedAt ?? chat.createdAt).getTime();
-
 const upsertChat = (
 	chats: ReadonlyArray<Chat>,
 	chat: Chat,
 ): ReadonlyArray<Chat> =>
-	[...upsertLatestEntity(chats, chat)].sort(
-		(a, b) => chatSortTime(b) - chatSortTime(a),
-	);
+	[...upsertLatestEntity(chats, chat)].sort(compareChatRecency);
 
 export const restorePendingCreation = (
 	operation: ChatCreationOperation,

@@ -233,6 +233,7 @@ describe("cloud workspace runtime ready status", () => {
 				summaryRevision: 62,
 				title: "Stale title",
 				lastActivityAtMs: 2_500,
+				lastUserMessageAtMs: 1_500,
 				activeSessionId: "session-stale",
 				sessionHeadVersion: 89,
 				updatedAtMs: 2_500,
@@ -245,6 +246,7 @@ describe("cloud workspace runtime ready status", () => {
 			summaryRevision: 0,
 			sessionHeadVersion: 0,
 			lastMessageAt: 2_000,
+			lastUserMessageAt: 1_500,
 			updatedAt: 3_000,
 		});
 	});

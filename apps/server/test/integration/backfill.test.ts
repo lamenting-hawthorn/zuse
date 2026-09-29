@@ -31,10 +31,12 @@ describe("lifecycle backfill", () => {
 				archived_at TEXT,
 				archived_worktree_json TEXT,
 				last_message_at TEXT,
+				last_user_message_at TEXT,
 				last_read_at TEXT,
 				created_at TEXT NOT NULL,
 				updated_at TEXT NOT NULL DEFAULT '2026-01-01T00:00:00.000Z'
 			);
+			CREATE TABLE queued_messages (session_id TEXT, created_at TEXT);
 			CREATE TABLE sessions (
 				id TEXT PRIMARY KEY,
 				project_id TEXT NOT NULL,

@@ -1,3 +1,4 @@
+import { chatRecency } from "@zuse/client-runtime/chat-recency";
 import {
 	refreshHostedProjects,
 	selectHostedCloudHome,
@@ -1714,7 +1715,7 @@ function CatalogChatRow({
 									/>
 								) : null}
 								<span className="tabular-nums text-[10px] text-muted-foreground">
-									{formatRelative(chat.updatedAt)}
+									{formatRelative(chatRecency(chat))}
 								</span>
 							</div>
 						</button>
@@ -1837,12 +1838,14 @@ function ProjectGroup({
 		const local = visibleChats.map((chat) => ({
 			kind: "local" as const,
 			chat,
-			updatedAt: chat.updatedAt.getTime(),
+			recency: chatRecency(chat).getTime(),
+			id: chat.id,
 		}));
 		const remote = (remoteChats ?? []).map((row) => ({
 			kind: "remote" as const,
 			row,
-			updatedAt: row.ref.chat.updatedAt.getTime(),
+			recency: chatRecency(row.ref.chat).getTime(),
+			id: row.ref.chat.id,
 		}));
 		const cloud = (cloudChats ?? [])
 			.filter(
@@ -1854,10 +1857,12 @@ function ProjectGroup({
 			.map((summary) => ({
 				kind: "cloud" as const,
 				summary,
-				updatedAt: summary.lastMessageAt ?? summary.createdAt,
+				recency: chatRecency(summary),
+				id: summary.chatId,
 			}));
 		return [...local, ...remote, ...cloud].sort(
-			(left, right) => right.updatedAt - left.updatedAt,
+			(left, right) =>
+				right.recency - left.recency || left.id.localeCompare(right.id),
 		);
 	}, [visibleChats, remoteChats, cloudChats, hiddenArchivedChatIds, uiMessage]);
 
@@ -2248,9 +2253,7 @@ function CloudChatRow({
 									<DitherCloudIcon className="size-4" />
 								</span>
 								<span className="tabular-nums text-[10px] text-muted-foreground transition-opacity duration-150 ease-out motion-reduce:transition-none group-hover:hidden">
-									{formatRelative(
-										new Date(summary.lastMessageAt ?? summary.updatedAt),
-									)}
+									{formatRelative(new Date(chatRecency(summary)))}
 								</span>
 								<button
 									type="button"
@@ -2859,7 +2862,7 @@ function ChatRow({ chat, projectRoot }: { chat: Chat; projectRoot: string }) {
 												</span>
 											</>
 										) : (
-											formatRelative(chat.updatedAt)
+											formatRelative(chatRecency(chat))
 										)}
 									</span>
 									<button

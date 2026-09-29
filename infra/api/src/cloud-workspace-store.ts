@@ -211,6 +211,7 @@ export interface CloudWorkspaceRuntimeSummaryRecord {
 	readonly summaryRevision: number;
 	readonly title: string;
 	readonly lastActivityAtMs: number;
+	readonly lastUserMessageAtMs?: number | null;
 	readonly activeSessionId: string | null;
 	readonly sessionHeadVersion: number;
 	readonly updatedAtMs: number;
@@ -751,16 +752,9 @@ export interface CloudWorkspaceStoreApi {
 	readonly getRuntimeSummary: (
 		workspaceId: string,
 	) => Effect.Effect<CloudWorkspaceRuntimeSummaryRecord | null>;
-	readonly saveRuntimeSummary: (input: {
-		readonly workspaceId: string;
-		readonly runtimeGeneration: number;
-		readonly summaryRevision: number;
-		readonly title: string;
-		readonly lastActivityAtMs: number;
-		readonly activeSessionId: string | null;
-		readonly sessionHeadVersion: number;
-		readonly updatedAtMs: number;
-	}) => Effect.Effect<RuntimeSummaryWriteOutcome>;
+	readonly saveRuntimeSummary: (
+		input: CloudWorkspaceRuntimeSummaryRecord,
+	) => Effect.Effect<RuntimeSummaryWriteOutcome>;
 	readonly getTranscriptCheckpoint: (
 		workspaceId: string,
 		sessionId: string,
@@ -2987,6 +2981,10 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 							previous?.runtimeGeneration === input.runtimeGeneration;
 						const summary: CloudWorkspaceRuntimeSummaryRecord = {
 							...input,
+							lastUserMessageAtMs:
+								input.lastUserMessageAtMs ??
+								previous?.lastUserMessageAtMs ??
+								null,
 							lastActivityAtMs: sameGeneration
 								? Math.max(previous.lastActivityAtMs, input.lastActivityAtMs)
 								: input.lastActivityAtMs,
@@ -3892,6 +3890,10 @@ const runtimeSummaryFromRow = (
 	summaryRevision: numberValue(row.summary_revision),
 	title: String(row.title),
 	lastActivityAtMs: numberValue(row.last_activity_at),
+	lastUserMessageAtMs:
+		row.last_user_message_at == null
+			? null
+			: numberValue(row.last_user_message_at),
 	activeSessionId: optionalString(row.active_session_id) ?? null,
 	sessionHeadVersion: numberValue(row.session_head_version),
 	updatedAtMs: numberValue(row.updated_at),
@@ -5015,8 +5017,8 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 					Effect.gen(function* () {
 						const rows = yield* sql`
 							INSERT INTO api_cloud_workspace_runtime_summaries
-								(workspace_id, runtime_generation, summary_revision, title, last_activity_at, active_session_id, session_head_version, updated_at)
-							SELECT ${input.workspaceId}, ${input.runtimeGeneration}, ${input.summaryRevision}, ${input.title}, ${input.lastActivityAtMs}, ${input.activeSessionId}, ${input.sessionHeadVersion}, ${input.updatedAtMs}
+								(workspace_id, runtime_generation, summary_revision, title, last_activity_at, last_user_message_at, active_session_id, session_head_version, updated_at)
+							SELECT ${input.workspaceId}, ${input.runtimeGeneration}, ${input.summaryRevision}, ${input.title}, ${input.lastActivityAtMs}, ${input.lastUserMessageAtMs ?? null}, ${input.activeSessionId}, ${input.sessionHeadVersion}, ${input.updatedAtMs}
 							FROM api_cloud_workspaces AS workspace
 							WHERE workspace.workspace_id=${input.workspaceId}
 								AND COALESCE((workspace.request_config->>'runtimeGeneration')::bigint, 1)=${input.runtimeGeneration}
@@ -5024,6 +5026,7 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 								runtime_generation=EXCLUDED.runtime_generation,
 								summary_revision=EXCLUDED.summary_revision,
 								title=EXCLUDED.title,
+								last_user_message_at=COALESCE(EXCLUDED.last_user_message_at, api_cloud_workspace_runtime_summaries.last_user_message_at),
 								last_activity_at=CASE
 									WHEN api_cloud_workspace_runtime_summaries.runtime_generation=EXCLUDED.runtime_generation
 									THEN GREATEST(api_cloud_workspace_runtime_summaries.last_activity_at, EXCLUDED.last_activity_at)

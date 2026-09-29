@@ -321,6 +321,10 @@ export const stageCloudChat = (
 		activeSessionId,
 		originSessionId: null,
 		archivedAt,
+		lastUserMessageAt:
+			accepted.lastUserMessageAt == null
+				? null
+				: new Date(accepted.lastUserMessageAt),
 		lastMessageAt:
 			accepted.lastMessageAt === null ? null : new Date(accepted.lastMessageAt),
 		lastReadAt: now,

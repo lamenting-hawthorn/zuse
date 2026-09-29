@@ -49,6 +49,10 @@ const sameChatSummary = (left: Chat, right: Chat): boolean =>
 	left.originSessionId === right.originSessionId &&
 	sameTimestamp(left.archivedAt, right.archivedAt) &&
 	sameTimestamp(left.lastMessageAt, right.lastMessageAt) &&
+	sameTimestamp(
+		left.lastUserMessageAt ?? null,
+		right.lastUserMessageAt ?? null,
+	) &&
 	sameTimestamp(left.lastReadAt, right.lastReadAt) &&
 	left.createdAt.getTime() === right.createdAt.getTime() &&
 	left.updatedAt.getTime() === right.updatedAt.getTime();
@@ -96,7 +100,7 @@ export const makeChatOperations = (options: ChatOperationsOptions) => {
 		Effect.gen(function* () {
 			const rows = yield* sql<ChatRow>`
           SELECT id, project_id, worktree_id, title, title_provenance, active_session_id, origin_session_id,
-                 archived_at, archived_worktree_json, last_message_at, last_read_at, created_at, updated_at
+                 archived_at, archived_worktree_json, last_message_at, last_user_message_at, last_read_at, created_at, updated_at
           FROM chats WHERE id = ${chatId} LIMIT 1
         `.pipe(Effect.orDie);
 			const [row] = rows;
@@ -114,16 +118,16 @@ export const makeChatOperations = (options: ChatOperationsOptions) => {
 			const rows = includeArchived
 				? yield* sql<ChatRow>`
               SELECT id, project_id, worktree_id, title, title_provenance, active_session_id, origin_session_id,
-                     archived_at, archived_worktree_json, last_message_at, last_read_at, created_at, updated_at
+                     archived_at, archived_worktree_json, last_message_at, last_user_message_at, last_read_at, created_at, updated_at
               FROM chats WHERE project_id = ${projectId}
-              ORDER BY updated_at DESC
+              ORDER BY COALESCE(last_user_message_at, created_at) DESC, id ASC
             `.pipe(Effect.orDie)
 				: yield* sql<ChatRow>`
               SELECT id, project_id, worktree_id, title, title_provenance, active_session_id, origin_session_id,
-                     archived_at, archived_worktree_json, last_message_at, last_read_at, created_at, updated_at
+                     archived_at, archived_worktree_json, last_message_at, last_user_message_at, last_read_at, created_at, updated_at
               FROM chats
               WHERE project_id = ${projectId} AND archived_at IS NULL
-              ORDER BY updated_at DESC
+              ORDER BY COALESCE(last_user_message_at, created_at) DESC, id ASC
             `.pipe(Effect.orDie);
 			return rows.map(chatFromRow);
 		});
@@ -131,10 +135,10 @@ export const makeChatOperations = (options: ChatOperationsOptions) => {
 	const listAllChats = Effect.fn("ChatOperations.listAllChats")(function* () {
 		const rows = yield* sql<ChatRow>`
 			SELECT id, project_id, worktree_id, title, title_provenance, active_session_id, origin_session_id,
-			       archived_at, archived_worktree_json, last_message_at, last_read_at, created_at, updated_at
+			       archived_at, archived_worktree_json, last_message_at, last_user_message_at, last_read_at, created_at, updated_at
 			FROM chats
 			WHERE archived_at IS NULL
-			ORDER BY project_id ASC, updated_at DESC, id ASC
+			ORDER BY project_id ASC, COALESCE(last_user_message_at, created_at) DESC, id ASC
 		`;
 		return rows.map(chatFromRow);
 	});

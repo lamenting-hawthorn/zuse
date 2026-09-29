@@ -1,3 +1,4 @@
+import { chatRecency } from "@zuse/client-runtime/chat-recency";
 import { compareCloudChatSummaryVersion } from "@zuse/client-runtime/cloud-catalog";
 import {
 	type ChatId,
@@ -114,8 +115,8 @@ const sortSummaries = (
 ): ReadonlyArray<CloudChatSummary> =>
 	[...summaries].sort(
 		(left, right) =>
-			(right.lastMessageAt ?? right.createdAt) -
-			(left.lastMessageAt ?? left.createdAt),
+			chatRecency(right) - chatRecency(left) ||
+			left.chatId.localeCompare(right.chatId),
 	);
 
 /** Lifecycle revision fences runtime generations. Within one lifecycle
@@ -146,6 +147,11 @@ export const mergeCloudChatSummaries = (
 				...previous,
 				repositoryDisplayName: summary.repositoryDisplayName,
 				unread: previous.unread || summary.unread,
+				lastUserMessageAt:
+					Math.max(
+						previous.lastUserMessageAt ?? 0,
+						summary.lastUserMessageAt ?? 0,
+					) || null,
 				lastMessageAt:
 					previous.lastMessageAt === null
 						? summary.lastMessageAt

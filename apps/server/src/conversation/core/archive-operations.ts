@@ -1240,7 +1240,7 @@ export const makeArchiveOperations = Effect.fn("ArchiveOperations.make")(
 					}
 					const chatRows = yield* sql<ChatRow>`
           SELECT id, project_id, worktree_id, title, title_provenance, active_session_id, origin_session_id,
-                 archived_at, archived_worktree_json, last_message_at, last_read_at, created_at, updated_at
+                 archived_at, archived_worktree_json, last_message_at, last_user_message_at, last_read_at, created_at, updated_at
           FROM chats WHERE id = ${chatId} LIMIT 1
         `.pipe(Effect.orDie);
 					const chatRow = chatRows[0];

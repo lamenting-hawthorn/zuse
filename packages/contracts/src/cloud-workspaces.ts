@@ -368,6 +368,7 @@ export class CloudWorkspaceRuntimeSummary extends Schema.Class<CloudWorkspaceRun
 	summaryRevision: Schema.Number,
 	title: Schema.String,
 	lastActivityAt: Schema.Number,
+	lastUserMessageAt: Schema.optional(Schema.NullOr(Schema.Number)),
 	/** Optional during the additive rollout; null means the chat has no live thread. */
 	activeSessionId: Schema.optional(Schema.NullOr(AgentSessionId)),
 	sessionHeadVersion: Schema.Number,
@@ -421,6 +422,7 @@ export class CloudChatSummary extends Schema.Class<CloudChatSummary>(
 	),
 	unread: Schema.Boolean,
 	lastMessageAt: Schema.NullOr(Schema.Number),
+	lastUserMessageAt: Schema.optional(Schema.NullOr(Schema.Number)),
 	archivedAt: Schema.optional(Schema.Number),
 	createdAt: Schema.Number,
 	updatedAt: Schema.Number,
