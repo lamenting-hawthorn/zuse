@@ -1,5 +1,4 @@
 export * from "./agent.ts";
-export * from "./agent-plugin.ts";
 export * from "./analytics.ts";
 export * from "./api.ts";
 export * from "./attachment.ts";
@@ -18,6 +17,7 @@ export * from "./connect-links.ts";
 export * from "./context.ts";
 export * from "./device-bridge.ts";
 export * from "./diagnostics.ts";
+export * from "./executor.ts";
 export * from "./extension.ts";
 export * from "./external-thread.ts";
 export * from "./fs.ts";

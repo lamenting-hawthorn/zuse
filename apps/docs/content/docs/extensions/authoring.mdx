@@ -79,4 +79,4 @@ The source directories `extensions/test-reports`, `extensions/project-playbook`,
 
 Official artifacts are immutable JSON envelopes containing the manifest and precompiled code/CSS. Zuse verifies the signed catalog, SHA-256 digest, manifest identity, compatibility, and size limits before activation. There is no archive extraction or user-side package installation. PR validation cannot access signing secrets; a protected release workflow signs only main-branch output and verifies the credential against the desktop trust root.
 
-Community catalog submissions, publisher delegation, agent plugins, service integrations, and ACP catalogs are later releases. Local and Git author installs remain available.
+Community catalog submissions, publisher delegation, and ACP catalogs are later releases. Shared service tools are available through [Executor plugins](/extensions/agent-plugins). Local and Git author installs remain available.

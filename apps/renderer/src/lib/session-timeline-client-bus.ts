@@ -224,17 +224,12 @@ const executeSessionCommand: ClientCommandExecutor<MemoizeClient> = {
 		);
 		let result: unknown;
 		switch (command.kind) {
-			case "agentPlugin.catalog":
-				result = await Effect.runPromise(client["agentPlugin.catalog"]());
+			case "executor.state":
+				result = await Effect.runPromise(client["executor.state"]());
 				break;
-			case "agentPlugin.inspect":
+			case "executor.execute":
 				result = await Effect.runPromise(
-					client["agentPlugin.inspect"](payload as never),
-				);
-				break;
-			case "agentPlugin.execute":
-				result = await Effect.runPromise(
-					client["agentPlugin.execute"](payload as never),
+					client["executor.execute"](payload as never),
 				);
 				break;
 			case "extension.setGlobalEnabled":

@@ -43,6 +43,7 @@ import { ProviderCheckpointBatcher } from "../kernel/provider-checkpoint-batcher
 import { issueProviderMcpSession } from "../kernel/provider-mcp-session.ts";
 import { makeStdioMcpFallback } from "../kernel/stdio-mcp-fallback.ts";
 import { makeBoundedQuestionCallbackRegistry } from "../kernel/user-question-answer.ts";
+import type { ResolvedMcpServer } from "../user-mcp/types.ts";
 import type { BrowserSend } from "./browser-tools.ts";
 import {
 	CodexAppServerClient,
@@ -1411,6 +1412,7 @@ export const startCodexSession = (
 	orchestrationTools: OrchestrationSessionTools | null = null,
 	resumeCursor: string | null = null,
 	onUnexpectedTermination?: (error: Error) => void,
+	sharedMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
 ): Effect.Effect<
 	CodexSessionHandle,
 	AgentSessionStartError,
@@ -1569,6 +1571,7 @@ export const startCodexSession = (
 		let app = yield* Effect.tryPromise({
 			try: () =>
 				CodexAppServerClient.start({
+					sharedMcpServers,
 					codexPath,
 					externalAuthConsumerId: sessionId,
 					env: { ...process.env, ZUSE_MCP_TOKEN: mcpGatewaySession.token },
@@ -1672,6 +1675,7 @@ export const startCodexSession = (
 						throw new Error("MCP stdio fallback produced no server config.");
 					}
 					app = await CodexAppServerClient.start({
+						sharedMcpServers,
 						codexPath,
 						externalAuthConsumerId: sessionId,
 						env: process.env,

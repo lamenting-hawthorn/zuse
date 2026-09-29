@@ -1,7 +1,7 @@
 # Zuse Extensions
 
 Zuse Extensions are desktop-only, explicitly trusted TypeScript modules. They
-are separate from Claude or Codex plugins: a Zuse Extension can add application
+are separate from Executor-backed shared agent tools: a Zuse Extension can add application
 UI, typed backend behavior, and coding-agent providers. Extensions are globally
 disabled by default.
 

@@ -27,6 +27,8 @@ import type {
 import { issueProviderMcpSession } from "../kernel/provider-mcp-session.ts";
 import { makeStdioMcpFallback } from "../kernel/stdio-mcp-fallback.ts";
 import { prefixFirstPromptWithWorkspaceInstructions } from "../kernel/workspace-instructions.ts";
+import { sharedAcpMcpServers } from "../user-mcp/shared.ts";
+import type { ResolvedMcpServer } from "../user-mcp/types.ts";
 import { handleFsRequest } from "./acp/fs.ts";
 import { replyToAcpRequest } from "./acp/request-reply.ts";
 import { handleTerminalRequest } from "./acp/terminal.ts";
@@ -181,6 +183,7 @@ export const startGeminiSession = (
 	browserMcpCommand: string,
 	orchestrationTools: OrchestrationSessionTools | null = null,
 	resumeCursor: string | null = null,
+	sharedMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
 ): Effect.Effect<
 	GeminiSessionHandle,
 	AgentSessionStartError,
@@ -539,14 +542,20 @@ export const startGeminiSession = (
 							: { headless: true },
 				});
 
-				const httpMcpServers = [mcpGatewaySession.serverConfig];
+				const httpMcpServers = [
+					mcpGatewaySession.serverConfig,
+					...(await sharedAcpMcpServers(sharedMcpServers, true)),
+				];
 				return createAcpSession({
 					request,
 					cwd,
 					sessionId,
 					providerLabel: "Gemini",
 					httpServers: httpMcpServers,
-					fallbackServers: stdioMcpFallback.ensure,
+					fallbackServers: async () => [
+						...(await stdioMcpFallback.ensure()),
+						...(await sharedAcpMcpServers(sharedMcpServers, false)),
+					],
 					resumeCursor,
 				});
 			},

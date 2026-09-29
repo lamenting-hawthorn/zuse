@@ -11,7 +11,6 @@ import {
 	type Part as SdkPart,
 	type ToolPart as SdkToolPart,
 } from "@opencode-ai/sdk";
-
 import {
 	type AgentEvent,
 	type AgentItemId,
@@ -27,11 +26,11 @@ import {
 	type UserQuestionAnswer,
 } from "@zuse/contracts";
 import { type Cause, Effect, Queue, Stream } from "effect";
-
 import { AttachmentService } from "../kernel/attachment-service.ts";
 import type { ProviderSessionHandle } from "../kernel/driver.ts";
 import { CheckpointFlushScheduler } from "../kernel/provider-checkpoint-batcher.ts";
 import { prefixFirstPromptWithWorkspaceInstructions } from "../kernel/workspace-instructions.ts";
+import type { ResolvedMcpServer } from "../user-mcp/types.ts";
 import {
 	finishCompactEvent,
 	isCompactCommand,
@@ -148,8 +147,10 @@ const opencodeAuthPath = (): string => {
  */
 const buildOpencodeConfigContent = (
 	customProviders: ReadonlyArray<OpencodeCustomProvider>,
+	sharedMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
 ): string => {
-	if (customProviders.length === 0) return OPENCODE_EMPTY_CONFIG;
+	if (customProviders.length === 0 && sharedMcpServers.length === 0)
+		return OPENCODE_EMPTY_CONFIG;
 	const provider: Record<string, unknown> = {};
 	for (const p of customProviders) {
 		const models: Record<string, { name: string }> = {};
@@ -161,7 +162,24 @@ const buildOpencodeConfigContent = (
 			models,
 		};
 	}
-	return JSON.stringify({ provider });
+	return JSON.stringify({
+		provider,
+		...(sharedMcpServers.length
+			? {
+					mcp: Object.fromEntries(
+						sharedMcpServers.map((server) => [
+							server.name,
+							{
+								type: "remote",
+								url: server.url,
+								headers: server.headers,
+								enabled: true,
+							},
+						]),
+					),
+				}
+			: {}),
+	});
 };
 
 type OpencodeClient = ReturnType<typeof createOpencodeClient>;
@@ -201,9 +219,7 @@ interface OpencodeServerProcess {
 	readonly url: string;
 }
 
-const stopOpencodeChild = (
-	child: ChildProcessWithoutNullStreams,
-): void => {
+const stopOpencodeChild = (child: ChildProcessWithoutNullStreams): void => {
 	try {
 		if (process.platform !== "win32" && child.pid !== undefined) {
 			process.kill(-child.pid, "SIGTERM");
@@ -896,6 +912,7 @@ export const startOpencodeSession = (
 	opencodePath: string,
 	sessionId: AgentSessionId,
 	resumeCursor: string | null = null,
+	sharedMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
 ): Effect.Effect<
 	OpencodeSessionHandle,
 	AgentSessionStartError,
@@ -939,7 +956,7 @@ export const startOpencodeSession = (
 				const proc = await spawnOpencodeServer(
 					opencodePath,
 					cwd,
-					buildOpencodeConfigContent(customProviders),
+					buildOpencodeConfigContent(customProviders, sharedMcpServers),
 				);
 				dlog(`server ready at ${proc.url}`);
 				const c = createOpencodeClient({ baseUrl: proc.url });
@@ -1358,7 +1375,9 @@ interface InventoryProvider {
 	readonly name?: unknown;
 	// Env var(s) the provider's key is read from (e.g. `["OPENAI_API_KEY"]`).
 	readonly env?: ReadonlyArray<unknown> | null;
-	readonly models?: { readonly [key: string]: InventoryProviderModel | null } | null;
+	readonly models?: {
+		readonly [key: string]: InventoryProviderModel | null;
+	} | null;
 }
 
 /**

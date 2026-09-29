@@ -11652,7 +11652,7 @@
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"extensions:plugins_title": {
-		"source": "Agent plugins",
+		"source": "Plugins",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings-page.tsx",
@@ -11666,35 +11666,11 @@
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"extensions:plugins_subtitle": {
-		"source": "Skills, hooks, and connected tools for your coding agents.",
+		"source": "Shared tools and accounts for your agents.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings-page.tsx",
 				"line": 346
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_local": {
-		"source": "Manage agent plugins from the local desktop environment.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 26
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_search": {
-		"source": "Search Codex plugins",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 94
-			},
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 95
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11704,17 +11680,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 107
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_native": {
-		"source": "Codex plugins run inside Codex. Zuse extensions customize this app. Changes apply to new Codex chats.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 111
+				"line": 299
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11724,67 +11690,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 115
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_failed": {
-		"source": "Plugin operation failed. Update Codex and try again.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 52
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_unavailable": {
-		"source": "Unavailable",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 150
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_enabled": {
-		"source": "Installed · Enabled",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 153
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_disabled": {
-		"source": "Installed · Disabled",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 154
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_not_installed": {
-		"source": "Not installed",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 155
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_details": {
-		"source": "Details",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 165
+				"line": 78
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11794,7 +11700,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 183
+				"line": 164
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11804,75 +11710,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 184
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_remove": {
-		"source": "Remove",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 202
-			},
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 337
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_remove_confirm": {
-		"source": "Remove {{name}}? This changes your native Codex configuration.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 194
-			},
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 328
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_empty": {
-		"source": "No matching plugins. Refresh or add a marketplace below.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 211
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_trust": {
-		"source": "Plugins may run hooks, launch MCP servers, and access files or external services. Install only plugins you trust.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 234
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_install_confirm": {
-		"source": "Install {{name}} in Codex? Its hooks and tools may execute code with your account permissions.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 249
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_install": {
-		"source": "Install",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 257
+				"line": 165
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11882,23 +11720,181 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 267
+				"line": 141
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"extensions:plugins_marketplaces": {
-		"source": "Manage marketplaces",
+	"extensions:executor_intro": {
+		"source": "Connect Executor to use the same tools and service accounts with agents in local and cloud workspaces.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 274
+				"line": 71
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"extensions:plugins_source_help": {
-		"source": "Add a Codex marketplace from a local directory or Git URL. Codex validates and manages its plugins.",
+	"extensions:executor_environment": {
+		"source": "Configure access for environment: {{name}}",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 74
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_failed": {
+		"source": "Could not reach Executor. Refresh to retry.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 41
+			},
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 235
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_url": {
+		"source": "Executor service URL",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 96
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_key": {
+		"source": "Personal API key",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 107
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_key_help": {
+		"source": "Create a personal API key in Executor. Zuse stores it on this runtime; it is never included in chat prompts. Use the same Executor account on your other environments to share connections.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 119
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_connect": {
+		"source": "Connect and enable",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 127
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_reconnect": {
+		"source": "Reconnect",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 174
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_disconnect": {
+		"source": "Disconnect",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 186
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_disconnect_confirm": {
+		"source": "Disconnect Executor from this environment? Further plugin calls will be blocked. Accounts and tools in Executor will remain available on other environments.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 182
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_toolkit": {
+		"source": "Available tools",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 190
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_all_tools": {
+		"source": "All tools allowed by my account",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 203
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_scope_help": {
+		"source": "Toolkits limit which connections and actions agents can use. Manage account permissions and approvals in Executor. Start a new chat after enabling plugins or changing the toolkit.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 216
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_search": {
+		"source": "Search shared plugins",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 221
+			},
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 222
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_manage": {
+		"source": "Manage tools and accounts",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 242
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_expired": {
+		"source": "Reconnect account",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
+				"line": 270
+			}
+		],
+		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"extensions:executor_no_account": {
+		"source": "No connected account. Connect one in Executor.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
@@ -11907,36 +11903,12 @@
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"extensions:plugins_source": {
-		"source": "Marketplace directory or Git URL",
+	"extensions:executor_empty": {
+		"source": "No matching tools. Add an integration in Executor, then refresh.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 293
-			},
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 294
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_add": {
-		"source": "Add",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 300
-			}
-		],
-		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"extensions:plugins_update": {
-		"source": "Update",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/settings/agent-plugins-pane.tsx",
-				"line": 318
+				"line": 287
 			}
 		],
 		"context": "extensions interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."

@@ -58,6 +58,8 @@ import {
 import { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
 import { AnalyticsService } from "../../analytics/services/analytics-service.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
+import { createExecutorGateway } from "../../executor/gateway.ts";
+import { readExecutorProfile } from "../../executor/service.ts";
 import { ExtensionService } from "../../extension/services/extension-service.ts";
 import {
 	legacyAppOwnedCodexServerNames,
@@ -127,6 +129,16 @@ export const ProviderServiceLive = Layer.effect(
 		const analytics = yield* AnalyticsService;
 		const extensions = yield* ExtensionService;
 		const runtime = yield* Effect.context<never>();
+		const executorGateway = createExecutorGateway(() =>
+			Effect.runPromise(
+				readExecutorProfile().pipe(
+					Effect.provideService(CredentialsService, credentials),
+				),
+			),
+		);
+		yield* Effect.addFinalizer(() =>
+			Effect.promise(() => executorGateway.close()),
+		);
 		const registry = makeProviderSessionRegistry<
 			AgentSessionId,
 			SessionEntry
@@ -465,6 +477,15 @@ export const ProviderServiceLive = Layer.effect(
 						);
 					}
 					const cwd = input.cwdOverride ?? folder.path;
+					const sharedMcpServers = yield* Effect.tryPromise({
+						try: () => executorGateway.servers(),
+						catch: () =>
+							new AgentSessionStartError({
+								providerId: input.providerId,
+								reason:
+									"Could not load shared plugins. Check Executor in Plugins settings.",
+							}),
+					});
 					// Canonicalize retired / shorthand slugs and attach the resolved
 					// descriptor (curated seed merged with the live inventory) so
 					// drivers never read a static model list.
@@ -554,6 +575,7 @@ export const ProviderServiceLive = Layer.effect(
 									forkFromResume: input.forkFromResume ?? false,
 									permissionMode: input.permissionMode ?? "default",
 									modelOptions: input.modelOptions ?? {},
+									mcpServers: sharedMcpServers,
 								},
 							})
 							.pipe(
@@ -728,6 +750,7 @@ export const ProviderServiceLive = Layer.effect(
 							geminiMcpCommand,
 							orchestrationTools,
 							resumeCursor,
+							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "pi") {
 						const binary = yield* resolveCliPath("pi", binaryPaths).pipe(
@@ -803,6 +826,7 @@ export const ProviderServiceLive = Layer.effect(
 							kiroMcpCommand,
 							orchestrationTools,
 							resumeCursor,
+							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "grok") {
 						// Same story as Claude/Codex: hand the driver the user's
@@ -849,6 +873,7 @@ export const ProviderServiceLive = Layer.effect(
 							orchestrationTools,
 							resumeCursor,
 							providerEventCursor,
+							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "opencode") {
 						// OpenCode spawns a local HTTP server (`opencode serve`) and we
@@ -885,6 +910,7 @@ export const ProviderServiceLive = Layer.effect(
 							opencodePath,
 							sessionId,
 							resumeCursor,
+							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "opencode2") {
 						const opencode2Path = yield* resolveCliPath(
@@ -916,7 +942,12 @@ export const ProviderServiceLive = Layer.effect(
 							buildRequestPermission(input.folderId),
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "cursor") {
-						const userMcpServers = yield* mcp.resolveForCursorSession(cwd);
+						const userMcpServers = [
+							...(yield* mcp.resolveForCursorSession(cwd)).filter(
+								(s) => s.name !== "zuse_executor",
+							),
+							...sharedMcpServers,
+						];
 						providerHandle = yield* startCursorSession(
 							driverInput,
 							cwd,
@@ -950,7 +981,12 @@ export const ProviderServiceLive = Layer.effect(
 								}),
 							);
 						}
-						const userMcpServers = yield* mcp.resolveForClaudeSession(cwd);
+						const userMcpServers = [
+							...(yield* mcp.resolveForClaudeSession(cwd)).filter(
+								(s) => s.name !== "zuse_executor",
+							),
+							...sharedMcpServers,
+						];
 
 						providerHandle = yield* startClaudeSession(
 							driverInput,
@@ -1044,6 +1080,7 @@ export const ProviderServiceLive = Layer.effect(
 							() => {
 								registry.invalidateIfCurrent(sessionId, generation);
 							},
+							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else {
 						return yield* Effect.fail(

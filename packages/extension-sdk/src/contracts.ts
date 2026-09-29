@@ -237,6 +237,16 @@ export type ExtensionClientContribution = (
 ) => ExtensionCleanup | Promise<ExtensionCleanup>;
 
 export interface ExtensionProviderSessionInput {
+	/** Session-scoped shared tools. Credentials are short-lived local bridge tokens. */
+	readonly mcpServers?: ReadonlyArray<{
+		readonly name: string;
+		readonly transport: "http" | "sse" | "stdio";
+		readonly url?: string;
+		readonly headers?: Readonly<Record<string, string>>;
+		readonly command?: string;
+		readonly args?: ReadonlyArray<string>;
+		readonly env?: Readonly<Record<string, string>>;
+	}>;
 	readonly sessionId: string;
 	readonly projectId: string;
 	readonly cwd: string;
