@@ -369,10 +369,21 @@ describe("boxd machine names", () => {
 		expect(boxdMachineName("zuse-cloud-workspace-Ab_C")).toBe(upper);
 	});
 
-	test("keeps names within the provider's 63 character limit", () => {
+	test("leaves room for port subdomains within the provider's full-host limit", () => {
 		const name = boxdMachineName(`zuse-cloud-build-${"X".repeat(80)}`);
-		expect(name.length).toBeLessThanOrEqual(63);
+		expect(name.length).toBeLessThanOrEqual(43);
+		for (const port of [3001, 34903, 47837, 65535])
+			expect(`p${port}.${name}.boxd.zuse.sh`.length).toBeLessThanOrEqual(63);
 		expect(name).toMatch(/^[a-z0-9][a-z0-9-]*[a-z0-9]$/u);
+	});
+
+	test("hashes truncated labels without collapsing distinct workspace names", () => {
+		const prefix = "x".repeat(43);
+		expect(boxdMachineName(prefix)).toBe(prefix);
+		expect(boxdMachineName(`${prefix}a`)).toHaveLength(43);
+		expect(boxdMachineName(`${prefix}a`)).not.toBe(
+			boxdMachineName(`${prefix}b`),
+		);
 	});
 
 	test("keeps a label that ends in a hyphen distinct from its trimmed form", () => {
@@ -392,6 +403,105 @@ describe("boxd machine names", () => {
 });
 
 describe("boxd sandbox provider", () => {
+	test.each([
+		"p34903",
+		null,
+	])("uses the active org domain for proxy %s", async (routeName) => {
+		const client = new FakeBoxd();
+		const existing = machineOf({ id: "vm_custom", name: "zuse-preview" });
+		const machine = client.set({
+			...existing,
+			access: {
+				...existing.access,
+				domain: "boxd.zuse.sh",
+				url: "https://zuse-preview.boxd.zuse.sh",
+			},
+		});
+		client.routes.set(machine.id, [
+			{ ...routeOf(machine, routeName, 34903), portMode: "locked" },
+		]);
+		const host = `${routeName === null ? "" : `${routeName}.`}zuse-preview.boxd.zuse.sh`;
+		await expect(
+			run(makeAdapter(client).resolveEndpoint(machine.id, 34903)),
+		).resolves.toEqual({
+			httpBaseUrl: `https://${host}`,
+			wsBaseUrl: `wss://${host}`,
+		});
+		expect(client.methods("machines.proxies.create")).toHaveLength(0);
+	});
+
+	test.each([
+		"create",
+		"snapshot-fork",
+		"machine-fork",
+	] as const)("%s leaves room for preview and runtime proxy hostnames", async (operation) => {
+		const client = new FakeBoxd();
+		client.set(machineOf({ id: "parent", status: "running" }));
+		const adapter = makeAdapter(client);
+		const providerLabel = `zuse-cloud-workspace-${"Long_Workspace_".repeat(6)}`;
+		const input = { ...createInput, providerLabel };
+		const created = await run(
+			operation === "create"
+				? adapter.create(input)
+				: operation === "snapshot-fork"
+					? adapter.fork({ ...input, snapshotId: "snapshot" })
+					: adapter.forkMachine({
+							providerLabel,
+							sourceSandboxId: "parent",
+							timeoutSeconds: 600,
+						}),
+		);
+		expect(
+			client.store.get(created.providerSandboxId)?.name.length,
+		).toBeLessThanOrEqual(43);
+		for (const port of [3001, 34903, 47837, 65535]) {
+			const endpoint = await run(
+				adapter.resolveEndpoint(created.providerSandboxId, port),
+			);
+			expect(new URL(endpoint.wsBaseUrl).hostname.length).toBeLessThanOrEqual(
+				63,
+			);
+		}
+		await expect(
+			run(adapter.recoverByLabel(providerLabel)),
+		).resolves.toMatchObject({
+			providerSandboxId: created.providerSandboxId,
+		});
+	});
+
+	test.each([
+		["x".repeat(56), "x".repeat(56)],
+		[
+			"zuse-cloud-workspace-workspace_N_HKqzMXzzQV6Idx",
+			"zuse-cloud-workspace-workspace-n-hkqzmxzzqv6idx-af46307f",
+		],
+	])("recovers legacy names for %s without replacing machines", async (providerLabel, legacyName) => {
+		const client = new FakeBoxd();
+		client.set(
+			machineOf({ id: "legacy", name: legacyName, status: "hibernated" }),
+		);
+		const adapter = makeAdapter(client);
+		await expect(
+			run(adapter.recoverByLabel(providerLabel)),
+		).resolves.toMatchObject({
+			providerSandboxId: "legacy",
+			state: "paused",
+		});
+		expect(client.methods("machines.create")).toHaveLength(0);
+		client.set(
+			machineOf({
+				id: "current",
+				name: boxdMachineName(providerLabel),
+				status: "running",
+			}),
+		);
+		await expect(
+			run(adapter.recoverByLabel(providerLabel)),
+		).resolves.toMatchObject({
+			providerSandboxId: "current",
+		});
+	});
+
 	test("registers with the stable provider id and warm resume semantics", () => {
 		const adapter = makeAdapter(new FakeBoxd());
 		expect(adapter.providerId).toBe(BOXD_PROVIDER_ID);
@@ -1003,6 +1113,7 @@ describe("boxd sandbox provider", () => {
 		expect(client.calls.map((call) => call.method)).toEqual([
 			"machines.exec",
 			"machines.proxies.list",
+			"machines.get",
 		]);
 	});
 

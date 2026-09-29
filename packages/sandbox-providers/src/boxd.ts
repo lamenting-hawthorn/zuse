@@ -123,7 +123,11 @@ const MIN_IDLE_SECONDS = 1;
 const MAX_IDLE_SECONDS = 2_592_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 const MACHINE_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const MACHINE_NAME_MAX_LENGTH = 63;
+// Boxd currently limits the entire proxy hostname to 63 characters. Reserve
+// room for the longest port label and our active org domain:
+// p65535.<machine>.boxd.zuse.sh (6 + 1 + 43 + 1 + 12 = 63).
+const MACHINE_NAME_MAX_LENGTH = 43;
+const LEGACY_MACHINE_NAME_MAX_LENGTH = 63;
 const PARK_SETTLE_ATTEMPTS = 5;
 const GRPC_INVALID_ARGUMENT = 3;
 const GRPC_ALREADY_EXISTS = 6;
@@ -147,25 +151,26 @@ const fnv1a32 = (value: string): string => {
 
 /**
  * boxd machine names are DNS labels: lowercase letters, digits and hyphens,
- * at most 63 characters, not ending in a hyphen. Labels that already satisfy
+ * at most 43 characters, not ending in a hyphen. Labels that already satisfy
  * that pass through, so `recoverByLabel` finds them by name; anything else is
  * lowercased and given a digest suffix so two labels that differ only in
  * case, or only by a trailing hyphen, stay distinct.
  */
-export const boxdMachineName = (label: string): string => {
+const machineNameWithinLimit = (label: string, maxLength: number): string => {
 	const lowered = label
 		.toLowerCase()
 		.replaceAll(/[^a-z0-9-]/gu, "-")
 		.replaceAll(/-{2,}/gu, "-")
 		.replace(/^-+/u, "");
 	const named =
-		lowered === label &&
-		!label.endsWith("-") &&
-		label.length <= MACHINE_NAME_MAX_LENGTH
+		lowered === label && !label.endsWith("-") && label.length <= maxLength
 			? lowered
-			: `${lowered.slice(0, MACHINE_NAME_MAX_LENGTH - 9).replace(/-+$/u, "")}-${fnv1a32(label)}`;
-	return named.slice(0, MACHINE_NAME_MAX_LENGTH).replace(/-+$/u, "");
+			: `${lowered.slice(0, maxLength - 9).replace(/-+$/u, "")}-${fnv1a32(label)}`;
+	return named.slice(0, maxLength).replace(/-+$/u, "");
 };
+
+export const boxdMachineName = (label: string): string =>
+	machineNameWithinLimit(label, MACHINE_NAME_MAX_LENGTH);
 
 const errorForCause = (cause: unknown): SandboxProviderError => {
 	if (cause instanceof NotFoundError) return providerError("not-found");
@@ -669,7 +674,16 @@ export const makeBoxdSandboxProvider = (
 
 	const recoverByLabel = Effect.fn("BoxdSandboxProvider.recoverByLabel")(
 		function* (providerLabel: string) {
-			const found = yield* settledByName(boxdMachineName(providerLabel));
+			const name = boxdMachineName(providerLabel);
+			let found = yield* settledByName(name);
+			// Keep pre-workaround machines discoverable without renaming them or
+			// allocating replacements for their existing runtime data.
+			const legacyName = machineNameWithinLimit(
+				providerLabel,
+				LEGACY_MACHINE_NAME_MAX_LENGTH,
+			);
+			if (found === null && legacyName !== name)
+				found = yield* settledByName(legacyName);
 			return found === null ? null : yield* settledSandbox(found);
 		},
 	);
@@ -766,9 +780,13 @@ export const makeBoxdSandboxProvider = (
 			const route = routeForPort(routes);
 			if (route === undefined)
 				return yield* creation ?? providerError("transient");
+			// Proxy listings can retain the cluster zone even when the org has
+			// an active wildcard domain. Machine access advertises that domain.
+			const current = yield* machine(providerSandboxId);
+			const domain = `${route.name === null ? "" : `${route.name}.`}${current.name}.${current.access.domain}`;
 			return {
-				httpBaseUrl: `https://${route.domain}`,
-				wsBaseUrl: `wss://${route.domain}`,
+				httpBaseUrl: `https://${domain}`,
+				wsBaseUrl: `wss://${domain}`,
 			};
 		},
 	);
