@@ -1,3 +1,7 @@
+import { shouldIncludeInTranscript } from "@zuse/domain/conversation/transcript";
+
+export { shouldIncludeInTranscript } from "@zuse/domain/conversation/transcript";
+
 /** Canonical mapping between durable message content and provider transcripts. */
 import type {
 	AgentEvent,
@@ -34,17 +38,6 @@ export const messageContentToText = (content: MessageContent): string => {
 			return `[${content._tag}]`;
 	}
 };
-
-const transcriptSkipKinds: ReadonlySet<string> = new Set([
-	"usage",
-	"context_usage",
-	"context_compaction",
-	"usage_limit",
-	"subagent_progress",
-]);
-
-export const shouldIncludeInTranscript = (content: MessageContent): boolean =>
-	!transcriptSkipKinds.has(content._tag);
 
 const clampBlock = (value: string, max = 2000): string =>
 	value.length > max

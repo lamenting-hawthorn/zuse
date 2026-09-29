@@ -92,3 +92,22 @@ setup, scanning, receiving (file counts and received bytes), and publication are
 distinct. Transfer progress updates are throttled to four per second. Initial sync
 still depends on gateway throughput; progress does not imply publication
 until the complete batch verifies.
+
+## Archive cleanup
+
+A confirmed `archived` catalog state stops and joins the desktop worker, then
+removes the local snapshot and its workspace-owned sibling download cache.
+Archived entries are also reconciled on desktop startup, even when sync is disabled.
+Pausing, disconnecting, and disabling sync retain local files. The sync preference
+is unchanged: once an unarchived workspace becomes ready, enabled sync creates a
+directory if needed and downloads the current cloud working tree.
+
+Cleanup validates workspace ownership, then removes only synced files whose local
+contents still match the committed snapshot. Local edits and extra files stay in
+place, along with their parent directories and the sync ownership marker; they do
+not prevent removal of unchanged synced files or the download cache. Empty parent
+directories of removed files are pruned without traversing local-only trees.
+Unarchiving uses the normal one-way cloud sync behavior, including replacing local
+edits to cloud-selected paths. Interrupted publication, foreign markers, and root
+symlink ancestors preserve the folder and report a sync error. A later app startup
+can retry failed cleanup.

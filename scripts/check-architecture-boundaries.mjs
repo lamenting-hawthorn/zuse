@@ -32,6 +32,15 @@ const rule = (id, description, owns, patterns, exclude = () => false) => ({
  */
 export const architectureRules = [
 	rule(
+		"renderer-git-state-owner",
+		"Git state reads must use the shared git-workspace ClientBus resource.",
+		(path) => /^apps\/renderer\/src\//u.test(path),
+		[
+			/["']git\.(?:workspaceSnapshot|workspaceChanges|status|changes|prState|reviewSummary|reviewPatches|prDetails)["']/u,
+		],
+		(path) => path === "apps/renderer/src/lib/git-workspace-client-bus.ts",
+	),
+	rule(
 		"renderer-raw-rpc",
 		"Renderer surfaces must dispatch through ClientBus instead of owning RPC clients.",
 		isRendererOwner,

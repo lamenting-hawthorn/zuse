@@ -62,13 +62,21 @@ describe("ensureSqliteRenameCompatibility", () => {
 		await fs.rm(dir, { recursive: true, force: true });
 	});
 
-	it("copies memoize.sqlite to zuse.sqlite once and records the migration", async () => {
+	it("snapshots memoize.sqlite to zuse.sqlite once and records the migration", async () => {
 		const legacyPath = Path.join(dir, "memoize.sqlite");
-		await fs.writeFile(legacyPath, "legacy-db");
+		createProjectsDb(legacyPath, 1);
 
 		await ensureSqliteRenameCompatibility(dir);
 
-		expect(await fs.readFile(sqliteDbPath(dir), "utf8")).toBe("legacy-db");
+		const migrated = new DatabaseSync(sqliteDbPath(dir), { readOnly: true });
+		try {
+			const row = migrated
+				.prepare("SELECT count(*) AS count FROM projects")
+				.get() as { count: number };
+			expect(row.count).toBe(1);
+		} finally {
+			migrated.close();
+		}
 
 		const state = JSON.parse(
 			await fs.readFile(Path.join(dir, "zuse-migration-state.json"), "utf8"),
@@ -133,6 +141,84 @@ describe("ensureSqliteRenameCompatibility", () => {
 		} finally {
 			await fs.rm(appSupport, { recursive: true, force: true });
 		}
+	});
+
+	it("preserves committed project rows stored in the legacy WAL", async () => {
+		const appSupport = await fs.mkdtemp(
+			Path.join(os.tmpdir(), "zuse-app-support-wal-"),
+		);
+		const zuseDir = Path.join(appSupport, "Zuse Alpha");
+		const legacyDir = Path.join(appSupport, "memoize Alpha");
+		await fs.mkdir(zuseDir, { recursive: true });
+		await fs.mkdir(legacyDir, { recursive: true });
+
+		const legacy = Path.join(legacyDir, "memoize.sqlite");
+		// Keep a writer open with auto-checkpoint disabled to model a legacy DB
+		// whose committed project insert exists in WAL but not in the main file.
+		const writer = new DatabaseSync(legacy);
+		try {
+			writer.exec(`
+				PRAGMA journal_mode = WAL;
+				PRAGMA wal_autocheckpoint = 0;
+				CREATE TABLE projects (
+					id TEXT PRIMARY KEY,
+					path TEXT NOT NULL,
+					name TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				);
+				PRAGMA wal_checkpoint(TRUNCATE);
+			`);
+			writer
+				.prepare(
+					"INSERT INTO projects (id, path, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+				)
+				.run(
+					"wal-project",
+					"/tmp/wal-project",
+					"WAL project",
+					"2026-06-30T00:00:00.000Z",
+					"2026-06-30T00:00:00.000Z",
+				);
+
+			const walPath = `${legacy}-wal`;
+			expect(fsSync.statSync(walPath).size).toBeGreaterThan(0);
+			await ensureSqliteRenameCompatibility(zuseDir);
+
+			if (process.platform !== "win32") {
+				const mode = (await fs.stat(sqliteDbPath(zuseDir))).mode & 0o777;
+				expect(mode).toBe(0o600);
+			}
+
+			const migrated = new DatabaseSync(sqliteDbPath(zuseDir), {
+				readOnly: true,
+			});
+			try {
+				const row = migrated
+					.prepare("SELECT count(*) AS count FROM projects")
+					.get() as { count: number };
+				expect(row.count).toBe(1);
+			} finally {
+				migrated.close();
+			}
+		} finally {
+			writer.close();
+			await fs.rm(appSupport, { recursive: true, force: true });
+		}
+	});
+
+	it("does not publish a partial database when snapshotting fails", async () => {
+		const legacy = Path.join(dir, "memoize.sqlite");
+		const contents = Buffer.alloc(80 * 1024, 0x5a);
+		await fs.writeFile(legacy, contents);
+
+		await expect(ensureSqliteRenameCompatibility(dir)).rejects.toThrow();
+
+		expect(await fs.readFile(legacy)).toEqual(contents);
+		expect(fsSync.existsSync(sqliteDbPath(dir))).toBe(false);
+		expect(
+			(await fs.readdir(dir)).filter((name) => name.startsWith("zuse.sqlite.")),
+		).toEqual([]);
 	});
 
 	it("does nothing when there is no legacy database", async () => {

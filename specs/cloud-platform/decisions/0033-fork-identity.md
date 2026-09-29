@@ -123,3 +123,25 @@ on wayfinder map #336.
   full replay, no gap/dupe cases across the divergence point.
 - API gains one new grant path (enrollment-token link proof) instead of a
   parallel identity scheme.
+
+## Boxd implementation note (2026-09)
+
+Native boxd forks inherit the source host-enforced egress allowlist. The
+implementation briefly quarantines the source under a lifecycle lease,
+persists recovery intent before touching networking, and restores source
+networking after fork. Source identity and storage are unchanged.
+
+The current workspace runtime stores durable commands alongside conversation
+history. Instead of replaying that entire copied store as a new environment,
+the child retains the verified full database directory, including WAL, as a
+read-only import source and starts a separate live store. The shared transcript
+fork imports the selected conversation with deterministic IDs. The new
+workspace's machine-fork metadata records source workspace, chat, session, and
+message. Thus this implementation preserves the source log for recovery but
+does not continue its sequence in the child's live log.
+
+The copied runtime cgroup, including managed agents, is stopped before
+networking opens. The fresh bootstrap authenticates with a new bound token;
+no copied queue is resumed. Other VM processes retain native cloned memory.
+Network access opens for this fresh bootstrap, which requires API access to
+enroll; agent work begins through the existing authenticated runtime flow.

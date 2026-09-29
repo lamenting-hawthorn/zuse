@@ -2,7 +2,7 @@ import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Effect } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { expect, it } from "vitest";
-import { Migration0059ChatUserMessageTime } from "../../src/persistence/migrations/0059_chat_user_message_time.ts";
+import { Migration0060ChatUserMessageTime } from "../../src/persistence/migrations/0060_chat_user_message_time.ts";
 
 it("backfills user recency across threads without using assistant activity", async () => {
 	const rows = await Effect.runPromise(
@@ -16,7 +16,7 @@ it("backfills user recency across threads without using assistant activity", asy
 			yield* sql`INSERT INTO sessions VALUES ('one', 'chat'), ('two', 'chat'), ('three', 'queued')`;
 			yield* sql`INSERT INTO messages VALUES ('one', 'user', '2026-09-01'), ('two', 'user', '2026-09-02'), ('two', 'assistant', '2026-09-03')`;
 			yield* sql`INSERT INTO queued_messages VALUES ('three', '2026-09-04')`;
-			yield* Migration0059ChatUserMessageTime;
+			yield* Migration0060ChatUserMessageTime;
 			return yield* sql`SELECT * FROM chats ORDER BY id`;
 		}).pipe(Effect.provide(sqliteLayer({ filename: ":memory:" }))),
 	);

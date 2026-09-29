@@ -81,6 +81,7 @@ export interface PolarBillingClient {
 		readonly eventName: string;
 		readonly units: number;
 		readonly idempotencyKey: string;
+		readonly occurredAtMs?: number;
 		readonly metadata: Readonly<Record<string, string>>;
 	}) => Promise<void>;
 	readonly getCustomerMeterUnits: (input: {
@@ -170,6 +171,10 @@ const makeSdkClient = (config: PolarBillingConfig): PolarBillingClient => {
 				events: [
 					{
 						name: input.eventName,
+						timestamp:
+							input.occurredAtMs === undefined
+								? undefined
+								: new Date(input.occurredAtMs),
 						externalId: input.idempotencyKey,
 						externalCustomerId: input.externalCustomerId,
 						metadata: { ...input.metadata, units: input.units },
@@ -446,6 +451,9 @@ export const makePolarBillingProvider = (
 					client.ingestMeterEvent({
 						externalCustomerId: input.accountId,
 						eventName: input.eventName,
+						...(input.occurredAtMs === undefined
+							? {}
+							: { occurredAtMs: input.occurredAtMs }),
 						units: input.units,
 						idempotencyKey: input.idempotencyKey,
 						metadata: {

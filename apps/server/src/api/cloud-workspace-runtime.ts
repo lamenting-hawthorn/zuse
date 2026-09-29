@@ -32,6 +32,7 @@ import {
 	ChatId,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+	CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
 	CLOUD_TRANSCRIPT_CHECKPOINT_SCHEMA_VERSION,
 	type CloudAuthProvider,
 	CloudRuntimeAssetDownload,
@@ -59,6 +60,7 @@ import {
 	WORKSPACE_GATEWAY_AUTH_EXPIRED_CLOSE,
 	WORKSPACE_GATEWAY_STALE_GENERATION_CLOSE,
 	WORKSPACE_GATEWAY_UPDATE_REQUIRED_CLOSE,
+	type WorkspaceGatewayFrame,
 	workspaceGatewayArrayBuffer,
 } from "@zuse/contracts";
 import type { CommandReceiptIdentity } from "@zuse/domain/engine/dispatch";
@@ -104,6 +106,8 @@ import {
 	MessageService,
 	SessionService,
 	type SessionServiceShape,
+	TranscriptService,
+	type TranscriptServiceShape,
 } from "../conversation/services/conversation-services.ts";
 import { CloudDeviceCommandClient } from "../device-bridge/cloud-client.ts";
 import { LanAuthService } from "../lan-auth/services/lan-auth-service.ts";
@@ -117,6 +121,7 @@ import {
 import { CloudCodexAuth } from "./cloud-codex-auth.ts";
 import { CloudProviderAuth } from "./cloud-provider-auth.ts";
 import { cloudStorageIncarnationId } from "./cloud-storage-incarnation.ts";
+import { makeCloudWorkspaceRpcActivity } from "./cloud-workspace-activity.ts";
 import {
 	makeCloudApiCommandPump,
 	runCloudApiTurnEventStream,
@@ -275,6 +280,13 @@ const BootstrapResponse = Schema.Struct({
 			permissions: Schema.Array(Schema.String),
 			firstMessage: Schema.optional(Schema.String),
 			pendingRename: Schema.optional(Schema.String),
+			forkSource: Schema.optional(
+				Schema.Struct({
+					chatId: Schema.String,
+					sessionId: Schema.String,
+					messageId: Schema.String,
+				}),
+			),
 		}),
 	),
 	sealedTranscriptKey: Schema.String,
@@ -1939,6 +1951,8 @@ const removeBootToken = (path: string | undefined) =>
 			}).pipe(Effect.ignore);
 
 export const startCloudWorkspaceLaunchIntent = (input: {
+	readonly transcripts?: TranscriptServiceShape;
+	readonly workspaceId?: string;
 	readonly workspaces: WorkspaceServiceShape;
 	readonly chats: ChatServiceShape;
 	readonly chatId: string;
@@ -1963,6 +1977,27 @@ export const startCloudWorkspaceLaunchIntent = (input: {
 				.pipe(Effect.mapError(() => fail("workspace_registration_failed"))));
 		const title = input.launchIntent.pendingRename ?? input.launchIntent.title;
 		const commandId = input.launchIntent.commandId;
+		const fork = input.launchIntent.forkSource;
+		if (fork !== undefined) {
+			if (input.transcripts === undefined || input.workspaceId === undefined)
+				return yield* Effect.fail(fail("workspace_machine_fork_unavailable"));
+			yield* input.transcripts
+				.forkSession({
+					sourceSessionId: SessionId.make(fork.sessionId),
+					fromMessageId: MessageId.make(fork.messageId),
+					destination: "chat",
+					chatId: ChatId.make(input.chatId),
+					initialSessionId: SessionId.make(input.sessionId),
+					commandId,
+					sourceSnapshot: {
+						databasePath: `/var/lib/zuse/fork-source/${input.workspaceId}/user-data/zuse.sqlite`,
+						chatId: ChatId.make(fork.chatId),
+						projectId: FolderId.make(folder.id),
+					},
+				})
+				.pipe(Effect.mapError(() => fail("workspace_machine_fork_failed")));
+			return;
+		}
 		yield* input.chats
 			.createChat({
 				chatId: ChatId.make(input.chatId),
@@ -2052,6 +2087,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 	| LanAuthService
 	| AttachmentService
 	| WorkspaceService
+	| TranscriptService
 	| ChatService
 	| MessageService
 	| SessionService
@@ -2068,6 +2104,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 					const attachments = yield* AttachmentService;
 					const workspaces = yield* WorkspaceService;
 					const chats = yield* ChatService;
+					const transcripts = yield* TranscriptService;
 					const messages = yield* MessageService;
 					const sessions = yield* SessionService;
 					const sql = yield* SqlClient.SqlClient;
@@ -2113,7 +2150,10 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							body: {
 								credentialPublicJwk,
 								signingPublicJwk,
-								capabilities: [CLOUD_RUNTIME_API_ASSETS_CAPABILITY],
+								capabilities: [
+									CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+									CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
+								],
 							},
 						}),
 					);
@@ -2584,11 +2624,11 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						).pipe(Effect.forkScoped({ startImmediately: true }));
 						return publisher;
 					});
-					const publishActivity = () => {
+					const observeRpcActivity = makeCloudWorkspaceRpcActivity(() => {
 						void Effect.runPromise(
 							summaryPublisher.publish("activity").pipe(Effect.ignore),
 						);
-					};
+					});
 					const apiCommandPump = yield* makeCloudApiCommandPump({
 						fetchCommands: Effect.suspend(() =>
 							requestJson({
@@ -2757,23 +2797,22 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							{ once: true },
 						);
 						socket.addEventListener("message", (event) => {
-							publishActivity();
 							if (
 								typeof event.data === "string" ||
 								event.data instanceof ArrayBuffer ||
 								ArrayBuffer.isView(event.data)
 							) {
+								const frame: WorkspaceGatewayFrame = {
+									direction: "runtime",
+									connectionId,
+									payload:
+										typeof event.data === "string"
+											? event.data
+											: workspaceGatewayArrayBuffer(event.data),
+								};
+								observeRpcActivity(frame);
 								try {
-									sendGateway(
-										encodeWorkspaceGatewayFrame({
-											direction: "runtime",
-											connectionId,
-											payload:
-												typeof event.data === "string"
-													? event.data
-													: workspaceGatewayArrayBuffer(event.data),
-										}),
-									);
+									sendGateway(encodeWorkspaceGatewayFrame(frame));
 								} catch {
 									socket.close(1009, "local RPC frame too large");
 								}
@@ -2829,7 +2868,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 										workspaceGatewayArrayBuffer(event.data),
 									);
 									if (frame?.direction !== "client") return;
-									publishActivity();
+									observeRpcActivity(frame);
 									const local = localSockets.get(frame.connectionId);
 									const pending = pendingLocalFrames.get(frame.connectionId);
 									// No frame buffer lives in the gateway. The runtime holds only
@@ -3013,6 +3052,8 @@ export const makeCloudWorkspaceRuntimeLayer = (
 
 					if (launchIntent !== undefined) {
 						const started = yield* startCloudWorkspaceLaunchIntent({
+							transcripts,
+							workspaceId: config.workspaceId,
 							workspaces,
 							chats,
 							chatId: bootstrap.chatId,

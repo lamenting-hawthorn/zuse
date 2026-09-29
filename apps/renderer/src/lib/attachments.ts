@@ -1,14 +1,13 @@
+import { uploadAttachmentInChunks } from "@zuse/client-runtime/attachment-upload";
 import type { SessionRef } from "@zuse/client-runtime/resource-ref";
-import { type AttachmentRef, CommandId } from "@zuse/contracts";
+import {
+	type AttachmentRef,
+	type AttachmentUploadResult,
+	CommandId,
+	MAX_ATTACHMENT_BYTES,
+} from "@zuse/contracts";
 import { useEffect, useState } from "react";
 import { dispatchSessionCommand } from "./session-timeline-client-bus.ts";
-
-/**
- * Per-image cap that mirrors the server-side validator. Rejecting in the
- * renderer first keeps the round-trip toast fast and avoids ever sending
- * gigabytes that would be rejected anyway.
- */
-const MAX_IMAGE_BYTES = 100 * 1024 * 1024;
 
 const fileToBytes = (file: File): Promise<Uint8Array> =>
 	new Promise((resolve, reject) => {
@@ -37,23 +36,36 @@ export const uploadAttachmentBytes = async (
 		readonly rootPath?: string;
 	},
 ): Promise<AttachmentRef> => {
-	const result = (
-		await dispatchSessionCommand({
-			ref,
-			kind: "attachments.upload",
-			commandId: CommandId.make(
-				`attachment-upload:${ref.sessionId}:${crypto.randomUUID()}`,
-			),
-			payload: {
-				sessionId: ref.sessionId,
-				bytes: input.bytes,
-				mimeType: input.mimeType,
-				originalName: input.originalName,
-				...(input.rootPath ? { rootPath: input.rootPath } : {}),
-			},
-			retry: "never",
-		})
-	).result as Readonly<{ id: string; mimeType: string }>;
+	const dispatchUpload = async (
+		kind: "attachments.upload" | "attachments.uploadChunk",
+		payload: unknown,
+	) =>
+		(
+			await dispatchSessionCommand({
+				ref,
+				kind,
+				commandId: CommandId.make(
+					`attachment-upload:${ref.sessionId}:${crypto.randomUUID()}`,
+				),
+				payload,
+				retry: "never",
+			})
+		).result;
+	const result = await uploadAttachmentInChunks(
+		{ ...input, sessionId: ref.sessionId },
+		{
+			upload: async (payload) =>
+				(await dispatchUpload(
+					"attachments.upload",
+					payload,
+				)) as AttachmentUploadResult,
+			uploadChunk: async (payload) =>
+				(await dispatchUpload(
+					"attachments.uploadChunk",
+					payload,
+				)) as AttachmentUploadResult | null,
+		},
+	);
 	if (result.mimeType.startsWith("image/")) {
 		cacheAttachmentPreview(
 			ref,
@@ -73,8 +85,8 @@ export const uploadAttachment = async (
 	file: File,
 	rootPath?: string,
 ): Promise<AttachmentRef> => {
-	if (file.size > MAX_IMAGE_BYTES) {
-		throw new Error("Image too large (max 100 MB)");
+	if (file.size > MAX_ATTACHMENT_BYTES) {
+		throw new Error("File too large (max 100 MB)");
 	}
 	return uploadAttachmentBytes(ref, {
 		bytes: await fileToBytes(file),

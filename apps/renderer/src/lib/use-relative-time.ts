@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { startVisibleInterval } from "./visible-interval.ts";
 
 /**
  * Re-renders the caller every `intervalMs` to keep "X seconds ago" strings
@@ -6,10 +7,10 @@ import { useEffect, useState } from "react";
  */
 export function useRelativeTimeTick(intervalMs: number = 30_000): number {
 	const [, setTick] = useState(0);
-	useEffect(() => {
-		const id = window.setInterval(() => setTick((t) => t + 1), intervalMs);
-		return () => window.clearInterval(id);
-	}, [intervalMs]);
+	useEffect(
+		() => startVisibleInterval(() => setTick((t) => t + 1), intervalMs),
+		[intervalMs],
+	);
 	return Date.now();
 }
 

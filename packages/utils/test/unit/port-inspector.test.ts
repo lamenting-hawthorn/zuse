@@ -8,6 +8,16 @@ import {
 } from "../../src/port-inspector.js";
 
 describe("listening server parsers", () => {
+	it("excludes all runtime ports, including anonymous bridge listeners", () => {
+		const output = [
+			"LISTEN 0 511 10.0.0.2:34903 0.0.0.0:*",
+			'LISTEN 0 511 127.0.0.1:34903 0.0.0.0:* users:(("node",pid=379,fd=1))',
+			'LISTEN 0 511 127.0.0.1:3001 0.0.0.0:* users:(("next-server",pid=3812,fd=2))',
+		].join("\n");
+		expect(parseSsListeners(output, 379)).toEqual([
+			{ name: "next-server", port: 3001, loopbackOnly: true },
+		]);
+	});
 	it("parses Linux ss output and deduplicates ports", () => {
 		const result = parseSsListeners(
 			[

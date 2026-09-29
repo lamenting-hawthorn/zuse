@@ -1,5 +1,8 @@
+import { openPathInTarget } from "../lib/open-path-in-target.ts";
 import { useGitPrState } from "../lib/use-git-pr-state.ts";
+import { CopyButton } from "./copy-button.tsx";
 import { GitStackMenu } from "./git-stack-menu.tsx";
+import { PreviewPortsMenu } from "./preview-ports-menu.tsx";
 import "@zuse/i18n/english/projects";
 import { isInputComposing } from "../lib/input-composition.ts";
 import { CreateBranchDialog } from "./create-branch-dialog.tsx";
@@ -40,7 +43,7 @@ import {
 	Upload01Icon,
 	Wrench01Icon,
 } from "@zuse/icons/solid-rounded";
-import { ChevronDown, ChevronRight, PanelBottom } from "lucide-react";
+import { ChevronDown, PanelBottom } from "lucide-react";
 import {
 	type CSSProperties,
 	lazy,
@@ -86,10 +89,9 @@ import {
 } from "../store/repository-settings.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { rightPaneKey, useUiStore } from "../store/ui.ts";
-import { useWorkspaceStore } from "../store/workspace.ts";
 import { useWorktreesStore } from "../store/worktrees.ts";
 import {
-	CloudWorkspaceOpenSshMenu,
+	CloudWorkspaceMenu,
 	useIsCloudWorkspace,
 } from "./cloud-workspace-info.tsx";
 import {
@@ -209,7 +211,12 @@ export function TopBarLeft() {
  * regardless of which way the files panel is currently leaning).
  */
 export function TopBarMain() {
-	const { message: uiMessage } = useUiMessages(["chat", "projects", "common"]);
+	const { message: uiMessage } = useUiMessages([
+		"connections",
+		"chat",
+		"projects",
+		"common",
+	]);
 
 	// Pull folderId + worktreeId from the canonical active context so the
 	// branch label can never disagree with the terminal cwd, file tree root,
@@ -260,6 +267,8 @@ export function TopBarMain() {
 				) ?? registeredCloudSummary),
 	);
 	const cachedCloudContext = cloudTopBarContext(cloudSummary);
+	const origin = useActiveEnvironmentEntities().originsByFolder[folderId ?? ""];
+	const originOwner = origin?.owner ?? cachedCloudContext?.owner ?? null;
 	const rightSidebarOpen = useUiStore((s) =>
 		selectedChatKey === null
 			? false
@@ -288,14 +297,6 @@ export function TopBarMain() {
 	const isCloudWorkspace = useIsCloudWorkspace(
 		ctx.status === "ready" ? ctx.environmentId : null,
 	);
-	const folder = useWorkspaceStore((s) =>
-		folderId ? (s.folders.find((f) => f.id === folderId) ?? null) : null,
-	);
-	const origin = useActiveEnvironmentEntities().originsByFolder[folderId ?? ""];
-	const originLabel =
-		origin !== null && origin !== undefined
-			? `${origin.owner}/${origin.repo}`
-			: null;
 	const [branches, setBranches] = useState<ReadonlyArray<GitBranchInfo>>([]);
 	const [branchesLoading, setBranchesLoading] = useState(false);
 	const [branchError, setBranchError] = useState<string | null>(null);
@@ -319,15 +320,6 @@ export function TopBarMain() {
 	);
 	const branchLabel = resolvedBranch.label;
 	const branchIsCached = resolvedBranch.cached;
-	const repoLabel =
-		originLabel ??
-		cachedCloudContext?.repositoryLabel ??
-		folder?.name ??
-		(ctx.status === "worktree-pending"
-			? "Preparing repository"
-			: "No repository");
-	const originOwner =
-		originLabel?.split("/", 1)[0] ?? cachedCloudContext?.owner ?? null;
 	const showLeftToggle = !leftSidebarOpen;
 	// When the left panel is open its own header carries the traffic-light
 	// gutter, so this section starts flush. When it's collapsed we slide the
@@ -431,42 +423,42 @@ export function TopBarMain() {
 			<div className={`flex min-w-0 flex-1 items-center ${ACTION_CLASS}`}>
 				{hasSession ? (
 					<nav
-						aria-label={uiMessage("chat:top_bar_repository_location")}
-						className="flex min-w-0 max-w-[min(460px,100%)] items-center gap-1 text-[11px]"
+						aria-label={uiMessage("chat:top_bar_branch_name")}
+						className="flex min-w-0 max-w-[min(208px,100%)] items-center gap-1 text-[11px]"
 					>
-						<Avatar className="mr-0.5 size-4 shrink-0 rounded-sm">
-							{originOwner !== null ? (
-								<AvatarImage
-									src={`https://github.com/${encodeURIComponent(originOwner)}.png?size=32`}
-									alt=""
-								/>
-							) : null}
-							<AvatarFallback className="rounded-sm bg-foreground/8 text-[8px] text-muted-foreground">
-								{repoLabel.slice(0, 1).toUpperCase()}
-							</AvatarFallback>
-						</Avatar>
-						<span
-							className="max-w-44 truncate font-medium text-foreground/90"
-							title={repoLabel}
-						>
-							{repoLabel}
-						</span>
 						{branchLabel ? (
 							<>
-								<ChevronRight className="size-3 shrink-0 text-muted-foreground/50" />
-								{branchIsCached ? (
+								<Avatar className="size-3.5 shrink-0 rounded-sm">
+									{originOwner !== null ? (
+										<AvatarImage
+											src={`https://github.com/${encodeURIComponent(originOwner)}.png?size=32`}
+											alt=""
+										/>
+									) : null}
+									<AvatarFallback className="rounded-sm bg-foreground/8 text-[8px] text-muted-foreground">
+										{(
+											originOwner ??
+											cachedCloudContext?.repositoryLabel ??
+											branchLabel
+										)
+											.slice(0, 1)
+											.toUpperCase()}
+									</AvatarFallback>
+								</Avatar>
+								{branchIsCached || isCloudWorkspace ? (
 									<span
-										className="min-w-0 max-w-52 truncate px-1 text-muted-foreground"
+										className="min-w-0 max-w-36 truncate px-1 text-muted-foreground"
 										title={branchLabel}
 									>
 										{branchLabel}
 									</span>
 								) : (
 									<BranchMenuButton
+										showIcon={false}
 										branchLabel={branchLabel}
 										branches={branches}
 										canRename={worktreeId !== null}
-										className="min-w-0 max-w-52 px-1 py-0 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+										className="min-w-0 max-w-36 [&>svg]:size-3 px-1 py-0 text-[11px] font-normal text-muted-foreground hover:text-foreground"
 										dirtyFiles={status?.dirtyFiles ?? 0}
 										error={branchError}
 										loading={branchesLoading}
@@ -478,6 +470,13 @@ export function TopBarMain() {
 										onSwitch={(branch) => void switchToBranch(branch)}
 									/>
 								)}
+								<CopyButton
+									text={branchLabel}
+									label={uiMessage(
+										"connections:cloud_workspace_menu_copy_branch",
+									)}
+									className="h-7 w-6 [&_svg]:size-3"
+								/>
 							</>
 						) : null}
 					</nav>
@@ -505,11 +504,14 @@ export function TopBarMain() {
 				</Suspense>
 			) : null}
 			{hasSession ? (
-				isCloudWorkspace && ctx.status === "ready" ? (
-					<CloudWorkspaceOpenSshMenu
-						workspaceId={ctx.environmentId}
-						className={ACTION_CLASS}
-					/>
+				cloudSummary !== null ? (
+					<div className="flex items-center gap-1">
+						<PreviewPortsMenu environmentId={cloudSummary.workspaceId} />
+						<CloudWorkspaceMenu
+							workspaceId={cloudSummary.workspaceId}
+							className={ACTION_CLASS}
+						/>
+					</div>
 				) : (
 					<OpenInMenu rootPath={ctx.status === "ready" ? ctx.rootPath : null} />
 				)
@@ -611,6 +613,7 @@ export function TopBarMain() {
 }
 
 export function BranchMenuButton({
+	showIcon = true,
 	branchLabel,
 	branches,
 	canRename,
@@ -623,6 +626,7 @@ export function BranchMenuButton({
 	onRename,
 	onSwitch,
 }: {
+	showIcon?: boolean;
 	branchLabel: string;
 	branches: ReadonlyArray<GitBranchInfo>;
 	canRename: boolean;
@@ -635,7 +639,12 @@ export function BranchMenuButton({
 	onRename: () => void;
 	onSwitch: (branch: GitBranchInfo) => void;
 }) {
-	const { message: uiMessage } = useUiMessages(["chat", "projects", "common"]);
+	const { message: uiMessage } = useUiMessages([
+		"connections",
+		"chat",
+		"projects",
+		"common",
+	]);
 
 	const executionRef = executionRefFor(useActiveContext());
 	const [createFrom, setCreateFrom] = useState<"HEAD" | "origin/main" | null>(
@@ -663,10 +672,12 @@ export function BranchMenuButton({
 					className={`flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-foreground outline-none hover:bg-foreground/5 data-[popup-open]:bg-foreground/5 ${className ?? "max-w-64"}`}
 					aria-label={uiMessage("chat:top_bar_switch_branch")}
 				>
-					<HugeiconsIcon
-						icon={GitBranchIcon}
-						className="size-3.5 shrink-0 text-muted-foreground"
-					/>
+					{showIcon ? (
+						<HugeiconsIcon
+							icon={GitBranchIcon}
+							className="size-3.5 shrink-0 text-muted-foreground"
+						/>
+					) : null}
 					<span
 						className="min-w-0 flex-1 truncate text-left"
 						title={branchLabel}
@@ -696,6 +707,17 @@ export function BranchMenuButton({
 					align="start"
 					className="w-72"
 				>
+					<div className="flex items-center gap-2 px-2 py-1">
+						<span className="min-w-0 flex-1 select-text break-all text-xs">
+							{branchLabel}
+						</span>
+						<CopyButton
+							text={branchLabel}
+							label={uiMessage("connections:cloud_workspace_menu_copy_branch")}
+							className="h-7 w-7"
+						/>
+					</div>
+					<MenuSeparator />
 					{error !== null ? (
 						<div className="max-w-72 px-2 py-1.5 text-[11px] leading-snug text-[var(--accent-red)]">
 							{error}
@@ -856,7 +878,12 @@ function RenameBranchDialog({
 	onRenamed: () => Promise<void>;
 	worktreeId: WorktreeId;
 }) {
-	const { message: uiMessage } = useUiMessages(["chat", "projects", "common"]);
+	const { message: uiMessage } = useUiMessages([
+		"connections",
+		"chat",
+		"projects",
+		"common",
+	]);
 
 	const rename = async (next: string) => {
 		await dispatchGitWorkspaceCommand({
@@ -884,7 +911,12 @@ function RenameBranchDialog({
 }
 
 function OpenInMenu({ rootPath }: { rootPath: string | null }) {
-	const { message: uiMessage } = useUiMessages(["chat", "projects", "common"]);
+	const { message: uiMessage } = useUiMessages([
+		"connections",
+		"chat",
+		"projects",
+		"common",
+	]);
 
 	const capabilities = rendererPlatformCapabilities();
 	const [targets, setTargets] = useState<ReadonlyArray<OpenTarget>>([]);
@@ -914,12 +946,7 @@ function OpenInMenu({ rootPath }: { rootPath: string | null }) {
 
 	const openTarget = async (target: OpenTarget): Promise<void> => {
 		if (rootPath === null) return;
-		const bridge = window.zuse?.app;
-		if (target.id === "finder") {
-			await bridge?.revealPath?.(rootPath);
-			return;
-		}
-		await bridge?.openPathInApp?.(rootPath, target.id);
+		await openPathInTarget(rootPath, target.id);
 	};
 
 	const copyPath = async (): Promise<void> => {
@@ -1005,7 +1032,12 @@ function OpenInMenu({ rootPath }: { rootPath: string | null }) {
  * the old worktree pane's Run affordance, now promoted to the top bar).
  */
 function RunButton() {
-	const { message: uiMessage } = useUiMessages(["chat", "projects", "common"]);
+	const { message: uiMessage } = useUiMessages([
+		"connections",
+		"chat",
+		"projects",
+		"common",
+	]);
 
 	const ctx = useActiveContext();
 	const folderId = ctx.status === "ready" ? ctx.folderId : null;

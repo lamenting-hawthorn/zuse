@@ -15,6 +15,7 @@ import {
 } from "./session.ts";
 
 export const CLOUD_WORKSPACE_OFFER_ID = "cloud-workspace-standard-v1" as const;
+export const CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY = "machine-fork-v1";
 
 export const CloudProjectState = Schema.Literals([
 	"connected",
@@ -531,6 +532,12 @@ export class CloudWorkspaceList extends Schema.Class<CloudWorkspaceList>(
 	"CloudWorkspaceList",
 )({ workspaces: Schema.Array(CloudWorkspace) }) {}
 
+const CloudMachineForkSource = Schema.Struct({
+	workspaceId: Schema.String,
+	sessionId: AgentSessionId,
+	messageId: Schema.String,
+});
+
 export class CloudWorkspaceCreateRequest extends Schema.Class<CloudWorkspaceCreateRequest>(
 	"CloudWorkspaceCreateRequest",
 )({
@@ -552,6 +559,16 @@ export class CloudWorkspaceCreateRequest extends Schema.Class<CloudWorkspaceCrea
 	 */
 	initialMessageDelivery: Schema.optional(Schema.Literal("mailbox-v1")),
 	idempotencyKey: Schema.String,
+	/** Clone this boxd workspace instead of starting from the account image. */
+	forkSource: Schema.optional(CloudMachineForkSource),
+}) {}
+
+/** A distinct method prevents older servers from silently dropping fork intent. */
+export class CloudWorkspaceForkRequest extends Schema.Class<CloudWorkspaceForkRequest>(
+	"CloudWorkspaceForkRequest",
+)({
+	...CloudWorkspaceCreateRequest.fields,
+	forkSource: CloudMachineForkSource,
 }) {}
 
 export class CloudWorkspaceActionRequest extends Schema.Class<CloudWorkspaceActionRequest>(
@@ -690,6 +707,11 @@ export const CloudWorkspacesCreateRpc = Rpc.make("cloud.workspaces.create", {
 	success: CloudWorkspaceLaunch,
 	error: CloudWorkspaceOpError,
 });
+export const CloudWorkspacesForkRpc = Rpc.make("cloud.workspaces.fork", {
+	payload: CloudWorkspaceForkRequest,
+	success: CloudWorkspaceLaunch,
+	error: CloudWorkspaceOpError,
+});
 export const CloudWorkspacesConnectRpc = Rpc.make("cloud.workspaces.connect", {
 	payload: CloudWorkspaceActionRequest,
 	success: CloudWorkspaceConnection,
@@ -735,6 +757,24 @@ export const CloudWorkspacesPreviewUrlRpc = Rpc.make(
 			port: Schema.Number,
 		}),
 		success: CloudWorkspacePreviewUrl,
+		error: CloudWorkspaceOpError,
+	},
+);
+/** Confirms removal of the provider routes for one preview port. */
+export class CloudWorkspacePreviewRevoked extends Schema.Class<CloudWorkspacePreviewRevoked>(
+	"CloudWorkspacePreviewRevoked",
+)({
+	workspaceId: Schema.String,
+	port: Schema.optional(Schema.Number),
+}) {}
+export const CloudWorkspacesRevokePreviewUrlRpc = Rpc.make(
+	"cloud.workspaces.revokePreviewUrl",
+	{
+		payload: Schema.Struct({
+			workspaceId: Schema.String,
+			port: Schema.optional(Schema.Number),
+		}),
+		success: CloudWorkspacePreviewRevoked,
 		error: CloudWorkspaceOpError,
 	},
 );

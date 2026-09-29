@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { expect, test, vi } from "vitest";
+import { SyncFileVerifier } from "../../src/sync/cloud-sync-file-verifier.ts";
 import {
 	applySnapshot,
 	downloadSnapshot,
@@ -83,11 +84,12 @@ test("Gateway archive Git-selected snapshots preserve tracked builds, ignore arb
 	let failGateway = false;
 	let reading = 0,
 		maxReading = 0;
+	const verifier = new SyncFileVerifier();
 	const scan = async () => {
 		const staging = await mkdtemp(join(root, "stage-"));
 		try {
 			const previous = await readSyncManifest(target, "files");
-			const baseline = await localBaseline(target, previous.files);
+			const baseline = await localBaseline(target, previous.files, verifier);
 			const progress = vi.fn();
 			const files = await downloadSnapshot(
 				{
@@ -112,7 +114,14 @@ test("Gateway archive Git-selected snapshots preserve tracked builds, ignore arb
 			expect(progress).toHaveBeenLastCalledWith(
 				expect.objectContaining({ files: files.length, total: files.length }),
 			);
-			await applySnapshot(target, staging, previous, files, controller.signal);
+			await applySnapshot(
+				target,
+				staging,
+				previous,
+				files,
+				controller.signal,
+				verifier,
+			);
 			return files;
 		} finally {
 			await rm(staging, { recursive: true, force: true });

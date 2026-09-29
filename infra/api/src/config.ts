@@ -62,6 +62,7 @@ export interface ApiConfig {
 	>;
 	readonly cloudBillingEnforcementEnabled: boolean;
 	readonly cloudBillingExportEnabled: boolean;
+	readonly cloudUsageExportEnabled: boolean;
 	readonly cloudBillingCutoverAtMs?: number;
 	readonly cloudBillingPolarMeterId?: string;
 	readonly cloudCommandMailboxEnabled: boolean;
@@ -108,6 +109,7 @@ const DEFAULTS = {
 	allowedBrowserOrigins: [HOSTED_APP_URL] as ReadonlyArray<string>,
 	cloudBillingEnforcementEnabled: false,
 	cloudBillingExportEnabled: false,
+	cloudUsageExportEnabled: false,
 	cloudCommandMailboxEnabled: false,
 	cloudCodexAuthBrokerEnrollmentEnabled: false,
 	cloudCodexAuthBrokerServingEnabled: false,

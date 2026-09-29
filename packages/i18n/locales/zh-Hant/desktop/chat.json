@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "無法取消佇列中的訊息。請重試。",
 	"cloud_queue_waiting_for_cloud": "等待雲端啟動",
 	"cloud_history_loading": "正在載入較早的訊息…",
-	"cloud_history_retry": "無法載入較早的訊息 · 重試"
+	"cloud_history_retry": "無法載入較早的訊息 · 重試",
+	"fork_menu_fork_in_new_tab": "分叉到新標籤頁",
+	"fork_menu_new_tab_on_this_machine": "在此機器上開啟新標籤頁，包含截至此訊息的對話。",
+	"fork_menu_fork_in_new_machine": "分叉到新機器",
+	"fork_menu_new_machine_description": "複製此機器，並在獨立的聊天中繼續對話。",
+	"fork_menu_forking_in_new_machine": "正在分叉到新機器"
 }

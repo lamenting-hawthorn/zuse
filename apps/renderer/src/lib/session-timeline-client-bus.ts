@@ -284,6 +284,11 @@ const executeSessionCommand: ClientCommandExecutor<MemoizeClient> = {
 					client["attachments.upload"](payload as never),
 				);
 				break;
+			case "attachments.uploadChunk":
+				result = await Effect.runPromise(
+					client["attachments.uploadChunk"](payload as never),
+				);
+				break;
 			case "attachments.read":
 				result = await Effect.runPromise(
 					client["attachments.read"](payload as never),

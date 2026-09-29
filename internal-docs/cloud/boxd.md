@@ -57,7 +57,10 @@ publish with the same API key owner used by the Worker.
   without network activity. Activity includes packets on the runtime's own
   outbound gateway connection, so an agent working with the desktop closed is
   not hibernated mid-run, and the clock restarts on wake. The reconciler's own
-  idle pause still runs first. Build sandboxes get boxd's destroy timer
+  idle pause still runs first. Zuse refreshes that deadline for explicit user
+  actions and active agent turns, not RPC heartbeats, read polling, or passive
+  subscription responses. Leaving an idle chat connected therefore does not
+  count as continued work. Build sandboxes get boxd's destroy timer
   instead, which counts `createTimeoutSeconds` from the machine's start
   regardless of activity: a build that outlives the deadline is destroyed.
 - Every machine is isolated (no in-VM boxd CLI, integrations, or peers). Egress
@@ -76,16 +79,79 @@ publish with the same API key owner used by the Worker.
   first connection; a new preview port resolves immediately under the
   machine's wildcard. Traffic to a proxy reaches the VM interface, so the
   adapter runs the shared loopback forwarder on every endpoint resolution.
+  The renderer discovers listening ports while a ready Boxd chat or its
+  browser preview is active, publishes verified HTTP ports 1024 and above only after the user enables auto-creation,
+  and shows their URLs in the browser's server list and the
+  dedicated Ports and previews menu in the top bar. Both menus support copying preview URLs. The toolbar's server
+  button returns to that list to switch ports or copy a link. Opening a Boxd
+  preview uses its HTTPS URL when auto-creation is enabled; otherwise it opens
+  a local SSH forward. Other
+  providers retain their existing SSH preview behavior. Chat and browser
+  share one poller per workspace; successful routes are reused, failures
+  retry independently, and discovery backs off while disconnected. Polling
+  stops when neither surface is active or the workspace is no longer ready.
+  These are public URLs: anyone with a link can reach the server. Pausing
+  does not revoke a Boxd link, because inbound proxy traffic can wake the VM.
 - There is no usage endpoint, lifecycle webhook, or event log, and machine
-  records carry only `createdAt` and `hibernatedAt`, so no billing usage
+  records carry only `createdAt` and `hibernatedAt`, so no actual-cost settlement
   source exists for boxd: reservations are made at the price schedule while
   a run lasts, but nothing finalizes them. boxd placements are unbilled until
-  boxd exposes execution events; keep the adapter off where cloud billing is
+  boxd exposes attributable usage. Runtime observations are independently
+  exported to Polar as `zuse_cloud_runtime_observed_ms` when
+  `CLOUD_USAGE_EXPORT_ENABLED=true`; they are sampled activity, not exact costs.
+  See [usage operations](billing.md#usage-visibility-independent-of-invoices); keep the adapter off where cloud billing is
   enforced (`CLOUD_BILLING_ENFORCEMENT_ENABLED`).
 - The 50 concurrent machine cap per organization counts hibernated machines
   and forks. Deleted workspaces free their slot; snapshots do not count.
 
 ## Verification
+
+### Conversation forks
+
+Boxd workspaces expose **Fork in new tab** (same machine) and **Fork in
+new machine** (new chat and machine). Other cloud providers do not expose
+these actions. Local tab/worktree behavior is unchanged.
+
+The desktop uses a dedicated `cloud.workspaces.fork` RPC and
+`POST /v1/cloud/workspaces/fork` endpoint. Older desktop servers and hosted
+APIs reject this operation instead of dropping fork metadata and creating an
+empty image restore. Deploy the API and compatible runtime before enabling
+the action in a desktop build.
+
+A local preview of the selected conversation is staged before opening the new
+chat and persisted in the existing timeline cache. It contains no inherited
+running turn, queue, or interaction state; the authoritative child checkpoint
+replaces it when available.
+
+Machine forks use the native SDK `machines.fork`, preserving the machine's
+disk and memory rather than restoring the project image. The SDK documents
+that native forks inherit the source egress allowlist. The lifecycle owner
+leases the source and persists a network-recovery intent, briefly applies a
+host-enforced quarantine, forks, and restores the parent's networking.
+A reconciler restores it if the worker disappears. Snapshot restores cannot
+use this mechanism because they do not inherit the allowlist.
+
+Within the quarantined child, the copied Zuse runtime and its managed agent
+processes are stopped and restarted with a fresh workspace identity. Other
+machine processes retain their cloned memory. The complete stopped database
+directory (including WAL) is verified and retained under
+`/var/lib/zuse/fork-source/<new-workspace-id>/user-data`; copied queues are
+never attached as the child's live database. The selected conversation through
+the fork point is imported using the shared transcript-fork behavior, including
+native provider continuation where supported. Stable import IDs make retries
+idempotent. Provider session files, attachments, local commits, staged changes,
+and untracked files remain available. The new branch starts at captured HEAD.
+
+The source runtime must advertise `machine-fork-v1`; older runtimes need an
+update before machine forking. Enrollment uses the existing bootstrap flow
+with a fresh token, transcript key, gateway fence, and SSH identity.
+This implements the identity isolation described in
+[fork identity ADR 0033](../../specs/cloud-platform/decisions/0033-fork-identity.md),
+with the current storage behavior described in its implementation note.
+See the installed SDK README or
+[SDK documentation](https://www.npmjs.com/package/@boxd-sh/sdk).
+
+### Provider checks
 
 - Unit: `bun --filter @zuse/sandbox-providers test:unit` (fake SDK client) and
   `bun --filter @zuse/api test:unit`.
@@ -101,3 +167,15 @@ publish with the same API key owner used by the Worker.
 Use the [shared incident debugging runbook](incident-debugging.md), including its
 Boxd-specific access and lifecycle notes. The memory/recovery checks are shared;
 Boat API endpoints and snapshot-file procedures are not interchangeable with Boxd.
+
+Preview auto-publication requires `isWebServer: true` from the runtime. Discovery excludes the runtime process’s own Linux sockets and probes HTTP with bounded HEAD requests, so SSH and other non-HTTP services are not published. Older runtimes without this verification field do not auto-publish; update the cloud runtime to enable discovery.
+
+The Ports and previews menu independently enables public URL auto-creation and local forwarding. Both default off and are remembered per workspace across renderer restarts. Users can explicitly add a port (for example 3001) even when older runtimes cannot verify it; unverified ports are never auto-selected. Turning local forwarding off releases only preview-owned tunnels, including pending opens; tunnels borrowed by another feature remain open. Turning URL auto-creation off revokes issued provider routes and verifies their removal. Publication and cleanup are serialized so an in-flight response cannot escape revocation. The last discovery consumer also triggers cleanup. A durable journal is written before publication and reconciled after renderer restart. Failed revocation remains visibly pending and retries; it must not be presented as a successful switch-off. Cleanup includes legacy `p<port>` routes and pinned default preview routes, but preserves the runtime route. Named routes managed outside Zuse are not adopted for new previews. Provider failures or abrupt app termination can delay deletion; URLs are not time-limited leases, and pending removal means previously shared links may still be public.
+
+Preview bridges use `--preview`: they refuse to bind before the loopback app starts and exit when that app stops (checked every 500 ms with a bounded probe). This releases the VM interface port for the next wildcard-bound dev server. The runtime bridge on 47837 remains persistent so bootstrap and reconnect behavior are unchanged. Existing bridges created by older API builds must be removed after verifying their process identity; deploying the adapter change governs future bridges.
+
+Deploy the API revocation handler before releasing the renderer/native changes.
+An older API or a provider that refuses deletion must produce pending cleanup,
+not a successful off state. Default-route deletion support is provider-dependent;
+the adapter verifies that the hostname is absent after deletion and never falls
+back to auto-detection or a different port to simulate revocation.

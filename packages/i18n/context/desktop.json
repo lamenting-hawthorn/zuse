@@ -24,7 +24,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 287
+				"line": 266
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -34,7 +34,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 300
+				"line": 283
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -44,7 +44,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 317
+				"line": 300
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -54,7 +54,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 323
+				"line": 306
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -64,7 +64,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 336
+				"line": 319
 			},
 			{
 				"path": "apps/renderer/src/components/terminal-pane.tsx",
@@ -78,7 +78,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 340
+				"line": 323
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -88,7 +88,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 354
+				"line": 337
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -98,7 +98,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 363
+				"line": 346
 			},
 			{
 				"path": "apps/renderer/src/components/terminal-pane.tsx",
@@ -200,7 +200,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 851
+				"line": 854
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -210,7 +210,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 849
+				"line": 852
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -220,7 +220,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 852
+				"line": 855
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -598,7 +598,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1584
+				"line": 1560
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -608,7 +608,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1593
+				"line": 1578
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -618,7 +618,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1596
+				"line": 1581
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -628,7 +628,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1597
+				"line": 1582
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -638,7 +638,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1599
+				"line": 1584
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -648,7 +648,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1602
+				"line": 1587
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -658,7 +658,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1605
+				"line": 1590
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -668,7 +668,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1608
+				"line": 1593
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -678,7 +678,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1621
+				"line": 1606
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -688,7 +688,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1633
+				"line": 1618
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -698,7 +698,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1640
+				"line": 1625
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -708,7 +708,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1650
+				"line": 1635
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -718,7 +718,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1667
+				"line": 1652
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -728,7 +728,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1679
+				"line": 1664
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -738,7 +738,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1687
+				"line": 1672
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -748,7 +748,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1733
+				"line": 1718
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -758,7 +758,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1737
+				"line": 1722
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -768,7 +768,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1757
+				"line": 1742
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -778,7 +778,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1758
+				"line": 1743
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -788,7 +788,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1765
+				"line": 1750
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -798,7 +798,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1777
+				"line": 1762
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -808,7 +808,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1789
+				"line": 1774
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -818,7 +818,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1802
+				"line": 1787
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -828,7 +828,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1884
+				"line": 1879
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -838,7 +838,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 3846
+				"line": 1568
+			},
+			{
+				"path": "apps/renderer/src/components/browser-pane.tsx",
+				"line": 3843
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -848,7 +852,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 3847
+				"line": 3844
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -858,7 +862,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 3852
+				"line": 3849
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -882,7 +886,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 3899
+				"line": 3903
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -892,7 +896,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 3902
+				"line": 3906
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -902,11 +906,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1702
+				"line": 1687
 			},
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4032
+				"line": 4036
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -916,11 +920,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4056
+				"line": 4060
 			},
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4062
+				"line": 4066
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -930,7 +934,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4103
+				"line": 4107
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -940,7 +944,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4118
+				"line": 4122
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -950,7 +954,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4130
+				"line": 4134
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -960,7 +964,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 4131
+				"line": 4135
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1854,7 +1858,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1941
+				"line": 1940
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1864,7 +1868,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1942
+				"line": 1941
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1874,7 +1878,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1943
+				"line": 1942
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1884,7 +1888,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1957
+				"line": 1956
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1894,7 +1898,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1973
+				"line": 1972
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1904,7 +1908,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1982
+				"line": 1981
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1914,7 +1918,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2020
+				"line": 2019
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1924,7 +1928,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1816
+				"line": 1815
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1934,7 +1938,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1848
+				"line": 1847
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1944,7 +1948,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2105
+				"line": 2104
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1954,7 +1958,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2108
+				"line": 2107
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1964,7 +1968,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2113
+				"line": 2112
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1974,7 +1978,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2123
+				"line": 2122
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1984,7 +1988,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2124
+				"line": 2123
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -1994,7 +1998,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2133
+				"line": 2132
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2004,7 +2008,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2138
+				"line": 2137
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2014,7 +2018,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2143
+				"line": 2142
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2034,11 +2038,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2282
+				"line": 2281
 			},
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2286
+				"line": 2285
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2048,7 +2052,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2299
+				"line": 2298
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2058,7 +2062,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2300
+				"line": 2299
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2068,7 +2072,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2308
+				"line": 2307
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2078,7 +2082,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2364
+				"line": 2363
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2148,7 +2152,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-view.tsx",
-				"line": 869
+				"line": 875
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -2158,7 +2162,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-view.tsx",
-				"line": 1000
+				"line": 1006
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3137,7 +3141,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 193
+				"line": 218
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3147,7 +3151,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 199
+				"line": 227
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3157,7 +3161,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 214
+				"line": 244
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -3167,7 +3171,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 221
+				"line": 253
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4214,7 +4218,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 895
+				"line": 898
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4224,7 +4228,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 952
+				"line": 955
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4234,7 +4238,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 957
+				"line": 960
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4244,7 +4248,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 1005
+				"line": 1008
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4254,7 +4258,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 1021
+				"line": 1024
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4264,11 +4268,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 1157
+				"line": 1160
 			},
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 1163
+				"line": 1166
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4338,7 +4342,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1563
+				"line": 1539
 			},
 			{
 				"path": "apps/renderer/src/components/startup-surface.tsx",
@@ -4502,7 +4506,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 177
+				"line": 179
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4512,7 +4516,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 187
+				"line": 189
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4522,23 +4526,18 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 417
+				"line": 409
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 425
+				"line": 417
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"chat:top_bar_repository_location": {
 		"source": "Repository location",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 434
-			}
-		],
+		"locations": [],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"chat:top_bar_toggle_environment_summary": {
@@ -4546,11 +4545,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 530
+				"line": 532
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 539
+				"line": 541
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4560,11 +4559,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 583
+				"line": 585
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 602
+				"line": 604
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4574,11 +4573,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 584
+				"line": 586
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 603
+				"line": 605
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4588,7 +4587,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 664
+				"line": 673
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4598,7 +4597,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 711
+				"line": 733
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4608,11 +4607,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 723
+				"line": 745
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 734
+				"line": 756
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4622,7 +4621,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 741
+				"line": 763
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4632,7 +4631,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 765
+				"line": 787
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4642,7 +4641,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 772
+				"line": 794
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4652,7 +4651,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 796
+				"line": 818
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4662,7 +4661,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 873
+				"line": 900
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4672,7 +4671,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 875
+				"line": 902
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4690,7 +4689,11 @@
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 877
+				"line": 426
+			},
+			{
+				"path": "apps/renderer/src/components/top-bar.tsx",
+				"line": 904
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4700,7 +4703,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 943
+				"line": 970
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4709,8 +4712,12 @@
 		"source": "Open in…",
 		"locations": [
 			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 418
+			},
+			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 963
+				"line": 990
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4719,8 +4726,12 @@
 		"source": "Copy path",
 		"locations": [
 			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 489
+			},
+			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 984
+				"line": 1011
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4730,11 +4741,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1047
+				"line": 1079
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1056
+				"line": 1088
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4744,7 +4755,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1089
+				"line": 1121
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4754,7 +4765,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1155
+				"line": 1187
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4764,7 +4775,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1158
+				"line": 1190
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4774,11 +4785,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1241
+				"line": 1273
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1923
+				"line": 1955
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4788,7 +4799,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1242
+				"line": 1274
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4798,7 +4809,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1318
+				"line": 1350
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4808,7 +4819,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1331
+				"line": 1363
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4818,7 +4829,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1332
+				"line": 1364
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4828,7 +4839,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1354
+				"line": 1386
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4838,7 +4849,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1387
+				"line": 1419
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4848,7 +4859,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1388
+				"line": 1420
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4858,7 +4869,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1426
+				"line": 1458
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4868,7 +4879,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1544
+				"line": 1576
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4878,7 +4889,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1546
+				"line": 1578
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4896,7 +4907,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1650
+				"line": 1682
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4906,7 +4917,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1677
+				"line": 1709
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4916,7 +4927,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1683
+				"line": 1715
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4926,11 +4937,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1783
+				"line": 1815
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1819
+				"line": 1851
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4940,11 +4951,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1784
+				"line": 1816
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1820
+				"line": 1852
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4954,7 +4965,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1921
+				"line": 1953
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4964,7 +4975,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1924
+				"line": 1956
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4974,11 +4985,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-activity-tree.tsx",
-				"line": 41
+				"line": 40
 			},
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 218
+				"line": 216
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -4988,11 +4999,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-activity-tree.tsx",
-				"line": 43
+				"line": 42
 			},
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 220
+				"line": 218
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5002,11 +5013,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-activity-tree.tsx",
-				"line": 44
+				"line": 43
 			},
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 221
+				"line": 219
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5016,7 +5027,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 233
+				"line": 231
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5026,7 +5037,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 234
+				"line": 232
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5036,7 +5047,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 351
+				"line": 345
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5206,7 +5217,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 142
+				"line": 146
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5216,7 +5227,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 149
+				"line": 153
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5226,7 +5237,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 156
+				"line": 160
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5236,7 +5247,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 163
+				"line": 167
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5246,7 +5257,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 2071
+				"line": 2066
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5386,11 +5397,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1230
+				"line": 1229
 			},
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1258
+				"line": 1257
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5400,7 +5411,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1515
+				"line": 1514
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5690,11 +5701,15 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 95
+				"line": 105
 			},
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 129
+				"line": 139
+			},
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 164
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5704,7 +5719,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 97
+				"line": 107
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5714,7 +5729,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 106
+				"line": 116
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5724,7 +5739,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 131
+				"line": 142
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5734,7 +5749,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 160
+				"line": 183
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -5944,7 +5959,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 1240
+				"line": 819
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6044,7 +6059,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1509
+				"line": 1541
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6054,7 +6069,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1590
+				"line": 1622
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6064,7 +6079,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1751
+				"line": 1783
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6092,7 +6107,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 1292
+				"line": 1232
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6202,7 +6217,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1967
+				"line": 1966
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6217,7 +6232,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2147
+				"line": 2146
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6227,7 +6242,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2312
+				"line": 2311
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6237,7 +6252,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1149
+				"line": 1181
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6247,7 +6262,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1518
+				"line": 1550
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6277,7 +6292,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/fork-menu.tsx",
-				"line": 178
+				"line": 201
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6317,7 +6332,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/turn-summary.tsx",
-				"line": 355
+				"line": 349
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6351,7 +6366,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1771
+				"line": 1756
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6381,7 +6396,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1515
+				"line": 1514
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6391,7 +6406,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1515
+				"line": 1514
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6401,7 +6416,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1141
+				"line": 1173
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6411,7 +6426,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1141
+				"line": 1173
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6421,7 +6436,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1141
+				"line": 1173
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6441,7 +6456,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1742
+				"line": 1727
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6451,7 +6466,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 3885
+				"line": 3886
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6481,7 +6496,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1936
+				"line": 1935
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6491,7 +6506,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1761
+				"line": 1760
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6501,11 +6516,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-view.tsx",
-				"line": 828
+				"line": 834
 			},
 			{
 				"path": "apps/renderer/src/components/chat-view.tsx",
-				"line": 865
+				"line": 871
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6793,7 +6808,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1215
+				"line": 1214
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6803,7 +6818,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1220
+				"line": 1219
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6813,7 +6828,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1289
+				"line": 1288
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -6897,7 +6912,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1802
+				"line": 1801
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -7099,7 +7114,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-view.tsx",
-				"line": 891
+				"line": 897
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -7109,7 +7124,61 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-view.tsx",
-				"line": 898
+				"line": 904
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_fork_in_new_tab": {
+		"source": "Fork in new tab",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 219
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_new_tab_on_this_machine": {
+		"source": "Open a new tab on this machine with the conversation through this message.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 229
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_fork_in_new_machine": {
+		"source": "Fork in new machine",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 245
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_new_machine_description": {
+		"source": "Clone this machine and continue the conversation in a separate chat.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 156
+			},
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 255
+			}
+		],
+		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"chat:fork_menu_forking_in_new_machine": {
+		"source": "Forking in new machine",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/fork-menu.tsx",
+				"line": 153
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8145,7 +8214,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 168
+				"line": 170
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8155,7 +8224,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 173
+				"line": 175
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8165,7 +8234,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 195
+				"line": 197
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8175,7 +8244,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 406
+				"line": 398
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8185,11 +8254,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 549
+				"line": 551
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 564
+				"line": 566
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8199,7 +8268,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1074
+				"line": 1106
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8209,11 +8278,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1082
+				"line": 1114
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1129
+				"line": 1161
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8223,7 +8292,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1129
+				"line": 1161
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8339,7 +8408,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/bottom-terminal-dock.tsx",
-				"line": 344
+				"line": 327
 			},
 			{
 				"path": "apps/renderer/src/components/browser-access-gate.tsx",
@@ -8347,15 +8416,15 @@
 			},
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 1956
+				"line": 1955
 			},
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2014
+				"line": 2013
 			},
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 254
+				"line": 289
 			},
 			{
 				"path": "apps/renderer/src/components/hosted-sidebar.tsx",
@@ -8391,7 +8460,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/right-pane.tsx",
-				"line": 875
+				"line": 878
 			},
 			{
 				"path": "apps/renderer/src/components/settings/cloud-machines-pane.tsx",
@@ -8499,7 +8568,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 519
+				"line": 680
 			},
 			{
 				"path": "apps/renderer/src/components/composer/cloud-mailbox-queue.tsx",
@@ -8519,7 +8588,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 830
+				"line": 937
 			},
 			{
 				"path": "apps/renderer/src/components/message-row.tsx",
@@ -8595,7 +8664,7 @@
 			},
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4191
+				"line": 4204
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8717,11 +8786,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 608
+				"line": 715
 			},
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 840
+				"line": 947
 			},
 			{
 				"path": "apps/renderer/src/components/projects-sidebar.tsx",
@@ -8795,7 +8864,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1546
+				"line": 1522
 			},
 			{
 				"path": "apps/renderer/src/components/onboarding/onboarding-wizard.tsx",
@@ -8817,7 +8886,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 1364
+				"line": 1396
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -8854,7 +8923,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2001
+				"line": 2000
 			},
 			{
 				"path": "apps/renderer/src/components/message-row.tsx",
@@ -8986,7 +9055,7 @@
 			},
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 253
+				"line": 288
 			},
 			{
 				"path": "apps/renderer/src/components/provider-card.tsx",
@@ -9037,7 +9106,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1553
+				"line": 1529
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9047,7 +9116,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1562
+				"line": 1538
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9057,7 +9126,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1576
+				"line": 1552
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9067,7 +9136,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1703
+				"line": 1688
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9077,7 +9146,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1714
+				"line": 1699
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9147,19 +9216,14 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 252
+				"line": 287
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"connections:cloud_workspace_info_open_workspace_via_ssh": {
 		"source": "Open workspace via SSH",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 255
-			}
-		],
+		"locations": [],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"connections:cloud_workspace_info_open_via_ssh": {
@@ -9167,29 +9231,19 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 261
+				"line": 338
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"connections:cloud_workspace_info_open_this_workspace_in_an_editor_or_terminal_over_ssh": {
 		"source": "Open this workspace in an editor or terminal over SSH",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 270
-			}
-		],
+		"locations": [],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"connections:cloud_workspace_info_the_workspace_must_be_running_for_ssh_access": {
 		"source": "The workspace must be running for SSH access",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 273
-			}
-		],
+		"locations": [],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"connections:cloud_workspace_info_copy_ssh_command": {
@@ -9197,7 +9251,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 299
+				"line": 377
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9207,7 +9261,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 313
+				"line": 391
+			},
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 399
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9217,11 +9275,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 425
+				"line": 586
 			},
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 438
+				"line": 599
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9231,7 +9289,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 446
+				"line": 283
+			},
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 607
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9241,7 +9303,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 486
+				"line": 647
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9251,7 +9313,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 498
+				"line": 659
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9261,7 +9323,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 508
+				"line": 669
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9271,7 +9333,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 513
+				"line": 674
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9281,7 +9343,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 526
+				"line": 687
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9301,7 +9363,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 44
+				"line": 49
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9311,7 +9373,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 52
+				"line": 57
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9321,7 +9383,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 60
+				"line": 65
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9331,7 +9393,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 67
+				"line": 72
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9341,7 +9403,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 73
+				"line": 78
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9351,7 +9413,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 79
+				"line": 84
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9361,7 +9423,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 185
+				"line": 214
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9371,7 +9433,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 188
+				"line": 217
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9381,7 +9443,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 194
+				"line": 223
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9391,7 +9453,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 200
+				"line": 229
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9401,7 +9463,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 122
+				"line": 132
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9411,7 +9473,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 135
+				"line": 145
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9421,7 +9483,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 142
+				"line": 152
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9431,7 +9493,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 156
+				"line": 166
+			},
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 332
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9441,7 +9507,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 162
+				"line": 172
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9451,7 +9517,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 168
+				"line": 178
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9461,7 +9527,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 219
+				"line": 227
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9471,7 +9537,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 391
+				"line": 552
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -9513,10 +9579,6 @@
 	"connections:cloud_chat_row_presentation_paused": {
 		"source": "Paused",
 		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 201
-			},
 			{
 				"path": "apps/renderer/src/lib/cloud-chat-row-presentation.ts",
 				"line": 48
@@ -9567,10 +9629,6 @@
 	"connections:cloud_chat_row_presentation_active": {
 		"source": "Active",
 		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
-				"line": 199
-			},
 			{
 				"path": "apps/renderer/src/lib/cloud-chat-row-presentation.ts",
 				"line": 74
@@ -9922,10 +9980,308 @@
 	},
 	"connections:cloud_workspace_info_inactive": {
 		"source": "Inactive",
+		"locations": [],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_low": {
+		"source": "Your cloud machine is running low on memory.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 23
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_waiting": {
+		"source": "Waiting for memory to free up before reconnecting…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 16
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_recovering": {
+		"source": "Your cloud machine ran out of memory. Reconnecting…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 18
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_failed": {
+		"source": "Automatic recovery stopped because of memory pressure.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
+				"line": 20
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_memory_advice": {
+		"source": "Ask your agent to run fewer tests or builds at once, or use a larger machine.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
+				"line": 242
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_details": {
+		"source": "Workspace details",
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 259
+			},
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 260
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_copy_branch": {
+		"source": "Copy branch name",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/top-bar.tsx",
+				"line": 476
+			},
+			{
+				"path": "apps/renderer/src/components/top-bar.tsx",
+				"line": 716
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_repository": {
+		"source": "Repository",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 270
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_created": {
+		"source": "Created",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 288
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_environment": {
+		"source": "Environment",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-workspace-info.tsx",
+				"line": 277
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_preview_urls": {
+		"source": "Preview URLs",
+		"locations": [],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_copy_url": {
+		"source": "Copy preview URL",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 107
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_no_previews": {
+		"source": "Start a dev server to get a preview URL.",
+		"locations": [],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_public_urls": {
+		"source": "Anyone with the link can access these servers.",
+		"locations": [],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_preview_pending": {
+		"source": "Creating URL…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 192
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:cloud_workspace_menu_preview_failed": {
+		"source": "URL creation failed · retrying",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 191
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_title": {
+		"source": "Ports and previews",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 115
+			},
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 116
+			},
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 126
+			},
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 171
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_auto_urls": {
+		"source": "Auto-create preview URLs",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 135
+			},
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 144
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_local": {
+		"source": "Forward to localhost",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 153
+			},
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 159
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_auto_help": {
+		"source": "Automatically uses verified web servers in this workspace.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 166
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_failed": {
+		"source": "Could not configure port forwarding.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 61
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_forward_failed": {
+		"source": "Forwarding failed · retrying",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
 				"line": 202
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_forward_pending": {
+		"source": "Connecting to localhost…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 203
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_empty": {
+		"source": "No web servers detected.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 211
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_number": {
+		"source": "Port number",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 234
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_add": {
+		"source": "Add port",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 242
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_manual_help": {
+		"source": "Missing a server? Add its port, then enable URLs or localhost forwarding.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 246
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_public_help": {
+		"source": "Preview links are public. Turning this off revokes issued links.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 249
+			}
+		],
+		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"connections:preview_ports_revoke_pending": {
+		"source": "Revoking preview links… Previously shared links may remain public until removal succeeds. Retry by switching off again.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/preview-ports-menu.tsx",
+				"line": 165
 			}
 		],
 		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10199,7 +10555,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 3441
+				"line": 3454
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10209,7 +10565,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 3442
+				"line": 3455
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10219,7 +10575,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4197
+				"line": 4210
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10229,7 +10585,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4192
+				"line": 4205
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10239,7 +10595,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4193
+				"line": 4206
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10249,7 +10605,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4199
+				"line": 4212
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10259,7 +10615,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4198
+				"line": 4211
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10269,7 +10625,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4198
+				"line": 4211
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -10279,7 +10635,7 @@
 		"locations": [
 			{
 				"path": "apps/desktop/src/main.ts",
-				"line": 4198
+				"line": 4211
 			}
 		],
 		"context": "desktop interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11924,7 +12280,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 200
+				"line": 208
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11934,7 +12290,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 207
+				"line": 215
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11944,7 +12300,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 556
+				"line": 663
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11954,7 +12310,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 563
+				"line": 670
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11964,7 +12320,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 569
+				"line": 676
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11974,7 +12330,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 575
+				"line": 682
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11984,11 +12340,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 587
+				"line": 694
 			},
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 632
+				"line": 739
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -11998,11 +12354,11 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 595
+				"line": 702
 			},
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 637
+				"line": 744
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12012,7 +12368,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 628
+				"line": 735
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12022,7 +12378,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 629
+				"line": 736
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12032,7 +12388,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 642
+				"line": 749
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12042,7 +12398,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 727
+				"line": 834
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12052,7 +12408,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 810
+				"line": 917
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12062,7 +12418,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 812
+				"line": 919
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -12072,7 +12428,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 813
+				"line": 920
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -13383,7 +13739,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 714
+				"line": 821
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -13393,7 +13749,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 732
+				"line": 839
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -13665,7 +14021,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/file-tree.tsx",
-				"line": 818
+				"line": 925
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -14368,7 +14724,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 805
+				"line": 827
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -14378,7 +14734,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/top-bar.tsx",
-				"line": 811
+				"line": 833
 			}
 		],
 		"context": "projects interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -25694,7 +26050,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/chat-landing.tsx",
-				"line": 2041
+				"line": 2040
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26131,7 +26487,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-row.tsx",
-				"line": 2071
+				"line": 2072
 			}
 		],
 		"context": "tools interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26141,7 +26497,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-row.tsx",
-				"line": 2076
+				"line": 2077
 			}
 		],
 		"context": "tools interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26151,7 +26507,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/tool-row.tsx",
-				"line": 2085
+				"line": 2092
 			}
 		],
 		"context": "tools interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -27376,55 +27732,5 @@
 			}
 		],
 		"context": "usage interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"connections:cloud_memory_low": {
-		"source": "Your cloud machine is running low on memory.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
-				"line": 23
-			}
-		],
-		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"connections:cloud_memory_waiting": {
-		"source": "Waiting for memory to free up before reconnecting…",
-		"locations": [
-			{
-				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
-				"line": 16
-			}
-		],
-		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"connections:cloud_memory_recovering": {
-		"source": "Your cloud machine ran out of memory. Reconnecting…",
-		"locations": [
-			{
-				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
-				"line": 18
-			}
-		],
-		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"connections:cloud_memory_failed": {
-		"source": "Automatic recovery stopped because of memory pressure.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/lib/cloud-memory-notice.ts",
-				"line": 20
-			}
-		],
-		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"connections:cloud_memory_advice": {
-		"source": "Ask your agent to run fewer tests or builds at once, or use a larger machine.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-connection-notice.tsx",
-				"line": 242
-			}
-		],
-		"context": "connections interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	}
 }

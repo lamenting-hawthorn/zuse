@@ -9,7 +9,7 @@ import type {
 	SessionInteraction,
 } from "@zuse/contracts";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { deriveAgentActivityState } from "../lib/agent-activity-state.ts";
 import { useCloudChatSummaryForSelection } from "../lib/cloud-workspaces.ts";
@@ -19,15 +19,16 @@ import {
 	providerStartupLabel,
 	useProviderStartupDelay,
 } from "../lib/provider-startup-delay.ts";
+import { useRelativeTimeTick } from "../lib/use-relative-time.ts";
 import { AgentActivityOrb } from "./ui/agent-activity-orb.tsx";
 import { ShimmerText } from "./ui/shimmer-text.tsx";
 
 const formatElapsed = (ms: number): string => {
-	const totalSec = ms / 1000;
-	if (totalSec < 60) return `${totalSec.toFixed(1)}s`;
+	const totalSec = Math.floor(ms / 1000);
+	if (totalSec < 60) return `${totalSec}s`;
 	const min = Math.floor(totalSec / 60);
 	const sec = totalSec - min * 60;
-	return `${min}m ${sec.toFixed(1)}s`;
+	return `${min}m ${sec}s`;
 };
 
 export const providerStartupIsActive = ({
@@ -91,11 +92,7 @@ export function ChatWorkingRow({
 		return null;
 	}, [messages, uiMessage]);
 
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const tickId = window.setInterval(() => setNow(Date.now()), 100);
-		return () => window.clearInterval(tickId);
-	}, []);
+	const now = useRelativeTimeTick(1_000);
 
 	const elapsed = anchorMs === null ? 0 : Math.max(0, now - anchorMs);
 	const activityState = deriveAgentActivityState(messages, interactions);

@@ -227,8 +227,7 @@ import {
 } from "./startup-readiness.ts";
 import {
 	CloudSyncManager,
-	cloudSyncDefaultPath,
-	SYNC_MARKER_FILE,
+	prepareCloudSyncDefaultPath,
 } from "./sync/cloud-sync-service.ts";
 import { TailnetEnvironmentManager } from "./tailnet/environment-service.ts";
 import { PortForwardManager } from "./tunnels/port-forward-service.ts";
@@ -2284,6 +2283,7 @@ async function createMainWindow() {
 				return null;
 
 			return cloudSyncManager.configure({
+				archived: input.archived === true,
 				workspaceId: input.workspaceId,
 				enabled: input.enabled,
 				localPath: input.localPath,
@@ -2305,24 +2305,20 @@ async function createMainWindow() {
 			workspaceId: unknown,
 			repository: unknown,
 			branch: unknown,
+			prepare: unknown,
 		) => {
 			if (
 				typeof workspaceId !== "string" ||
 				!/^[A-Za-z0-9_-]+$/u.test(workspaceId)
 			)
 				return null;
-			const path = cloudSyncDefaultPath(
+			return prepareCloudSyncDefaultPath(
 				app.getPath("home"),
+				workspaceId,
 				repository,
 				branch,
+				prepare !== false,
 			);
-			if (path === null) return null;
-			await fs.mkdir(path, { recursive: true });
-			const marker = Path.join(path, SYNC_MARKER_FILE);
-			if ((await fs.readdir(path)).length > 0 && !fsSync.existsSync(marker))
-				return null;
-			await fs.writeFile(marker, `${JSON.stringify({ workspaceId })}\n`);
-			return path;
 		},
 	);
 
@@ -2495,10 +2491,11 @@ async function createMainWindow() {
 		if (typeof input !== "object" || input === null) {
 			throw new Error("Invalid port forward request.");
 		}
-		const { environmentId, remotePort, cloudWorkspaceId } = input as {
+		const { environmentId, remotePort, cloudWorkspaceId, owner } = input as {
 			environmentId?: unknown;
 			remotePort?: unknown;
 			cloudWorkspaceId?: unknown;
+			owner?: unknown;
 		};
 		if (
 			typeof environmentId !== "string" ||
@@ -2514,6 +2511,7 @@ async function createMainWindow() {
 				environmentId,
 				target: { kind: "cloud", workspaceId: cloudWorkspaceId },
 				remotePort,
+				owner: owner === "preview" ? "preview" : undefined,
 			});
 		}
 		const target = (await readySshEnvironmentManager()).resolvedTargetFor(
@@ -2526,6 +2524,7 @@ async function createMainWindow() {
 			environmentId,
 			target: { kind: "ssh", target },
 			remotePort,
+			owner: owner === "preview" ? "preview" : undefined,
 		});
 	});
 	ipcMain.handle(
@@ -2541,6 +2540,14 @@ async function createMainWindow() {
 		portForwardManager.list(
 			typeof environmentId === "string" ? environmentId : undefined,
 		),
+	);
+	ipcMain.handle(
+		"tunnels:closePreviews",
+		async (_event, environmentId: unknown) => {
+			if (typeof environmentId !== "string")
+				throw new Error("Invalid environment.");
+			await portForwardManager.closePreviews(environmentId);
+		},
 	);
 	ipcMain.handle("tailnet:listProfiles", async () =>
 		(await readyTailnetEnvironmentManager()).listProfiles(),

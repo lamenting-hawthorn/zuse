@@ -1,6 +1,51 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { createRendererLagSample } from "../../src/lib/renderer-lag-monitor.ts";
+import {
+	createRendererLagSample,
+	installRendererLagMonitor,
+} from "../../src/lib/renderer-lag-monitor.ts";
+
+describe("renderer lag probe lifecycle", () => {
+	afterEach(() => {
+		vi.clearAllTimers();
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+	});
+	test("cancels pending frames and all probe wakeups while hidden", () => {
+		vi.useFakeTimers();
+		const page = Object.assign(new EventTarget(), {
+			visibilityState: "visible",
+		});
+		vi.stubGlobal("document", page);
+		vi.stubGlobal("window", globalThis);
+		vi.stubGlobal("PerformanceObserver", undefined);
+		const request = vi.fn(() => 1);
+		const cancel = vi.fn();
+		vi.stubGlobal("requestAnimationFrame", request);
+		vi.stubGlobal("cancelAnimationFrame", cancel);
+		const stop = installRendererLagMonitor(vi.fn(), () => ({
+			recentActions: [],
+			activeWorkloads: [],
+			relatedOperations: [],
+		}));
+		expect(request).toHaveBeenCalledTimes(1);
+		vi.advanceTimersByTime(5_000);
+		expect(request).toHaveBeenCalledTimes(1);
+		page.visibilityState = "hidden";
+		page.dispatchEvent(new Event("visibilitychange"));
+		expect(cancel).toHaveBeenCalledWith(1);
+		expect(vi.getTimerCount()).toBe(0);
+		vi.advanceTimersByTime(60_000);
+		expect(request).toHaveBeenCalledTimes(1);
+		page.visibilityState = "visible";
+		page.dispatchEvent(new Event("visibilitychange"));
+		expect(request).toHaveBeenCalledTimes(2);
+		stop();
+		expect(vi.getTimerCount()).toBe(0);
+		page.dispatchEvent(new Event("visibilitychange"));
+		expect(request).toHaveBeenCalledTimes(2);
+	});
+});
 
 describe("renderer lag classification", () => {
 	test("ignores short and background animation gaps", () => {

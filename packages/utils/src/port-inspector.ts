@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { request } from "node:http";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -75,20 +76,29 @@ export const parseLsofListeners = (
 
 export const parseSsListeners = (
 	stdout: string,
+	excludedPid?: number,
 ): ReadonlyArray<ListeningServer> => {
 	const entries: ListenerEntry[] = [];
+	const excludedPorts = new Set<number>();
 	for (const line of stdout.split("\n")) {
 		if (line.trim().length === 0) continue;
 		const endpoint = line.match(/(\[[^\]]+\]|\S+):(\d+)\s/u);
 		const port = validPort(endpoint?.[2]);
 		if (port === null) continue;
+		if (
+			excludedPid !== undefined &&
+			[...line.matchAll(/pid=(\d+)/gu)].some(
+				(match) => Number(match[1]) === excludedPid,
+			)
+		)
+			excludedPorts.add(port);
 		entries.push({
 			name: line.match(/users:\(\("([^"]+)/u)?.[1] ?? "localhost",
 			port,
 			loopback: isLoopbackHost(endpoint?.[1] ?? ""),
 		});
 	}
-	return collect(entries);
+	return collect(entries).filter((server) => !excludedPorts.has(server.port));
 };
 
 export const parseNetstatListeners = (
@@ -140,6 +150,7 @@ export const parseProcListeners = (
 
 export const listListeningServers = async (
 	platform: NodeJS.Platform = process.platform,
+	excludedPid?: number,
 ): Promise<ReadonlyArray<ListeningServer>> => {
 	if (platform === "darwin") {
 		const { stdout } = await execFileAsync("lsof", [
@@ -154,8 +165,10 @@ export const listListeningServers = async (
 			const { stdout } = await execFileAsync("ss", ["-ltnpH"], {
 				timeout: 2_000,
 			});
-			return parseSsListeners(stdout);
+			return parseSsListeners(stdout, excludedPid);
 		} catch {
+			// Without process ownership, do not advertise potentially internal sockets.
+			if (excludedPid !== undefined) return [];
 			const contents = await Promise.all(
 				["/proc/net/tcp", "/proc/net/tcp6"].map((path) =>
 					readFile(path, "utf8").catch(() => ""),
@@ -169,3 +182,29 @@ export const listListeningServers = async (
 	});
 	return parseNetstatListeners(stdout);
 };
+
+/** Only an HTTP response qualifies a TCP listener as a browser preview.
+ * HEAD avoids downloading response bodies; redirects are never followed.
+ */
+export const isHttpPreview = (
+	port: number,
+	host = "127.0.0.1",
+): Promise<boolean> =>
+	new Promise((resolve) => {
+		const req = request({ host, port, path: "/", method: "HEAD" });
+		const timer = setTimeout(() => req.destroy(), 1500);
+		req.once("response", (response) => {
+			clearTimeout(timer);
+			response.destroy();
+			resolve(true);
+		});
+		req.once("error", () => {
+			clearTimeout(timer);
+			resolve(false);
+		});
+		req.once("close", () => {
+			clearTimeout(timer);
+			resolve(false);
+		});
+		req.end();
+	});

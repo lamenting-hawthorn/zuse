@@ -1,3 +1,4 @@
+import { uploadAttachmentInChunks } from "@zuse/client-runtime/attachment-upload";
 import { normalizeTerminalCatalog } from "@zuse/client-runtime/terminal-catalog";
 import type { ResolvedModelCatalog } from "@zuse/contracts";
 import {
@@ -101,11 +102,27 @@ export const uploadAttachment = (options: {
 }) =>
 	Effect.gen(function* () {
 		const client = yield* getConnectionClient(options.connection);
-		const result = yield* client["attachments.upload"]({
-			sessionId: options.sessionId,
-			bytes: options.bytes,
-			mimeType: options.mimeType,
-			originalName: options.originalName,
+		const result = yield* Effect.tryPromise({
+			try: (signal) =>
+				uploadAttachmentInChunks(
+					{
+						sessionId: options.sessionId,
+						bytes: options.bytes,
+						mimeType: options.mimeType,
+						originalName: options.originalName,
+					},
+					{
+						upload: (input) =>
+							Effect.runPromise(client["attachments.upload"](input), {
+								signal,
+							}),
+						uploadChunk: (input) =>
+							Effect.runPromise(client["attachments.uploadChunk"](input), {
+								signal,
+							}),
+					},
+				),
+			catch: (cause) => cause,
 		});
 		return {
 			id: result.id,

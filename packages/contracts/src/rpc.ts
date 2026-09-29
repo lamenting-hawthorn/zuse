@@ -26,7 +26,11 @@ import {
 	EnvironmentConnectRpc,
 	EnvironmentsListRpc,
 } from "./api.ts";
-import { AttachmentReadRpc, AttachmentUploadRpc } from "./attachment.ts";
+import {
+	AttachmentReadRpc,
+	AttachmentUploadChunkRpc,
+	AttachmentUploadRpc,
+} from "./attachment.ts";
 import {
 	AuthGetSessionRpc,
 	AuthSessionChangesRpc,
@@ -85,12 +89,14 @@ import {
 	CloudWorkspacesConnectRpc,
 	CloudWorkspacesCreateRpc,
 	CloudWorkspacesDeleteRpc,
+	CloudWorkspacesForkRpc,
 	CloudWorkspacesGetRpc,
 	CloudWorkspacesListRpc,
 	CloudWorkspacesPauseRpc,
 	CloudWorkspacesPreviewUrlRpc,
 	CloudWorkspacesRestartRpc,
 	CloudWorkspacesResumeRpc,
+	CloudWorkspacesRevokePreviewUrlRpc,
 	CloudWorkspacesSshAccessRpc,
 	CloudWorkspacesUnarchiveRpc,
 	CloudWorkspacesWatchRpc,
@@ -420,6 +426,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	CloudWorkspacesGetRpc,
 	CloudWorkspacesWatchRpc,
 	CloudWorkspacesCreateRpc,
+	CloudWorkspacesForkRpc,
 	CloudWorkspacesConnectRpc,
 	CloudChatsListRpc,
 	CloudChatsWatchRpc,
@@ -428,6 +435,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	CloudWorkspacesRestartRpc,
 	CloudWorkspacesSshAccessRpc,
 	CloudWorkspacesPreviewUrlRpc,
+	CloudWorkspacesRevokePreviewUrlRpc,
 	CloudWorkspacesArchiveRpc,
 	CloudWorkspacesUnarchiveRpc,
 	CloudWorkspacesDeleteRpc,
@@ -622,6 +630,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	MessagesQueueFlushRpc,
 	MessagesQueueResumeRpc,
 	AttachmentUploadRpc,
+	AttachmentUploadChunkRpc,
 	AttachmentReadRpc,
 	ContextSaveTextRpc,
 	SkillListRpc,

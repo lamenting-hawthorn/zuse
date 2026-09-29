@@ -9,6 +9,7 @@ import {
 	type ExecResult,
 	type Machine,
 	type MachineCreateParams,
+	type MachineForkParams,
 	type MachineResizeParams,
 	NotFoundError,
 	PermissionDeniedError,
@@ -62,6 +63,8 @@ export interface BoxdSandboxConfig {
 export interface BoxdSandboxClient {
 	readonly machines: {
 		create(params: MachineCreateParams): Promise<Machine>;
+		fork(id: string, params: MachineForkParams): Promise<Machine>;
+		setEgressAllow(id: string, entries: string[]): Promise<string[]>;
 		get(id: string): Promise<Machine>;
 		delete(id: string): Promise<void>;
 		start(id: string): Promise<void>;
@@ -82,6 +85,7 @@ export interface BoxdSandboxClient {
 				port: number,
 			): Promise<CreatedProxy>;
 			list(machine: string): Promise<ProxyRoute[]>;
+			delete(machine: string, name: string): Promise<void>;
 		};
 	};
 	readonly snapshots: {
@@ -201,13 +205,14 @@ const machineSizeOf = (machine: Machine): BoxdMachineSize | undefined =>
 		(size) => BOXD_MACHINE_RESOURCES[size].vcpuCount === machine.resources.vcpu,
 	);
 
-// boxd has no per-machine network policy; every machine is `isolated` (no
-// peers, no in-VM control plane) with open egress. Reject anything else
-// before allocating rather than silently granting unrestricted access.
+// Snapshot restore starts unrestricted. Only native machine forks inherit
+// the source's host-enforced egress allowlist; never promise safe snapshot quarantine.
 const validateNetwork = (network: SandboxNetworkPolicy) =>
 	network.kind === "open"
 		? Effect.void
 		: Effect.fail(providerError("rejected"));
+
+export const BOXD_FORK_QUARANTINE = "zuse-fork-quarantine.invalid";
 
 // Snapshot restores replay the captured machine and refuse create-time env.
 // Every caller passes an empty map; a non-empty one would be silently lost.
@@ -249,7 +254,9 @@ export const boxdSandboxClientFor = (
 export const makeBoxdSandboxProvider = (
 	config: BoxdSandboxConfig,
 	client: BoxdSandboxClient = boxdSandboxClientFor(config),
-): SandboxProviderAdapter => {
+): SandboxProviderAdapter & {
+	readonly forkMachine: NonNullable<SandboxProviderAdapter["forkMachine"]>;
+} => {
 	const org = config.org;
 	const machineSize = config.machineSize ?? "default";
 	const readyDeadlineMs = config.readyDeadlineMs ?? 120_000;
@@ -672,20 +679,78 @@ export const makeBoxdSandboxProvider = (
 	// interface address a restore or fork receives. The route itself is
 	// inherited from the template snapshot for the runtime port and created
 	// on demand for preview ports.
+	const revokeEndpoint = Effect.fn("BoxdSandboxProvider.revokeEndpoint")(
+		function* (providerSandboxId: string, port?: number) {
+			if (
+				port !== undefined &&
+				(!Number.isInteger(port) || port < 1 || port > 65535 || port === 47837)
+			)
+				return yield* providerError("rejected");
+			const routes = yield* call("machines.proxies.list", () =>
+				client.machines.proxies.list(providerSandboxId),
+			);
+			const selected = routes.filter(
+				(route) =>
+					route.port !== 47837 &&
+					(port === undefined
+						? /^p[0-9]+$/.test(route.name ?? "") ||
+							(route.isDefault && route.portMode === "locked")
+						: route.port === port || route.name === `p${port}`),
+			);
+			for (const route of selected) {
+				yield* call("machines.proxies.delete", () =>
+					client.machines.proxies.delete(providerSandboxId, route.name ?? ""),
+				).pipe(
+					Effect.catchTag("SandboxProviderError", (error) =>
+						error.code === "not-found" ? Effect.void : Effect.fail(error),
+					),
+				);
+			}
+			// In particular, never claim the default URL is revoked if the provider
+			// retains it or switches it back to automatic port detection.
+			const remaining = yield* call("machines.proxies.list", () =>
+				client.machines.proxies.list(providerSandboxId),
+			);
+			if (
+				remaining.some(
+					(route) =>
+						(port !== undefined && route.port === port) ||
+						selected.some((previous) => previous.domain === route.domain),
+				)
+			)
+				return yield* providerError("transient");
+		},
+	);
+
 	const resolveEndpoint = Effect.fn("BoxdSandboxProvider.resolveEndpoint")(
 		function* (providerSandboxId: string, port: number) {
 			const forwarded = yield* runCommand(
 				providerSandboxId,
-				`node -e ${shellQuote(BOX_PORT_FORWARDER)} ${port}`,
+				`node -e ${shellQuote(BOX_PORT_FORWARDER)} ${port}${port === 47_837 ? "" : " --preview"}`,
 			);
 			if (forwarded.exitCode !== 0) return yield* providerError("transient");
 			const routeName = `p${port}`;
+			// A previously published route can serve the port even when creation
+			// is unavailable. Never reuse auto mode: it can switch ports later.
+			const routeForPort = (routes: ReadonlyArray<ProxyRoute>) =>
+				routes.find(
+					(route) =>
+						route.name === routeName &&
+						route.port === port &&
+						route.portMode === "locked",
+				) ??
+				routes.find(
+					(route) =>
+						route.isDefault &&
+						route.port === port &&
+						route.portMode === "locked",
+				);
 			const listRoutes = call("machines.proxies.list", () =>
 				client.machines.proxies.list(providerSandboxId),
 			);
 			let routes = yield* listRoutes;
 			let creation: SandboxProviderError | undefined;
-			if (!routes.some((route) => route.name === routeName)) {
+			if (routeForPort(routes) === undefined) {
 				// A concurrent resolution may have created it first; only a route
 				// that is still missing afterwards makes the failure the answer.
 				creation = yield* call("machines.proxies.create", () =>
@@ -698,7 +763,7 @@ export const makeBoxdSandboxProvider = (
 				);
 				routes = yield* listRoutes;
 			}
-			const route = routes.find((candidate) => candidate.name === routeName);
+			const route = routeForPort(routes);
 			if (route === undefined)
 				return yield* creation ?? providerError("transient");
 			return {
@@ -844,6 +909,65 @@ export const makeBoxdSandboxProvider = (
 		return yield* providerError("transient");
 	});
 
+	const setNetwork = (id: string, network: SandboxNetworkPolicy) => {
+		if (network.kind === "restricted") return providerError("rejected");
+		return call("machines.setEgressAllow", () =>
+			client.machines.setEgressAllow(
+				id,
+				network.kind === "open" ? [] : [BOXD_FORK_QUARANTINE],
+			),
+		).pipe(Effect.asVoid);
+	};
+
+	const forkMachine: NonNullable<SandboxProviderAdapter["forkMachine"]> = (
+		input,
+	) =>
+		Effect.gen(function* () {
+			const source = yield* ready(input.sourceSandboxId);
+			if (!source.networking.isolated || source.networking.networks.length > 0)
+				return yield* providerError("rejected");
+			const name = boxdMachineName(input.providerLabel);
+			// The lifecycle owner persists a source-network recovery intent before
+			// this call, so a worker crash cannot leave the parent fenced forever.
+			return yield* Effect.gen(function* () {
+				yield* setNetwork(source.id, { kind: "quarantined" });
+				// boxd documents a one-second propagation window before enforcement.
+				yield* Effect.sleep(Duration.millis(1_100));
+				const created = yield* call("machines.fork", () =>
+					client.machines.fork(source.id, {
+						name,
+						isolated: true,
+						config: { autoSuspendTimeout: 0 },
+					}),
+				);
+				yield* call("machines.setAutoHibernateTimeout", () =>
+					client.machines.setAutoHibernateTimeout(
+						created.id,
+						clampIdleSeconds(input.timeoutSeconds),
+					),
+				);
+				const child = yield* ready(created.id);
+				if (
+					child.egressAllow.length !== 1 ||
+					child.egressAllow[0] !== BOXD_FORK_QUARANTINE
+				) {
+					yield* kill(child.id);
+					return yield* providerError("rejected");
+				}
+				return {
+					providerSandboxId: child.id,
+					providerLabel: input.providerLabel,
+					state: "running" as const,
+				};
+			}).pipe(
+				Effect.ensuring(
+					call("machines.setEgressAllow", () =>
+						client.machines.setEgressAllow(source.id, source.egressAllow),
+					).pipe(Effect.orDie),
+				),
+			);
+		});
+
 	return {
 		providerId: BOXD_PROVIDER_ID,
 		displayName: "boxd",
@@ -886,6 +1010,7 @@ export const makeBoxdSandboxProvider = (
 				onTimeout: input.onTimeout,
 			}),
 		recoverByLabel,
+		forkMachine,
 		startProcess,
 		replaceProcess,
 		pathExists,
@@ -893,6 +1018,7 @@ export const makeBoxdSandboxProvider = (
 		writeTextFile,
 		inspect,
 		resolveEndpoint,
+		revokeEndpoint,
 		// Hibernate writes memory to disk: effectively free while parked and
 		// ~85 ms to wake with every process intact.
 		pause,
@@ -904,7 +1030,7 @@ export const makeBoxdSandboxProvider = (
 					clampIdleSeconds(timeoutSeconds),
 				),
 			),
-		setNetwork: (_providerSandboxId, network) => validateNetwork(network),
+		setNetwork,
 		snapshot,
 		kill,
 		deleteSnapshot,

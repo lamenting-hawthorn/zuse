@@ -9,6 +9,7 @@ import {
 	type BillingUsageSourceModule,
 	billingApiBaseUrl,
 	billingPollRequest,
+	ingestPolledBillingEvents,
 } from "../cloud-billing-usage-source.ts";
 import { ApiConfiguration } from "../config.ts";
 import { badRequest, unauthorized } from "../errors.ts";
@@ -145,21 +146,18 @@ export const BoxBillingUsageSourceModule: BillingUsageSourceModule = {
 			);
 		}),
 	ingestPolled: (events, nowMs) =>
-		Effect.gen(function* () {
-			let metered = 0;
-			for (const payload of events) {
-				const event = normalizeBoxLifecycleEvent(payload);
-				if (event === null) continue;
-				const result = yield* ingestBoxLifecycleEvent({
+		ingestPolledBillingEvents({
+			provider: "box",
+			events,
+			normalize: normalizeBoxLifecycleEvent,
+			ingest: (event, rawPayload) =>
+				ingestBoxLifecycleEvent({
 					event,
-					rawPayload: payload,
+					rawPayload,
 					source: "poll",
 					deliveryId: `poll:${event.id}`,
 					nowMs,
-				});
-				if (result.metered) metered++;
-			}
-			return metered;
+				}),
 		}),
 	// Box has no provider-side event log to replay, so recovery synthesizes
 	// close events from currently archived/errored boxes. The synthetic event

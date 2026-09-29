@@ -8,6 +8,7 @@ import {
 	type BillingUsageSourceModule,
 	billingApiBaseUrl,
 	billingPollRequest,
+	ingestPolledBillingEvents,
 } from "../cloud-billing-usage-source.ts";
 import { ApiConfiguration } from "../config.ts";
 import { badRequest, unauthorized } from "../errors.ts";
@@ -90,21 +91,18 @@ export const E2bBillingUsageSourceModule: BillingUsageSourceModule = {
 			);
 		}),
 	ingestPolled: (events, nowMs) =>
-		Effect.gen(function* () {
-			let metered = 0;
-			for (const payload of events) {
-				const event = normalizeE2bLifecycleEvent(payload);
-				if (event === null) continue;
-				const result = yield* ingestE2bLifecycleEvent({
+		ingestPolledBillingEvents({
+			provider: "e2b",
+			events,
+			normalize: normalizeE2bLifecycleEvent,
+			ingest: (event, rawPayload) =>
+				ingestE2bLifecycleEvent({
 					event,
-					rawPayload: payload,
+					rawPayload,
 					source: "poll",
 					deliveryId: `poll:${event.id}`,
 					nowMs,
-				});
-				if (result.metered) metered++;
-			}
-			return metered;
+				}),
 		}),
 	poll: async ({ env, api, nowMs }) => {
 		const config = Schema.decodeUnknownSync(PollEnvironment)(env);

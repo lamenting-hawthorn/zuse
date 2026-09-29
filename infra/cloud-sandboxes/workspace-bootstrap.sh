@@ -102,7 +102,7 @@ runtime_pid=$!
 credentials_wait_pid=$!
 
 # Both initial startup and interrupted-startup recovery use the same safe setup.
-bash /var/lib/zuse/project-build/workspace-repository.sh &
+bash /var/lib/zuse/project-build/workspace-repository.sh >>"$status_dir/runtime.log" 2>&1 &
 repository_pid=$!
 
 set +e

@@ -692,5 +692,10 @@
 	"cloud_queue_cancel_failed": "Impossible d’annuler le message en attente. Réessayez.",
 	"cloud_queue_waiting_for_cloud": "En attente du démarrage du cloud",
 	"cloud_history_loading": "Chargement des messages précédents…",
-	"cloud_history_retry": "Impossible de charger les messages précédents · Réessayer"
+	"cloud_history_retry": "Impossible de charger les messages précédents · Réessayer",
+	"fork_menu_fork_in_new_tab": "Fork dans un nouvel onglet",
+	"fork_menu_new_tab_on_this_machine": "Ouvrez un nouvel onglet sur cette machine avec la conversation jusqu’à ce message.",
+	"fork_menu_fork_in_new_machine": "Fork dans une nouvelle machine",
+	"fork_menu_new_machine_description": "Clonez cette machine et poursuivez la conversation dans un chat séparé.",
+	"fork_menu_forking_in_new_machine": "Fork dans une nouvelle machine en cours"
 }

@@ -22,6 +22,7 @@ export const cloudAccessForwardFailure = (cause: unknown): boolean => {
 export const ensurePortForward = async (
 	environmentId: string,
 	remotePort: number,
+	owner?: "preview",
 ): Promise<number> => {
 	if (environmentId === getLocalEnvironmentId()) return remotePort;
 	const tunnels = getTunnelsBridge();
@@ -31,7 +32,17 @@ export const ensurePortForward = async (
 	const live = (await tunnels.list(environmentId)).find(
 		(forward) => forward.remotePort === remotePort,
 	);
-	if (live !== undefined) return live.localPort;
+	if (live !== undefined)
+		return (
+			await tunnels.open({
+				environmentId,
+				remotePort,
+				...(isCloudWorkspaceEnvironment(environmentId)
+					? { cloudWorkspaceId: environmentId }
+					: {}),
+				...(owner ? { owner } : {}),
+			})
+		).localPort;
 	if (isCloudWorkspaceEnvironment(environmentId)) {
 		await prepareCloudWorkspaceSsh(environmentId);
 		try {
@@ -39,6 +50,7 @@ export const ensurePortForward = async (
 				environmentId,
 				remotePort,
 				cloudWorkspaceId: environmentId,
+				...(owner ? { owner } : {}),
 			});
 			return forward.localPort;
 		} catch (cause) {
@@ -50,10 +62,52 @@ export const ensurePortForward = async (
 				environmentId,
 				remotePort,
 				cloudWorkspaceId: environmentId,
+				...(owner ? { owner } : {}),
 			});
 			return forward.localPort;
 		}
 	}
-	const forward = await tunnels.open({ environmentId, remotePort });
+	const forward = await tunnels.open({
+		environmentId,
+		remotePort,
+		...(owner ? { owner } : {}),
+	});
 	return forward.localPort;
 };
+
+// Serialize control-panel operations so turning forwarding off also closes
+// tunnels whose asynchronous SSH preparation was already in flight.
+const previewForwardTasks = new Map<string, Promise<unknown>>();
+const queuePreviewForward = <T>(
+	environmentId: string,
+	work: () => Promise<T>,
+): Promise<T> => {
+	const task = (previewForwardTasks.get(environmentId) ?? Promise.resolve())
+		.catch(() => {})
+		.then(work);
+	previewForwardTasks.set(environmentId, task);
+	void task
+		.finally(() => {
+			if (previewForwardTasks.get(environmentId) === task)
+				previewForwardTasks.delete(environmentId);
+		})
+		.catch(() => {});
+	return task;
+};
+export const ensurePreviewPortForward = (
+	environmentId: string,
+	port: number,
+	enabled: () => boolean,
+): Promise<number> =>
+	queuePreviewForward(environmentId, () => {
+		if (!enabled()) throw new Error("Port forwarding is disabled.");
+		return ensurePortForward(environmentId, port, "preview");
+	});
+export const closePreviewPortForwards = (
+	environmentId: string,
+): Promise<void> =>
+	queuePreviewForward(environmentId, async () => {
+		const tunnels = getTunnelsBridge();
+		if (!tunnels) return;
+		await tunnels.closePreviews(environmentId);
+	});

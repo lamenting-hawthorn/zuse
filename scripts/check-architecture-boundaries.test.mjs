@@ -10,6 +10,43 @@ import {
 const count = (path, source, rule) =>
 	summarizeViolations(violationsForSource(path, source))[rule];
 
+test("keeps Git snapshots and lazy details in the canonical shared resource", () => {
+	for (const method of [
+		"workspaceSnapshot",
+		"workspaceChanges",
+		"status",
+		"changes",
+		"prState",
+		"reviewSummary",
+		"reviewPatches",
+		"prDetails",
+	]) {
+		const source = `client["git.${method}"]({ folderId });`;
+		for (const path of [
+			"apps/renderer/src/components/example.tsx",
+			"apps/renderer/src/lib/another-git-cache.ts",
+		]) {
+			assert.equal(count(path, source, "renderer-git-state-owner"), 1);
+		}
+		assert.equal(
+			count(
+				"apps/renderer/src/lib/git-workspace-client-bus.ts",
+				source,
+				"renderer-git-state-owner",
+			),
+			0,
+		);
+	}
+	assert.equal(
+		count(
+			"apps/renderer/src/components/example.tsx",
+			'useGitWorkspaceResource(ref, "connect");',
+			"renderer-git-state-owner",
+		),
+		0,
+	);
+});
+
 test("detects raw renderer RPC ownership", () => {
 	assert.equal(
 		count(

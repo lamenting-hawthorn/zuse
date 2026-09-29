@@ -8,6 +8,7 @@ import {
 	type ExecResult,
 	type Machine,
 	type MachineCreateParams,
+	type MachineForkParams,
 	type MachineResizeParams,
 	NotFoundError,
 	type Proxy as ProxyRoute,
@@ -26,6 +27,7 @@ import {
 	boxdSandboxClientFor,
 	makeBoxdSandboxProvider,
 } from "../../src/boxd.ts";
+import type { SandboxProviderAdapter } from "../../src/index.ts";
 
 type Call = { readonly method: string; readonly args: ReadonlyArray<unknown> };
 
@@ -132,6 +134,26 @@ class FakeBoxd implements BoxdSandboxClient {
 		return this.calls.filter((call) => call.method === method);
 	}
 	readonly machines = {
+		fork: async (id: string, params: MachineForkParams): Promise<Machine> => {
+			this.record("machines.fork", [id, params]);
+			const source = this.byIdOrName(id);
+			return this.set(
+				machineOf({
+					...source,
+					id: `vm_${this.nextId++}`,
+					name: params.name ?? "fork",
+					egressAllow: [...source.egressAllow],
+				}),
+			);
+		},
+		setEgressAllow: async (
+			id: string,
+			entries: string[],
+		): Promise<string[]> => {
+			this.record("machines.setEgressAllow", [id, entries]);
+			this.set({ ...this.byIdOrName(id), egressAllow: [...entries] });
+			return entries;
+		},
 		create: async (params: MachineCreateParams): Promise<Machine> => {
 			this.record("machines.create", [params]);
 			const id = `vm_${this.nextId++}`;
@@ -229,6 +251,16 @@ class FakeBoxd implements BoxdSandboxClient {
 			},
 		},
 		proxies: {
+			delete: async (machine: string, name: string) => {
+				this.record("machines.proxies.delete", [machine, name]);
+				const id = this.byIdOrName(machine).id;
+				this.routes.set(
+					id,
+					(this.routes.get(id) ?? []).filter(
+						(route) => (route.name ?? "") !== name,
+					),
+				);
+			},
 			create: async (machine: string, name: string, port: number) => {
 				this.record("machines.proxies.create", [machine, name, port]);
 				const found = this.byIdOrName(machine);
@@ -315,6 +347,11 @@ const decodedScript = (command: string): string =>
 		/printf %s ([A-Za-z0-9+/=]+)/u.exec(command)?.[1] ?? "",
 		"base64",
 	).toString();
+
+const requireRevoke = (adapter: SandboxProviderAdapter) => {
+	if (!adapter.revokeEndpoint) throw new Error("Expected revocation support");
+	return adapter.revokeEndpoint;
+};
 
 describe("boxd machine names", () => {
 	test("passes DNS-safe labels through unchanged so recovery finds them by name", () => {
@@ -501,9 +538,10 @@ describe("boxd sandbox provider", () => {
 		await expect(
 			run(adapter.fork({ ...createInput, snapshotId: "snap", network })),
 		).rejects.toMatchObject({ code: "rejected" });
-		await expect(
-			run(adapter.setNetwork("vm_1", network)),
-		).rejects.toMatchObject({ code: "rejected" });
+		if (network.kind === "restricted")
+			await expect(
+				run(adapter.setNetwork("vm_1", network)),
+			).rejects.toMatchObject({ code: "rejected" });
 		expect(client.calls).toHaveLength(0);
 	});
 
@@ -977,6 +1015,7 @@ describe("boxd sandbox provider", () => {
 			httpBaseUrl: "https://p3000.ws.boxd.sh",
 			wsBaseUrl: "wss://p3000.ws.boxd.sh",
 		});
+		expect(client.execs[0]?.params.command).toMatch(/ 3000 --preview$/u);
 		expect(client.methods("machines.proxies.create")[0]?.args).toEqual([
 			"vm_1",
 			"p3000",
@@ -985,6 +1024,30 @@ describe("boxd sandbox provider", () => {
 		// A second resolution finds the route without creating it again.
 		await run(adapter.resolveEndpoint("vm_1", 3000));
 		expect(client.methods("machines.proxies.create")).toHaveLength(1);
+	});
+
+	test("reuses an existing pinned default preview without creating another route", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [
+			{ ...routeOf(machine, null, 3001), portMode: "locked" },
+		]);
+		await expect(
+			run(makeAdapter(client).resolveEndpoint(machine.id, 3001)),
+		).resolves.toEqual({
+			httpBaseUrl: "https://ws.boxd.sh",
+			wsBaseUrl: "wss://ws.boxd.sh",
+		});
+		expect(client.methods("machines.proxies.create")).toHaveLength(0);
+	});
+
+	test("does not reuse an auto-detected default route for a fixed port preview", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [routeOf(machine, null, 3001)]);
+		await expect(
+			run(makeAdapter(client).resolveEndpoint(machine.id, 3001)),
+		).resolves.toMatchObject({ httpBaseUrl: "https://p3001.ws.boxd.sh" });
 	});
 
 	test("surfaces a refused route instead of retrying it forever", async () => {
@@ -1008,6 +1071,72 @@ describe("boxd sandbox provider", () => {
 			run(makeAdapter(client).resolveEndpoint("vm_1", 47_837)),
 		).rejects.toMatchObject({ code: "transient" });
 		expect(client.methods("machines.proxies.list")).toHaveLength(0);
+	});
+
+	test("revokes both named and legacy default preview URLs while preserving other ports", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [
+			routeOf(machine, "p3001", 3001),
+			{ ...routeOf(machine, null, 3001), portMode: "locked" },
+			routeOf(machine, "p47837", 47837),
+			routeOf(machine, "p5173", 5173),
+		]);
+		const adapter = makeAdapter(client);
+		await run(requireRevoke(adapter)(machine.id, 3001));
+		expect(client.routes.get(machine.id)?.map((route) => route.port)).toEqual([
+			47837, 5173,
+		]);
+		await run(requireRevoke(adapter)(machine.id, 3001));
+		expect(client.methods("machines.proxies.delete")).toHaveLength(2);
+	});
+
+	test("cleans legacy preview routes without deleting runtime or independently named routes", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [
+			routeOf(machine, "p3001", 3001),
+			{ ...routeOf(machine, null, 5173), portMode: "locked" },
+			routeOf(machine, "p47837", 47837),
+			routeOf(machine, "api", 8080),
+		]);
+		await run(requireRevoke(makeAdapter(client))(machine.id));
+		expect(client.routes.get(machine.id)?.map((route) => route.name)).toEqual([
+			"p47837",
+			"api",
+		]);
+	});
+
+	test("does not accept provider success while a revoked hostname still exists", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [routeOf(machine, "p3001", 3001)]);
+		client.machines.proxies.delete = async () => {};
+		await expect(
+			run(requireRevoke(makeAdapter(client))(machine.id)),
+		).rejects.toMatchObject({ code: "transient" });
+	});
+
+	test("refuses to revoke runtime routes", async () => {
+		const client = new FakeBoxd();
+		await expect(
+			run(requireRevoke(makeAdapter(client))("vm_1", 47837)),
+		).rejects.toMatchObject({ code: "rejected" });
+		expect(client.calls).toHaveLength(0);
+	});
+
+	test("reports provider revocation failures instead of claiming links are private", async () => {
+		const client = new FakeBoxd();
+		const machine = client.set(machineOf({ id: "vm_1", name: "ws" }));
+		client.routes.set(machine.id, [routeOf(machine, null, 3001)]);
+		client.fail(
+			"machines.proxies.delete",
+			new APIStatusError("default cannot be deleted", 13),
+		);
+		await expect(
+			run(requireRevoke(makeAdapter(client))(machine.id, 3001)),
+		).rejects.toMatchObject({ code: "transient" });
+		expect(client.routes.get(machine.id)).toHaveLength(1);
 	});
 
 	test("pauses by hibernating and confirms the machine parked", async () => {
@@ -1202,10 +1331,13 @@ describe("boxd sandbox provider", () => {
 		).toEqual([600, 1, 2_592_000]);
 	});
 
-	test("open networking makes no provider requests", async () => {
+	test("open networking clears host quarantine", async () => {
 		const client = new FakeBoxd();
+		client.set(
+			machineOf({ id: "vm_1", egressAllow: ["zuse-fork-quarantine.invalid"] }),
+		);
 		await run(makeAdapter(client).setNetwork("vm_1", { kind: "open" }));
-		expect(client.calls).toHaveLength(0);
+		expect(client.store.get("vm_1")?.egressAllow).toEqual([]);
 	});
 
 	test("saves a snapshot and polls it to ready", async () => {
@@ -1329,5 +1461,76 @@ describe("boxd sandbox provider", () => {
 		await expect(
 			failure(makeAdapter(client).pathExists("vm_1", "/tmp/x")),
 		).resolves.toMatchObject({ code });
+	});
+});
+
+describe("native boxd machine forks", () => {
+	test("forks the running machine with inherited host quarantine and restores only the source", async () => {
+		const client = new FakeBoxd();
+		client.set(machineOf({ id: "parent", status: "pending" }));
+		const adapter = makeAdapter(client);
+		const child = await run(
+			adapter.forkMachine({
+				sourceSandboxId: "parent",
+				providerLabel: "child",
+				timeoutSeconds: 600,
+			}),
+		);
+		expect(client.methods("machines.create")).toHaveLength(0);
+		expect(client.methods("machines.fork")[0]?.args).toEqual([
+			"parent",
+			{
+				name: boxdMachineName("child"),
+				isolated: true,
+				config: { autoSuspendTimeout: 0 },
+			},
+		]);
+		expect(client.store.get("parent")?.egressAllow).toEqual([]);
+		expect(client.store.get(child.providerSandboxId)?.egressAllow).toEqual([
+			"zuse-fork-quarantine.invalid",
+		]);
+		expect(client.methods("machines.resize")).toHaveLength(0);
+		const methods = client.calls.map((call) => call.method);
+		expect(methods.indexOf("machines.waitUntilReady")).toBeLessThan(
+			methods.indexOf("machines.fork"),
+		);
+		expect(methods.indexOf("machines.setEgressAllow")).toBeLessThan(
+			methods.indexOf("machines.fork"),
+		);
+	});
+	test("restores the parent's egress policy when fork fails", async () => {
+		const client = new FakeBoxd();
+		client.set(machineOf({ id: "parent" }));
+		client.fail("machines.fork", new NotFoundError("not found", 5));
+		await expect(
+			run(
+				makeAdapter(client).forkMachine({
+					sourceSandboxId: "parent",
+					providerLabel: "child",
+					timeoutSeconds: 600,
+				}),
+			),
+		).rejects.toMatchObject({ code: "not-found" });
+		expect(client.store.get("parent")?.egressAllow).toEqual([]);
+	});
+	test("refuses to clone machines with peer access", async () => {
+		const client = new FakeBoxd();
+		client.set(
+			machineOf({
+				id: "parent",
+				networking: { isolated: false, networks: [] },
+			}),
+		);
+		await expect(
+			run(
+				makeAdapter(client).forkMachine({
+					sourceSandboxId: "parent",
+					providerLabel: "child",
+					timeoutSeconds: 600,
+				}),
+			),
+		).rejects.toMatchObject({ code: "rejected" });
+		expect(client.methods("machines.fork")).toHaveLength(0);
+		expect(client.methods("machines.setEgressAllow")).toHaveLength(0);
 	});
 });

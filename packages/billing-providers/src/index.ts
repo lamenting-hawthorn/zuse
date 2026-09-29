@@ -84,6 +84,7 @@ export interface BillingProviderAdapter {
 		readonly eventName: string;
 		readonly units: number;
 		readonly idempotencyKey: string;
+		readonly occurredAtMs?: number;
 		readonly metadata?: Readonly<Record<string, string>>;
 	}) => Effect.Effect<void, BillingProviderError>;
 	readonly reconcileMeter?: (input: {

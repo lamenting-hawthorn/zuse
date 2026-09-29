@@ -1,17 +1,21 @@
 import "@zuse/i18n/english/connections";
+import "@zuse/i18n/english/chat";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CloudChatSummary } from "@zuse/contracts";
-import { message as uiMessage } from "@zuse/i18n";
+import { formatDate, message as uiMessage } from "@zuse/i18n";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import {
 	Activity01Icon,
+	ArrowDown01Icon,
+	Calendar03Icon,
+	CloudIcon,
 	Copy01Icon,
 	CpuIcon,
+	Folder01Icon,
 	HardDriveIcon,
 	RamMemoryIcon,
 	Refresh01Icon,
 } from "@zuse/icons/solid-rounded";
-import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { getAppBridge, type OpenTarget } from "../lib/bridge.ts";
 import { cloudProviderLabel } from "../lib/cloud-provider-presentation.ts";
@@ -36,7 +40,9 @@ import { isCloudWorkspaceReady } from "../lib/cloud-workspace-lifecycle.ts";
 import { runControlPlane } from "../lib/control-plane-client.ts";
 import { errorMessage } from "../lib/error-message.ts";
 import { useMachineResources } from "../lib/machine-resources-client-bus.ts";
+import { openPathInTarget } from "../lib/open-path-in-target.ts";
 import { copyText } from "../lib/platform-capabilities.ts";
+
 import { DitherCloudIcon } from "./dither-cloud-icon.tsx";
 import { OpenTargetIcon } from "./open-target-icon.tsx";
 import {
@@ -50,20 +56,24 @@ import {
 } from "./ui/alert-dialog.tsx";
 import { Button } from "./ui/button.tsx";
 import {
+	compactMenuItemClass,
 	Menu,
 	MenuItem,
 	MenuPopup,
 	MenuSeparator,
-	MenuShortcut,
+	MenuSub,
+	MenuSubPopup,
+	MenuSubTrigger,
 	MenuTrigger,
 } from "./ui/menu.tsx";
 import { Switch } from "./ui/switch.tsx";
 import { toastManager } from "./ui/toast.tsx";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip.tsx";
 
 /** Shared row idiom for the Summary aside (also used by EnvironmentSummary). */
 export const summaryRowClass =
 	"group flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2.5 text-left text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60";
+
+const workspaceMenuRowClass = `flex w-full min-w-0 items-center ${compactMenuItemClass}`;
 
 const formatGigabytes = (bytes: number): string =>
 	`${(bytes / 1_000_000_000).toFixed(1)} GB`;
@@ -171,18 +181,21 @@ const SSH_TARGETS: ReadonlyArray<{
 ];
 
 /**
- * Top-bar split button for cloud workspaces — replaces the local "Open in…"
- * menu, which cannot act on a remote workspace path. Also hosts the
- * cloud→local directory sync toggle, mirroring the SSH/sync pairing.
+ * Compact workspace identity and actions, with SSH nested below its details.
+ * Performance remains in the Environment Summary.
  */
-export function CloudWorkspaceOpenSshMenu({
+export function CloudWorkspaceMenu({
 	workspaceId,
 	className = "",
 }: {
 	readonly workspaceId: string;
 	readonly className?: string;
 }) {
-	const { message: uiMessage } = useUiMessages(["common", "connections"]);
+	const { message: uiMessage } = useUiMessages([
+		"common",
+		"connections",
+		"chat",
+	]);
 
 	const summary = useCloudSummary(workspaceId);
 	const syncPrefs = useCloudChatCatalogStore(
@@ -193,14 +206,9 @@ export function CloudWorkspaceOpenSshMenu({
 	const [installedTargets, setInstalledTargets] = useState<
 		ReadonlyArray<OpenTarget>
 	>([]);
-	if (!cloudSshSupported() || summary === null) return null;
+	const [menuOpen, setMenuOpen] = useState(false);
+	if (summary === null) return null;
 	const running = isCloudWorkspaceReady(summary);
-	const activityLabel = running
-		? uiMessage("connections:cloud_chat_row_presentation_active")
-		: summary.state === "paused"
-			? uiMessage("connections:cloud_chat_row_presentation_paused")
-			: uiMessage("connections:cloud_workspace_info_inactive");
-	const providerActivityLabel = `${cloudProviderLabel(summary.providerId)} · ${activityLabel}`;
 	const syncEnabled = cloudSyncPreferenceEnabled(syncPrefs);
 
 	const toggleSync = async (): Promise<void> => {
@@ -228,7 +236,9 @@ export function CloudWorkspaceOpenSshMenu({
 	const syncPresentation = cloudSyncPresentation(syncStatus);
 
 	const refreshTargets = async (): Promise<void> => {
-		const list = await getAppBridge()?.listOpenTargets?.("");
+		const list = await getAppBridge()
+			?.listOpenTargets?.(syncStatus?.localPath ?? "")
+			.catch(() => undefined);
 		if (list !== undefined) setInstalledTargets(list);
 	};
 
@@ -241,115 +251,266 @@ export function CloudWorkspaceOpenSshMenu({
 		};
 
 	return (
-		<Menu>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<span className="inline-flex" tabIndex={running ? undefined : 0} />
-					}
+		<div className={`flex min-w-0 items-center gap-0.5 ${className}`}>
+			<Menu open={menuOpen} onOpenChange={setMenuOpen}>
+				<MenuTrigger
+					onClick={() => void refreshTargets()}
+					className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md hover:bg-muted/60 data-[popup-open]:bg-muted/60"
+					title={uiMessage("connections:cloud_workspace_menu_details")}
+					aria-label={uiMessage("connections:cloud_workspace_menu_details")}
 				>
-					<MenuTrigger
-						disabled={!running}
-						onClick={() => void refreshTargets()}
-						className={`${className} flex h-7 items-center gap-1.5 overflow-hidden rounded-md border border-border/80 px-2 text-xs text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground disabled:pointer-events-none disabled:opacity-50`}
-						aria-label={`${uiMessage("connections:cloud_workspace_info_open_workspace_via_ssh")} — ${providerActivityLabel}`}
-					>
-						<DitherCloudIcon
-							className={`size-4 shrink-0 ${running ? "text-[var(--accent-green)]" : "text-muted-foreground"}`}
-						/>
-						<span>
-							{uiMessage("connections:cloud_workspace_info_open_via_ssh")}
-						</span>
-						<ChevronDown className="size-3.5 shrink-0" />
-					</MenuTrigger>
-				</TooltipTrigger>
-				<TooltipPopup>
-					<div className="font-medium">{providerActivityLabel}</div>
-					{running
-						? uiMessage(
-								"connections:cloud_workspace_info_open_this_workspace_in_an_editor_or_terminal_over_ssh",
-							)
-						: uiMessage(
-								"connections:cloud_workspace_info_the_workspace_must_be_running_for_ssh_access",
-							)}
-				</TooltipPopup>
-			</Tooltip>
-			<MenuPopup align="end" className="w-64">
-				{SSH_TARGETS.map((target, index) => (
-					<MenuItem
-						key={target.id}
-						onClick={() => void launchSsh(workspaceId, target.id)}
-						className="flex h-7 w-full items-center gap-2 rounded px-2 text-xs hover:bg-sidebar-accent"
-					>
-						<OpenTargetIcon target={iconTarget(target.id, target.label)} />
-						<span className="min-w-0 flex-1 truncate">{target.label}</span>
-						<MenuShortcut>{index + 1}</MenuShortcut>
-					</MenuItem>
-				))}
-				<MenuSeparator />
-				<MenuItem
-					onClick={() => void copySshCommand(workspaceId)}
-					className="flex h-7 w-full items-center gap-2 rounded px-2 text-xs hover:bg-sidebar-accent"
-				>
-					<HugeiconsIcon
-						icon={Copy01Icon}
-						className="size-5 shrink-0 text-muted-foreground"
+					<DitherCloudIcon
+						className={`size-4 shrink-0 ${running ? "text-[var(--accent-green)]" : "text-muted-foreground"}`}
 					/>
-					<span className="min-w-0 flex-1 truncate">
-						{uiMessage("connections:cloud_workspace_info_copy_ssh_command")}
-					</span>
-					<MenuShortcut>{SSH_TARGETS.length + 1}</MenuShortcut>
-				</MenuItem>
-				{cloudSyncSupported() ? (
-					<>
-						<MenuSeparator />
-						<MenuItem
-							closeOnClick={false}
-							onClick={() => void toggleSync()}
-							className="flex h-7 w-full items-center gap-2 rounded px-2 text-xs hover:bg-sidebar-accent"
-						>
-							<span className="min-w-0 flex-1 truncate">
-								{uiMessage(
-									"connections:cloud_workspace_info_sync_to_a_local_directory",
-								)}
-							</span>
-							<Switch
-								checked={syncEnabled}
-								disabled={syncBusy || (!running && !syncEnabled)}
-								className="pointer-events-none"
-							/>
-						</MenuItem>
-						{syncEnabled ? (
-							<div
-								className="flex items-start gap-2 px-2 py-1 text-[11px] text-muted-foreground"
-								title={
-									syncPresentation.detail ?? syncStatus?.localPath ?? undefined
-								}
-							>
-								<span
-									className={`mt-1 size-1.5 shrink-0 rounded-full ${syncPresentation.dotClass}`}
+				</MenuTrigger>
+				<MenuPopup align="end" className="w-80 max-w-[calc(100vw-1rem)]">
+					<div className="divide-y divide-border">
+						{[
+							{
+								label: uiMessage("connections:cloud_workspace_menu_repository"),
+								icon: Folder01Icon,
+								value: summary.repositoryDisplayName,
+								title: summary.repositoryIdentity,
+							},
+							{
+								label: uiMessage(
+									"connections:cloud_workspace_menu_environment",
+								),
+								icon: CloudIcon,
+								value: cloudProviderLabel(summary.providerId),
+							},
+							{
+								label: uiMessage("connections:cloud_workspace_info_status"),
+								icon: Activity01Icon,
+								value: workspaceStateLabel(summary),
+							},
+							{
+								label: uiMessage("connections:cloud_workspace_menu_created"),
+								icon: Calendar03Icon,
+								value: (
+									<time dateTime={new Date(summary.createdAt).toISOString()}>
+										{formatDate(summary.createdAt, {
+											month: "short",
+											day: "numeric",
+											hour: "numeric",
+											minute: "2-digit",
+										})}
+									</time>
+								),
+							},
+						].map(({ label, icon, value, title }) => (
+							<div key={label} className={workspaceMenuRowClass} title={title}>
+								<HugeiconsIcon
+									icon={icon}
+									className="size-3.5 text-muted-foreground"
 								/>
-								<div className="min-w-0 flex-1">
-									<div className="truncate">{syncPresentation.label}</div>
+								<span className="shrink-0">{label}</span>
+								<span className="min-w-0 flex-1 truncate text-right text-muted-foreground">
+									{value}
+								</span>
+							</div>
+						))}
+					</div>
+					{cloudSshSupported() ? (
+						<>
+							<MenuSeparator />
+							<MenuSub>
+								<MenuSubTrigger
+									disabled={!running}
+									className={`${workspaceMenuRowClass} my-2 w-[calc(100%-1rem)] mx-2 border border-foreground/15 bg-black/5 pr-0 font-mono text-foreground dark:bg-black/30 [&>svg:last-child]:hidden [&_svg]:text-muted-foreground`}
+								>
+									<span className="size-4 shrink-0 [&>*]:size-4">
+										<OpenTargetIcon
+											target={
+												installedTargets.find(
+													(target) =>
+														target.available &&
+														SSH_TARGETS.some((ssh) => ssh.id === target.id),
+												) ??
+												iconTarget(
+													"cursor",
+													uiMessage("connections:cloud_workspace_info_cursor"),
+												)
+											}
+										/>
+									</span>
+									<span className="min-w-0 flex-1 truncate">
+										{uiMessage("connections:cloud_workspace_info_open_via_ssh")}
+									</span>
+									<span className="flex h-7 w-7 shrink-0 items-center justify-center border-l border-foreground/15">
+										<HugeiconsIcon
+											icon={ArrowDown01Icon}
+											className="size-3.5"
+										/>
+									</span>
+								</MenuSubTrigger>
+								<MenuSubPopup className="w-52">
+									{SSH_TARGETS.map((target) => (
+										<MenuItem
+											key={target.id}
+											onClick={() => void launchSsh(workspaceId, target.id)}
+											className={workspaceMenuRowClass}
+										>
+											<span className="size-4 shrink-0 [&>*]:size-4">
+												<OpenTargetIcon
+													target={iconTarget(target.id, target.label)}
+												/>
+											</span>
+											<span className="min-w-0 flex-1 truncate">
+												{target.label}
+											</span>
+										</MenuItem>
+									))}
+									<MenuSeparator />
+									<MenuItem
+										onClick={() => void copySshCommand(workspaceId)}
+										className={workspaceMenuRowClass}
+									>
+										<span className="size-4 shrink-0">
+											<HugeiconsIcon
+												icon={Copy01Icon}
+												className="size-4 text-muted-foreground"
+											/>
+										</span>
+										<span className="min-w-0 flex-1 truncate">
+											{uiMessage(
+												"connections:cloud_workspace_info_copy_ssh_command",
+											)}
+										</span>
+									</MenuItem>
+								</MenuSubPopup>
+							</MenuSub>
+						</>
+					) : null}
+					{cloudSyncSupported() ? (
+						<>
+							<MenuSeparator />
+							<div className={`${workspaceMenuRowClass} mt-2`}>
+								<span className="min-w-0 flex-1 truncate">
+									{uiMessage(
+										"connections:cloud_workspace_info_sync_to_a_local_directory",
+									)}
+								</span>
+								<Switch
+									checked={syncEnabled}
+									disabled={syncBusy || (!running && !syncEnabled)}
+									onCheckedChange={() => void toggleSync()}
+									aria-label={uiMessage(
+										"connections:cloud_workspace_info_sync_to_a_local_directory",
+									)}
+								/>
+							</div>
+							{syncEnabled ? (
+								<div className="px-2 pb-2 text-xs text-muted-foreground">
+									<div
+										className="flex h-7 items-center gap-2"
+										title={syncPresentation.detail ?? undefined}
+									>
+										<span
+											className={`size-1.5 shrink-0 rounded-full ${syncPresentation.dotClass}`}
+										/>
+										<span className="truncate">{syncPresentation.label}</span>
+									</div>
+									{syncStatus?.localPath ? (
+										<MenuSub>
+											<MenuSubTrigger
+												className={`${workspaceMenuRowClass} mt-1 border border-foreground/15 bg-black/5 pr-0 font-mono text-foreground dark:bg-black/30 [&>svg:last-child]:hidden`}
+												aria-label={uiMessage("chat:top_bar_open_in")}
+												title={syncStatus.localPath}
+											>
+												<HugeiconsIcon
+													icon={Folder01Icon}
+													className="size-4 text-muted-foreground"
+												/>
+												<span className="min-w-0 flex-1 truncate">
+													{syncStatus.localPath}
+												</span>
+												<span className="flex h-7 w-7 shrink-0 items-center justify-center border-l border-foreground/15">
+													<HugeiconsIcon
+														icon={ArrowDown01Icon}
+														className="size-3.5"
+													/>
+												</span>
+											</MenuSubTrigger>
+											<MenuSubPopup className="w-52">
+												{installedTargets
+													.filter((target) => target.available)
+													.map((target) => (
+														<MenuItem
+															key={target.id}
+															className={workspaceMenuRowClass}
+															onClick={() => {
+																const path = syncStatus?.localPath;
+																if (path)
+																	void openPathInTarget(path, target.id).catch(
+																		(cause) =>
+																			toastManager.add({
+																				type: "error",
+																				title: errorMessage(
+																					cause,
+																					"Could not open folder.",
+																				),
+																			}),
+																	);
+															}}
+														>
+															<span className="size-4 shrink-0 [&>*]:size-4">
+																<OpenTargetIcon target={target} />
+															</span>
+															<span className="min-w-0 flex-1 truncate">
+																{target.label}
+															</span>
+														</MenuItem>
+													))}
+												<MenuSeparator />
+												<MenuItem
+													className={workspaceMenuRowClass}
+													onClick={() => {
+														const path = syncStatus?.localPath;
+														if (path)
+															void copyText(path).catch((cause) =>
+																toastManager.add({
+																	type: "error",
+																	title: errorMessage(
+																		cause,
+																		"Could not copy folder path.",
+																	),
+																}),
+															);
+													}}
+												>
+													<span className="size-4 shrink-0">
+														<HugeiconsIcon
+															icon={Copy01Icon}
+															className="size-4 text-muted-foreground"
+														/>
+													</span>
+													<span className="min-w-0 flex-1 truncate">
+														{uiMessage("chat:top_bar_copy_path")}
+													</span>
+												</MenuItem>
+											</MenuSubPopup>
+										</MenuSub>
+									) : null}
 									{syncPresentation.detail ? (
-										<div className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed opacity-75">
+										<div className="mt-1 line-clamp-2 text-[11px] leading-relaxed">
 											{syncPresentation.detail}
 										</div>
 									) : null}
 								</div>
-							</div>
-						) : null}
-					</>
-				) : null}
-			</MenuPopup>
-		</Menu>
+							) : null}
+						</>
+					) : null}
+				</MenuPopup>
+			</Menu>
+		</div>
 	);
 }
 
 /**
  * Summary-aside row for cloud workspaces: "Performance" opens a side menu
  * with status + restart and live CPU/memory/disk, mirroring the "Running on"
- * row idiom. SSH and sync live in the top bar (`CloudWorkspaceOpenSshMenu`).
+ * row idiom. SSH and sync live in the top bar (`CloudWorkspaceMenu`).
  */
 export function CloudWorkspaceInfo({
 	workspaceId,

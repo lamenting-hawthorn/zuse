@@ -120,6 +120,12 @@ export interface SandboxProviderAdapter {
 	readonly recoverByLabel: (
 		providerLabel: string,
 	) => Effect.Effect<ProviderSandbox | null, SandboxProviderError>;
+	/** Native live-machine fork. The child stays quarantined until explicitly opened. */
+	readonly forkMachine?: (input: {
+		readonly sourceSandboxId: string;
+		readonly providerLabel: string;
+		readonly timeoutSeconds: number;
+	}) => Effect.Effect<ProviderSandbox, SandboxProviderError>;
 	readonly startProcess: (
 		providerSandboxId: string,
 		input: SandboxProcessInput,
@@ -152,6 +158,11 @@ export interface SandboxProviderAdapter {
 		providerSandboxId: string,
 		port: number,
 	) => Effect.Effect<SandboxEndpoint, SandboxProviderError>;
+	/** Remove public routes to this preview port; unsupported providers must not claim success. */
+	readonly revokeEndpoint?: (
+		providerSandboxId: string,
+		port?: number,
+	) => Effect.Effect<void, SandboxProviderError>;
 	readonly pause: (
 		providerSandboxId: string,
 	) => Effect.Effect<void, SandboxProviderError>;

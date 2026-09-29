@@ -1,12 +1,14 @@
-import { mkdir, readdir } from "node:fs/promises";
+import { lstat, mkdir, readdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { KeyedSerialWorker } from "@zuse/utils/keyed-worker";
+import { SyncFileVerifier } from "./cloud-sync-file-verifier.ts";
 import {
 	applySnapshot,
 	cachedBaseline,
 	downloadSnapshot,
 	localBaseline,
 	readSyncManifest,
+	removeSyncSnapshot,
 	SYNC_MARKER_FILE,
 	writeSyncManifest,
 } from "./cloud-sync-snapshot.ts";
@@ -40,6 +42,7 @@ export interface CloudSyncStatus {
 }
 
 export interface CloudSyncConfigureInput {
+	readonly archived?: boolean;
 	readonly workspaceId: string;
 	readonly enabled: boolean;
 	readonly localPath: string;
@@ -66,7 +69,37 @@ export const cloudSyncDefaultPath = (
 		: join(home, ".zuse", "cloud", ...segments);
 };
 
+const prepareSyncDirectory = async (
+	path: string,
+	workspaceId: string,
+): Promise<void> => {
+	await mkdir(path, { recursive: true });
+	const contents = await readdir(path);
+	if (contents.length === 0)
+		await writeSyncManifest(path, { version: 1, workspaceId, files: [] });
+	else if (!contents.includes(SYNC_MARKER_FILE))
+		throw new Error(
+			"The chosen folder is not empty. Pick an empty folder or a previous sync target.",
+		);
+	await readSyncManifest(path, workspaceId);
+};
+
+/** Path lookup must not overwrite the ownership journal of an existing snapshot. */
+export const prepareCloudSyncDefaultPath = async (
+	home: string,
+	workspaceId: string,
+	repository: unknown,
+	branch: unknown,
+	prepare = true,
+): Promise<string | null> => {
+	const path = cloudSyncDefaultPath(home, repository, branch);
+	if (path === null || !prepare) return path;
+	await prepareSyncDirectory(path, workspaceId);
+	return path;
+};
+
 interface SyncEntry {
+	verifier: SyncFileVerifier;
 	progress?: CloudSyncStatus["progress"];
 	config: CloudSyncConfigureInput;
 	state: CloudSyncState;
@@ -126,9 +159,10 @@ export class CloudSyncManager {
 			}
 			if (this.disposed) return this.status(input.workspaceId);
 			const entry: SyncEntry = {
+				verifier: new SyncFileVerifier(),
 				config: input.enabled
 					? input
-					: { ...input, localPath: old?.config.localPath ?? input.localPath },
+					: { ...input, localPath: old?.config.localPath || input.localPath },
 				state: input.enabled ? "pending" : "idle",
 				lastSyncedAt: old?.lastSyncedAt ?? null,
 				error: null,
@@ -146,22 +180,39 @@ export class CloudSyncManager {
 			this.entries.set(input.workspaceId, entry);
 			if (input.enabled) {
 				try {
-					await mkdir(input.localPath, { recursive: true });
-					const contents = await readdir(input.localPath);
-					if (contents.length === 0)
-						await writeSyncManifest(input.localPath, {
-							version: 1,
-							workspaceId: input.workspaceId,
-							files: [],
-						});
-					else if (!contents.includes(SYNC_MARKER_FILE))
-						throw new Error(
-							"The chosen folder is not empty. Pick an empty folder or a previous sync target.",
-						);
-					await readSyncManifest(input.localPath, input.workspaceId);
+					await prepareSyncDirectory(input.localPath, input.workspaceId);
 					this.schedule(input.workspaceId, entry, 0);
 				} catch (cause) {
 					entry.blocked = true;
+					entry.state = "error";
+					entry.error = cause instanceof Error ? cause.message : String(cause);
+				}
+			}
+			if (!input.enabled && input.archived) {
+				try {
+					const localPath = entry.config.localPath;
+					await removeSyncSnapshot(localPath, input.workspaceId);
+					if (localPath) {
+						const cache = `${resolve(localPath)}.zuse-sync-cache`;
+						const info = await lstat(cache).catch(
+							(cause: NodeJS.ErrnoException) => {
+								if (cause.code === "ENOENT") return null;
+								throw cause;
+							},
+						);
+						if (info) {
+							if (!info.isDirectory() || info.isSymbolicLink())
+								throw new Error(
+									"Local sync cache cleanup refused a non-directory.",
+								);
+							await readSyncManifest(cache, input.workspaceId);
+							await rm(cache, { recursive: true });
+						}
+					}
+					entry.lastSyncedAt = null;
+					entry.lastAttemptAt = -Infinity;
+					entry.retryAt = 0;
+				} catch (cause) {
 					entry.state = "error";
 					entry.error = cause instanceof Error ? cause.message : String(cause);
 				}
@@ -213,7 +264,12 @@ export class CloudSyncManager {
 		const staging = `${resolve(entry.config.localPath)}.zuse-sync-cache`;
 		try {
 			const previous = await readSyncManifest(entry.config.localPath, id);
-			const local = await localBaseline(entry.config.localPath, previous.files);
+			const local = await localBaseline(
+				entry.config.localPath,
+				previous.files,
+				entry.verifier,
+				controller.signal,
+			);
 			if (controller.signal.aborted) return;
 			await mkdir(staging, { recursive: true });
 			if ((await readdir(staging)).length === 0)
@@ -223,7 +279,11 @@ export class CloudSyncManager {
 					files: [],
 				});
 			await readSyncManifest(staging, id);
-			const cached = await cachedBaseline(staging);
+			const cached = await cachedBaseline(
+				staging,
+				entry.verifier,
+				controller.signal,
+			);
 			const baseline = [
 				...new Map(
 					[...local, ...cached].map((file) => [file.path, file]),
@@ -266,6 +326,7 @@ export class CloudSyncManager {
 				previous,
 				files,
 				controller.signal,
+				entry.verifier,
 			);
 			if (controller.signal.aborted) return;
 			entry.lastSyncedAt = Date.now();

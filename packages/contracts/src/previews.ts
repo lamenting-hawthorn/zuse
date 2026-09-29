@@ -10,10 +10,12 @@ export class PreviewServer extends Schema.Class<PreviewServer>("PreviewServer")(
 	{
 		name: Schema.String,
 		port: Schema.Number,
+		/** Verified HTTP listener, excluding the runtime itself. Absent on older runtimes. */
+		isWebServer: Schema.optional(Schema.Boolean),
 		/**
 		 * True when every listener on this port binds a loopback address. Such a
-		 * server is reachable through a local tunnel but not via a per-port
-		 * public host, which only routes to non-loopback binds.
+		 * server needs a local tunnel or a provider loopback bridge (such as
+		 * boxd's) to be reachable through a public preview host.
 		 */
 		loopbackOnly: Schema.Boolean,
 	},

@@ -231,6 +231,10 @@ const CreateCloudWorkspace = MemoizeRpcs.toLayerHandler(
 	"cloud.workspaces.create",
 	(input) => withCloudControl((service) => service.createCloudWorkspace(input)),
 );
+const ForkCloudWorkspace = MemoizeRpcs.toLayerHandler(
+	"cloud.workspaces.fork",
+	(input) => withCloudControl((service) => service.createCloudWorkspace(input)),
+);
 const CloudApiKeysList = MemoizeRpcs.toLayerHandler("cloud.apiKeys.list", () =>
 	withCloudControl((service) => service.listCloudApiKeys()),
 );
@@ -296,6 +300,13 @@ const CloudWorkspacePreviewUrl = MemoizeRpcs.toLayerHandler(
 	({ workspaceId, port }) =>
 		withCloudControl((service) =>
 			service.cloudWorkspacePreviewUrl(workspaceId, port),
+		),
+);
+const RevokeCloudWorkspacePreviewUrl = MemoizeRpcs.toLayerHandler(
+	"cloud.workspaces.revokePreviewUrl",
+	({ workspaceId, port }) =>
+		withCloudControl((service) =>
+			service.revokeCloudWorkspacePreviewUrl(workspaceId, port),
 		),
 );
 const ArchiveCloudWorkspace = MemoizeRpcs.toLayerHandler(
@@ -457,6 +468,7 @@ export const MachineHandlersLayer = Layer.mergeAll(
 	CloudTranscriptMessagePage,
 	WatchCloudWorkspace,
 	CreateCloudWorkspace,
+	ForkCloudWorkspace,
 	CloudApiKeysList,
 	CloudApiKeysCreate,
 	CloudApiKeysRevoke,
@@ -468,6 +480,7 @@ export const MachineHandlersLayer = Layer.mergeAll(
 	RestartCloudWorkspace,
 	CloudWorkspaceSshAccess,
 	CloudWorkspacePreviewUrl,
+	RevokeCloudWorkspacePreviewUrl,
 	ArchiveCloudWorkspace,
 	UnarchiveCloudWorkspace,
 	DeleteCloudWorkspace,

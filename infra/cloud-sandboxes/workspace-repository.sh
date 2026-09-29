@@ -4,6 +4,11 @@ set -euo pipefail
 workspace="${ZUSE_CLOUD_WORKSPACE_ROOT:?}"
 branch="${ZUSE_BRANCH:?}"
 base_ref="${ZUSE_BASE_REF:?}"
+# A machine fork already contains the source checkout, including local commits,
+# staged edits and untracked files. Branch directly from that captured HEAD.
+if [[ "${ZUSE_FORK_CHECKOUT:-}" == 1 ]]; then
+  base_ref=HEAD
+fi
 # Never reset a recovered checkout: it may already contain the user's edits.
 git -C "$workspace" rev-parse --git-dir >/dev/null
 git check-ref-format --branch "$branch" >/dev/null

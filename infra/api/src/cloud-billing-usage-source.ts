@@ -1,5 +1,5 @@
 import type { SandboxProviders } from "@zuse/sandbox-providers";
-import type { Effect } from "effect";
+import { Effect } from "effect";
 import type { CloudBillingStore } from "./cloud-billing-store.ts";
 import type { CloudWorkspaceStore } from "./cloud-workspace-store.ts";
 import type { ApiConfiguration } from "./config.ts";
@@ -77,3 +77,33 @@ export const billingPollRequest = (
 		redirect: "error",
 		signal: AbortSignal.timeout(30_000),
 	});
+
+/** A failed execution must stay retryable without starving the rest of a poll. */
+export const ingestPolledBillingEvents = Effect.fn("ingestPolledBillingEvents")(
+	function* <Event extends { readonly id: string }, R>(input: {
+		readonly provider: string;
+		readonly events: ReadonlyArray<unknown>;
+		readonly normalize: (payload: unknown) => Event | null;
+		readonly ingest: (
+			event: Event,
+			payload: unknown,
+		) => Effect.Effect<{ readonly metered: boolean }, ApiError, R>;
+	}) {
+		let metered = 0;
+		for (const payload of input.events) {
+			const event = input.normalize(payload);
+			if (event === null) continue;
+			const result = yield* input.ingest(event, payload).pipe(Effect.result);
+			if (result._tag === "Failure") {
+				console.warn("[cloud-billing] polled execution settlement failed", {
+					provider: input.provider,
+					eventId: event.id,
+					code: result.failure.code,
+				});
+				continue;
+			}
+			if (result.success.metered) metered++;
+		}
+		return metered;
+	},
+);

@@ -1,6 +1,7 @@
 import type {
 	AttachmentBadMimeError,
 	AttachmentTooLargeError,
+	AttachmentUploadResult,
 	ContextWriteError,
 	SessionId,
 	SessionNotFoundError,
@@ -21,15 +22,7 @@ export interface AttachmentServiceShape {
 		rootPath?: string,
 		/** Stable transport identity for retry-safe external materialization. */
 		stableId?: string,
-	) => Effect.Effect<
-		{
-			readonly id: string;
-			readonly sizeBytes: number;
-			readonly mimeType: string;
-			readonly ext: string;
-		},
-		UploadFailure
-	>;
+	) => Effect.Effect<AttachmentUploadResult, UploadFailure>;
 	/**
 	 * Persist raw text as a file under the workspace's `.context/files/`
 	 * directory and return its workspace-relative + absolute paths. Backs the

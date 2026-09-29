@@ -598,7 +598,18 @@ export const GitServiceLive = Layer.effect(
 		) =>
 			Effect.scoped(
 				Effect.gen(function* () {
-					const cmd = Command.make("git", args, { cwd });
+					// Background reads must not rewrite the index and wake our own
+					// checkout watcher. Required locks for mutations still apply.
+					const cmd = Command.make(
+						"git",
+						[
+							"--no-optional-locks",
+							"-c",
+							"diff.autoRefreshIndex=false",
+							...args,
+						],
+						{ cwd },
+					);
 					const proc = yield* executor.spawn(cmd);
 					const stdout = yield* collectText(proc.stdout);
 					const stderr = yield* collectText(proc.stderr);
@@ -2956,9 +2967,14 @@ export const GitServiceLive = Layer.effect(
 		) =>
 			Stream.unwrap(
 				Effect.gen(function* () {
-					const mailbox = yield* Queue.make<{ readonly revision: number }>();
+					const mailbox = yield* Queue.sliding<{ readonly revision: number }>(
+						1,
+					);
 					let revision = 0;
+					let watching = false;
+					let quietTicks = 0;
 					const emitRevision = Effect.sync(() => {
+						quietTicks = 0;
 						revision += 1;
 						Queue.offerUnsafe(mailbox, { revision });
 					});
@@ -2980,19 +2996,25 @@ export const GitServiceLive = Layer.effect(
 							absoluteMetadataPath(gitDirectoryOutput),
 							absoluteMetadataPath(commonDirectoryOutput),
 						].filter((value, index, values) => values.indexOf(value) === index);
+						watching = true;
 						yield* Stream.mergeAll(
 							watchPaths.map((watchPath) => fs.watch(watchPath)),
 							{ concurrency: "unbounded" },
 						).pipe(
 							Stream.debounce(Duration.millis(50)),
 							Stream.runForEach(() => emitRevision),
+							Effect.ensuring(
+								Effect.sync(() => {
+									watching = false;
+								}),
+							),
 						);
 					});
 
 					// Native watchers are an optimization. Checkout lookup, Git metadata
 					// discovery, and the watch itself can all fail while a folder is being
 					// created, initialized, moved, or restored. Retry that complete setup on
-					// the same bounded cadence as reconciliation; a cleanly ended watcher
+					// a bounded cadence; a cleanly ended watcher
 					// sleeps too, so no failure mode can spin.
 					yield* Effect.forkScoped(
 						Effect.forever(
@@ -3002,10 +3024,19 @@ export const GitServiceLive = Layer.effect(
 							),
 						),
 					);
+					// Native recursive events handle edits promptly. Reconcile quiet
+					// checkouts every 30s; keep 5s recovery when watching is unavailable.
 					yield* Effect.forkScoped(
 						Effect.forever(
 							Effect.sleep(Duration.seconds(5)).pipe(
-								Effect.andThen(emitRevision),
+								Effect.andThen(
+									Effect.suspend(() => {
+										quietTicks += 1;
+										return !watching || quietTicks >= 6
+											? emitRevision
+											: Effect.void;
+									}),
+								),
 							),
 						),
 					);
@@ -3013,7 +3044,16 @@ export const GitServiceLive = Layer.effect(
 					yield* Effect.yieldNow;
 					Queue.offerUnsafe(mailbox, { revision });
 
-					return Stream.fromQueue(mailbox);
+					return Stream.fromQueue(mailbox).pipe(
+						// A build can emit thousands of events. Retain only the latest
+						// pending invalidation and bound automatic snapshots to 1/s.
+						Stream.throttle({
+							cost: (entries) => entries.length,
+							units: 1,
+							duration: "1 second",
+							strategy: "shape",
+						}),
+					);
 				}),
 			);
 		const workspaceChangeStreams = yield* makeWorkspaceChangeStreams(

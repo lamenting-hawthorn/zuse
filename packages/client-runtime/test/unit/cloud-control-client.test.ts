@@ -1,3 +1,4 @@
+import { CloudWorkspaceForkRequest, SessionId } from "@zuse/contracts";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -6,6 +7,38 @@ import {
 } from "../../src/cloud-control-client.ts";
 
 describe("cloud control HTTP routing", () => {
+	it("uses the dedicated fork endpoint and never falls back to image creation on failure", async () => {
+		const calls = vi.fn();
+		const request: CloudControlRequest = (...args) => {
+			calls(...args);
+			return Effect.die("old API: endpoint not found");
+		};
+		const client = makeCloudControlClient(request);
+		const input = CloudWorkspaceForkRequest.make({
+			projectId: "project",
+			providerId: "boxd",
+			baseRef: "parent-local-branch",
+			agent: "codex",
+			model: "model",
+			idempotencyKey: "fork-once",
+			forkSource: {
+				workspaceId: "parent",
+				sessionId: SessionId.make("source"),
+				messageId: "point",
+			},
+		});
+		await expect(
+			Effect.runPromise(client["cloud.workspaces.fork"](input)),
+		).rejects.toThrow();
+		expect(calls).toHaveBeenCalledTimes(1);
+		expect(calls).toHaveBeenCalledWith(
+			"/v1/cloud/workspaces/fork",
+			expect.anything(),
+			"POST",
+			input,
+		);
+	});
+
 	it("preserves provider selection and idempotent lifecycle command IDs", async () => {
 		const calls = vi.fn();
 		const request: CloudControlRequest = (...args) => {

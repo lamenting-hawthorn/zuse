@@ -30,9 +30,11 @@ import {
 	CloudWorkspaceConnection,
 	type CloudWorkspaceCreateRequest,
 	CloudWorkspaceDataKey,
+	type CloudWorkspaceForkRequest,
 	CloudWorkspaceLaunch,
 	CloudWorkspaceList,
 	type CloudWorkspaceOpError,
+	CloudWorkspacePreviewRevoked,
 	CloudWorkspacePreviewUrl,
 	CloudWorkspaceSshAccess,
 	CommandAcceptance,
@@ -114,6 +116,16 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 			ApiPaths.cloudWorkspacePreviewUrl(input.workspaceId),
 			CloudWorkspacePreviewUrl,
 			"POST",
+			{ port: input.port },
+		),
+	"cloud.workspaces.revokePreviewUrl": (input: {
+		workspaceId: string;
+		port?: number;
+	}) =>
+		request(
+			ApiPaths.cloudWorkspacePreviewUrl(input.workspaceId),
+			CloudWorkspacePreviewRevoked,
+			"DELETE",
 			{ port: input.port },
 		),
 	"cloud.workspaces.watch": (input: {
@@ -230,7 +242,16 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 	"cloud.workspaces.get": (input: { workspaceId: string }) =>
 		request(ApiPaths.cloudWorkspace(input.workspaceId), CloudWorkspace),
 	"cloud.workspaces.create": (input: CloudWorkspaceCreateRequest) =>
-		request(ApiPaths.cloudWorkspaces, CloudWorkspaceLaunch, "POST", input),
+		request(
+			input.forkSource === undefined
+				? ApiPaths.cloudWorkspaces
+				: ApiPaths.cloudWorkspacesFork,
+			CloudWorkspaceLaunch,
+			"POST",
+			input,
+		),
+	"cloud.workspaces.fork": (input: CloudWorkspaceForkRequest) =>
+		request(ApiPaths.cloudWorkspacesFork, CloudWorkspaceLaunch, "POST", input),
 	"cloud.workspaces.connect": (input: { workspaceId: string }) =>
 		request(
 			ApiPaths.cloudWorkspaceConnectionTicket(input.workspaceId),

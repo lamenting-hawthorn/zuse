@@ -118,6 +118,7 @@ export const makeApi = (
 	readonly maintainCloudBilling: (nowMs: number) => Promise<{
 		readonly exported: number;
 		readonly meterReconciled: number;
+		readonly usageExported: number;
 		readonly purgedRawEvents: number;
 	}>;
 	readonly hasFinalizedProviderBillingEvent: (

@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import {
 	appendFile,
 	chmod,
@@ -18,11 +17,12 @@ import {
 	symlink,
 	writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { createGunzip, gzipSync } from "node:zlib";
 import { cloudSshConfigPath } from "../ssh/cloud-ssh-service.ts";
 import { ARCHIVE_SNAPSHOT_SCRIPT } from "./cloud-sync-archive.ts";
+import { SyncFileVerifier } from "./cloud-sync-file-verifier.ts";
 
 export const SYNC_MARKER_FILE = ".zuse-sync.json";
 export interface SyncFile {
@@ -150,11 +150,6 @@ emit(dict(done=True))
 out.flush()
 `;
 
-const digestFile = async (path: string): Promise<string> => {
-	const digest = createHash("sha256");
-	for await (const chunk of createReadStream(path)) digest.update(chunk);
-	return digest.digest("hex");
-};
 const exists = async (path: string) =>
 	lstat(path).catch((cause: NodeJS.ErrnoException) => {
 		if (cause.code === "ENOENT" || cause.code === "ENOTDIR") return null;
@@ -182,11 +177,14 @@ const assertParents = async (
 export const localBaseline = async (
 	root: string,
 	files: SyncFile[],
+	verifier = new SyncFileVerifier(),
+	signal?: AbortSignal,
 ): Promise<SyncFile[]> => {
 	const result: SyncFile[] = [];
 	// Verify local bytes: manual edits and a process interrupted during publication
 	// must not cause the next remote scan to incorrectly omit a needed file.
 	for (const file of files) {
+		signal?.throwIfAborted();
 		try {
 			await assertParents(root, file.path);
 		} catch {
@@ -202,12 +200,74 @@ export const localBaseline = async (
 			info.isFile() &&
 			(info.mode & 0o777) === file.mode &&
 			info.size === file.size &&
-			(await digestFile(path)) === file.hash
+			(await verifier.digest(path)) === file.hash
 		)
 			result.push(file);
 	}
 	return result;
 };
+/** Remove unchanged owned files, retaining local edits and unowned contents. */
+export const removeSyncSnapshot = async (
+	root: string,
+	workspaceId: string,
+): Promise<void> => {
+	if (!root) return;
+	root = resolve(root);
+	// Check the root and all ancestors before reading ownership or walking files.
+	for (let path = root; ; path = dirname(path)) {
+		const info = await exists(path);
+		if (info && (!info.isDirectory() || info.isSymbolicLink()))
+			throw new Error(
+				"Local sync cleanup refused a non-directory or symlink ancestor.",
+			);
+		if (path === dirname(path)) break;
+	}
+	if (!(await exists(root))) return;
+	const manifest = await readSyncManifest(root, workspaceId);
+	if (manifest.pending?.length)
+		throw new Error(
+			"Local sync folder preserved: snapshot publication was interrupted.",
+		);
+	const removed = new Set<string>();
+	const directories = new Set<string>();
+	for (const file of manifest.files) {
+		// Verify immediately before unlinking, including parent symlinks. Edited
+		// files and paths replaced by directories or symlinks remain untouched.
+		if ((await localBaseline(root, [file])).length !== 1) continue;
+		await rm(join(root, file.path), { force: true });
+		removed.add(file.path);
+		for (
+			let parent = dirname(file.path);
+			parent !== ".";
+			parent = dirname(parent)
+		)
+			directories.add(parent);
+	}
+	// Only visit ancestors of removed files, never traverse local-only trees
+	// such as node_modules. Non-empty directories are deliberately retained.
+	for (const path of [...directories].sort(
+		(a, b) => b.split("/").length - a.split("/").length,
+	)) {
+		await assertParents(root, path);
+		await rmdir(join(root, path)).catch((cause: NodeJS.ErrnoException) => {
+			if (
+				!["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR"].includes(cause.code ?? "")
+			)
+				throw cause;
+		});
+	}
+	// Keep ownership metadata alongside leftovers so the workspace can sync
+	// again without adopting an unrelated non-empty directory.
+	if (removed.size > 0)
+		await writeSyncManifest(root, {
+			...manifest,
+			files: manifest.files.filter((file) => !removed.has(file.path)),
+		});
+	if ((await readdir(root)).some((name) => name !== SYNC_MARKER_FILE)) return;
+	await rm(join(root, SYNC_MARKER_FILE));
+	await rmdir(root);
+};
+
 export const readSyncManifest = async (
 	root: string,
 	workspaceId: string,
@@ -258,7 +318,11 @@ const validateFile = (raw: unknown): SyncFile => {
 };
 const quote = (s: string) => `'${s.replaceAll("'", `'"'"'`)}'`;
 
-export async function cachedBaseline(cache: string): Promise<SyncFile[]> {
+export async function cachedBaseline(
+	cache: string,
+	verifier = new SyncFileVerifier(),
+	signal?: AbortSignal,
+): Promise<SyncFile[]> {
 	const journal = await readFile(join(cache, "received.ndjson"), "utf8").catch(
 		(cause: NodeJS.ErrnoException) => {
 			if (cause.code === "ENOENT") return "";
@@ -277,13 +341,14 @@ export async function cachedBaseline(cache: string): Promise<SyncFile[]> {
 	}
 	const verified: SyncFile[] = [];
 	for (const file of entries.values()) {
+		signal?.throwIfAborted();
 		if (file.link !== undefined) continue;
 		const object = join(cache, "objects", file.hash);
 		const info = await exists(object);
 		if (
 			info?.isFile() &&
 			info.size === file.size &&
-			(await digestFile(object)) === file.hash
+			(await verifier.digest(object)) === file.hash
 		)
 			verified.push(file);
 	}
@@ -575,6 +640,7 @@ export async function applySnapshot(
 	previous: SyncManifest,
 	files: SyncFile[],
 	signal: AbortSignal,
+	verifier = new SyncFileVerifier(),
 ): Promise<void> {
 	const next = new Map(files.map((f) => [f.path, f]));
 	const owned = new Set(
@@ -609,6 +675,7 @@ export async function applySnapshot(
 	};
 	const changes: SyncFile[] = [];
 	for (const file of files) {
+		signal.throwIfAborted();
 		await assertParents(root, file.path, removing);
 
 		const current = await exists(join(root, file.path));
@@ -624,12 +691,12 @@ export async function applySnapshot(
 			current?.isFile() &&
 			current.size === file.size &&
 			(current.mode & 0o777) === file.mode &&
-			(await digestFile(join(root, file.path))) === file.hash
+			(await verifier.digest(join(root, file.path))) === file.hash
 		)
 			continue;
 		if (
 			file.link === undefined &&
-			(await digestFile(join(staging, "objects", file.hash))) !== file.hash
+			(await verifier.digest(join(staging, "objects", file.hash))) !== file.hash
 		)
 			throw new Error("Missing or corrupt snapshot object.");
 		changes.push(file);

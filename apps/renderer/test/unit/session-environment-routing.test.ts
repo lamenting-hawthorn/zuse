@@ -1,9 +1,39 @@
-import { EnvironmentId, SessionId } from "@zuse/contracts";
+import {
+	ChatId,
+	EnvironmentId,
+	FolderId,
+	MessageId,
+	SessionId,
+} from "@zuse/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	dispatch: vi.fn(),
 	patchActive: vi.fn(),
+	cloudSummary: vi.fn(),
+	attach: vi.fn(),
+	localProject: vi.fn(),
+	upsertFork: vi.fn(),
+	machineFork: vi.fn(),
+}));
+
+vi.mock("../../src/lib/cloud-workspace-catalog.ts", () => ({
+	cloudSummaryForChat: mocks.cloudSummary,
+	cloudSummaryForSelection: mocks.cloudSummary,
+	localProjectForCloudChat: mocks.localProject,
+}));
+
+vi.mock("../../src/lib/cloud-machine-fork.ts", () => ({
+	forkCloudMachine: mocks.machineFork,
+}));
+
+vi.mock("../../src/store/chat-commands.ts", () => ({
+	upsertForkedChat: mocks.upsertFork,
+	selectChatSession: vi.fn(),
+}));
+
+vi.mock("../../src/lib/cloud-workspaces.ts", () => ({
+	ensureCloudWorkspaceAttached: mocks.attach,
 }));
 
 vi.mock("../../src/lib/environment-entities.ts", () => ({
@@ -38,8 +68,128 @@ describe("session command environment routing", () => {
 	beforeEach(() => {
 		mocks.dispatch.mockReset();
 		mocks.patchActive.mockReset();
+		mocks.cloudSummary.mockReset().mockReturnValue(null);
+		mocks.attach.mockReset().mockResolvedValue(undefined);
+		mocks.localProject
+			.mockReset()
+			.mockReturnValue(FolderId.make("local-project"));
+		mocks.upsertFork.mockReset();
+		mocks.machineFork.mockReset().mockResolvedValue({
+			chatId: "new-chat",
+			sessionId: "new-session",
+			forkMode: "machine",
+		});
 		mocks.dispatch.mockResolvedValue({ result: undefined });
 		useSessionsStore.setState({ draftSession: null, error: null });
+	});
+
+	it("wakes and forks a catalog-only boxd session in its source workspace", async () => {
+		const sessionId = SessionId.make("source-cloud-session");
+		const cloud = {
+			workspaceId: "boxd-workspace",
+			providerId: "boxd",
+			state: "paused",
+		};
+		mocks.cloudSummary.mockReturnValue(cloud);
+		mocks.dispatch.mockResolvedValue({
+			result: {
+				chat: { id: ChatId.make("cloud-chat") },
+				session: {
+					id: SessionId.make("fork-session"),
+					projectId: FolderId.make("project"),
+				},
+				forkMode: "resume",
+			},
+		});
+		const forked = await useSessionsStore.getState().fork({
+			sourceSessionId: sessionId,
+			fromMessageId: MessageId.make("fork-point"),
+			destination: "tab",
+		});
+		expect(mocks.attach).toHaveBeenCalledWith(cloud);
+		expect(mocks.attach.mock.invocationCallOrder[0] ?? Infinity).toBeLessThan(
+			mocks.dispatch.mock.invocationCallOrder[0] ?? 0,
+		);
+		expect(mocks.dispatch).toHaveBeenCalledWith(
+			expect.objectContaining({
+				ref: { environmentId: "boxd-workspace", sessionId },
+				kind: "session.fork",
+				payload: expect.objectContaining({ destination: "tab" }),
+			}),
+		);
+		expect(forked?.sessionId).toBe("fork-session");
+		expect(mocks.upsertFork).toHaveBeenCalledWith(
+			expect.objectContaining({ projectId: "local-project" }),
+			expect.objectContaining({ projectId: "local-project" }),
+		);
+		expect(
+			useSessionsStore.getState().selectedSessionByProject["local-project"],
+		).toBe("fork-session");
+	});
+
+	it.each([
+		{ providerId: "e2b", destination: "tab" as const },
+		{ providerId: "boat", destination: "chat" as const },
+	])("rejects $providerId $destination forks before waking or dispatching", async ({
+		providerId,
+		destination,
+	}) => {
+		mocks.cloudSummary.mockReturnValue({
+			workspaceId: "cloud-workspace",
+			providerId,
+			state: "ready",
+		});
+		const forked = await useSessionsStore.getState().fork({
+			sourceSessionId: SessionId.make("source"),
+			fromMessageId: MessageId.make("point"),
+			destination,
+		});
+		expect(forked).toBeNull();
+		expect(mocks.attach).not.toHaveBeenCalled();
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+	});
+
+	it("routes the boxd chat destination to machine provisioning rather than session.fork", async () => {
+		const cloud = {
+			workspaceId: "boxd-source",
+			providerId: "boxd",
+			state: "ready",
+		};
+		mocks.cloudSummary.mockReturnValue(cloud);
+		const result = await useSessionsStore.getState().fork({
+			sourceSessionId: SessionId.make("source"),
+			fromMessageId: MessageId.make("point"),
+			destination: "chat",
+		});
+		expect(mocks.attach).toHaveBeenCalledWith(cloud);
+		expect(mocks.machineFork).toHaveBeenCalledWith(
+			expect.objectContaining({
+				cloud,
+				projectId: "local-project",
+				sourceSessionId: "source",
+				fromMessageId: "point",
+			}),
+		);
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+		expect(result?.forkMode).toBe("machine");
+	});
+
+	it("does not dispatch a fork after a failed cloud attach", async () => {
+		mocks.cloudSummary.mockReturnValue({
+			workspaceId: "boxd-workspace",
+			providerId: "boxd",
+			state: "paused",
+		});
+		mocks.attach.mockRejectedValue(new Error("Machine unavailable"));
+		expect(
+			await useSessionsStore.getState().fork({
+				sourceSessionId: SessionId.make("source"),
+				fromMessageId: MessageId.make("point"),
+				destination: "tab",
+			}),
+		).toBeNull();
+		expect(mocks.dispatch).not.toHaveBeenCalled();
+		expect(useSessionsStore.getState().error).toBe("Machine unavailable");
 	});
 
 	it("does not claim Full Access before a cloud mode change is applied", async () => {

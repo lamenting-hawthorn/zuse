@@ -108,6 +108,7 @@ export const ApiPaths = {
 	apiWebhook: (webhookId: string) =>
 		`/v1/api/webhooks/${encodeURIComponent(webhookId)}`,
 	cloudWorkspaces: "/v1/cloud/workspaces",
+	cloudWorkspacesFork: "/v1/cloud/workspaces/fork",
 	cloudWorkspace: (workspaceId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}`,
 	cloudWorkspaceConnectionTicket: (workspaceId: string) =>

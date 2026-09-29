@@ -689,5 +689,10 @@
 	"cloud_queue_cancel_failed": "无法取消排队中的消息。请重试。",
 	"cloud_queue_waiting_for_cloud": "等待云端启动",
 	"cloud_history_loading": "正在加载较早的消息…",
-	"cloud_history_retry": "无法加载较早的消息 · 重试"
+	"cloud_history_retry": "无法加载较早的消息 · 重试",
+	"fork_menu_fork_in_new_tab": "分叉到新标签页",
+	"fork_menu_new_tab_on_this_machine": "在此机器上打开新标签页，包含截至此消息的对话。",
+	"fork_menu_fork_in_new_machine": "分叉到新机器",
+	"fork_menu_new_machine_description": "克隆此机器，并在单独的聊天中继续对话。",
+	"fork_menu_forking_in_new_machine": "正在分叉到新机器"
 }

@@ -1,6 +1,7 @@
 import { BillingProviders } from "@zuse/billing-providers";
 import { Effect } from "effect";
 import { CloudBillingStore } from "./cloud-billing-store.ts";
+import { flushCloudUsage } from "./cloud-usage.ts";
 import { ApiConfiguration } from "./config.ts";
 
 export const flushCloudBillingOutbox = Effect.fn("flushCloudBillingOutbox")(
@@ -87,12 +88,18 @@ export const maintainCloudBilling = Effect.fn("maintainCloudBilling")(
 			25,
 			config.cloudBillingExportEnabled,
 		).pipe(Effect.provideService(CloudBillingStore, store));
+		const usageExported = yield* flushCloudUsage(nowMs).pipe(
+			Effect.catchCause(() => {
+				console.warn("[cloud-usage] export maintenance failed");
+				return Effect.succeed(0);
+			}),
+		);
 		const [meterReconciled, purgedRawEvents] = yield* Effect.all([
 			reconcilePolarCloudMeter(nowMs).pipe(
 				Effect.provideService(CloudBillingStore, store),
 			),
 			store.purgeExpiredRawEvents(nowMs),
 		]);
-		return { exported, meterReconciled, purgedRawEvents };
+		return { exported, usageExported, meterReconciled, purgedRawEvents };
 	},
 );

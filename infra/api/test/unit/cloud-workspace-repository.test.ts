@@ -28,13 +28,18 @@ const fixture = () => {
 	git("add", ".");
 	git("commit", "-m", "initial");
 	git("remote", "add", "origin", "https://example.com/repo.git");
-	const run = (base = "main", repositoryUrl = "https://example.com/repo.git") =>
+	const run = (
+		base = "main",
+		repositoryUrl = "https://example.com/repo.git",
+		fork = false,
+	) =>
 		execFileSync("bash", [script.pathname], {
 			env: {
 				...process.env,
 				ZUSE_CLOUD_WORKSPACE_ROOT: root,
 				ZUSE_BRANCH: "vileplume",
 				ZUSE_BASE_REF: base,
+				ZUSE_FORK_CHECKOUT: fork ? "1" : "",
 				ZUSE_REPOSITORY_URL: repositoryUrl,
 			},
 			stdio: "pipe",
@@ -42,6 +47,25 @@ const fixture = () => {
 	return { root, git, run };
 };
 describe("cloud workspace branch initialization", () => {
+	test("machine forks preserve detached commits, staged edits and untracked files", () => {
+		const { root, git, run } = fixture();
+		git("checkout", "--detach");
+		writeFileSync(join(root, "file"), "fork commit");
+		git("commit", "-am", "local commit");
+		const head = git("rev-parse", "HEAD");
+		writeFileSync(join(root, "file"), "staged");
+		git("add", "file");
+		writeFileSync(join(root, "file"), "unstaged");
+		writeFileSync(join(root, "untracked"), "keep");
+		run("main", "https://example.com/repo.git", true);
+		run("main", "https://example.com/repo.git", true);
+		expect(git("rev-parse", "HEAD")).toBe(head);
+		expect(git("show", ":file")).toBe("staged");
+		expect(readFileSync(join(root, "file"), "utf8")).toBe("unstaged");
+		expect(readFileSync(join(root, "untracked"), "utf8")).toBe("keep");
+		expect(git("branch", "--show-current")).toBe("vileplume");
+	});
+
 	test("creates the requested branch and preserves edits across recovery retries", () => {
 		const { root, git, run } = fixture();
 		writeFileSync(join(root, "file"), "user edits");

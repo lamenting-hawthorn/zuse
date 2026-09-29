@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
-export const Migration0059ChatUserMessageTime = Effect.gen(function* () {
+export const Migration0060ChatUserMessageTime = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient;
 	yield* sql`ALTER TABLE chats ADD COLUMN last_user_message_at TEXT`;
 	yield* sql`

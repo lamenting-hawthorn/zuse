@@ -160,6 +160,115 @@ const seedWorkspace = Effect.fn("seedArchiveWorkspace")(function* (
 });
 
 describe("cloud workspace reconciler", () => {
+	test.each([
+		false,
+		true,
+	])("native machine fork prepares identity before opening networking (recovered=%s)", async (recovered) => {
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const store = yield* CloudWorkspaceStore;
+				const providers = yield* SandboxProviders;
+				const base = yield* providers.get("fake");
+				const seeded = yield* seedWorkspace({
+					workspaceId: "native-child",
+					state: "queued",
+					desiredState: "ready",
+					statusCode: "start-queued",
+					requestConfig: {},
+				});
+				const source = {
+					...seeded,
+					workspaceId: "native-parent",
+					provider: "boxd",
+					providerSandboxId: "parent-vm",
+					state: "ready" as const,
+					chatId: "parent-chat",
+				};
+				yield* store.saveWorkspace(source);
+				yield* store.saveWorkspace({
+					...seeded,
+					revision: seeded.revision + 1,
+					provider: "boxd",
+					providerSandboxId: undefined,
+					requestConfig: {
+						machineFork: {
+							workspaceId: source.workspaceId,
+							providerSandboxId: "parent-vm",
+							chatId: source.chatId,
+							sessionId: "source-session",
+							messageId: "fork-point",
+						},
+					},
+				});
+				const child = {
+					providerSandboxId: "child-vm",
+					providerLabel: "child",
+					state: "running" as const,
+				};
+				const events: string[] = [];
+				let prepared = false;
+				const forkMachine = vi.fn(() => Effect.succeed(child));
+				const adapter = {
+					...base,
+					providerId: "boxd",
+					forkMachine,
+					recoverByLabel: () => Effect.succeed(recovered ? child : null),
+					extendTimeout: () => Effect.void,
+					writeTextFile: () => Effect.void,
+					pathExists: (_id: string, path: string) =>
+						Effect.succeed(path.endsWith("/prepared") && prepared),
+					setNetwork: (id: string, policy: { kind: string }) =>
+						Effect.sync(() => {
+							events.push(`${id}:${policy.kind}`);
+							if (id === "child-vm" && policy.kind === "open")
+								expect(prepared).toBe(true);
+						}),
+					replaceProcess: (
+						_id: string,
+						_selector: unknown,
+						input: { env?: Readonly<Record<string, string>> },
+					) =>
+						Effect.gen(function* () {
+							expect(
+								(yield* store.getWorkspace(seeded.workspaceId))
+									?.providerSandboxId,
+							).toBe("child-vm");
+							if (input.env?.ZUSE_FORK_SESSION_ID !== undefined) {
+								expect(events).toContain("child-vm:quarantined");
+								expect(input.env.ZUSE_FORK_SESSION_ID).toBe("source-session");
+								prepared = true;
+								events.push("prepared");
+							} else {
+								expect(prepared).toBe(true);
+								expect(input.env?.ZUSE_CLOUD_WORKSPACE_ID).toBe("native-child");
+								expect(input.env?.ZUSE_FORK_CHECKOUT).toBe("1");
+								events.push("bootstrap");
+							}
+						}),
+				};
+				yield* reconcileCloudWorkspace(seeded.workspaceId).pipe(
+					Effect.provideService(SandboxProviders, {
+						...providers,
+						get: () => Effect.succeed(adapter),
+					}),
+				);
+				expect(forkMachine).toHaveBeenCalledTimes(recovered ? 0 : 1);
+				expect(events.slice(-3)).toEqual([
+					"prepared",
+					"child-vm:open",
+					"bootstrap",
+				]);
+				expect((yield* store.getWorkspace(seeded.workspaceId))?.state).toBe(
+					"provisioning",
+				);
+				expect(
+					(yield* store.getWorkspace(source.workspaceId))?.requestConfig
+						.forkNetworkRestorePending,
+				).toBeUndefined();
+			}).pipe(Effect.provide(testLayer)),
+		);
+	});
+
 	test("isolates reconciliation defects so later resources still run", async () => {
 		const error = vi
 			.spyOn(console, "error")
