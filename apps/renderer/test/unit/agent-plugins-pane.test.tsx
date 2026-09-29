@@ -33,6 +33,7 @@ it("offers the same shared plugin UI on local and cloud environments", () => {
 const disconnected = {
 	configured: false,
 	url: null,
+	consoleUrl: null,
 	enabled: false,
 	toolkit: null,
 	integrations: [],
@@ -46,7 +47,8 @@ it("submits a personal key once to the selected environment and clears it after 
 	vi.mocked(executorActions.execute).mockResolvedValue({
 		...disconnected,
 		configured: true,
-		url: "https://executor.example.com",
+		url: "https://executor.sh/example-team/mcp",
+		consoleUrl: "https://executor.sh/example-team",
 		enabled: true,
 	});
 	const node = document.createElement("div");
@@ -65,7 +67,7 @@ it("submits a personal key once to the selected environment and clears it after 
 				input.dispatchEvent(new Event("input", { bubbles: true }));
 			});
 		};
-		await fill('input[type="url"]', "https://executor.example.com");
+		await fill('input[type="url"]', "https://executor.sh/example-team/mcp");
 		await fill('input[type="password"]', "fixture-key");
 		const connect = node.querySelector<HTMLButtonElement>(
 			'button[type="submit"]',
@@ -80,12 +82,15 @@ it("submits a personal key once to the selected environment and clears it after 
 			"cloud-fixture",
 			{
 				_tag: "connect",
-				url: "https://executor.example.com",
+				url: "https://executor.sh/example-team/mcp",
 				token: "fixture-key",
 			},
 		);
 		expect(node.querySelector('input[type="password"]')).toBeNull();
 		expect(node.textContent).toContain("Manage tools and accounts");
+		expect(node.querySelector("a")?.getAttribute("href")).toBe(
+			"https://executor.sh/example-team",
+		);
 	} finally {
 		await act(async () => root.unmount());
 		node.remove();

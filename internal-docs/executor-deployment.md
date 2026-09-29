@@ -2,6 +2,8 @@
 
 Zuse's Plugins settings connect to Executor's API and MCP endpoint. Local and cloud runtimes can connect to the same reachable instance using personal API keys belonging to the same Executor user. Service integrations, account connections, and policies live in Executor, not in each agent's native configuration. Each runtime must be connected explicitly; Zuse does not copy a desktop credential to cloud machines automatically.
 
+Hosted Executor is also supported: enter the organization MCP URL (`https://executor.sh/your-organization/mcp`) and your personal API key. The catalog and MCP connection use the same organization scope. A reachable endpoint alone does not authenticate the connection; enter the key in Zuse, not in chat or a URL. Browser OAuth sign-in is not implemented by this connection flow.
+
 ## Start a personal or team instance
 
 `docker compose -f infra/executor/compose.yaml up -d --build` builds upstream commit `a6a7bf2090ce103e37e38858f91fdd6fbce4afb0`. The compose file binds localhost for setup. Open `http://localhost:4788`, create the initial owner, and use invitations for other users. Create a **personal** API key, not a platform/admin credential. Add integrations and account connections in Executor's console. Zuse deliberately uses Executor's own authentication and connection UI rather than implementing every provider's OAuth flow again.

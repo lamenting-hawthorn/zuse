@@ -223,14 +223,14 @@ function ExecutorPlugins({ environmentId }: { environmentId: string }) {
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
 						/>
-						{state.url ? (
+						{state.consoleUrl ? (
 							<a
 								className="inline-flex h-7 items-center rounded-md px-2 text-xs hover:bg-muted"
-								href={state.url}
+								href={state.consoleUrl}
 								onClick={(event) => {
 									event.preventDefault();
-									if (state.url)
-										void openExternal(state.url).catch((cause) =>
+									if (state.consoleUrl)
+										void openExternal(state.consoleUrl).catch((cause) =>
 											setError(
 												errorMessage(cause, t("extensions:executor_failed")),
 											),

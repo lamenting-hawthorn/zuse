@@ -3,8 +3,8 @@ import { Effect, Layer, Semaphore } from "effect";
 import { CredentialsService } from "../provider/services/credentials-service.ts";
 import {
 	disconnectedExecutorState,
+	executorAddress,
 	executorCatalog,
-	executorOrigin,
 } from "./client.ts";
 import {
 	EXECUTOR_ACCOUNT,
@@ -50,7 +50,7 @@ export const executeExecutor = (
 		}
 		if (command._tag === "connect") {
 			const url = yield* Effect.try({
-				try: () => executorOrigin(command.url),
+				try: () => executorAddress(command.url).url,
 				catch: error,
 			});
 			const token = command.token.trim();

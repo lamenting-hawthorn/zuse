@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
 	type ExecutorProfile,
+	executorAddress,
 	executorCatalog,
 	executorMcpServer,
-	executorOrigin,
 } from "../../src/executor/client.ts";
 
 const profile: ExecutorProfile = {
@@ -14,8 +14,10 @@ const profile: ExecutorProfile = {
 };
 describe("shared Executor catalog", () => {
 	it("accepts HTTPS and loopback but rejects credential/query/path URLs and plaintext remote hosts", () => {
-		expect(executorOrigin("https://executor.example.com/")).toBe(profile.url);
-		expect(executorOrigin("http://127.0.0.1:4788")).toBe(
+		expect(executorAddress("https://executor.example.com/").url).toBe(
+			profile.url,
+		);
+		expect(executorAddress("http://127.0.0.1:4788").url).toBe(
 			"http://127.0.0.1:4788",
 		);
 		for (const url of [
@@ -23,13 +25,54 @@ describe("shared Executor catalog", () => {
 			"https://key@example.com",
 			"https://example.com/?token=a",
 			"https://example.com/api",
+			"https://example.com/team/mcp/extra",
+			"https://example.com/team/mcp?token=secret",
+			"https://example.com/team%2fother/mcp",
 			"file:///tmp/key",
 		])
-			expect(() => executorOrigin(url)).toThrow();
+			expect(() => executorAddress(url)).toThrow();
+	});
+	it("preserves organization scope for hosted MCP, toolkits, catalog requests and console links", async () => {
+		const hosted = { ...profile, url: "https://executor.sh/example-team/mcp" };
+		expect(executorAddress(`${hosted.url}/`).url).toBe(hosted.url);
+		expect(executorMcpServer(hosted).url).toBe(hosted.url);
+		expect(executorMcpServer({ ...hosted, toolkit: "review" }).url).toBe(
+			`${hosted.url}/toolkits/review`,
+		);
+		const paths: string[] = [];
+		const result = await executorCatalog(
+			hosted,
+			undefined,
+			async (input, init) => {
+				const url = new URL(String(input));
+				paths.push(url.pathname);
+				expect(url.origin).toBe("https://executor.sh");
+				expect(new Headers(init?.headers).get("x-executor-organization")).toBe(
+					"example-team",
+				);
+				expect(new Headers(init?.headers).get("Authorization")).toBe(
+					"Bearer private-key",
+				);
+				return Response.json(
+					url.pathname === "/api/toolkits" ? { toolkits: [] } : [],
+				);
+			},
+		);
+		expect(paths.sort()).toEqual([
+			"/api/connections",
+			"/api/integrations",
+			"/api/toolkits",
+		]);
+		expect(result.url).toBe(hosted.url);
+		expect(result.consoleUrl).toBe("https://executor.sh/example-team");
+		expect(executorAddress(`${profile.url}/mcp`).url).toBe(profile.url);
 	});
 	it("returns only public catalog fields and retains multiple accounts", async () => {
 		const fetcher: typeof fetch = async (input, init) => {
 			expect(init?.redirect).toBe("error");
+			expect(new Headers(init?.headers).has("x-executor-organization")).toBe(
+				false,
+			);
 			expect(new Headers(init?.headers).get("Authorization")).toBe(
 				"Bearer private-key",
 			);

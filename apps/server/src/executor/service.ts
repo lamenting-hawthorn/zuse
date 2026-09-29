@@ -1,7 +1,7 @@
 import { ExecutorError, type ExecutorState } from "@zuse/contracts";
 import { Effect, Schema } from "effect";
 import { CredentialsService } from "../provider/services/credentials-service.ts";
-import { ExecutorProfile, executorOrigin } from "./client.ts";
+import { ExecutorProfile, executorAddress } from "./client.ts";
 
 export const EXECUTOR_INTEGRATION = "executor";
 export const EXECUTOR_ACCOUNT = "gateway";
@@ -18,7 +18,7 @@ export const readExecutorProfile = Effect.fn("Executor.readProfile")(
 				const profile = Schema.decodeUnknownSync(ExecutorProfile)(
 					JSON.parse(saved),
 				);
-				const url = executorOrigin(profile.url);
+				const url = executorAddress(profile.url).url;
 				if (
 					!profile.token.trim() ||
 					/[\r\n\0]/.test(profile.token) ||
@@ -42,6 +42,7 @@ export const executorUnavailableState = (
 ): ExecutorState => ({
 	configured: true,
 	url: profile.url,
+	consoleUrl: executorAddress(profile.url).consoleUrl,
 	enabled: profile.enabled,
 	toolkit: profile.toolkit,
 	integrations: [],

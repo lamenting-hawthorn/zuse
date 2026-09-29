@@ -18,7 +18,7 @@ class ExecutorClientError extends Error {}
 
 const MAX_BYTES = 2 * 1024 * 1024;
 /** Only an explicitly configured service receives the user's credential. Never follow redirects. */
-export function executorOrigin(input: string): string {
+export function executorAddress(input: string) {
 	const url = new URL(input);
 	const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
 	if (
@@ -26,29 +26,44 @@ export function executorOrigin(input: string): string {
 		url.username ||
 		url.password ||
 		url.search ||
-		url.hash ||
-		(url.pathname !== "/" && url.pathname !== "")
+		url.hash
 	)
 		throw new ExecutorClientError(
-			"Use the Executor service URL: HTTPS, or HTTP on localhost. Do not include a path or credentials.",
+			"Use an HTTPS Executor service or MCP URL, or HTTP on localhost. Do not include credentials or query parameters.",
 		);
-	return url.origin;
+	const path = url.pathname.replace(/\/$/, "");
+	const match = /^\/([a-z0-9][a-z0-9_-]{0,127})\/mcp$/.exec(path);
+	if (path !== "" && path !== "/mcp" && !match)
+		throw new ExecutorClientError(
+			"Use the service root or an Executor MCP URL ending in /mcp.",
+		);
+	const organization = match?.[1] ?? null;
+	return {
+		url: organization ? `${url.origin}/${organization}/mcp` : url.origin,
+		origin: url.origin,
+		organization,
+		consoleUrl: organization ? `${url.origin}/${organization}` : url.origin,
+		mcpUrl: organization
+			? `${url.origin}/${organization}/mcp`
+			: `${url.origin}/mcp`,
+	};
 }
 export function executorMcpServer(profile: ExecutorProfile): ResolvedMcpServer {
 	const path =
 		profile.toolkit === null
-			? "/mcp"
-			: `/mcp/toolkits/${encodeURIComponent(profile.toolkit)}`;
+			? ""
+			: `/toolkits/${encodeURIComponent(profile.toolkit)}`;
 	return {
 		name: "zuse_executor",
 		transport: "http",
-		url: `${executorOrigin(profile.url)}${path}`,
+		url: `${executorAddress(profile.url).mcpUrl}${path}`,
 		headers: { Authorization: `Bearer ${profile.token}` },
 	};
 }
 export const disconnectedExecutorState = (): ExecutorState => ({
 	configured: false,
 	url: null,
+	consoleUrl: null,
 	enabled: false,
 	toolkit: null,
 	integrations: [],
@@ -62,20 +77,21 @@ async function readExecutorCatalog(
 	signal?: AbortSignal,
 	fetcher: typeof fetch = fetch,
 ): Promise<ExecutorState> {
+	const address = executorAddress(profile.url);
 	const read = async (path: string): Promise<unknown> => {
-		const response = await fetcher(
-			`${executorOrigin(profile.url)}/api/${path}`,
-			{
-				headers: {
-					Authorization: `Bearer ${profile.token}`,
-					Accept: "application/json",
-				},
-				redirect: "error",
-				signal: signal
-					? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-					: AbortSignal.timeout(15000),
+		const response = await fetcher(`${address.origin}/api/${path}`, {
+			headers: {
+				Authorization: `Bearer ${profile.token}`,
+				Accept: "application/json",
+				...(address.organization
+					? { "x-executor-organization": address.organization }
+					: {}),
 			},
-		);
+			redirect: "error",
+			signal: signal
+				? AbortSignal.any([signal, AbortSignal.timeout(15000)])
+				: AbortSignal.timeout(15000),
+		});
 		if (!response.ok) {
 			await response.body?.cancel();
 			throw new ExecutorClientError(
@@ -118,7 +134,8 @@ async function readExecutorCatalog(
 	try {
 		return {
 			configured: true,
-			url: profile.url,
+			url: address.url,
+			consoleUrl: address.consoleUrl,
 			enabled: profile.enabled,
 			toolkit: profile.toolkit,
 			error: null,

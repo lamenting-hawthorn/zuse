@@ -27,6 +27,7 @@ export const ExecutorToolkit = Schema.Struct({
 export const ExecutorState = Schema.Struct({
 	configured: Schema.Boolean,
 	url: Schema.NullOr(Schema.String),
+	consoleUrl: Schema.NullOr(Schema.String),
 	enabled: Schema.Boolean,
 	toolkit: Schema.NullOr(Schema.String),
 	integrations: Schema.Array(ExecutorIntegration),
