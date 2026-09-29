@@ -31,7 +31,10 @@ import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Cloud } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../hooks/use-auth.ts";
-import { cloudProviderLabel } from "../../lib/cloud-provider-presentation.ts";
+import {
+	cloudProviderLabel,
+	selectedCloudProvider,
+} from "../../lib/cloud-provider-presentation.ts";
 import { cloudWorkspaceAccessPresentation } from "../../lib/cloud-workspace-access.ts";
 import {
 	hasCloudEntitlement,
@@ -110,8 +113,10 @@ export function CloudWorkspacePool({
 		readonly CloudAccountImage[]
 	>([]);
 	useEffect(() => subscribeCloudImages(setProviderImages), []);
+	const [chosenProvider, setChosenProvider] = useState<string | null>(null);
+	const selectedProvider = selectedCloudProvider(providers, chosenProvider);
 	const accountImage = cloudImageGroupStatus(
-		providers.map((provider) => provider.providerId),
+		selectedProvider === null ? [] : [selectedProvider],
 		providerImages,
 	);
 	const [workspaces, setWorkspaces] = useState<ReadonlyArray<CloudWorkspace>>(
@@ -138,7 +143,16 @@ export function CloudWorkspacePool({
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
-	const [imageError, setImageError] = useState<string | null>(null);
+	const [imageLoadError, setImageLoadError] = useState<string | null>(null);
+	const [failedImageProviders, setFailedImageProviders] = useState<
+		readonly string[] | null
+	>(null);
+	const imageError =
+		failedImageProviders !== null &&
+		selectedProvider !== null &&
+		!failedImageProviders.includes(selectedProvider)
+			? null
+			: imageLoadError;
 	const [projectError, setProjectError] = useState<string | null>(null);
 	const [view, setView] = useState<"setup" | "usage" | "activity">("setup");
 	const access = cloudWorkspaceAccessPresentation({
@@ -227,7 +241,20 @@ export function CloudWorkspacePool({
 				if (requestSequence !== loadSequence.current) return;
 				if (imageResult.status === "fulfilled")
 					setProviderImages(imageResult.value.images);
-				setImageError(
+				setFailedImageProviders(
+					imageResult.status === "fulfilled" &&
+						providerResult.status === "fulfilled"
+						? providerResult.value.providers
+								.filter(
+									(provider) =>
+										!imageResult.value.images.some(
+											(image) => image.providerId === provider.providerId,
+										),
+								)
+								.map((provider) => provider.providerId)
+						: null,
+				);
+				setImageLoadError(
 					imageResult.status === "fulfilled" && imageResult.value.complete
 						? null
 						: "Cloud image status is temporarily unavailable. Refresh in a moment; existing cloud chats are unaffected.",
@@ -275,7 +302,7 @@ export function CloudWorkspacePool({
 	);
 	const imageReady =
 		accountImage?.state === "ready" &&
-		busy !== "image:rebuild" &&
+		!busy?.startsWith("image:") &&
 		imageError === null &&
 		buildError === null;
 	const onProgress = onboarding?.onProgress;
@@ -429,23 +456,27 @@ export function CloudWorkspacePool({
 		);
 	};
 
-	const buildAccountImage = () =>
+	const buildAccountImage = (mode: "update" | "rebuild") =>
 		run(
-			"image:rebuild",
+			`image:${mode}`,
 			async () => {
 				setBuildError(null);
 				const { providers: available } = await loadCloudProviders(true);
 				setProviders(available);
-				if (available.length === 0)
-					throw new Error("No cloud providers available");
+				if (
+					!available.some(
+						(provider) => provider.providerId === selectedProvider,
+					)
+				)
+					throw new Error("Selected cloud provider is no longer available");
 				const result = await rebuildCloudImages(
-					available.map((provider) => provider.providerId),
+					selectedProvider === null ? [] : [selectedProvider],
 					(providerId) =>
 						runControlPlane((client) =>
 							client["cloud.image.build"]({
-								mode: "rebuild",
+								mode,
 								providerId,
-								idempotencyKey: `settings-image:rebuild:${crypto.randomUUID()}`,
+								idempotencyKey: `settings-image:${mode}:${crypto.randomUUID()}`,
 							}),
 						),
 				);
@@ -653,7 +684,9 @@ export function CloudWorkspacePool({
 					{onboarding === undefined || onboarding.step === "image" ? (
 						<CloudSettingsGroup
 							title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
-							description={uiMessage("settings:cloud_images_all_description")}
+							description={uiMessage(
+								"settings:cloud_images_selected_description",
+							)}
 						>
 							{onboarding === undefined ? (
 								<CloudSettingsRow
@@ -672,13 +705,22 @@ export function CloudWorkspacePool({
 									}
 								/>
 							) : null}
+							<CloudImageProviders
+								providers={providers}
+								images={providerImages}
+								selectedProvider={selectedProvider}
+								onSelectProvider={(providerId) => {
+									setChosenProvider(providerId);
+									setBuildError(null);
+								}}
+								disabled={busy !== null}
+							/>
 							<CloudImageReadiness
 								image={accountImage}
-								allProviders
 								projects={projects}
 								busy={busy}
 								unavailable={imageError !== null || providers.length === 0}
-								onBuild={() => void buildAccountImage()}
+								onBuild={(mode) => void buildAccountImage(mode)}
 							/>
 							{imageError === null ? null : (
 								<div className="flex items-center justify-between gap-3 bg-destructive/10 px-3 py-2">
@@ -708,10 +750,6 @@ export function CloudWorkspacePool({
 									{buildError}
 								</p>
 							)}
-							<CloudImageProviders
-								providers={providers}
-								images={providerImages}
-							/>
 						</CloudSettingsGroup>
 					) : null}
 				</>
