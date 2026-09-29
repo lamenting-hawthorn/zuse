@@ -65,6 +65,7 @@ const server = await createServer({
                  window.available = ['box','e2b','boxd'];
                  window.images = window.available.map(providerId => ({providerId,state:providerId === 'e2b' ? 'failed' : 'not-built',repositories:[],providers:[{providerId:'codex',state:'connected'}],builds:[],updatedAt:1}));
                  export const loadCloudProviders = async () => ({providers:window.available.map(providerId => ({providerId,displayName:providerId}))});
+                 export const invalidateCloudProjects = () => { window.cachedProjects = undefined; };
                  export const loadCloudProjects = async () => ({projects:[{projectId:'project',updatedAt:1}]});
                  export const loadCloudWorkspaces = async () => ({workspaces:[]});
                  export const loadCloudProviderImages = async () => ({images:window.images.filter(i => !window.unavailableStatus?.includes(i.providerId)),complete:!window.unavailableStatus?.length});

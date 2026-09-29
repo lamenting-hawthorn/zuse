@@ -11,6 +11,7 @@ vi.mock("../../src/lib/rpc-client.ts", () => ({
 
 const {
 	clearControlPlaneSessionCache,
+	invalidateControlPlaneCache,
 	peekControlPlaneCache,
 	setControlPlaneCacheAccount,
 	runCachedControlPlane,
@@ -196,6 +197,7 @@ describe("persistent display cache", () => {
 		vi.stubGlobal("window", {
 			localStorage: {
 				getItem: (key: string) => stored.get(key) ?? null,
+				removeItem: (key: string) => stored.delete(key),
 				setItem: (key: string, value: string) => stored.set(key, value),
 			},
 		});
@@ -205,6 +207,15 @@ describe("persistent display cache", () => {
 		vi.useRealTimers();
 		setControlPlaneCacheAccount(null);
 	});
+	it("invalidates both in-memory and persisted snapshots after a mutation", () => {
+		const storageKey = `zuse.control-plane.v1:account-a:${key}`;
+		stored.set(storageKey, JSON.stringify({ value: { connected: true } }));
+		expect(peekControlPlaneCache(key, decode)).toEqual({ connected: true });
+		invalidateControlPlaneCache(key);
+		expect(stored.has(storageKey)).toBe(false);
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+	});
+
 	const save = () =>
 		runCachedControlPlane(key, () => Effect.succeed({ connected: true }), {
 			decode,

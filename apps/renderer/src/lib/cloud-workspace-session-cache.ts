@@ -13,6 +13,7 @@ import {
 import { Schema } from "effect";
 
 import {
+	invalidateControlPlaneCache,
 	peekControlPlaneCache,
 	runCachedControlPlane,
 } from "./control-plane-client.ts";
@@ -51,6 +52,9 @@ export const loadCloudProviders = (refresh = false) =>
 		(client) => client["cloud.providers"](),
 		{ refresh, decode: Schema.decodeUnknownSync(CloudProviderList) },
 	);
+
+export const invalidateCloudProjects = () =>
+	invalidateControlPlaneCache(cloudWorkspaceCacheKeys.projects);
 
 export const loadCloudProjects = (refresh = false) =>
 	runCachedControlPlane(

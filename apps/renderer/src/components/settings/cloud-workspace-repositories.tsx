@@ -107,9 +107,13 @@ export function CloudWorkspaceRepositories({
 				<Popover>
 					<PopoverTrigger
 						className={`inline-flex items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground outline-none hover:bg-primary/90 disabled:opacity-50 ${COMPACT_CLOUD_ACTION}`}
-						disabled={!githubAuthenticated || loading}
+						disabled={!githubAuthenticated || loading || busy !== null}
 					>
-						<Plus className="size-3.5" aria-hidden />
+						{busy === "connect" ? (
+							<RefreshCw className="size-3.5 animate-spin" aria-hidden />
+						) : (
+							<Plus className="size-3.5" aria-hidden />
+						)}
 						{uiMessage("settings:cloud_workspace_repositories_repository")}
 					</PopoverTrigger>
 					<PopoverPopup

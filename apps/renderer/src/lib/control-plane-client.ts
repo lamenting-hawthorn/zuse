@@ -159,6 +159,19 @@ export const runCachedControlPlane = <Result>(
 	return entry.pending as Promise<Result>;
 };
 
+/** Discard a display snapshot after a write, including its persisted copy. */
+export const invalidateControlPlaneCache = (key: string): void => {
+	sessionCache.delete(entryKey(key));
+	const persistedKey = storageKey(key);
+	if (persistedKey !== null) {
+		try {
+			window.localStorage.removeItem(persistedKey);
+		} catch {
+			/* Best-effort cache. */
+		}
+	}
+};
+
 export const clearControlPlaneSessionCache = (prefix?: string): void => {
 	if (prefix === undefined) {
 		sessionCache.clear();

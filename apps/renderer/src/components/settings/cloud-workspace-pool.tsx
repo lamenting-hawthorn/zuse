@@ -38,6 +38,7 @@ import {
 import { cloudWorkspaceAccessPresentation } from "../../lib/cloud-workspace-access.ts";
 import {
 	hasCloudEntitlement,
+	invalidateCloudProjects,
 	loadCloudBillingSummary,
 	loadCloudBillingUsage,
 	loadCloudEntitlements,
@@ -200,6 +201,7 @@ export function CloudWorkspacePool({
 			try {
 				try {
 					const entitlements = await loadCloudEntitlements(refresh);
+					if (requestSequence !== loadSequence.current) return;
 					loadedSubscribed = hasCloudEntitlement(entitlements);
 					setEntitlementSubscribed(loadedSubscribed);
 					if (loadedSubscribed) {
@@ -207,11 +209,13 @@ export function CloudWorkspacePool({
 							loadCloudBillingSummary(refresh),
 							loadCloudBillingUsage(refresh),
 						]);
+						if (requestSequence !== loadSequence.current) return;
 						setBilling(summary);
 						setBillingUsage(usage.items);
 						setCapDollars(String(summary.overageCapMicros / 1_000_000));
 					}
 				} catch {
+					if (requestSequence !== loadSequence.current) return;
 					if (!loadedSubscribed) {
 						setError(
 							"Your Cloud Workspace subscription could not be verified.",
@@ -221,6 +225,7 @@ export function CloudWorkspacePool({
 
 				const [providerResult, projectResult, workspaceResult, imageResult] =
 					await workspaceData;
+				if (requestSequence !== loadSequence.current) return;
 				const apiResults = [
 					providerResult,
 					projectResult,
@@ -238,7 +243,6 @@ export function CloudWorkspacePool({
 					setProjects(projectResult.value.projects);
 				if (workspaceResult.status === "fulfilled")
 					setWorkspaces(workspaceResult.value.workspaces);
-				if (requestSequence !== loadSequence.current) return;
 				if (imageResult.status === "fulfilled")
 					setProviderImages(imageResult.value.images);
 				setFailedImageProviders(
@@ -272,6 +276,7 @@ export function CloudWorkspacePool({
 								}).serviceError,
 				);
 			} catch {
+				if (requestSequence !== loadSequence.current) return;
 				setServiceAvailable(false);
 				setError(
 					cloudWorkspaceAccessPresentation({
@@ -280,7 +285,7 @@ export function CloudWorkspacePool({
 					}).serviceError,
 				);
 			} finally {
-				setSetupLoading(false);
+				if (requestSequence === loadSequence.current) setSetupLoading(false);
 			}
 		},
 		[isSignedIn],
@@ -440,6 +445,10 @@ export function CloudWorkspacePool({
 				const connected = results.flatMap((result) =>
 					result.status === "fulfilled" ? [result.value] : [],
 				);
+				// Reads started before this write cannot replace the confirmed projects,
+				// including when only part of a multi-repository connection succeeds.
+				loadSequence.current += 1;
+				invalidateCloudProjects();
 				setProjects((current) => {
 					const ids = new Set(
 						connected.map(({ project }) => project.projectId),
