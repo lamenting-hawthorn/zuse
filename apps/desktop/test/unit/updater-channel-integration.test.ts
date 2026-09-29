@@ -240,12 +240,62 @@ describe("macOS update installation handoff", () => {
 		expect(app.exit).not.toHaveBeenCalled();
 	});
 
+	it("times out stalled staging without exiting and allows another attempt", async () => {
+		const updater = await start();
+		const { app, autoUpdater: nativeUpdater } = await import("electron");
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		updater.installUpdate();
+		await vi.advanceTimersByTimeAsync(3 * 60_000 - 1);
+		expect(updater.getIsInstallingUpdate()).toBe(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(updater.getIsInstallingUpdate()).toBe(false);
+		expect(updater.getLastStatus()).toMatchObject({
+			kind: "error",
+			retryable: true,
+		});
+		nativeUpdater.emit("update-downloaded");
+		nativeUpdater.emit("before-quit-for-update");
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(app.exit).not.toHaveBeenCalled();
+		expect(nativeUpdater.quitAndInstall).not.toHaveBeenCalled();
+		await state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "preview");
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		updater.installUpdate();
+		nativeUpdater.emit("update-downloaded");
+		expect(nativeUpdater.quitAndInstall).toHaveBeenCalledOnce();
+	});
+
+	it("clears the staging deadline after successful staging", async () => {
+		const updater = await start();
+		const { autoUpdater: nativeUpdater } = await import("electron");
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		updater.installUpdate();
+		nativeUpdater.emit("update-downloaded");
+		await vi.advanceTimersByTimeAsync(3 * 60_000);
+		expect(updater.getIsInstallingUpdate()).toBe(true);
+		expect(updater.getLastStatus().kind).toBe("ready");
+	});
+
+	it("clears a failed attempt's deadline before a retry", async () => {
+		const updater = await start();
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		updater.installUpdate();
+		await vi.advanceTimersByTimeAsync(60_000);
+		updater.autoUpdater.emit("error", new Error("staging failed"));
+		updater.triggerUpdateCheck();
+		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
+		updater.installUpdate();
+		await vi.advanceTimersByTimeAsync(2 * 60_000);
+		expect(updater.getIsInstallingUpdate()).toBe(true);
+		expect(updater.getLastStatus().kind).toBe("ready");
+	});
+
 	it("does not replace the feed or channel during native staging", async () => {
 		const updater = await start();
 		await vi.waitFor(() => expect(updater.getLastStatus().kind).toBe("ready"));
 		updater.installUpdate();
 		updater.triggerUpdateCheck();
-		await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000);
+		await vi.advanceTimersByTimeAsync(60_000);
 		expect(updater.autoUpdater.checkForUpdates).toHaveBeenCalledOnce();
 		await expect(
 			state.handlers.get(UPDATE_CHANNEL_SET)?.({}, "preview"),

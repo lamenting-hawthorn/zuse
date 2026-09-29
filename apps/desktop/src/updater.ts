@@ -83,6 +83,10 @@ const UPDATE_POLL_MS = 6 * 60 * 60 * 1000;
 // the toast and menu would otherwise sit forever showing the last percent.
 const DOWNLOAD_STALL_MS = 60_000;
 
+// Local ZIP staging may take time to unpack and validate, but must not lock
+// update checks and retries indefinitely if Squirrel never responds.
+const NATIVE_STAGING_TIMEOUT_MS = 3 * 60_000;
+
 let lastStatus: UpdateStatus = { kind: "idle" };
 let started = false;
 let activeUpdateCheck: "automatic" | "manual" | null = null;
@@ -146,6 +150,11 @@ export function installUpdate(): void {
 			// a failed attempt cannot leave a stale quit callback on a later retry.
 			nativeUpdater.once("before-quit-for-update", armInstallExitWatchdog);
 			nativeUpdater.once("update-downloaded", quitAfterNativeStaging);
+			nativeStagingTimer = setTimeout(
+				() => failUpdateInstall(new Error("Native update staging timed out")),
+				NATIVE_STAGING_TIMEOUT_MS,
+			);
+			nativeStagingTimer.unref();
 			nativeUpdater.checkForUpdates();
 		} else {
 			autoUpdater.quitAndInstall();
@@ -157,7 +166,15 @@ export function installUpdate(): void {
 }
 
 let installExitTimer: NodeJS.Timeout | null = null;
+let nativeStagingTimer: NodeJS.Timeout | null = null;
 
+/** Remove the staging deadline before handing off or releasing an attempt. */
+function clearNativeStagingTimer(): void {
+	if (nativeStagingTimer !== null) clearTimeout(nativeStagingTimer);
+	nativeStagingTimer = null;
+}
+
+/** Bound shutdown only after the installer has arranged the native quit. */
 function armInstallExitWatchdog(): void {
 	if (installExitTimer !== null || !installingUpdate) return;
 	// Only force exit once the native updater has started quitting. Starting
@@ -172,7 +189,9 @@ function armInstallExitWatchdog(): void {
 	installExitTimer.unref();
 }
 
+/** Finish native staging and transfer responsibility to the quit watchdog. */
 function quitAfterNativeStaging(): void {
+	clearNativeStagingTimer();
 	try {
 		nativeUpdater.quitAndInstall();
 	} catch (error) {
@@ -180,7 +199,9 @@ function quitAfterNativeStaging(): void {
 	}
 }
 
+/** Release timers and callbacks so an unsuccessful install can be retried. */
 function failUpdateInstall(error: unknown): void {
+	clearNativeStagingTimer();
 	if (installExitTimer !== null) clearTimeout(installExitTimer);
 	installExitTimer = null;
 	if (process.platform === "darwin") {
