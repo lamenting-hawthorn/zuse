@@ -13,6 +13,7 @@ import {
 	type CloudSetupStep,
 	requestCloudOnboarding,
 } from "../../lib/cloud-onboarding.ts";
+import { peekCloudGithub } from "../../lib/cloud-workspace-session-cache.ts";
 import "@zuse/i18n/english/settings";
 import {
 	CLOUD_WORKSPACE_OFFER_ID,
@@ -123,10 +124,15 @@ export function CloudWorkspacePool({
 	const [capDollars, setCapDollars] = useState("25");
 	const [githubRepos, setGithubRepos] = useState<
 		ReadonlyArray<GithubRepoSummary>
-	>([]);
-	const [githubAuthenticated, setGithubAuthenticated] = useState(false);
+	>(() => peekCloudGithub()?.repositories ?? []);
+	const [githubAuthenticated, setGithubAuthenticated] = useState(
+		() =>
+			peekCloudGithub()?.installations.some(
+				(installation) => !installation.suspended,
+			) ?? false,
+	);
 	const [githubStatus, setGithubStatus] = useState<CloudGithubStatus | null>(
-		null,
+		() => peekCloudGithub() ?? null,
 	);
 	const [reposLoading, setReposLoading] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
@@ -141,7 +147,7 @@ export function CloudWorkspacePool({
 	});
 	const subscribed = access.subscribed;
 	const loadGithubRepos = useCallback(async (refresh = false) => {
-		setReposLoading(true);
+		setReposLoading(peekCloudGithub() === undefined);
 		try {
 			const result = await Promise.race([
 				loadCloudGithub(refresh),
@@ -158,9 +164,7 @@ export function CloudWorkspacePool({
 				result.installations.some((installation) => !installation.suspended),
 			);
 		} catch {
-			setGithubStatus(null);
-			setGithubRepos([]);
-			setGithubAuthenticated(false);
+			// Keep the last successful repository list during transient failures.
 		} finally {
 			setReposLoading(false);
 		}
@@ -257,8 +261,8 @@ export function CloudWorkspacePool({
 
 	useEffect(() => {
 		if (authLoading || !isSignedIn) return;
-		void load(true);
-		void loadGithubRepos(true);
+		void load();
+		void loadGithubRepos();
 		return subscribeControlPlaneSessionCache((key) => {
 			if (key === "cloud-workspace:github") void loadGithubRepos();
 			else if (key.startsWith("cloud-workspace:")) void load();

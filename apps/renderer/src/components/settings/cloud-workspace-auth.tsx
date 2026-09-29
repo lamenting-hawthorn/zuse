@@ -1,4 +1,9 @@
 import { refreshCloudImages } from "../../lib/cloud-image-monitor.ts";
+import {
+	loadCloudAuth,
+	peekCloudAuth,
+} from "../../lib/cloud-workspace-session-cache.ts";
+import { subscribeControlPlaneSessionCache } from "../../lib/control-plane-client.ts";
 import "@zuse/i18n/english/settings";
 import {
 	type CloudAuthLoginOperation,
@@ -236,8 +241,10 @@ const authFailureMessage = (cause: unknown, fallback: string): string => {
 export function CloudWorkspaceAuth() {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
-	const [status, setStatus] = useState<CloudAuthStatus | null>(null);
-	const [loading, setLoading] = useState(true);
+	const [status, setStatus] = useState<CloudAuthStatus | null>(
+		() => peekCloudAuth() ?? null,
+	);
+	const [loading, setLoading] = useState(() => peekCloudAuth() === undefined);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [selectedProvider, setSelectedProvider] =
 		useState<CloudAuthProvider | null>(null);
@@ -250,11 +257,9 @@ export function CloudWorkspaceAuth() {
 	);
 	const [error, setError] = useState<string | null>(null);
 
-	const refresh = useCallback(async () => {
+	const refresh = useCallback(async (force = true) => {
 		try {
-			setStatus(
-				await runControlPlane((client) => client["cloud.auth.status"]()),
-			);
+			setStatus(await loadCloudAuth(force));
 			setError(null);
 		} catch (cause) {
 			setError(
@@ -269,10 +274,16 @@ export function CloudWorkspaceAuth() {
 	}, []);
 
 	useEffect(() => {
-		void refresh();
-		const onFocus = () => void refresh();
+		void refresh(false);
+		const unsubscribe = subscribeControlPlaneSessionCache((key) => {
+			if (key === "cloud-workspace:auth") void refresh(false);
+		});
+		const onFocus = () => void refresh(false);
 		window.addEventListener("focus", onFocus);
-		return () => window.removeEventListener("focus", onFocus);
+		return () => {
+			unsubscribe();
+			window.removeEventListener("focus", onFocus);
+		};
 	}, [refresh]);
 
 	useEffect(() => {

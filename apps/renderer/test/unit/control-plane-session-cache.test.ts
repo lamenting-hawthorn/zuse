@@ -1,12 +1,18 @@
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../src/lib/hosted-connect.ts", () => ({
+	isHostedProduct: () => false,
+}));
+
 vi.mock("../../src/lib/rpc-client.ts", () => ({
 	getControlPlaneRpcClient: vi.fn(async () => ({})),
 }));
 
 const {
 	clearControlPlaneSessionCache,
+	peekControlPlaneCache,
+	setControlPlaneCacheAccount,
 	runCachedControlPlane,
 	subscribeControlPlaneSessionCache,
 } = await import("../../src/lib/control-plane-client.ts");
@@ -167,5 +173,126 @@ describe("control-plane session cache", () => {
 		expect(await runCachedControlPlane("cloud", () => Effect.succeed(3))).toBe(
 			2,
 		);
+	});
+});
+
+describe("persistent display cache", () => {
+	const decode = (value: unknown): { connected: boolean } => {
+		if (
+			typeof value !== "object" ||
+			value === null ||
+			!("connected" in value) ||
+			typeof value.connected !== "boolean"
+		)
+			throw new Error("Invalid snapshot");
+		return { connected: value.connected };
+	};
+	const key = "cloud-workspace:auth";
+	let stored: Map<string, string>;
+	beforeEach(() => {
+		clearControlPlaneSessionCache();
+		setControlPlaneCacheAccount("account-a");
+		stored = new Map();
+		vi.stubGlobal("window", {
+			localStorage: {
+				getItem: (key: string) => stored.get(key) ?? null,
+				setItem: (key: string, value: string) => stored.set(key, value),
+			},
+		});
+	});
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.useRealTimers();
+		setControlPlaneCacheAccount(null);
+	});
+	const save = () =>
+		runCachedControlPlane(key, () => Effect.succeed({ connected: true }), {
+			decode,
+		});
+
+	it("restores immediately after a reload and deduplicates background refreshes", async () => {
+		await save();
+		clearControlPlaneSessionCache();
+		expect(peekControlPlaneCache(key, decode)).toEqual({ connected: true });
+		let finish!: (value: { connected: boolean }) => void;
+		const request = new Promise<{ connected: boolean }>((resolve) => {
+			finish = resolve;
+		});
+		const fetch = vi.fn(() => Effect.promise(() => request));
+		const changed = vi.fn();
+		const unsubscribe = subscribeControlPlaneSessionCache(changed);
+		expect(await runCachedControlPlane(key, fetch, { decode })).toEqual({
+			connected: true,
+		});
+		expect(await runCachedControlPlane(key, fetch, { decode })).toEqual({
+			connected: true,
+		});
+		expect(fetch).toHaveBeenCalledTimes(1);
+		finish({ connected: false });
+		await vi.waitFor(() =>
+			expect(peekControlPlaneCache(key, decode)).toEqual({ connected: false }),
+		);
+		expect(changed).toHaveBeenCalledExactlyOnceWith(key);
+		unsubscribe();
+	});
+
+	it("retains stale data on failure and suppresses unchanged updates", async () => {
+		await save();
+		const original = peekControlPlaneCache(key, decode);
+		const changed = vi.fn();
+		const unsubscribe = subscribeControlPlaneSessionCache(changed);
+		await runCachedControlPlane(
+			key,
+			() => Effect.succeed({ connected: true }),
+			{ decode, refresh: true },
+		);
+		expect(peekControlPlaneCache(key, decode)).toBe(original);
+		expect(changed).not.toHaveBeenCalled();
+		await expect(
+			runCachedControlPlane(key, () => Effect.fail(new Error("offline")), {
+				decode,
+				refresh: true,
+			}),
+		).rejects.toThrow("offline");
+		expect(peekControlPlaneCache(key, decode)).toBe(original);
+		unsubscribe();
+	});
+
+	it("isolates accounts and ignores malformed persisted data", async () => {
+		await save();
+		setControlPlaneCacheAccount("account-b");
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+		setControlPlaneCacheAccount("account-a");
+		clearControlPlaneSessionCache();
+		for (const storageKey of stored.keys())
+			stored.set(storageKey, JSON.stringify({ value: { connected: "bad" } }));
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+		expect(await save()).toEqual({ connected: true });
+	});
+
+	it("throttles revalidation for five minutes without expiring the display snapshot", async () => {
+		vi.useFakeTimers();
+		await save();
+		const fetch = vi.fn(() => Effect.succeed({ connected: false }));
+		await vi.advanceTimersByTimeAsync(299_999);
+		await runCachedControlPlane(key, fetch, { decode });
+		expect(fetch).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(await runCachedControlPlane(key, fetch, { decode })).toEqual({
+			connected: true,
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		expect(fetch).toHaveBeenCalledTimes(1);
+		expect(peekControlPlaneCache(key, decode)).toEqual({ connected: false });
+	});
+
+	it("continues working when browser storage is unavailable", async () => {
+		vi.stubGlobal("window", {
+			get localStorage() {
+				throw new Error("disabled");
+			},
+		});
+		expect(await save()).toEqual({ connected: true });
+		expect(peekControlPlaneCache(key, decode)).toEqual({ connected: true });
 	});
 });
