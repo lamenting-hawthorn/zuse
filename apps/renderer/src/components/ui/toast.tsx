@@ -3,6 +3,8 @@
 import { Toast } from "@base-ui/react/toast";
 import { type ComponentProps, lazy, type ReactElement, Suspense } from "react";
 
+import { ErrorBoundary } from "./error-boundary.tsx";
+
 // Keep managers and providers eager so notifications emitted during startup are
 // retained while their visual surfaces load.
 const Toasts = lazy(() =>
@@ -42,9 +44,11 @@ export function ToastProvider({
 	return (
 		<Toast.Provider toastManager={toastManager} {...props}>
 			{children}
-			<Suspense fallback={null}>
-				<Toasts portalProps={portalProps} position={position} />
-			</Suspense>
+			<ErrorBoundary fallback={null}>
+				<Suspense fallback={null}>
+					<Toasts portalProps={portalProps} position={position} />
+				</Suspense>
+			</ErrorBoundary>
 		</Toast.Provider>
 	);
 }
@@ -61,9 +65,11 @@ export function AnchoredToastProvider({
 	return (
 		<Toast.Provider toastManager={anchoredToastManager} {...props}>
 			{children}
-			<Suspense fallback={null}>
-				<AnchoredToasts portalProps={portalProps} />
-			</Suspense>
+			<ErrorBoundary fallback={null}>
+				<Suspense fallback={null}>
+					<AnchoredToasts portalProps={portalProps} />
+				</Suspense>
+			</ErrorBoundary>
 		</Toast.Provider>
 	);
 }
