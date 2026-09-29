@@ -25,6 +25,10 @@ export function CloudBuildNotice({
 }) {
 	const { message: uiMessage } = useMessages(["shell"]);
 	const { isSignedIn, user } = useAuth();
+	const inCloudSettings = useUiStore(
+		(state) =>
+			state.view === "settings" && state.settingsSection.kind === "machines",
+	);
 	const [images, setImages] = useState<readonly CloudAccountImage[]>([]);
 	const [unavailable, setUnavailable] = useState(false);
 	const [completed, setCompleted] = useState(false);
@@ -98,7 +102,13 @@ export function CloudBuildNotice({
 				(image.state !== "not-built" ||
 					!images.some((candidate) => candidate.generation !== undefined))),
 	);
-	if (hidden || !isSignedIn || (pending.length === 0 && !completed))
+	// Keep polling mounted across navigation, but never overlay the chat composer.
+	if (
+		hidden ||
+		!inCloudSettings ||
+		!isSignedIn ||
+		(pending.length === 0 && !completed)
+	)
 		return null;
 	return (
 		<div

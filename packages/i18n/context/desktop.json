@@ -26446,7 +26446,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 111
+				"line": 121
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26456,7 +26456,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 121
+				"line": 131
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26466,7 +26466,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 123
+				"line": 133
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26476,7 +26476,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 124
+				"line": 134
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26486,7 +26486,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 140
+				"line": 150
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26496,7 +26496,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 149
+				"line": 159
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26506,7 +26506,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
+				"line": 125
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26516,7 +26516,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
+				"line": 125
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26526,7 +26526,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
+				"line": 125
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26536,7 +26536,7 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
+				"line": 125
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26546,13 +26546,13 @@
 		"locations": [
 			{
 				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
+				"line": 125
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"shell:cloud_image_leave_warning": {
-		"source": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time.",
+		"source": "Your cloud image has unbuilt changes. Leave Settings? You can return to Cloud Workspace settings to finish building.",
 		"locations": [
 			{
 				"path": "apps/renderer/src/lib/cloud-settings-guard.ts",

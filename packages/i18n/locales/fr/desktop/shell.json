@@ -101,5 +101,5 @@
 	"cloud_build_failed": "build failed",
 	"cloud_build_auth": "reconnect agent",
 	"cloud_build_needed": "image build needed",
-	"cloud_image_leave_warning": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time."
+	"cloud_image_leave_warning": "Your cloud image has unbuilt changes. Leave Settings? You can return to Cloud Workspace settings to finish building."
 }
