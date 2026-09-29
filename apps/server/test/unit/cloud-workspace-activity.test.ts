@@ -11,6 +11,7 @@ const request = (tag: string) => ({
 	id: "1",
 	tag,
 	payload: {},
+	headers: [],
 });
 
 describe("cloud workspace RPC activity", () => {
@@ -87,6 +88,54 @@ describe("cloud workspace RPC activity", () => {
 		expect(calls).toBe(3);
 		observe({ direction: "runtime", payload: JSON.stringify(message) });
 		expect(calls).toBe(3);
+	});
+
+	it.each([
+		{ _tag: "Request", tag: "pty.write" },
+		{ _tag: "Request", tag: "pty.write", payload: {}, headers: [] },
+		{ _tag: "Request", tag: "pty.write", id: "1", headers: [] },
+		{ _tag: "Request", tag: "pty.write", id: "1", payload: {} },
+		...([null, {}, [], true] as const).map((id) => ({
+			...request("pty.write"),
+			id,
+		})),
+		...([null, {}, ["header"], [["name", 42]], [["name"]]] as const).map(
+			(headers) => ({ ...request("pty.write"), headers }),
+		),
+		{ ...request("pty.write"), traceId: 42 },
+		{ ...request("pty.write"), spanId: false },
+		{ ...request("pty.write"), sampled: "true" },
+	])("does not extend the deadline for malformed envelope %j", (message) => {
+		let calls = 0;
+		const observe = makeCloudWorkspaceRpcActivity(() => {
+			calls++;
+		});
+		for (const encoded of [message, [message, { _tag: "Ping" }]]) {
+			const text = JSON.stringify(encoded);
+			for (const payload of [text, new TextEncoder().encode(text).buffer]) {
+				expect(() => observe({ direction: "client", payload })).not.toThrow();
+			}
+		}
+		expect(calls).toBe(0);
+	});
+
+	it.each(["1", 1])("accepts a complete envelope with request ID %j", (id) => {
+		let calls = 0;
+		const observe = makeCloudWorkspaceRpcActivity(() => {
+			calls++;
+		});
+		observe({
+			direction: "client",
+			payload: JSON.stringify({
+				...request("pty.write"),
+				id,
+				headers: [["x-client", "desktop"]],
+				traceId: "trace",
+				spanId: "span",
+				sampled: false,
+			}),
+		});
+		expect(calls).toBe(1);
 	});
 
 	it("ignores invalid or unknown requests without breaking forwarding", () => {

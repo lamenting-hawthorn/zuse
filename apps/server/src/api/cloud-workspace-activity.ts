@@ -1,4 +1,5 @@
 import type { MemoizeRpcs, WorkspaceGatewayFrame } from "@zuse/contracts";
+import { Schema } from "effect";
 import { type Rpc, type RpcGroup, RpcSerialization } from "effect/unstable/rpc";
 
 // Only explicit workspace actions extend the idle deadline. New read/poll/stream
@@ -55,13 +56,26 @@ const activityRequests: ReadonlySet<string> = new Set([
 	"worktree.remove",
 ] satisfies ReadonlyArray<Rpc.Tag<RpcGroup.Rpcs<MemoizeRpcs>>>);
 
+// Match Effect's encoded request envelope, without duplicating each RPC's
+// payload validation. Unknown accepts undefined, so check payload presence too.
+const isRequestEnvelope = Schema.is(
+	Schema.Struct({
+		_tag: Schema.Literal("Request"),
+		id: Schema.Union([Schema.String, Schema.Number]),
+		tag: Schema.String,
+		payload: Schema.Unknown,
+		headers: Schema.Array(Schema.Tuple([Schema.String, Schema.String])),
+		traceId: Schema.optional(Schema.String),
+		spanId: Schema.optional(Schema.String),
+		sampled: Schema.optional(Schema.Boolean),
+	}),
+);
+
 const isActivityRequest = (message: unknown): boolean =>
 	typeof message === "object" &&
 	message !== null &&
-	"_tag" in message &&
-	message._tag === "Request" &&
-	"tag" in message &&
-	typeof message.tag === "string" &&
+	Object.hasOwn(message, "payload") &&
+	isRequestEnvelope(message) &&
 	activityRequests.has(message.tag);
 
 /** Activity observation must never change or consume the forwarded RPC frame. */
