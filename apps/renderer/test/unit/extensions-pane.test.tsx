@@ -25,7 +25,9 @@ it("shows three honest source-install previews while the catalog is loading", ()
 	const html = renderToStaticMarkup(<ExtensionsPane />);
 	for (const name of ["Test Reports", "Project Playbook", "Code Follow-ups"])
 		expect(html).toContain(name);
-	expect(html).toContain("Source installation is also available for development.");
+	expect(html).toContain(
+		"Source installation is also available for development.",
+	);
 	expect(html.match(/Source &amp; setup/g)).toHaveLength(3);
 	expect(html).toContain("Loading marketplace");
 	expect(html).not.toContain("No signed marketplace entries");

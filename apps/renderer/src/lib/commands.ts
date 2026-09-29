@@ -1,5 +1,5 @@
-import { isHostedProduct } from "./hosted-connect.ts";
 import { runtimeDefaultModelFor as defaultModelFor } from "@zuse/client-runtime/provider-selection";
+import { isHostedProduct } from "./hosted-connect.ts";
 import "@zuse/i18n/english/commands";
 import type { ChatRef } from "@zuse/client-runtime/resource-ref";
 import type { ChatId, Command, Session } from "@zuse/contracts";
