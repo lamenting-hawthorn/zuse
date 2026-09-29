@@ -320,7 +320,6 @@ function ReadyApp({
 					<Suspense fallback={<SurfaceFallback />}>
 						<CloudOnboardingWizard
 							key={user?.id}
-							imageProviderId={cloudOnboarding.imageProviderId}
 							onFinish={() => {
 								cloudOnboarding.finish();
 								useUiStore.getState().setView("chat");

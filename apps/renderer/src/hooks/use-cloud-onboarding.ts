@@ -14,7 +14,6 @@ import { subscribeControlPlaneSessionCache } from "../lib/control-plane-client.t
 
 /** The app owns this gate, so checkout activation works from every surface. */
 export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
-	const [imageProviderId, setImageProviderId] = useState<string | undefined>();
 	const [owner, setOwner] = useState<string | null>(null);
 	const open = enabled && accountId !== null && owner === accountId;
 	const openRef = useRef(open);
@@ -22,7 +21,6 @@ export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
 	const deferred = useRef<string | null>(null);
 	useEffect(() => {
 		setOwner(null);
-		setImageProviderId(undefined);
 		deferred.current = null;
 		if (!enabled || accountId === null) return;
 		let disposed = false;
@@ -62,10 +60,6 @@ export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
 						),
 					})
 				) {
-					setImageProviderId(
-						placement.images.find((image) => image.state === "building")
-							?.providerId,
-					);
 					setOwner(accountId);
 				}
 			} catch {
@@ -94,5 +88,5 @@ export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
 		deferred.current = accountId;
 		setOwner(null);
 	}, [accountId]);
-	return { open, finish, defer, imageProviderId };
+	return { open, finish, defer };
 }

@@ -7,15 +7,18 @@ name must also be managed in the billing service; this checkout did not include
 access to that external product configuration.
 
 The app-wide cloud onboarding wizard follows GitHub installation/repository
-selection, agent authentication, and a provider-specific image build. It opens
+selection, agent authentication, and an image build across all available providers. It opens
 when an account gains a Cloud Workspace entitlement and has not completed setup.
 The app root checks payment activation on focus and every two seconds while
 checkout is pending. Completion is stored per account, with existing server
 images preventing repeat onboarding on other devices. Finish later defers setup
 for the current app session; the reminder in Cloud Workspace settings reopens it.
-On return, setup resumes at the first unfinished step and selects any image still building.
-Settings retain the shared controls for ongoing management. Each provider owns an image;
-switching the selector must load its status before offering a build. The app root
+On return, setup resumes at the first unfinished step and tracks all images still building.
+Settings retain the shared controls for ongoing management. A single Rebuild action
+requests an image for every available provider, with independent progress and
+failure details. Setup completes only when all available providers are ready.
+Provider availability is refreshed with image status, so a newly added provider
+appears as needing a rebuild without resetting existing images or chats. The app root
 monitors image status independently of the settings page. The floating notice is
 only visible in Cloud Workspace settings, never over chat or other app surfaces.
 The monitor refreshes active builds every two seconds after each completed request, and idle status every

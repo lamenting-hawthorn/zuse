@@ -96,11 +96,7 @@ export function CloudBuildNotice({
 		};
 	}, [isSignedIn, user?.id]);
 	const pending = images.filter(
-		(image) =>
-			image.state === "building" ||
-			(cloudImageNeedsBuild(image) &&
-				(image.state !== "not-built" ||
-					!images.some((candidate) => candidate.generation !== undefined))),
+		(image) => image.state === "building" || cloudImageNeedsBuild(image),
 	);
 	// Keep polling mounted across navigation, but never overlay the chat composer.
 	if (

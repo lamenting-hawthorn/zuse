@@ -51,7 +51,9 @@ export function CloudImageReadiness({
 	busy,
 	unavailable,
 	onBuild,
+	allProviders = false,
 }: {
+	readonly allProviders?: boolean;
 	readonly image: CloudAccountImage | null;
 	readonly projects: ReadonlyArray<CloudProject>;
 	readonly busy: string | null;
@@ -63,6 +65,7 @@ export function CloudImageReadiness({
 	const state = image?.state ?? "not-built";
 	const building = state === "building";
 	const disabled =
+		busy !== null ||
 		image === null ||
 		projects.length === 0 ||
 		unavailable ||
@@ -86,9 +89,11 @@ export function CloudImageReadiness({
 			<CloudSettingsRow
 				title={uiMessage("settings:cloud_image_readiness_cloud_image_ready")}
 				description={
-					image.providerAuthDeliveryVersion === 1
-						? uiMessage("settings:cloud_image_auth_live")
-						: uiMessage("settings:cloud_image_auth_legacy")
+					allProviders
+						? uiMessage("settings:cloud_images_all_description")
+						: image.providerAuthDeliveryVersion === 1
+							? uiMessage("settings:cloud_image_auth_live")
+							: uiMessage("settings:cloud_image_auth_legacy")
 				}
 				action={
 					<>
@@ -158,14 +163,19 @@ export function CloudImageReadiness({
 			: state === "auth-broken"
 				? "Reconnect the affected agent in Step 2. Image status will refresh automatically and show whether a rebuild is needed."
 				: `Changed: ${changes.join(", ")}.`;
-	const mode = requiresRebuild ? "rebuild" : (image?.buildMode ?? "update");
-	const actionLabel = notBuilt
-		? "Build image"
-		: requiresRebuild
-			? "Rebuild image"
-			: failed
-				? "Retry build"
-				: "Update image";
+	const mode =
+		allProviders || requiresRebuild
+			? "rebuild"
+			: (image?.buildMode ?? "update");
+	const actionLabel = allProviders
+		? uiMessage("settings:cloud_image_readiness_rebuild")
+		: notBuilt
+			? "Build image"
+			: requiresRebuild
+				? "Rebuild image"
+				: failed
+					? "Retry build"
+					: "Update image";
 
 	return (
 		<div

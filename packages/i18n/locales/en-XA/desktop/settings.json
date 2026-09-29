@@ -916,5 +916,14 @@
 	"cloud_auth_poll_retry": "⟦ÀÀüüthôôrïïzààtïïôôn stààtüüs côôüüld nôôt bëë rëëfrëëshëëd. Rëëtryïïng…⟧",
 	"cloud_auth_disconnect_failed": "⟦Côôüüld nôôt dïïscôônnëëct thëë ààgëënt. Try ààgààïïn.⟧",
 	"cloud_setup_later": "⟦Fïïnïïsh lààtëër⟧",
-	"cloud_setup_finish": "⟦Stààrt üüsïïng Clôôüüd⟧"
+	"cloud_setup_finish": "⟦Stààrt üüsïïng Clôôüüd⟧",
+	"cloud_images_all_description": "⟦Rëëbüüïïld ïïmààgëës fôôr ëëvëëry clôôüüd prôôvïïdëër ïïn ôônëë stëëp. ËËxïïstïïng chààts këëëëp thëëïïr cüürrëënt ëënvïïrôônmëënt.⟧",
+	"cloud_images_start_failed": "⟦Côôüüld nôôt stààrt büüïïlds fôôr {{providers}}. ÔÔthëër büüïïlds côôntïïnüüëë. Rëëtry ààftëër thëëy fïïnïïsh.⟧",
+	"cloud_images_state_checking": "⟦Chëëckïïng⟧",
+	"cloud_images_state_building": "⟦Büüïïldïïng⟧",
+	"cloud_images_state_auth-broken": "⟦Rëëcôônnëëct ààgëënt⟧",
+	"cloud_images_state_failed": "⟦Büüïïld fààïïlëëd⟧",
+	"cloud_images_state_not-built": "⟦Rëëbüüïïld nëëëëdëëd⟧",
+	"cloud_images_state_outdated": "⟦Rëëbüüïïld nëëëëdëëd⟧",
+	"cloud_images_state_ready": "⟦Rëëààdy⟧"
 }

@@ -5,11 +5,14 @@ vi.mock("../../src/lib/cloud-workspace-session-cache.ts", () => ({
 	hasCloudEntitlement: () => true,
 	loadCloudEntitlements: vi.fn(async () => ({})),
 	loadCloudProviders: vi.fn(async () => ({
-		providers: [{ providerId: "boxd" }, { providerId: "e2b" }],
+		providers: [
+			{ providerId: "boxd", displayName: "Box" },
+			{ providerId: "e2b", displayName: "E2B" },
+		],
 	})),
 	loadCloudImage: vi.fn(),
 }));
-const { loadCloudImage } = await import(
+const { loadCloudImage, loadCloudProviders } = await import(
 	"../../src/lib/cloud-workspace-session-cache.ts"
 );
 const { refreshCloudImages, resetCloudImageMonitor, subscribeCloudImages } =
@@ -91,4 +94,34 @@ it("discards an old account's in-flight response after reset", async () => {
 	finish();
 	expect(await request).toEqual([]);
 	expect(requestCloudSettingsLeave()).toBe(true);
+});
+
+it("discovers a newly added provider and marks its missing image for rebuilding", async () => {
+	vi.mocked(loadCloudImage).mockImplementation(async (providerId) =>
+		image(providerId ?? "boxd", "ready"),
+	);
+	await refreshCloudImages();
+	vi.mocked(loadCloudProviders).mockResolvedValueOnce({
+		providers: [
+			{ providerId: "boxd", displayName: "Box" },
+			{ providerId: "e2b", displayName: "E2B" },
+			{ providerId: "new", displayName: "New provider" },
+		],
+	});
+	vi.mocked(loadCloudImage).mockImplementation(async (providerId) =>
+		image(providerId ?? "boxd", providerId === "new" ? "not-built" : "ready"),
+	);
+	expect(
+		(await refreshCloudImages()).find((item) => item.providerId === "new")
+			?.state,
+	).toBe("not-built");
+	expect(loadCloudProviders).toHaveBeenLastCalledWith(true);
+	const confirm = vi.fn(() => false);
+	vi.stubGlobal("window", { confirm });
+	try {
+		expect(requestCloudSettingsLeave()).toBe(false);
+		expect(confirm).toHaveBeenCalledOnce();
+	} finally {
+		vi.unstubAllGlobals();
+	}
 });

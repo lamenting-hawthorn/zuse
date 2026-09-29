@@ -94,6 +94,21 @@ type CloudWorkspacePlacementSnapshot = Readonly<{
 	subscribed: boolean;
 }>;
 
+export const loadCloudProviderImages = async (
+	providers: readonly Pick<CloudProviderOption, "providerId">[],
+	refresh = false,
+) => {
+	const results = await Promise.allSettled(
+		providers.map((provider) => loadCloudImage(provider.providerId, refresh)),
+	);
+	return {
+		images: results.flatMap((result) =>
+			result.status === "fulfilled" ? [result.value] : [],
+		),
+		complete: results.every((result) => result.status === "fulfilled"),
+	};
+};
+
 export const loadCloudWorkspacePlacement = async (
 	refresh = false,
 ): Promise<CloudWorkspacePlacementSnapshot> => {
@@ -102,17 +117,14 @@ export const loadCloudWorkspacePlacement = async (
 		loadCloudProjects(refresh),
 		loadCloudEntitlements(refresh),
 	]);
-	const imageResults = await Promise.allSettled(
-		providerResult.providers.map((provider) =>
-			loadCloudImage(provider.providerId, refresh),
-		),
+	const { images } = await loadCloudProviderImages(
+		providerResult.providers,
+		refresh,
 	);
 	return {
 		providers: providerResult.providers,
 		projects: projectResult.projects,
-		images: imageResults.flatMap((result) =>
-			result.status === "fulfilled" ? [result.value] : [],
-		),
+		images,
 		subscribed: hasCloudEntitlement(entitlementResult),
 	};
 };

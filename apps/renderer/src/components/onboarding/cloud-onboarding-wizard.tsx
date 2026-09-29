@@ -17,11 +17,9 @@ const STEPS: readonly CloudSetupStep[] = ["github", "auth", "image"];
 export function CloudOnboardingWizard({
 	onFinish,
 	onDefer,
-	imageProviderId,
 }: {
 	readonly onFinish: () => void;
 	readonly onDefer: () => void;
-	readonly imageProviderId?: string;
 }) {
 	const { message } = useMessages(["common", "settings"]);
 	const [step, setStep] = useState<CloudSetupStep>("github");
@@ -82,9 +80,7 @@ export function CloudOnboardingWizard({
 					</ol>
 					<StepHeader title={titles[step]} subtitle={descriptions[step]} />
 					<div className="min-h-[20rem] space-y-3">
-						<CloudWorkspacePool
-							onboarding={{ step, onProgress, imageProviderId }}
-						/>
+						<CloudWorkspacePool onboarding={{ step, onProgress }} />
 					</div>
 					<div className="flex items-center justify-between gap-3">
 						<Button

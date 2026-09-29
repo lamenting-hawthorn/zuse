@@ -920,5 +920,14 @@
 	"cloud_auth_poll_retry": "Authorization status could not be refreshed. Retrying…",
 	"cloud_auth_disconnect_failed": "Could not disconnect the agent. Try again.",
 	"cloud_setup_later": "Finish later",
-	"cloud_setup_finish": "Start using Cloud"
+	"cloud_setup_finish": "Start using Cloud",
+	"cloud_images_all_description": "Rebuild images for every cloud provider in one step. Existing chats keep their current environment.",
+	"cloud_images_start_failed": "Could not start builds for {{providers}}. Other builds continue. Retry after they finish.",
+	"cloud_images_state_checking": "Checking",
+	"cloud_images_state_building": "Building",
+	"cloud_images_state_auth-broken": "Reconnect agent",
+	"cloud_images_state_failed": "Build failed",
+	"cloud_images_state_not-built": "Rebuild needed",
+	"cloud_images_state_outdated": "Rebuild needed",
+	"cloud_images_state_ready": "Ready"
 }

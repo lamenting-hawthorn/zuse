@@ -42,7 +42,7 @@ export const refreshCloudImages = async (): Promise<
 		for (const listener of listeners) listener(latestImages);
 		return latestImages;
 	}
-	const { providers } = await loadCloudProviders();
+	const { providers } = await loadCloudProviders(true);
 	const results = await Promise.allSettled([
 		loadCloudImage(undefined, true),
 		...providers.map((provider) => loadCloudImage(provider.providerId, true)),
@@ -60,7 +60,9 @@ export const refreshCloudImages = async (): Promise<
 	);
 
 	setCloudSettingsUnbuiltChanges(
-		latestImages.some((image) => image.state === "outdated"),
+		latestImages.some(
+			(image) => image.state === "outdated" || image.state === "not-built",
+		),
 	);
 	for (const listener of listeners) listener(latestImages);
 	if (results.some((result) => result.status === "rejected"))
