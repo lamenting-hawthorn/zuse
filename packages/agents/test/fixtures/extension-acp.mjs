@@ -38,11 +38,36 @@ createInterface({ input: process.stdin })
 			}
 			result(id, {
 				protocolVersion: 1,
-				agentCapabilities: { loadSession: scenario !== "no-resume" },
+				agentCapabilities: {
+					loadSession: scenario !== "no-resume",
+					mcpCapabilities: { http: scenario === "shared-http" },
+				},
 			});
 			return;
 		}
 		if (method === "session/new" || method === "session/load") {
+			if (scenario === "shared-http" || scenario === "shared-stdio") {
+				const server = params.mcpServers?.[0];
+				const valid =
+					server?.name === "zuse_executor" &&
+					(scenario === "shared-http"
+						? server.type === "http" &&
+							server.headers?.[0]?.value === "Bearer scoped-token"
+						: server.command &&
+							server.env?.some(
+								(entry) =>
+									entry.name === "ZUSE_APP_MCP_TOKEN" &&
+									entry.value === "scoped-token",
+							));
+				if (!valid) {
+					send({
+						id,
+						error: { code: -32602, message: "Shared MCP was not forwarded" },
+					});
+					return;
+				}
+			}
+
 			result(id, { sessionId: cursor });
 			return;
 		}

@@ -12,12 +12,18 @@ import type {
 	ExtensionProviderSessionInput,
 } from "@zuse/extension-sdk";
 import { Schema } from "effect";
+import { sharedAcpMcpServers } from "../user-mcp/shared.ts";
 import { createAcpTranslator } from "./acp/translate.ts";
 
 const Initialize = Schema.Struct({
 	protocolVersion: Schema.Number,
 	agentCapabilities: Schema.optional(
-		Schema.Struct({ loadSession: Schema.optional(Schema.Boolean) }),
+		Schema.Struct({
+			loadSession: Schema.optional(Schema.Boolean),
+			mcpCapabilities: Schema.optional(
+				Schema.Struct({ http: Schema.optional(Schema.Boolean) }),
+			),
+		}),
 	),
 });
 const Created = Schema.Struct({ sessionId: Schema.String });
@@ -387,10 +393,18 @@ export function createExtensionAcpProvider(
 					throw new Error(
 						"This agent cannot resume ACP sessions. Start a new conversation.",
 					);
+				const sharedServers = await sharedAcpMcpServers(
+					input.mcpServers ?? [],
+					init.agentCapabilities?.mcpCapabilities?.http === true,
+				);
 				if (input.resumeCursor) {
 					await connection.request(
 						"session/load",
-						{ sessionId: input.resumeCursor, cwd: input.cwd, mcpServers: [] },
+						{
+							sessionId: input.resumeCursor,
+							cwd: input.cwd,
+							mcpServers: sharedServers,
+						},
 						Schema.Unknown,
 						{ timeoutMs: startupTimeout },
 					);
@@ -399,7 +413,7 @@ export function createExtensionAcpProvider(
 					state.cursor = (
 						await connection.request(
 							"session/new",
-							{ cwd: input.cwd, mcpServers: [] },
+							{ cwd: input.cwd, mcpServers: sharedServers },
 							Created,
 							{ timeoutMs: startupTimeout },
 						)

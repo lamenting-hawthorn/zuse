@@ -42,6 +42,27 @@ afterEach(async () => {
 	await Promise.all(sessions.splice(0).map((s) => s.dispose()));
 });
 describe("generic ACP extension provider", () => {
+	it.each([
+		"shared-http",
+		"shared-stdio",
+	])("forwards shared tools for %s on both start and resume", async (scenario) => {
+		const { adapter } = make(scenario);
+		const configured = {
+			...input,
+			mcpServers: [
+				{
+					name: "zuse_executor",
+					transport: "http" as const,
+					url: "http://127.0.0.1:1234/mcp",
+					headers: { Authorization: "Bearer scoped-token" },
+				},
+			],
+		};
+		await adapter.start(configured);
+		await adapter.close(input.sessionId);
+		await adapter.start({ ...configured, resumeCursor: "native-session" });
+	});
+
 	it("starts, translates streamed output, cancels and resumes using a native cursor", async () => {
 		const { adapter, events } = make();
 		expect((await adapter.probe()).available).toBe(true);
