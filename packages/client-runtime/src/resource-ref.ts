@@ -100,6 +100,7 @@ export type ResourceKind =
 	| "file-tree"
 	| "git-workspace"
 	| "machine-resources"
+	| "model-catalog"
 	| "terminal";
 
 /**

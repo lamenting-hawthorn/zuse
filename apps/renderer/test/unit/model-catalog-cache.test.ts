@@ -1,4 +1,4 @@
-import { bundledResolvedModelCatalog } from "@zuse/contracts";
+import { bundledResolvedModelCatalog, EnvironmentId } from "@zuse/contracts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -51,5 +51,28 @@ describe("model catalog cache", () => {
 		await useModelCatalogStore.getState().ensureLoaded();
 		expect(mocks.dispatch).toHaveBeenCalledTimes(2);
 		expect(useModelCatalogStore.getState().loadedEnvironmentId).toBe("local");
+	});
+
+	it("applies catalogs pushed after the initial load", async () => {
+		const initial = bundledResolvedModelCatalog();
+		mocks.dispatch.mockResolvedValue({ result: initial });
+		await useModelCatalogStore.getState().ensureLoaded();
+
+		const pushed = { ...initial, revision: initial.revision + 1 };
+		useModelCatalogStore
+			.getState()
+			.receive(EnvironmentId.make("local"), pushed);
+		expect(useModelCatalogStore.getState().catalog).toEqual(pushed);
+		expect(mocks.dispatch).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores pushed catalogs for an inactive environment", () => {
+		const before = useModelCatalogStore.getState().catalog;
+		useModelCatalogStore.getState().receive(EnvironmentId.make("remote"), {
+			...before,
+			revision: before.revision + 1,
+		});
+		expect(useModelCatalogStore.getState().catalog).toBe(before);
+		expect(useModelCatalogStore.getState().loadedEnvironmentId).toBeNull();
 	});
 });

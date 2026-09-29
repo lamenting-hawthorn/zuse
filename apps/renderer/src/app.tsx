@@ -11,6 +11,7 @@ import { useAuth } from "./hooks/use-auth.ts";
 import { useKeybindingDispatch } from "./hooks/use-keybinding-dispatch.ts";
 
 import { useMenuShortcuts } from "./hooks/use-menu-shortcuts.ts";
+import { useModelCatalogUpdates } from "./hooks/use-model-catalog-updates.ts";
 
 import { useReportRuntimeActivity } from "./hooks/use-report-runtime-activity.ts";
 
@@ -241,6 +242,11 @@ function ReadyApp({
 		loadProviderAvailability,
 		onboardingCompleted,
 	]);
+	useModelCatalogUpdates(
+		isHostedProduct() || !onboardingCompleted || !catalogInitialized
+			? null
+			: activeEnvironmentId,
+	);
 	useEffect(() => {
 		if (!onboardingCompleted) return;
 		const identity = user?.id ?? null;
