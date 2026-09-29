@@ -40,6 +40,7 @@ import {
 	CloudWorkspaceDataKey,
 	CloudWorkspaceLaunch,
 	CloudWorkspaceList,
+	CloudWorkspacePreviewRevoked,
 	CloudWorkspacePreviewUrl,
 	CloudWorkspaceSshAccess,
 	CommandAcceptance,
@@ -204,6 +205,10 @@ export interface MachineControlServiceShape {
 		workspaceId: string,
 		port: number,
 	) => Effect.Effect<CloudWorkspacePreviewUrl, MachineControlError>;
+	readonly revokeCloudWorkspacePreviewUrl: (
+		workspaceId: string,
+		port?: number,
+	) => Effect.Effect<CloudWorkspacePreviewRevoked, MachineControlError>;
 	readonly listCloudApiKeys: () => Effect.Effect<
 		CloudApiKeyList,
 		MachineControlError
@@ -623,6 +628,13 @@ export const MachineControlServiceLive: Layer.Layer<
 					ApiPaths.cloudWorkspacePreviewUrl(workspaceId),
 					CloudWorkspacePreviewUrl,
 					"POST",
+					{ port },
+				),
+			revokeCloudWorkspacePreviewUrl: (workspaceId, port) =>
+				request(
+					ApiPaths.cloudWorkspacePreviewUrl(workspaceId),
+					CloudWorkspacePreviewRevoked,
+					"DELETE",
 					{ port },
 				),
 			offers: () => request(ApiPaths.machineOffers, MachineOfferList),

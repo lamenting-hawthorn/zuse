@@ -302,6 +302,13 @@ const CloudWorkspacePreviewUrl = MemoizeRpcs.toLayerHandler(
 			service.cloudWorkspacePreviewUrl(workspaceId, port),
 		),
 );
+const RevokeCloudWorkspacePreviewUrl = MemoizeRpcs.toLayerHandler(
+	"cloud.workspaces.revokePreviewUrl",
+	({ workspaceId, port }) =>
+		withCloudControl((service) =>
+			service.revokeCloudWorkspacePreviewUrl(workspaceId, port),
+		),
+);
 const ArchiveCloudWorkspace = MemoizeRpcs.toLayerHandler(
 	"cloud.workspaces.archive",
 	({ workspaceId, commandId }) =>
@@ -473,6 +480,7 @@ export const MachineHandlersLayer = Layer.mergeAll(
 	RestartCloudWorkspace,
 	CloudWorkspaceSshAccess,
 	CloudWorkspacePreviewUrl,
+	RevokeCloudWorkspacePreviewUrl,
 	ArchiveCloudWorkspace,
 	UnarchiveCloudWorkspace,
 	DeleteCloudWorkspace,

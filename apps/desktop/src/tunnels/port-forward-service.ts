@@ -72,10 +72,12 @@ export const retryableLocalBindFailure = (cause: unknown): boolean => {
 type ForwardEntry = {
 	readonly summary: PortForwardSummary;
 	readonly handle: TunnelHandle;
+	readonly owners: Set<"preview" | "manual">;
 };
 
 type PendingForward = {
 	readonly environmentId: string;
+	readonly owners: Set<"preview" | "manual">;
 	cancelled: boolean;
 	operation: Promise<PortForwardSummary>;
 };
@@ -97,16 +99,25 @@ export class PortForwardManager {
 		readonly environmentId: string;
 		readonly target: PortForwardTarget;
 		readonly remotePort: number;
+		readonly owner?: "preview";
 	}): Promise<PortForwardSummary> {
 		const key = forwardKey(input.environmentId, input.remotePort);
+		const owner = input.owner ?? "manual";
 		const existing = this.forwards.get(key);
 		if (existing !== undefined && tunnelAlive(existing.handle)) {
+			existing.owners.add(owner);
 			return Promise.resolve(existing.summary);
 		}
 		const inFlight = this.pending.get(key);
-		if (inFlight !== undefined) return inFlight.operation;
+		if (inFlight !== undefined) {
+			if (inFlight.cancelled)
+				return inFlight.operation.catch(() => {}).then(() => this.open(input));
+			inFlight.owners.add(owner);
+			return inFlight.operation;
+		}
 		const pending: PendingForward = {
 			environmentId: input.environmentId,
+			owners: new Set([owner]),
 			cancelled: false,
 			operation: Promise.resolve({
 				environmentId: input.environmentId,
@@ -114,13 +125,15 @@ export class PortForwardManager {
 				localPort: 0,
 			}),
 		};
-		const operation = this.connect(key, input).then(async (summary) => {
-			if (!pending.cancelled) return summary;
-			const opened = this.forwards.get(key);
-			this.forwards.delete(key);
-			await opened?.handle.close();
-			throw new Error("Port forward closed before it became ready.");
-		});
+		const operation = this.connect(key, input, pending.owners).then(
+			async (summary) => {
+				if (!pending.cancelled) return summary;
+				const opened = this.forwards.get(key);
+				this.forwards.delete(key);
+				await opened?.handle.close();
+				throw new Error("Port forward closed before it became ready.");
+			},
+		);
 		pending.operation = operation.finally(() => {
 			if (this.pending.get(key) === pending) this.pending.delete(key);
 		});
@@ -138,6 +151,24 @@ export class PortForwardManager {
 			entry?.handle.close() ?? Promise.resolve(),
 			pending?.operation ?? Promise.resolve(),
 		]);
+	}
+
+	/** Release only the preview feature's interest, including pending opens. */
+	async closePreviews(environmentId: string): Promise<void> {
+		const closing = new Set<number>();
+		for (const [key, pending] of this.pending) {
+			if (pending.environmentId !== environmentId) continue;
+			if (pending.owners.delete("preview") && pending.owners.size === 0)
+				closing.add(Number(key.slice(key.lastIndexOf(":") + 1)));
+		}
+		for (const entry of this.forwards.values()) {
+			if (entry.summary.environmentId !== environmentId) continue;
+			if (entry.owners.delete("preview") && entry.owners.size === 0)
+				closing.add(entry.summary.remotePort);
+		}
+		await Promise.all(
+			[...closing].map((port) => this.close(environmentId, port)),
+		);
 	}
 
 	async closeForEnvironment(environmentId: string): Promise<void> {
@@ -184,6 +215,7 @@ export class PortForwardManager {
 			readonly target: PortForwardTarget;
 			readonly remotePort: number;
 		},
+		owners: Set<"preview" | "manual">,
 	): Promise<PortForwardSummary> {
 		// Prefer the matching port, then try a bounded set of verified random
 		// candidates. ExitOnForwardFailure still catches the bind race between
@@ -221,6 +253,7 @@ export class PortForwardManager {
 				localPort: handle.localPort,
 			},
 			handle,
+			owners,
 		};
 		this.forwards.set(key, entry);
 		handle.process.once("exit", () => {

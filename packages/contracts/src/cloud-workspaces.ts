@@ -758,6 +758,24 @@ export const CloudWorkspacesPreviewUrlRpc = Rpc.make(
 		error: CloudWorkspaceOpError,
 	},
 );
+/** Confirms removal of the provider routes for one preview port. */
+export class CloudWorkspacePreviewRevoked extends Schema.Class<CloudWorkspacePreviewRevoked>(
+	"CloudWorkspacePreviewRevoked",
+)({
+	workspaceId: Schema.String,
+	port: Schema.optional(Schema.Number),
+}) {}
+export const CloudWorkspacesRevokePreviewUrlRpc = Rpc.make(
+	"cloud.workspaces.revokePreviewUrl",
+	{
+		payload: Schema.Struct({
+			workspaceId: Schema.String,
+			port: Schema.optional(Schema.Number),
+		}),
+		success: CloudWorkspacePreviewRevoked,
+		error: CloudWorkspaceOpError,
+	},
+);
 export const CloudWorkspacesArchiveRpc = Rpc.make("cloud.workspaces.archive", {
 	payload: CloudWorkspaceActionRequest,
 	success: CloudWorkspace,

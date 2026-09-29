@@ -19,7 +19,7 @@ import type { EnvironmentId, FsEntry, FsTreeWatchEvent } from "@zuse/contracts";
 import { CommandId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { reconcileFileTreePaths } from "./file-tree-reconciliation.ts";
-import { getRpcClient, type MemoizeClient } from "./rpc-client.ts";
+import type { MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -156,7 +156,8 @@ export const listDeferredDirectory = async (
 	ref: ExecutionRef,
 	path: string,
 ): Promise<ReadonlyArray<FsEntry>> => {
-	const client = await getRpcClient(ref.environmentId);
+	const client = getRendererClientBus().client(ref.environmentId);
+	if (client === null) throw new Error("File tree is not connected.");
 	return Effect.runPromise(
 		client["fs.tree"]({
 			folderId: ref.folderId,

@@ -1,14 +1,17 @@
 // Executed by the Box command channel. Hosted ports target a VM interface,
 // while workspace runtimes intentionally bind loopback. Repeated resolution
 // keeps existing listeners and starts only missing interface forwarders.
+// Preview leases require a live loopback server and release their interface
+// listeners shortly after it exits; the runtime bridge stays persistent.
 export const BOX_PORT_FORWARDER = `
 const net = require('node:net');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 const port = Number(process.argv[1]);
+const preview = process.argv.includes('--preview');
 if (!Number.isInteger(port) || port < 1 || port > 65535) process.exit(1);
 if (process.argv[2] !== 'daemon') {
-  const child = spawn(process.execPath, ['-e', process._eval, String(port), 'daemon'], {
+  const child = spawn(process.execPath, ['-e', process._eval, String(port), 'daemon', ...(preview ? ['--preview'] : [])], {
     detached: true, stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
   });
   const timer = setTimeout(() => { child.kill(); process.exit(1); }, 10000);
@@ -24,7 +27,24 @@ if (process.argv[2] !== 'daemon') {
   const addresses = [...new Set(Object.values(os.networkInterfaces()).flat()
     .filter(i => i && !i.internal && i.family === 'IPv4').map(i => i.address))];
   if (!addresses.length) process.exit(1);
-  Promise.all(addresses.map(host => new Promise((resolve, reject) => {
+  const upstreamAlive = () => new Promise(resolve => {
+    const socket = net.connect({ host: '127.0.0.1', port });
+    let settled = false;
+    const finish = alive => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(alive);
+    };
+    socket.setTimeout(500, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+  const start = async () => {
+  // A preview must never reserve the port before the actual application.
+  if (preview && !await upstreamAlive()) process.exit(1);
+  let listeners = 0;
+  await Promise.all(addresses.map(host => new Promise((resolve, reject) => {
     const server = net.createServer({ allowHalfOpen: true }, incoming => {
       const upstream = net.connect({ host: '127.0.0.1', port, allowHalfOpen: true });
       const close = () => { incoming.destroy(); upstream.destroy(); };
@@ -37,7 +57,19 @@ if (process.argv[2] !== 'daemon') {
       incoming.pipe(upstream).pipe(incoming);
     });
     server.once('error', error => error.code === 'EADDRINUSE' ? resolve() : reject(error));
-    server.listen({ host, port }, resolve);
-  }))).then(() => process.send('ready'), () => process.exit(1));
+    server.listen({ host, port }, () => { listeners += 1; resolve(); });
+  })));
+  process.send('ready');
+  if (preview && listeners > 0) {
+    // Stop holding the interface port once the localhost application exits.
+    // The next preview request recreates the bridge after the app restarts.
+    const watch = async () => {
+      if (!await upstreamAlive()) process.exit(0);
+      setTimeout(watch, 500);
+    };
+    setTimeout(watch, 500);
+  }
+  };
+  start().catch(() => process.exit(1));
 }
 `;

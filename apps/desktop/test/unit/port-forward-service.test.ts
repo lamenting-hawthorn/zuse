@@ -214,3 +214,114 @@ describe("PortForwardManager", () => {
 		expect(manager.list("env-a")).toEqual([]);
 	});
 });
+
+it.each([
+	false,
+	true,
+])("preview cleanup preserves shared tunnels (preview first: %s)", async (previewFirst) => {
+	const tunnel = fakeTunnel(3001, 3001);
+	const manager = new PortForwardManager(
+		async () => tunnel.handle,
+		async () => true,
+	);
+	const input = {
+		environmentId: "shared",
+		remotePort: 3001,
+		target: sshTarget,
+	};
+	await manager.open({
+		...input,
+		...(previewFirst ? { owner: "preview" as const } : {}),
+	});
+	await manager.open({
+		...input,
+		...(previewFirst ? {} : { owner: "preview" as const }),
+	});
+	await manager.closePreviews("shared");
+	expect(tunnel.closed()).toBe(false);
+	expect(manager.list("shared")).toHaveLength(1);
+});
+
+it("preview cleanup closes only its own tunnels in the requested workspace", async () => {
+	const tunnels = new Map<number, ReturnType<typeof fakeTunnel>>();
+	const manager = new PortForwardManager(
+		async (input) => {
+			const tunnel = fakeTunnel(input.localPort, input.remotePort);
+			tunnels.set(input.remotePort, tunnel);
+			return tunnel.handle;
+		},
+		async () => true,
+	);
+	await manager.open({
+		environmentId: "a",
+		target: sshTarget,
+		remotePort: 3001,
+		owner: "preview",
+	});
+	await manager.open({
+		environmentId: "a",
+		target: sshTarget,
+		remotePort: 3002,
+	});
+	await manager.open({
+		environmentId: "b",
+		target: sshTarget,
+		remotePort: 3003,
+		owner: "preview",
+	});
+	await manager.closePreviews("a");
+	expect(tunnels.get(3001)?.closed()).toBe(true);
+	expect(tunnels.get(3002)?.closed()).toBe(false);
+	expect(tunnels.get(3003)?.closed()).toBe(false);
+});
+
+it("a manual borrower preserves an in-flight preview tunnel during cleanup", async () => {
+	const tunnel = fakeTunnel(3001, 3001);
+	let finish!: (handle: TunnelHandle) => void;
+	const manager = new PortForwardManager(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+		async () => true,
+	);
+	const input = {
+		environmentId: "pending",
+		target: sshTarget,
+		remotePort: 3001,
+	};
+	const preview = manager.open({ ...input, owner: "preview" });
+	const manual = manager.open(input);
+	await manager.closePreviews("pending");
+	finish(tunnel.handle);
+	await Promise.all([preview, manual]);
+	expect(tunnel.closed()).toBe(false);
+});
+
+it("preview cleanup also cancels its exclusive pending open", async () => {
+	const tunnel = fakeTunnel(3001, 3001);
+	let finish!: (handle: TunnelHandle) => void;
+	const manager = new PortForwardManager(
+		() =>
+			new Promise((resolve) => {
+				finish = resolve;
+			}),
+		async () => true,
+	);
+	const opening = manager.open({
+		environmentId: "exclusive",
+		target: sshTarget,
+		remotePort: 3001,
+		owner: "preview",
+	});
+	const rejected = expect(opening).rejects.toThrow(
+		"closed before it became ready",
+	);
+	await Promise.resolve();
+	const closing = manager.closePreviews("exclusive");
+	finish(tunnel.handle);
+	await rejected;
+	await closing;
+	expect(tunnel.closed()).toBe(true);
+	expect(manager.list()).toEqual([]);
+});

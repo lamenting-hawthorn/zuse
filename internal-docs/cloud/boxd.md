@@ -76,6 +76,19 @@ publish with the same API key owner used by the Worker.
   first connection; a new preview port resolves immediately under the
   machine's wildcard. Traffic to a proxy reaches the VM interface, so the
   adapter runs the shared loopback forwarder on every endpoint resolution.
+  The renderer discovers listening ports while a ready Boxd chat or its
+  browser preview is active, publishes verified HTTP ports 1024 and above only after the user enables auto-creation,
+  and shows their URLs in the browser's server list and the
+  dedicated Ports and previews menu in the top bar. Both menus support copying preview URLs. The toolbar's server
+  button returns to that list to switch ports or copy a link. Opening a Boxd
+  preview uses its HTTPS URL when auto-creation is enabled; otherwise it opens
+  a local SSH forward. Other
+  providers retain their existing SSH preview behavior. Chat and browser
+  share one poller per workspace; successful routes are reused, failures
+  retry independently, and discovery backs off while disconnected. Polling
+  stops when neither surface is active or the workspace is no longer ready.
+  These are public URLs: anyone with a link can reach the server. Pausing
+  does not revoke a Boxd link, because inbound proxy traffic can wake the VM.
 - There is no usage endpoint, lifecycle webhook, or event log, and machine
   records carry only `createdAt` and `hibernatedAt`, so no billing usage
   source exists for boxd: reservations are made at the price schedule while
@@ -148,3 +161,15 @@ See the installed SDK README or
 Use the [shared incident debugging runbook](incident-debugging.md), including its
 Boxd-specific access and lifecycle notes. The memory/recovery checks are shared;
 Boat API endpoints and snapshot-file procedures are not interchangeable with Boxd.
+
+Preview auto-publication requires `isWebServer: true` from the runtime. Discovery excludes the runtime process’s own Linux sockets and probes HTTP with bounded HEAD requests, so SSH and other non-HTTP services are not published. Older runtimes without this verification field do not auto-publish; update the cloud runtime to enable discovery.
+
+The Ports and previews menu independently enables public URL auto-creation and local forwarding. Both default off and are remembered per workspace across renderer restarts. Users can explicitly add a port (for example 3001) even when older runtimes cannot verify it; unverified ports are never auto-selected. Turning local forwarding off releases only preview-owned tunnels, including pending opens; tunnels borrowed by another feature remain open. Turning URL auto-creation off revokes issued provider routes and verifies their removal. Publication and cleanup are serialized so an in-flight response cannot escape revocation. The last discovery consumer also triggers cleanup. A durable journal is written before publication and reconciled after renderer restart. Failed revocation remains visibly pending and retries; it must not be presented as a successful switch-off. Cleanup includes legacy `p<port>` routes and pinned default preview routes, but preserves the runtime route. Named routes managed outside Zuse are not adopted for new previews. Provider failures or abrupt app termination can delay deletion; URLs are not time-limited leases, and pending removal means previously shared links may still be public.
+
+Preview bridges use `--preview`: they refuse to bind before the loopback app starts and exit when that app stops (checked every 500 ms with a bounded probe). This releases the VM interface port for the next wildcard-bound dev server. The runtime bridge on 47837 remains persistent so bootstrap and reconnect behavior are unchanged. Existing bridges created by older API builds must be removed after verifying their process identity; deploying the adapter change governs future bridges.
+
+Deploy the API revocation handler before releasing the renderer/native changes.
+An older API or a provider that refuses deletion must produce pending cleanup,
+not a successful off state. Default-route deletion support is provider-dependent;
+the adapter verifies that the hostname is absent after deletion and never falls
+back to auto-detection or a different port to simulate revocation.

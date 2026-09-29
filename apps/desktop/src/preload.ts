@@ -493,12 +493,18 @@ const bridge = {
 			environmentId: string;
 			remotePort: number;
 			cloudWorkspaceId?: string;
+			readonly owner?: "preview";
 		}) =>
 			ipcRenderer.invoke("tunnels:open", input) as Promise<{
 				environmentId: string;
 				remotePort: number;
 				localPort: number;
 			}>,
+		closePreviews: (environmentId: string) =>
+			ipcRenderer.invoke(
+				"tunnels:closePreviews",
+				environmentId,
+			) as Promise<void>,
 		close: (environmentId: string, remotePort: number) =>
 			ipcRenderer.invoke(
 				"tunnels:close",

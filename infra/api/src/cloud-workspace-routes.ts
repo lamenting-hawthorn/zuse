@@ -3558,31 +3558,37 @@ export const routeCloudWorkspaceRequest = (
 
 		const previewUrlMatch =
 			/^\/v1\/cloud\/workspaces\/([^/]+)\/preview-url$/u.exec(path);
-		if (method === "POST" && previewUrlMatch !== null) {
+		if (
+			(method === "POST" || method === "DELETE") &&
+			previewUrlMatch !== null
+		) {
 			const workspaceId = decodeURIComponent(previewUrlMatch[1] ?? "");
 			const workspace = yield* store.getWorkspace(workspaceId);
 			if (workspace === null || workspace.accountId !== principal.accountId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
 			if (
-				workspace.state !== "ready" ||
+				(method === "POST" && workspace.state !== "ready") ||
 				workspace.providerSandboxId === undefined
 			)
 				return yield* Effect.fail(conflict("cloud_workspace_unavailable"));
 			const body = yield* decodeBody(
-				Schema.Struct({ port: Schema.Number }),
+				Schema.Struct({ port: Schema.optional(Schema.Number) }),
 				request,
 			);
 			const offer = yield* SandboxOfferConfiguration;
 			if (
-				!Number.isInteger(body.port) ||
-				body.port <= 0 ||
-				body.port > 65_535 ||
-				body.port === offer.port
+				body.port === undefined
+					? method !== "DELETE"
+					: !Number.isInteger(body.port) ||
+						body.port <= 0 ||
+						body.port > 65_535 ||
+						body.port === offer.port
 			)
 				return yield* Effect.fail(badRequest("invalid_preview_port"));
 			// The returned host is public-by-URL: anyone holding it reaches the
 			// port with no further auth. The high-entropy sandbox id is the trust
-			// model (like sharing a tunnel link); revocation is pause/restart.
+			// model (like sharing a tunnel link). Pausing does not revoke a route:
+			// providers such as boxd can wake the machine on inbound traffic.
 			const provider = yield* (yield* SandboxProviders)
 				.get(workspace.provider)
 				.pipe(
@@ -3590,6 +3596,23 @@ export const routeCloudWorkspaceRequest = (
 						serviceUnavailable("cloud_provider_unavailable"),
 					),
 				);
+			if (method === "DELETE") {
+				if (provider.revokeEndpoint === undefined)
+					return yield* Effect.fail(
+						conflict("cloud_workspace_preview_revocation_unsupported"),
+					);
+				yield* provider
+					.revokeEndpoint(workspace.providerSandboxId, body.port)
+					.pipe(
+						Effect.mapError(() =>
+							serviceUnavailable("cloud_workspace_preview_revocation_failed"),
+						),
+					);
+				return json({ workspaceId, port: body.port });
+			}
+
+			if (body.port === undefined)
+				return yield* Effect.fail(badRequest("invalid_preview_port"));
 			const endpoint = yield* provider
 				.resolveEndpoint(workspace.providerSandboxId, body.port)
 				.pipe(

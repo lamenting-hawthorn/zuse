@@ -11,7 +11,7 @@ import {
 	SandboxProviders,
 } from "@zuse/sandbox-providers";
 import { SandboxProvidersFake } from "@zuse/sandbox-providers/testing";
-import { Effect, Layer, Redacted } from "effect";
+import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 import {
 	exportJWK,
 	generateKeyPair,
@@ -21,6 +21,8 @@ import {
 	SignJWT,
 } from "jose";
 import { beforeEach, describe, expect, test } from "vitest";
+import { routeCloudWorkspaceRequest } from "../../src/cloud-workspace-routes.ts";
+import { CloudWorkspaceStore } from "../../src/cloud-workspace-store.ts";
 import * as Config from "../../src/config.ts";
 import type { ApiContext } from "../../src/handler.ts";
 import {
@@ -2160,5 +2162,102 @@ describe("@zuse/api managed tunnel", () => {
 		);
 		expect(response.status).toBe(400);
 		expect((await response.json()).error).toBe("invalid_repository");
+	});
+});
+
+describe("preview URL revocation authorization", () => {
+	test("permits revocation while paused, rejects another account and the runtime port", async () => {
+		const calls: Array<{ sandboxId: string; port?: number }> = [];
+		const providers = SandboxProviders.layer({
+			defaultProviderId: "fake",
+			registrations: [
+				{
+					adapter: {
+						...placementAdapter("fake"),
+						revokeEndpoint: (sandboxId, port) =>
+							Effect.sync(() => {
+								calls.push({ sandboxId, port });
+							}),
+					},
+				},
+			],
+		}).pipe(Layer.orDie);
+		const runtime = ManagedRuntime.make(
+			await makeLayer(undefined, undefined, false, {}, providers),
+		);
+		try {
+			const store = await runtime.runPromise(CloudWorkspaceStore);
+			await runtime.runPromise(
+				store.createWorkspace(
+					{
+						workspaceId: "preview-workspace",
+						accountId: "user_a",
+						projectId: "project",
+						buildId: "build",
+						provider: "fake",
+						providerSandboxId: "sandbox",
+						runtimeState: "offline",
+						chatId: "chat",
+						initialSessionId: "session",
+						branch: "preview-test",
+						baseRef: "main",
+						state: "paused",
+						desiredState: "paused",
+						statusCode: "paused",
+						idempotencyKey: "preview-test",
+						requestConfig: {},
+						nextActionAtMs: 100,
+						revision: 1,
+						createdAtMs: 100,
+						updatedAtMs: 100,
+						lastActivityAtMs: 100,
+					},
+					{
+						workspaceId: "preview-workspace",
+						accountId: "user_a",
+						chatId: "chat",
+						sessionId: "session",
+						turnId: "turn",
+						commandId: "command",
+						ciphertext: "sealed",
+						expiresAtMs: Date.now() + 10000,
+						createdAtMs: 100,
+					},
+				),
+			);
+			const request = (account: string, port?: number) =>
+				routeCloudWorkspaceRequest(
+					new Request(
+						`${API_ISSUER}/v1/cloud/workspaces/preview-workspace/preview-url`,
+						{
+							method: "DELETE",
+							headers: {
+								authorization: `Bearer test-token:${account}`,
+								"content-type": "application/json",
+							},
+							body: JSON.stringify({ port }),
+						},
+					),
+				);
+			await expect(
+				runtime.runPromise(request("user_b", 3001)),
+			).rejects.toMatchObject({ code: "cloud_workspace_not_found" });
+			await expect(
+				runtime.runPromise(request("user_a", 47837)),
+			).rejects.toMatchObject({ code: "invalid_preview_port" });
+			expect(calls).toEqual([]);
+			const response = await runtime.runPromise(request("user_a", 3001));
+			expect(await response?.json()).toEqual({
+				workspaceId: "preview-workspace",
+				port: 3001,
+			});
+			await runtime.runPromise(request("user_a"));
+			expect(calls).toEqual([
+				{ sandboxId: "sandbox", port: 3001 },
+				{ sandboxId: "sandbox", port: undefined },
+			]);
+		} finally {
+			await runtime.dispose();
+		}
 	});
 });
