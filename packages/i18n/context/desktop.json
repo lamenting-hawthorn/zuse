@@ -25575,116 +25575,6 @@
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"settings:cloud_build_ready": {
-		"source": "Cloud image ready",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 111
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_reconnecting": {
-		"source": "Connection interrupted. Retrying status automatically…",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 121
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_ready_description": {
-		"source": "Your updated image is ready for new cloud chats.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 123
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_background": {
-		"source": "Builds continue when you leave Settings.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 124
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_setup": {
-		"source": "Cloud setup",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 140
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_dismiss": {
-		"source": "Dismiss",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 149
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_progress": {
-		"source": "building · {{phase}}",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_preparing": {
-		"source": "preparing",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_failed": {
-		"source": "build failed",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_auth": {
-		"source": "reconnect agent",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_build_needed": {
-		"source": "image build needed",
-		"locations": [
-			{
-				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
-				"line": 115
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
 	"settings:cloud_auth_poll_retry": {
 		"source": "Authorization status could not be refreshed. Retrying…",
 		"locations": [
@@ -25701,16 +25591,6 @@
 			{
 				"path": "apps/renderer/src/components/settings/cloud-workspace-auth.tsx",
 				"line": 409
-			}
-		],
-		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
-	},
-	"settings:cloud_image_leave_warning": {
-		"source": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time.",
-		"locations": [
-			{
-				"path": "apps/renderer/src/lib/cloud-settings-guard.ts",
-				"line": 12
 			}
 		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
@@ -26557,6 +26437,126 @@
 			{
 				"path": "apps/renderer/src/components/browser-access-gate.tsx",
 				"line": 335
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_ready": {
+		"source": "Cloud image ready",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 111
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_reconnecting": {
+		"source": "Connection interrupted. Retrying status automatically…",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 121
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_ready_description": {
+		"source": "Your updated image is ready for new cloud chats.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 123
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_background": {
+		"source": "Builds continue when you leave Settings.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 124
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_setup": {
+		"source": "Cloud setup",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 140
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_dismiss": {
+		"source": "Dismiss",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 149
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_progress": {
+		"source": "building · {{phase}}",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 115
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_preparing": {
+		"source": "preparing",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 115
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_failed": {
+		"source": "build failed",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 115
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_auth": {
+		"source": "reconnect agent",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 115
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_build_needed": {
+		"source": "image build needed",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/cloud-build-notice.tsx",
+				"line": 115
+			}
+		],
+		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"shell:cloud_image_leave_warning": {
+		"source": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/lib/cloud-settings-guard.ts",
+				"line": 12
 			}
 		],
 		"context": "shell interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."

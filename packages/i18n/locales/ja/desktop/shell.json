@@ -89,5 +89,17 @@
 	"hosted_select_a_repository_before_starting_a_cloud_chat": "クラウドチャットを開始する前に、リポジトリを選択してください。",
 	"hosted_archive_chat": "{{title}} をアーカイブ",
 	"hosted_restore_chat": "{{title}} を復元",
-	"hosted_sign_in_failed": "サインインできませんでした。接続を確認して、もう一度お試しください。"
+	"hosted_sign_in_failed": "サインインできませんでした。接続を確認して、もう一度お試しください。",
+	"cloud_build_ready": "Cloud image ready",
+	"cloud_build_reconnecting": "Connection interrupted. Retrying status automatically…",
+	"cloud_build_ready_description": "Your updated image is ready for new cloud chats.",
+	"cloud_build_background": "Builds continue when you leave Settings.",
+	"cloud_build_setup": "Cloud setup",
+	"cloud_build_dismiss": "Dismiss",
+	"cloud_build_progress": "building · {{phase}}",
+	"cloud_build_preparing": "preparing",
+	"cloud_build_failed": "build failed",
+	"cloud_build_auth": "reconnect agent",
+	"cloud_build_needed": "image build needed",
+	"cloud_image_leave_warning": "Your cloud image has unbuilt changes. Leave Settings? You can finish building from the cloud reminder at any time."
 }

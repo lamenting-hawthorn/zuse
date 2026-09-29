@@ -2,7 +2,7 @@ import {
 	CLOUD_CHECKOUT_STARTED,
 	requestCloudOnboarding,
 } from "../lib/cloud-onboarding.ts";
-import "@zuse/i18n/english/settings";
+import "@zuse/i18n/english/shell";
 import type { CloudAccountImage } from "@zuse/contracts";
 import { useMessages } from "@zuse/i18n/react";
 import { useEffect, useState } from "react";
@@ -23,7 +23,7 @@ export function CloudBuildNotice({
 }: {
 	readonly hidden?: boolean;
 }) {
-	const { message: uiMessage } = useMessages(["settings"]);
+	const { message: uiMessage } = useMessages(["shell"]);
 	const { isSignedIn, user } = useAuth();
 	const [images, setImages] = useState<readonly CloudAccountImage[]>([]);
 	const [unavailable, setUnavailable] = useState(false);
@@ -108,20 +108,20 @@ export function CloudBuildNotice({
 			<div className="min-w-0">
 				<p className="font-medium">
 					{pending.length === 0
-						? uiMessage("settings:cloud_build_ready")
+						? uiMessage("shell:cloud_build_ready")
 						: pending
 								.map(
 									(image) =>
-										`${cloudProviderLabel(image.providerId ?? "Cloud")}: ${image.state === "building" ? uiMessage("settings:cloud_build_progress", { phase: image.progressPhase ?? uiMessage("settings:cloud_build_preparing") }) : image.state === "failed" ? uiMessage("settings:cloud_build_failed") : image.state === "auth-broken" ? uiMessage("settings:cloud_build_auth") : uiMessage("settings:cloud_build_needed")}`,
+										`${cloudProviderLabel(image.providerId ?? "Cloud")}: ${image.state === "building" ? uiMessage("shell:cloud_build_progress", { phase: image.progressPhase ?? uiMessage("shell:cloud_build_preparing") }) : image.state === "failed" ? uiMessage("shell:cloud_build_failed") : image.state === "auth-broken" ? uiMessage("shell:cloud_build_auth") : uiMessage("shell:cloud_build_needed")}`,
 								)
 								.join(" · ")}
 				</p>
 				<p className="text-[11px] text-muted-foreground">
 					{unavailable
-						? uiMessage("settings:cloud_build_reconnecting")
+						? uiMessage("shell:cloud_build_reconnecting")
 						: pending.length === 0
-							? uiMessage("settings:cloud_build_ready_description")
-							: uiMessage("settings:cloud_build_background")}
+							? uiMessage("shell:cloud_build_ready_description")
+							: uiMessage("shell:cloud_build_background")}
 				</p>
 			</div>
 			<Button
@@ -137,7 +137,7 @@ export function CloudBuildNotice({
 					setCompleted(false);
 				}}
 			>
-				{uiMessage("settings:cloud_build_setup")}
+				{uiMessage("shell:cloud_build_setup")}
 			</Button>
 			{pending.length === 0 ? (
 				<Button
@@ -146,7 +146,7 @@ export function CloudBuildNotice({
 					variant="ghost"
 					onClick={() => setCompleted(false)}
 				>
-					{uiMessage("settings:cloud_build_dismiss")}
+					{uiMessage("shell:cloud_build_dismiss")}
 				</Button>
 			) : null}
 		</div>
