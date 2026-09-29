@@ -22,7 +22,7 @@ grok login
 
 Zuse requires Grok CLI `0.2.101` or newer. The provider card can launch Grok's device-auth flow; the CLI opens its supported browser authorization and Zuse waits for completion.
 
-Agent access requires an eligible Grok subscription. Zuse reads the local login state and performs a best-effort entitlement check, while the CLI remains authoritative if the account format or plan changes.
+Agent access requires an eligible Grok subscription. Zuse checks login status through `grok models`. It does not infer subscription eligibility from cached token tier numbers; the CLI enforces access when a session starts.
 
 ## Workflows in Zuse
 

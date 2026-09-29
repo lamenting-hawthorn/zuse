@@ -20,7 +20,6 @@ import {
 	ChildProcess as Command,
 	ChildProcessSpawner as CommandExecutor,
 } from "effect/unstable/process";
-import { decodeJwtPayload } from "./jwt.ts";
 import { PROVIDER_CLI_REGISTRY } from "./provider-cli-registry.ts";
 
 export { SUPPORTED_PROVIDER_CLIS } from "./provider-cli-registry.ts";
@@ -185,13 +184,19 @@ const collectText = (
 		),
 	);
 
-const runCapture = (cmd: Command.Command) =>
+const runCapture = (cmd: Command.Command, includeStderr = false) =>
 	Effect.gen(function* () {
 		const executor = yield* CommandExecutor.ChildProcessSpawner;
 		const proc = yield* executor.spawn(cmd);
-		const stdout = yield* collectText(proc.stdout);
+		const [stdout, stderr] = yield* Effect.all(
+			[
+				collectText(proc.stdout),
+				includeStderr ? collectText(proc.stderr) : Effect.succeed(""),
+			],
+			{ concurrency: "unbounded" },
+		);
 		const exitCode = yield* proc.exitCode;
-		return { stdout: stdout.trim(), exitCode };
+		return { stdout: `${stdout}\n${stderr}`.trim(), exitCode };
 	}).pipe(Effect.scoped);
 
 const splitCommandPaths = (stdout: string): ReadonlyArray<string> =>
@@ -846,208 +851,45 @@ const probeClaudeAccount: Effect.Effect<
 		: parseClaudeCredentials(credentialsRaw);
 });
 
-interface GrokAuthEntry {
-	readonly key?: string; // JWT access token (contains "tier" claim)
-	readonly access_token?: string;
-	readonly token?: string;
-	readonly jwt?: string;
-	readonly email?: string;
-	readonly first_name?: string;
-}
-
-/**
- * Minimum `tier` value from the xAI OIDC JWT that includes Grok Build CLI
- * access. xAI now exposes Grok Build to SuperGrok and X Premium+ subscribers;
- * locally-observed X Premium+ tokens carry tier 4, while older SuperGrok Heavy
- * tokens carried tier 5+.
- */
-const MIN_GROK_BUILD_TIER = 4;
-
-/**
- * Best-effort extraction of a numeric `tier` claim from a JWT payload.
- * Handles:
- *  - top-level `tier`, `xai_tier`, `plan_tier`, `subscription.tier`
- *  - string values that look like numbers
- *  - deep search for any key containing "tier" whose value is a usable number
- * Returns null when nothing plausible is found.
- */
-const extractTier = (claims: unknown): number | null => {
-	if (!claims || typeof claims !== "object") return null;
-	const obj = claims as Record<string, unknown>;
-
-	const directCandidates = [
-		"tier",
-		"xai_tier",
-		"plan_tier",
-		"subscription_tier",
-		"agent_tier",
-	];
-	for (const k of directCandidates) {
-		const v = obj[k];
-		if (typeof v === "number") return v;
-		if (typeof v === "string") {
-			const n = Number(v);
-			if (Number.isFinite(n)) return n;
-		}
+/** The CLI owns login and entitlement checks; JWT tier numbers are not a plan API. */
+const parseGrokModelsAuth = (output: string): AccountInfo => {
+	if (/not authenticated|not logged in/i.test(output)) {
+		return { authStatus: "unauthenticated" };
 	}
-
-	// Nested objects (e.g. { subscription: { tier: 7 } }, { xai: { tier: 5 } })
-	const nested = ["subscription", "xai", "plan", "account", "user", "profile"];
-	for (const n of nested) {
-		const sub = obj[n];
-		if (sub && typeof sub === "object") {
-			const t = extractTier(sub);
-			if (t !== null) return t;
-		}
-	}
-
-	// Last resort: DFS for any *tier* key with a numeric-ish value
-	const stack: unknown[] = [obj];
-	while (stack.length > 0) {
-		const cur = stack.pop()!;
-		if (!cur || typeof cur !== "object") continue;
-		for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
-			if (k.toLowerCase().includes("tier")) {
-				if (typeof v === "number") return v;
-				if (typeof v === "string") {
-					const n = Number(v);
-					if (Number.isFinite(n)) return n;
-				}
-			}
-			if (v && typeof v === "object") stack.push(v);
-		}
-	}
-	return null;
-};
-
-const GROK_DEBUG = process.env.MEMOIZE_DEBUG_GROK === "1";
-
-const parseGrokAuthJson = (raw: string): AccountInfo => {
-	try {
-		const data = JSON.parse(raw) as Record<string, GrokAuthEntry>;
-		const entry = Object.values(data)[0];
-		if (!entry) {
-			// No entries but file existed → treat as authenticated (runtime will enforce)
-			return {
-				authStatus: "authenticated",
-				authType: "cli",
-				authLabel: "Grok",
-			} satisfies AccountInfo;
-		}
-
-		const email = entry.email?.trim();
-
-		// Try every plausible token field the CLI might use now or in the future
-		const token =
-			entry.key || entry.access_token || entry.token || entry.jwt || null;
-
-		let authLabel = "Grok";
-		let tierFound: number | null = null;
-
-		if (token) {
-			const claims = decodeJwtPayload(token);
-			tierFound = extractTier(claims);
-			if (GROK_DEBUG) {
-				process.stderr.write(
-					`[grok.probe] claimsKeys=${claims ? Object.keys(claims).slice(0, 8).join(",") : "null"} tier=${tierFound}\n`,
-				);
-			}
-			if (typeof tierFound === "number") {
-				if (tierFound >= MIN_GROK_BUILD_TIER) {
-					authLabel = "Grok subscription";
-				} else {
-					authLabel = "Requires SuperGrok or X Premium+";
-				}
-			}
-			// else: we have a token but no usable tier claim → non-blocking "Grok"
-			// (runtime ACP still does the real entitlement check)
-		} else if (GROK_DEBUG) {
-			process.stderr.write(
-				`[grok.probe] entry present but no token field found\n`,
-			);
-		}
-
+	if (/you are logged in/i.test(output)) {
 		return {
 			authStatus: "authenticated",
 			authType: "cli",
-			...(email ? { authEmail: email } : {}),
-			authLabel,
-		} satisfies AccountInfo;
-	} catch (e) {
-		if (GROK_DEBUG) {
-			process.stderr.write(`[grok.probe] parse error: ${e}\n`);
-		}
-		// Unparseable auth.json but file existed → authenticated (don't hard-block)
-		return {
-			authStatus: "authenticated",
-			authType: "cli",
-			authLabel: "Grok",
-		} satisfies AccountInfo;
+			authLabel: "Grok account",
+		};
 	}
+	return { authStatus: "unknown" };
 };
 
-// Exported for tests / debug only. Not part of the public module surface.
-export const grokAuthTestHelpers = {
-	parseGrokAuthJson,
-	extractTier,
-	decodeJwtPayload,
-};
+const probeGrokAccount = (
+	cliPath: string,
+): Effect.Effect<AccountInfo, never, CommandExecutor.ChildProcessSpawner> =>
+	Effect.gen(function* () {
+		const result = yield* runCapture(
+			Command.make(cliPath, ["models"], { stderr: "pipe" }),
+			true,
+		).pipe(
+			Effect.timeoutOption(PROBE_TIMEOUT),
+			Effect.catch(() => Effect.succeedNone),
+		);
+		if (result._tag !== "Some" || result.value.exitCode !== 0) {
+			return { authStatus: "unknown" } satisfies AccountInfo;
+		}
+		return parseGrokModelsAuth(result.value.stdout);
+	});
+
+export const grokAuthTestHelpers = { parseGrokModelsAuth, probeGrokAccount };
 
 // Exported for tests only. Not part of the public module surface.
-export const claudeAuthTestHelpers = {
-	parseClaudeCredentials,
-};
-
-// Grok stores OIDC credentials (JWT + email + tier claim) in `~/.grok/auth.json`
-// after `grok login`. We parse the JWT to read the `tier` claim and decide the
-// plan status (best-effort only — the ACP binary is the source of truth):
-//
-// - tier >= 4 → "Grok subscription"   (nice label, toggle enabled)
-// - tier < 4  → "Requires SuperGrok or X Premium+" (violet nag + disabled)
-// - token present but tier unreadable / missing / new shape → "Grok" (non-blocking)
-//   The runtime will surface the precise AuthorizationRequired if the account
-//   truly lacks the agent entitlement.
-//
-// This change (from always-requires on parse failure) stops paying SuperGrok
-// Heavy users from being incorrectly locked out by our heuristic when the
-// auth.json shape or claim location differs from what we first shipped.
-const probeGrokAccount: Effect.Effect<
-	AccountInfo,
-	never,
-	FileSystem.FileSystem
-> = Effect.gen(function* () {
-	const fs = yield* FileSystem.FileSystem;
-	const dir = join(homedir(), ".grok");
-	const authPath = join(dir, "auth.json");
-
-	const authExists = yield* fs
-		.exists(authPath)
-		.pipe(Effect.catch(() => Effect.succeed(false)));
-
-	if (authExists) {
-		const raw = yield* fs
-			.readFileString(authPath)
-			.pipe(Effect.catch(() => Effect.succeed("")));
-		if (raw.length > 0) {
-			return parseGrokAuthJson(raw);
-		}
-	}
-
-	// No auth.json at all → unauthenticated (user has never run `grok login`)
-	const dirExists = yield* fs
-		.exists(dir)
-		.pipe(Effect.catch(() => Effect.succeed(false)));
-	return dirExists
-		? ({
-				authStatus: "authenticated",
-				authType: "cli",
-				authLabel: "Grok",
-			} satisfies AccountInfo)
-		: ({ authStatus: "unauthenticated" } satisfies AccountInfo);
-});
+export const claudeAuthTestHelpers = { parseClaudeCredentials };
 
 // Gemini CLI writes OAuth tokens + settings under `~/.gemini/` after the
-// first interactive sign-in. Same file-existence heuristic as Grok — we
+// first interactive sign-in. We
 // don't yet have a verified-auth call we can make to the gemini CLI to
 // extract email/plan, so the card stays at "Authenticated" without the
 // subscription label.
@@ -1178,7 +1020,7 @@ const probeAccount = (
 		case "codex":
 			return probeCodexAccount(cliPath);
 		case "grok":
-			return probeGrokAccount;
+			return probeGrokAccount(cliPath);
 		case "gemini":
 			return probeGeminiAccount;
 		case "opencode":
