@@ -22,7 +22,9 @@ describe("cloud ssh service", () => {
 		await writeFile(path, managedSshConfig("/unused-bridge"));
 		const settings = (host: string) =>
 			Object.fromEntries(
-				execFileSync("ssh", ["-G", "-T", "-F", path, host], { encoding: "utf8" })
+				execFileSync("ssh", ["-G", "-T", "-F", path, host], {
+					encoding: "utf8",
+				})
 					.trim()
 					.split("\n")
 					.map((line) => {
