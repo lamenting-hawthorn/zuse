@@ -2,15 +2,18 @@ name: Agent extension validation
 on:
   pull_request:
     paths:
-      - "apps/server/src/agent-plugin/**"
+      - "apps/server/src/executor/**"
       - "apps/server/src/provider/**"
-      - "packages/contracts/src/agent-plugin.ts"
-      - "apps/renderer/src/lib/agent-plugin-client.ts"
-      - "apps/server/test/**/agent-plugin.test.ts"
+      - "packages/contracts/src/executor.ts"
+      - "apps/renderer/src/lib/executor-client.ts"
+      - "apps/server/test/**/executor.test.ts"
       - "apps/renderer/src/components/settings/agent-plugins-pane.tsx"
       - "apps/renderer/test/unit/agent-plugins-pane.test.tsx"
       - "packages/acp/**"
-      - "packages/agents/src/drivers/extension-acp.ts"
+      - "packages/agents/src/drivers/**"
+      - "packages/agents/src/user-mcp/**"
+      - "packages/agents/test/unit/shared-mcp.test.ts"
+      - "infra/executor/**"
       - "packages/agents/src/drivers/acp/**"
       - "packages/agents/test/**/extension-acp*"
       - "packages/extension-*/**"
@@ -41,8 +44,8 @@ jobs:
       - run: bun install --frozen-lockfile --ignore-scripts
       - name: Check types
         run: bun run check-types
-      - name: Test native plugins and supervised agents
-        run: bunx vitest run apps/server/test/unit/agent-plugin.test.ts apps/server/test/integration/agent-plugin.test.ts packages/acp/test packages/agents/test/unit/drivers/extension-acp.test.ts packages/extension-host/test packages/serve/test/extension-init.test.ts packages/serve/test/agent-cli.test.ts
+      - name: Test shared Executor plugins and supervised agents
+        run: bunx vitest run apps/server/test/unit/executor.test.ts apps/server/test/integration/executor.test.ts packages/acp/test packages/agents/test/unit/drivers/extension-acp.test.ts packages/agents/test/unit/shared-mcp.test.ts packages/extension-host/test packages/serve/test/extension-init.test.ts packages/serve/test/agent-cli.test.ts
       - name: Test plugin settings
         working-directory: apps/renderer
         run: bunx vp test run test/unit/agent-plugins-pane.test.tsx

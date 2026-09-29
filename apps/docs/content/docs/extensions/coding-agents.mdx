@@ -9,7 +9,7 @@ lastVerified: Extensions Preview (API 1.2)
 
 An extension can add a coding tool to the existing model picker and chat timeline. Use **ACP** when the tool speaks Agent Client Protocol over stdin/stdout. Use a **direct provider adapter** for a vendor SDK, HTTP stream, or another process protocol. Neither requires a new Zuse screen or a fork of Zuse.
 
-This is a Zuse authoring API, not a loader for Paseo provider manifests. Agent plugins are a separate feature: [Codex plugins](/extensions/agent-plugins) add skills, hooks, apps, and MCP tools *inside Codex*. A provider adapter adds a coding agent *to Zuse*.
+This is a Zuse authoring API, not a loader for Paseo provider manifests. [Shared plugins](/extensions/agent-plugins) provide Executor-backed tools and accounts across supported agents. A provider adapter adds a coding agent *to Zuse*.
 
 ## Connect an ACP tool
 
@@ -54,7 +54,8 @@ Zuse supervises one process per conversation, translates streaming messages and 
 ### Current ACP boundaries
 
 - Text prompts only. Paste context into the message; image, file, and skill attachments are rejected explicitly.
-- No session forks, injected MCP servers, automatic model discovery, or client-provided filesystem/terminal methods. Agents may use their own tools; Zuse advertises the client capabilities it actually implements.
+- Shared Executor tools are passed during session creation and resume. Zuse uses HTTP MCP when the agent advertises it, otherwise a stdio bridge. Start a new chat after changing shared plugin settings.
+- No session forks, automatic model discovery, or client-provided filesystem/terminal methods. Agents may use their own tools; Zuse advertises the client capabilities it actually implements.
 - Permissions offer one-time decisions, not persistent “always allow” rules. Plan mode denies permission requests. It is still trusted local code, not a filesystem sandbox.
 - Authentication stays with the coding tool. A command being available does not prove its login is valid; authentication errors appear when the agent starts or runs a task.
 - Active conversations block extension reload/update. Disable stops the extension's agents and preserves conversation history. Close affected conversations before reloading a changed adapter.
@@ -74,6 +75,8 @@ Zuse supervises one process per conversation, translates streaming messages and 
 | `answerQuestion(...)` | Optional: forward the selected answers to the tool. Advertise the matching capability. |
 
 Use `extension.emitProviderEvent(sessionId, event)` to send the shared Zuse event format. For a text response, emit a running `Status`, an `AssistantMessage` with a stable `itemId`, text and increasing `checkpoint.revision`, then a final checkpoint and idle `Status`. Emit `Error` and error `Status` on failure. Emit `SessionCursor` when the native tool supplies a resumable ID; the generic strategy is `acp-session-id`. Do not manufacture resume support by starting a new conversation silently.
+
+The host passes configured shared tools through `input.mcpServers`. Forward these to your tool when its protocol supports MCP; do not persist or log the temporary proxy credentials. Native hooks and commands are not translated between agents.
 
 The host validates events, bounds queues, and retains unavailable provider names in history. Your direct adapter must bound its own protocol buffers and clean up its external resources. The ACP helper provides that supervision automatically; arbitrary custom subprocesses are the author's responsibility. Return a cleanup function from setup that closes all remaining sessions.
 
