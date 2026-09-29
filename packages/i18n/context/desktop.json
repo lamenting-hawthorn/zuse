@@ -8675,6 +8675,10 @@
 				"line": 225
 			},
 			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 646
+			},
+			{
 				"path": "apps/renderer/src/components/update-banner.tsx",
 				"line": 216
 			},
@@ -9092,13 +9096,22 @@
 			{
 				"path": "apps/renderer/src/components/settings/cloud-workspace-pool.tsx",
 				"line": 513
+			},
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1338
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"common:signOut": {
 		"source": "Sign out",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1305
+			}
+		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"common:invalidDate": {
@@ -9218,7 +9231,12 @@
 	},
 	"common:provider_settings": {
 		"source": "Provider settings",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1736
+			}
+		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"connections:cloud_connection_notice_signing_in": {
@@ -22375,362 +22393,734 @@
 	},
 	"settings:settings_page_browser_sessions": {
 		"source": "Browser sessions",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 548
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_copy_valid_cookies_from_a_local_browser_profile_into_the_built_in_brow": {
 		"source": "Copy valid cookies from a local browser profile into the built-in browser. Cookie values never enter renderer state, logs, or chat.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 550
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_import_source": {
 		"source": "Import source",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 554
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_import": {
 		"source": "Import",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 581
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_imported_data": {
 		"source": "Imported data",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 586
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_clear_imported": {
 		"source": "Clear imported",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 597
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_privacy": {
 		"source": "Privacy",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 604
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_built_in_browser_data_stays_in_an_isolated_in_memory_partition_explici": {
 		"source": "Built-in browser data stays in an isolated in-memory partition. Explicitly imported cookies are encrypted with the app vault and restored on restart.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 606
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_browsing_data": {
 		"source": "Browsing data",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 610
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_remove_cookies_site_storage_and_cache_from_the_current_built_in_browse": {
 		"source": "Remove cookies, site storage, and cache from the current built-in browser session without changing other browsers.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 612
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_clear_all": {
 		"source": "Clear all…",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 620
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_clear_browsing_data": {
 		"source": "Clear browsing data?",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 636
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_this_removes_cookies_site_storage_and_cache_from_the_built_in_browser": {
 		"source": "This removes cookies, site storage, and cache from the built-in browser. Other browsers are unchanged.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 640
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_clear_data": {
 		"source": "Clear data",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 660
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_saved_logins": {
 		"source": "Saved logins",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 772
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_the_agent_calls_browser_login_with_a_site_s_origin_you_ll_always_be_as": {
 		"source": "The agent calls browser_login with a site's origin; you'll always be asked to approve before it submits.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 774
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_no_saved_logins_yet": {
 		"source": "No saved logins yet.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 780
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_origin_https_app_example_com": {
 		"source": "Origin (https://app.example.com)",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 818
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_username_email": {
 		"source": "Username / email",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 824
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_password_dummy": {
 		"source": "Password (dummy)",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 829
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_add_login": {
 		"source": "Add login",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 841
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_notch_tray": {
 		"source": "Notch tray",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 904
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_show_active_agents_near_the_macbook_notch_hover_the_notch_area_to_expa": {
 		"source": "Show active agents near the MacBook notch. Hover the notch area to expand the tray, then click an agent to jump to its chat.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 906
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_enable_notch_tray": {
 		"source": "Enable Notch Tray",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 910
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_show_running_agents_pending_approvals_questions_plans_completions_and": {
 		"source": "Show running agents, pending approvals, questions, plans, completions, and failures near the notch.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 912
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_keep_tray_expanded": {
 		"source": "Keep tray expanded",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 917
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_keep_the_agent_list_open_instead_of_only_expanding_while_the_pointer_i": {
 		"source": "Keep the agent list open instead of only expanding while the pointer is over the notch area.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 919
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_what_appears": {
 		"source": "What appears",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 932
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_the_tray_is_intentionally_quiet_it_shows_actionable_agent_states_first": {
 		"source": "The tray is intentionally quiet: it shows actionable agent states first, then recently completed turns for about 30 seconds.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 934
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_permission_requests_questions_and_plan_approvals": {
 		"source": "Permission requests, questions, and plan approvals",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 940
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_running_agents_as_compact_status_circles": {
 		"source": "Running agents as compact status circles",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 945
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_completed_turns_and_failures_from_background_chats": {
 		"source": "Completed turns and failures from background chats",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 950
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_power": {
 		"source": "Power",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1120
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_keep_this_mac_available_for_local_agents_and_remote_control": {
 		"source": "Keep this Mac available for local agents and remote control.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1122
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_keep_mac_awake": {
 		"source": "Keep Mac awake",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1126
+			},
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1137
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_the_display_may_turn_off_closed_lid_operation_is_best_effort_and_depen": {
 		"source": "The display may turn off. Closed-lid operation is best effort and depends on macOS hardware and power policy.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1155
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_account": {
 		"source": "Account",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1234
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_sign_in_to_sync_your_account_across_devices_and_soon_drive_remote_agen": {
 		"source": "Sign in to sync your account across devices and (soon) drive remote agents from your phone.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1236
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_your_name": {
 		"source": "Your name",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1270
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_edit_display_name": {
 		"source": "Edit display name",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1289
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_account_unavailable": {
 		"source": "Account unavailable",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1312
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_checking_account": {
 		"source": "Checking account…",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1313
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_reconnect_this_computer_to_load_the_existing_workos_session": {
 		"source": "Reconnect this computer to load the existing WorkOS session.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1318
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_loading_the_saved_workos_session_from_this_computer": {
 		"source": "Loading the saved WorkOS session from this computer.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1321
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_not_signed_in": {
 		"source": "Not signed in",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1327
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_you_re_using_zuse_beta_locally_without_an_account_sign_in_to_sync_and": {
 		"source": "You're using Zuse (Beta) locally without an account. Sign in to sync and unlock remote agents.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1329
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_appearance": {
 		"source": "Appearance",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1346
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_choose_the_app_theme_or_follow_your_system_setting": {
 		"source": "Choose the app theme, or follow your system setting.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1348
+			},
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1354
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_theme": {
 		"source": "Theme",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1352
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_notifications": {
 		"source": "Notifications",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1388
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_agent_completion_sound": {
 		"source": "Agent completion sound",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1390
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_play_a_short_sound_when_any_agent_turn_finishes_including_agents_worki": {
 		"source": "Play a short sound when any agent turn finishes, including agents working in background chats.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1392
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_preview": {
 		"source": "Preview",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1445
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_workspace_naming": {
 		"source": "Workspace naming",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1452
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_controls_how_zuse_beta_names_new_worktree_backed_branches": {
 		"source": "Controls how Zuse (Beta) names new worktree-backed branches.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1454
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_branch_naming": {
 		"source": "Branch naming",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1458
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_after_the_first_submitted_turn_completes_successfully_each_unnamed_ses": {
 		"source": "After the first submitted turn completes successfully, each unnamed session receives one title, the chat receives one title from its initial session, and a fresh unpublished worktree branch receives a separate semantic name in this shape.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1460
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_custom_prefix": {
 		"source": "Custom prefix",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1500
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_e_g_swaraj_or_team_wip": {
 		"source": "e.g. swaraj or team/wip",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1507
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_slash_joined_before_the_slug_letters_digits_slashes_and_dashes_leave_e": {
 		"source": "Slash-joined before the slug. Letters, digits, slashes and dashes; leave empty for a bare slug.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1520
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_setup": {
 		"source": "Setup",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1529
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_onboarding": {
 		"source": "Onboarding",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1531
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_replay_the_first_launch_welcome_flow_your_existing_projects_and_creden": {
 		"source": "Replay the first-launch welcome flow. Your existing projects and credentials stay put.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1533
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_show_again": {
 		"source": "Show again",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1544
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_chat_defaults": {
 		"source": "Chat defaults",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1570
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_these_choices_apply_when_you_start_a_new_chat_you_can_still_change_eit": {
 		"source": "These choices apply when you start a new chat. You can still change either one from the composer.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1572
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_default_model": {
 		"source": "Default model",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1576
+			},
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 2175
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_default_permission_mode": {
 		"source": "Default permission mode",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1588
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_how_new_chats_handle_tool_calls_each_chat_can_override_this_from_the_c": {
 		"source": "How new chats handle tool calls. Each chat can override this from the composer.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1590
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_agent_providers": {
 		"source": "Agent providers",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1704
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_enable_the_coding_agents_you_use_verify_their_local_setup_and_control": {
 		"source": "Enable the coding agents you use, verify their local setup, and control which models appear in Zuse.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1706
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_refresh_provider_status": {
 		"source": "Refresh provider status",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1720
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_auto_create_worktree_for_new_chats": {
@@ -22745,12 +23135,22 @@
 	},
 	"settings:settings_page_inherit": {
 		"source": "Inherit",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 2105
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_custom": {
 		"source": "Custom",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 2117
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_repository_project_no_longer_exists_pick_another_from_the_sidebar": {
@@ -24083,62 +24483,122 @@
 	},
 	"settings:settings_page_close_before_importing_macos_may_request_safe_storage_access": {
 		"source": "Close {{source}} before importing. macOS may request Safe Storage access.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 559
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_username_branch": {
 		"source": "username/branch",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 996
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_branch_only": {
 		"source": "branch only",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1002
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_feat_branch": {
 		"source": "feat/branch",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1008
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_custom_prefix_2": {
 		"source": "custom prefix",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1014
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_system": {
 		"source": "System",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1027
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_light": {
 		"source": "Light",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1033
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_dark": {
 		"source": "Dark",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1039
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_off": {
 		"source": "Off",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1051
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_auto": {
 		"source": "Auto",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1057
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_always": {
 		"source": "Always",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1063
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_model_for_new_chats": {
 		"source": "Model for new chats · {{value1}}",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 1577
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_navigation_general": {
@@ -24633,7 +25093,12 @@
 	},
 	"settings:settings_page_dummy_test_logins_only_never_store_a_real_or_production_pass_sentence": {
 		"source": "<part0>Dummy / test logins only.</part0> Never store a real or production password here. These are for seeded accounts on dev and staging sites you ask the agent to verify. The agent never sees the password — it's injected straight into the page.",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 765
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:browser_settings_menu_macos_may_ask_zuse_or_electron_in_development_to_access_safe_sentence": {
@@ -25094,12 +25559,22 @@
 	},
 	"settings:settings_page_no_username": {
 		"source": "(no username)",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 795
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_page_remove_login_for": {
 		"source": "Remove login for {{value1}}",
-		"locations": [],
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 803
+			}
+		],
 		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"settings:settings_repository_model_for": {
