@@ -224,8 +224,8 @@ const makeWorkspaceDriver = (): ResourceDriver<
 				refreshLoop = (async () => {
 					while (active && appliedRevision < latestRevision) {
 						const targetRevision = latestRevision;
-						context.emit({ sync: "synchronizing" });
 						const previous = context.snapshot()?.data ?? null;
+						if (previous === null) context.emit({ sync: "synchronizing" });
 						const snapshot = await classifyGit(
 							context.client["git.workspaceSnapshot"]({
 								folderId: ref.folderId,
@@ -233,6 +233,25 @@ const makeWorkspaceDriver = (): ResourceDriver<
 							}),
 						);
 						throwTransportFailure(snapshot);
+						if (!active || !context.isCurrent()) return;
+						// Reconciliation is an observation, not necessarily a state change.
+						// Keep the shared view and hydrated details stable on idle polls.
+						if (
+							snapshot.ok &&
+							previous !== null &&
+							previous.error === null &&
+							previous.reviewError === null &&
+							previous.prDetailsError === null &&
+							previous.localFingerprint === snapshot.value.localFingerprint &&
+							JSON.stringify(previous.pr) ===
+								JSON.stringify(snapshot.value.pr) &&
+							context.snapshot()?.cursor?.epoch === epoch
+						) {
+							appliedRevision = targetRevision;
+							if (context.snapshot()?.sync !== "live")
+								context.emit({ sync: "live" });
+							continue;
+						}
 						const noRepository =
 							!snapshot.ok && snapshot.tag === "GitNotARepoError";
 						let data: GitWorkspaceData;

@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream } from "node:fs";
 import {
 	appendFile,
 	chmod,
@@ -23,6 +22,7 @@ import { Readable } from "node:stream";
 import { createGunzip, gzipSync } from "node:zlib";
 import { cloudSshConfigPath } from "../ssh/cloud-ssh-service.ts";
 import { ARCHIVE_SNAPSHOT_SCRIPT } from "./cloud-sync-archive.ts";
+import { SyncFileVerifier } from "./cloud-sync-file-verifier.ts";
 
 export const SYNC_MARKER_FILE = ".zuse-sync.json";
 export interface SyncFile {
@@ -150,11 +150,6 @@ emit(dict(done=True))
 out.flush()
 `;
 
-const digestFile = async (path: string): Promise<string> => {
-	const digest = createHash("sha256");
-	for await (const chunk of createReadStream(path)) digest.update(chunk);
-	return digest.digest("hex");
-};
 const exists = async (path: string) =>
 	lstat(path).catch((cause: NodeJS.ErrnoException) => {
 		if (cause.code === "ENOENT" || cause.code === "ENOTDIR") return null;
@@ -182,11 +177,14 @@ const assertParents = async (
 export const localBaseline = async (
 	root: string,
 	files: SyncFile[],
+	verifier = new SyncFileVerifier(),
+	signal?: AbortSignal,
 ): Promise<SyncFile[]> => {
 	const result: SyncFile[] = [];
 	// Verify local bytes: manual edits and a process interrupted during publication
 	// must not cause the next remote scan to incorrectly omit a needed file.
 	for (const file of files) {
+		signal?.throwIfAborted();
 		try {
 			await assertParents(root, file.path);
 		} catch {
@@ -202,7 +200,7 @@ export const localBaseline = async (
 			info.isFile() &&
 			(info.mode & 0o777) === file.mode &&
 			info.size === file.size &&
-			(await digestFile(path)) === file.hash
+			(await verifier.digest(path)) === file.hash
 		)
 			result.push(file);
 	}
@@ -258,7 +256,11 @@ const validateFile = (raw: unknown): SyncFile => {
 };
 const quote = (s: string) => `'${s.replaceAll("'", `'"'"'`)}'`;
 
-export async function cachedBaseline(cache: string): Promise<SyncFile[]> {
+export async function cachedBaseline(
+	cache: string,
+	verifier = new SyncFileVerifier(),
+	signal?: AbortSignal,
+): Promise<SyncFile[]> {
 	const journal = await readFile(join(cache, "received.ndjson"), "utf8").catch(
 		(cause: NodeJS.ErrnoException) => {
 			if (cause.code === "ENOENT") return "";
@@ -277,13 +279,14 @@ export async function cachedBaseline(cache: string): Promise<SyncFile[]> {
 	}
 	const verified: SyncFile[] = [];
 	for (const file of entries.values()) {
+		signal?.throwIfAborted();
 		if (file.link !== undefined) continue;
 		const object = join(cache, "objects", file.hash);
 		const info = await exists(object);
 		if (
 			info?.isFile() &&
 			info.size === file.size &&
-			(await digestFile(object)) === file.hash
+			(await verifier.digest(object)) === file.hash
 		)
 			verified.push(file);
 	}
@@ -575,6 +578,7 @@ export async function applySnapshot(
 	previous: SyncManifest,
 	files: SyncFile[],
 	signal: AbortSignal,
+	verifier = new SyncFileVerifier(),
 ): Promise<void> {
 	const next = new Map(files.map((f) => [f.path, f]));
 	const owned = new Set(
@@ -609,6 +613,7 @@ export async function applySnapshot(
 	};
 	const changes: SyncFile[] = [];
 	for (const file of files) {
+		signal.throwIfAborted();
 		await assertParents(root, file.path, removing);
 
 		const current = await exists(join(root, file.path));
@@ -624,12 +629,12 @@ export async function applySnapshot(
 			current?.isFile() &&
 			current.size === file.size &&
 			(current.mode & 0o777) === file.mode &&
-			(await digestFile(join(root, file.path))) === file.hash
+			(await verifier.digest(join(root, file.path))) === file.hash
 		)
 			continue;
 		if (
 			file.link === undefined &&
-			(await digestFile(join(staging, "objects", file.hash))) !== file.hash
+			(await verifier.digest(join(staging, "objects", file.hash))) !== file.hash
 		)
 			throw new Error("Missing or corrupt snapshot object.");
 		changes.push(file);

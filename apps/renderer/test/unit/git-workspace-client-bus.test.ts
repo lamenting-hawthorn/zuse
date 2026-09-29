@@ -201,7 +201,10 @@ describe("renderer Git workspace ClientBus adapter", () => {
 		);
 
 		const first = retainGitWorkspace(ref);
-		const second = retainGitWorkspace(ref);
+		const second = retainGitWorkspace({
+			...ref,
+			rootPath: "/another-spelling",
+		});
 		const third = retainGitWorkspace(ref);
 		const fourth = retainGitWorkspace(ref);
 		const bus = getRendererClientBus();
@@ -228,12 +231,21 @@ describe("renderer Git workspace ClientBus adapter", () => {
 			},
 		});
 
+		const sharedView = bus.snapshot(first.key);
+		const notified = vi.fn();
+		const unsubscribe = bus.subscribe(first.key, notified);
+		await refreshGitWorkspace(ref);
+		expect(snapshotLoads).toBe(2);
+		expect(bus.snapshot(first.key)).toBe(sharedView);
+		expect(notified).not.toHaveBeenCalled();
+		unsubscribe();
+
 		await Promise.all([
 			refreshGitWorkspace(ref),
 			refreshGitReview(ref),
 			refreshGitPrDetails(ref),
 		]);
-		expect(snapshotLoads).toBe(2);
+		expect(snapshotLoads).toBe(3);
 		expect(streamStarts).toBe(1);
 		expect(changeLoads).toBe(0);
 		expect(reviewSummaryLoads).toBe(0);

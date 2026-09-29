@@ -5,6 +5,7 @@ import {
 	type LongAnimationFrameEntry,
 } from "./stall-attribution.ts";
 import type { StallContext } from "./stall-context.ts";
+import { startVisibleInterval } from "./visible-interval.ts";
 
 export interface RendererLagInput {
 	readonly kind: LagKind;
@@ -56,6 +57,7 @@ export function installRendererLagMonitor(
 	let disposed = false;
 
 	const flush = () => {
+		if (flushTimer !== null) window.clearTimeout(flushTimer);
 		flushTimer = null;
 		if (queued.length === 0 || disposed) return;
 		report(queued.splice(0, queued.length));
@@ -70,9 +72,12 @@ export function installRendererLagMonitor(
 		if (flushTimer === null) flushTimer = window.setTimeout(flush, 250);
 	};
 	const visible = () => document.visibilityState === "visible";
+	let animationFrame: number | null = null;
 	let visibilityGeneration = 0;
 	const onVisibilityChange = () => {
 		visibilityGeneration += 1;
+		if (animationFrame !== null) cancelAnimationFrame(animationFrame);
+		animationFrame = null;
 	};
 	document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -139,41 +144,32 @@ export function installRendererLagMonitor(
 			"long-animation-frame",
 		) ??
 			false);
-	let animationFrame: number | null = null;
-	let animationProbeTimer: number | null = null;
-	const scheduleAnimationProbe = () => {
-		animationProbeTimer = window.setTimeout(() => {
-			animationProbeTimer = null;
-			if (disposed) return;
-			if (!visible()) {
-				scheduleAnimationProbe();
-				return;
-			}
-			const requestedAt = performance.now();
-			const requestedGeneration = visibilityGeneration;
-			animationFrame = requestAnimationFrame((timestamp) => {
-				animationFrame = null;
-				enqueue(
-					createRendererLagSample(
-						{
-							kind: "animation-stall",
-							durationMs: timestamp - requestedAt,
-							visible:
-								visible() && requestedGeneration === visibilityGeneration,
-						},
-						readContext(),
-					),
-				);
-				scheduleAnimationProbe();
-			});
-		}, 1_000);
-	};
-	if (!supportsLongAnimationFrame) scheduleAnimationProbe();
+	const stopAnimationProbe = supportsLongAnimationFrame
+		? () => undefined
+		: startVisibleInterval(() => {
+				if (disposed || animationFrame !== null) return;
+				const requestedAt = performance.now();
+				const requestedGeneration = visibilityGeneration;
+				animationFrame = requestAnimationFrame((timestamp) => {
+					animationFrame = null;
+					enqueue(
+						createRendererLagSample(
+							{
+								kind: "animation-stall",
+								durationMs: timestamp - requestedAt,
+								visible:
+									visible() && requestedGeneration === visibilityGeneration,
+							},
+							readContext(),
+						),
+					);
+				});
+			}, 1_000);
 
 	return () => {
 		disposed = true;
 		if (flushTimer !== null) window.clearTimeout(flushTimer);
-		if (animationProbeTimer !== null) window.clearTimeout(animationProbeTimer);
+		stopAnimationProbe();
 		if (animationFrame !== null) cancelAnimationFrame(animationFrame);
 		document.removeEventListener("visibilitychange", onVisibilityChange);
 		for (const observer of observers) observer.disconnect();

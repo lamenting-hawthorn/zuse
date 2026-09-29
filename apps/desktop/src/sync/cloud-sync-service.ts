@@ -1,6 +1,7 @@
 import { mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { KeyedSerialWorker } from "@zuse/utils/keyed-worker";
+import { SyncFileVerifier } from "./cloud-sync-file-verifier.ts";
 import {
 	applySnapshot,
 	cachedBaseline,
@@ -67,6 +68,7 @@ export const cloudSyncDefaultPath = (
 };
 
 interface SyncEntry {
+	verifier: SyncFileVerifier;
 	progress?: CloudSyncStatus["progress"];
 	config: CloudSyncConfigureInput;
 	state: CloudSyncState;
@@ -126,6 +128,7 @@ export class CloudSyncManager {
 			}
 			if (this.disposed) return this.status(input.workspaceId);
 			const entry: SyncEntry = {
+				verifier: new SyncFileVerifier(),
 				config: input.enabled
 					? input
 					: { ...input, localPath: old?.config.localPath ?? input.localPath },
@@ -213,7 +216,12 @@ export class CloudSyncManager {
 		const staging = `${resolve(entry.config.localPath)}.zuse-sync-cache`;
 		try {
 			const previous = await readSyncManifest(entry.config.localPath, id);
-			const local = await localBaseline(entry.config.localPath, previous.files);
+			const local = await localBaseline(
+				entry.config.localPath,
+				previous.files,
+				entry.verifier,
+				controller.signal,
+			);
 			if (controller.signal.aborted) return;
 			await mkdir(staging, { recursive: true });
 			if ((await readdir(staging)).length === 0)
@@ -223,7 +231,11 @@ export class CloudSyncManager {
 					files: [],
 				});
 			await readSyncManifest(staging, id);
-			const cached = await cachedBaseline(staging);
+			const cached = await cachedBaseline(
+				staging,
+				entry.verifier,
+				controller.signal,
+			);
 			const baseline = [
 				...new Map(
 					[...local, ...cached].map((file) => [file.path, file]),
@@ -266,6 +278,7 @@ export class CloudSyncManager {
 				previous,
 				files,
 				controller.signal,
+				entry.verifier,
 			);
 			if (controller.signal.aborted) return;
 			entry.lastSyncedAt = Date.now();

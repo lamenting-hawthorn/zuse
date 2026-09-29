@@ -8,6 +8,7 @@ import {
 	openSync,
 	readFileSync,
 	rmSync,
+	utimesSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,14 +17,17 @@ import { join } from "node:path";
 import { NodeFileSystem, NodePath, NodeServices } from "@effect/platform-node";
 import { FolderId, GitFolderNotFoundError, WorktreeId } from "@zuse/contracts";
 import {
+	Clock,
 	Effect,
 	Fiber,
 	FileSystem,
 	Layer,
 	type Path,
 	PlatformError,
+	Queue,
 	Stream,
 } from "effect";
+import { TestClock } from "effect/testing";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
@@ -206,6 +210,17 @@ describe("GitServiceLive", () => {
 			truncated: false,
 		});
 		expect(untrackedDiff.patch).toContain("+++ b/new.txt");
+	});
+
+	test("observes changed file stats without rewriting the watched Git index", async () => {
+		const index = readFileSync(join(repositoryRoot, ".git", "index"));
+		const later = new Date(Date.now() + 2_000);
+		utimesSync(join(repositoryRoot, "README.md"), later, later);
+		const snapshot = await run((service) =>
+			service.workspaceSnapshot(folderId),
+		);
+		expect(snapshot.status.dirtyFiles).toBe(0);
+		expect(readFileSync(join(repositoryRoot, ".git", "index"))).toEqual(index);
 	});
 
 	test("returns one coherent local workspace projection", async () => {
@@ -507,6 +522,81 @@ describe("GitServiceLive", () => {
 		).rejects.toMatchObject({ _tag: "GitCommandError", folderId });
 	});
 
+	test("reconciles quiet checkouts at 30s and coalesces event storms without losing the latest revision", async () => {
+		const events = Effect.runSync(Queue.unbounded<FileSystem.WatchEvent>());
+		let watchStarts = 0;
+		const WatchingFileSystemLive = Layer.effect(
+			FileSystem.FileSystem,
+			Effect.map(FileSystem.FileSystem, (service) => ({
+				...service,
+				watch: () => {
+					watchStarts += 1;
+					return Stream.fromQueue(events);
+				},
+			})),
+		);
+		const platform = Layer.provideMerge(
+			WatchingFileSystemLive,
+			NodeServices.layer,
+		);
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const service = yield* GitService;
+				const frames: Array<{ revision: number; at: number }> = [];
+				const fiber = yield* Effect.forkChild(
+					service.workspaceChanges(folderId).pipe(
+						Stream.runForEach((frame) =>
+							Effect.gen(function* () {
+								frames.push({ ...frame, at: yield* Clock.currentTimeMillis });
+							}),
+						),
+					),
+				);
+				// Git path discovery uses real subprocesses; wait for their completion
+				// before advancing the virtual reconciliation clock.
+				yield* Effect.promise(async () => {
+					for (
+						let attempt = 0;
+						attempt < 200 && (watchStarts < 2 || frames.length === 0);
+						attempt += 1
+					) {
+						await new Promise((resolve) => setTimeout(resolve, 5));
+					}
+				});
+				expect(watchStarts).toBe(2);
+				yield* TestClock.adjust("5 seconds");
+				expect(frames.map((frame) => frame.revision)).toEqual([0]);
+				yield* TestClock.adjust("25 seconds");
+				expect(frames.map((frame) => frame.revision)).toEqual([0, 1]);
+				for (let index = 0; index < 100; index += 1) {
+					Queue.offerUnsafe(events, { _tag: "Update", path: "README.md" });
+				}
+				yield* Effect.yieldNow;
+				yield* TestClock.adjust("100 millis");
+				// More edits arrive while the previous invalidation is rate-limited.
+				// The final observation must survive without queueing every refresh.
+				Queue.offerUnsafe(events, { _tag: "Update", path: "second.md" });
+				yield* Effect.yieldNow;
+				yield* TestClock.adjust("100 millis");
+				Queue.offerUnsafe(events, { _tag: "Update", path: "last.md" });
+				yield* Effect.yieldNow;
+				yield* TestClock.adjust("5 seconds");
+				expect(frames.at(-1)?.revision).toBe(4);
+				expect(frames.length).toBeLessThanOrEqual(4);
+				for (let index = 1; index < frames.length; index += 1) {
+					expect(
+						(frames[index]?.at ?? 0) - (frames[index - 1]?.at ?? 0),
+					).toBeGreaterThanOrEqual(1000);
+				}
+				yield* Fiber.interrupt(fiber);
+			}).pipe(
+				Effect.scoped,
+				Effect.provide(makeLayer({ platform })),
+				Effect.provide(TestClock.layer()),
+			),
+		);
+	});
+
 	test("emits an initial workspace barrier and coalesces filesystem changes", async () => {
 		const framesPromise = run((service) =>
 			service
@@ -514,7 +604,7 @@ describe("GitServiceLive", () => {
 				.pipe(Stream.take(2), Stream.runCollect),
 		);
 		// Let the scoped watcher install before mutating the repository. The
-		// production stream also has a five-second reconciliation fallback.
+		// production stream also has a thirty-second reconciliation fallback.
 		await new Promise((resolve) => setTimeout(resolve, 25));
 		writeFileSync(join(repositoryRoot, "README.md"), "changed\n");
 		writeFileSync(join(repositoryRoot, "README.md"), "changed again\n");

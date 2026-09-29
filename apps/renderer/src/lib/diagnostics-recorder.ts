@@ -32,6 +32,7 @@ const powerInteractions: PowerInteractionMeasurement[] = [];
 let installed = false;
 let flushTimer: number | null = null;
 let flushing = false;
+let retryDelayMs = 0;
 let reportReactCommit:
 	| ((input: {
 			readonly id: string;
@@ -120,21 +121,40 @@ export function recordDiagnosticEvent(input: {
 }
 
 function scheduleDiagnosticsFlush(): void {
-	if (typeof window === "undefined" || flushTimer !== null) return;
-	flushTimer = window.setTimeout(() => {
-		flushTimer = null;
-		void flushRendererDiagnostics();
-	}, 250);
+	if (typeof window === "undefined" || flushTimer !== null || flushing) return;
+	flushTimer = window.setTimeout(
+		() => {
+			flushTimer = null;
+			void flushRendererDiagnostics();
+		},
+		Math.max(250, retryDelayMs),
+	);
 }
 
 export async function flushRendererDiagnostics(): Promise<void> {
 	if (flushing || pendingRendererLogs.length === 0) return;
+	if (flushTimer !== null) {
+		window.clearTimeout(flushTimer);
+		flushTimer = null;
+	}
 	flushing = true;
 	const pending = pendingRendererLogs.slice();
+	const acknowledge = () => {
+		// New entries can evict an in-flight batch from the bounded queue.
+		// Only remove entries actually delivered, never their replacements.
+		const delivered = new Set(pending);
+		for (let index = pendingRendererLogs.length - 1; index >= 0; index -= 1) {
+			const entry = pendingRendererLogs[index];
+			if (entry !== undefined && delivered.has(entry)) {
+				pendingRendererLogs.splice(index, 1);
+			}
+		}
+		retryDelayMs = 0;
+	};
 	try {
 		const { isHostedProduct } = await import("./hosted-connect.ts");
 		if (isHostedProduct()) {
-			pendingRendererLogs.splice(0, pending.length);
+			acknowledge();
 			return;
 		}
 		const [{ getRpcClient }, { Effect }] = await Promise.all([
@@ -158,9 +178,10 @@ export async function flushRendererDiagnostics(): Promise<void> {
 				})),
 			}),
 		);
-		pendingRendererLogs.splice(0, pending.length);
+		acknowledge();
 	} catch {
 		// Diagnostics transport is best-effort and must never create another error.
+		retryDelayMs = Math.min(60_000, Math.max(1_000, retryDelayMs * 2));
 	} finally {
 		flushing = false;
 		if (pendingRendererLogs.length > 0) scheduleDiagnosticsFlush();

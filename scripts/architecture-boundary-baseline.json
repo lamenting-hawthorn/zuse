@@ -1,6 +1,7 @@
 {
 	"generatedFrom": "origin/main",
 	"maximumTotals": {
+		"renderer-git-state-owner": 0,
 		"renderer-stream-owner": 0,
 		"renderer-client-bus-legacy-supervisor": 0,
 		"cloud-chat-pipeline": 0,
@@ -8,6 +9,7 @@
 		"api-message-content": 0
 	},
 	"rules": {
+		"renderer-git-state-owner": {},
 		"renderer-raw-rpc": {
 			"apps/renderer/src/components/archived-chats-page.tsx": 1,
 			"apps/renderer/src/components/browser-pane.tsx": 3,
