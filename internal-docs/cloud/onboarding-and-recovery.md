@@ -12,18 +12,25 @@ when an account gains a Cloud Workspace entitlement and has not completed setup.
 The app root checks payment activation on focus and every two seconds while
 checkout is pending. Completion is stored per account, with existing server
 images preventing repeat onboarding on other devices. Finish later defers setup
-for the current app session; the reminder in Cloud Workspace settings reopens it.
+for the current app session; Open setup guide in Cloud Workspace settings reopens it immediately.
 On return, setup resumes at the first unfinished step and tracks all images still building.
 Settings retain the shared controls for ongoing management. A single Rebuild action
 requests an image for every available provider, with independent progress and
 failure details. Setup completes only when all available providers are ready.
 Provider availability is refreshed with image status, so a newly added provider
 appears as needing a rebuild without resetting existing images or chats. The app root
-monitors image status independently of the settings page. The floating notice is
-only visible in Cloud Workspace settings, never over chat or other app surfaces.
+monitors image status independently of the settings page. There is no floating notice;
+progress and actions live inline in Cloud Workspace settings.
 The monitor refreshes active builds every two seconds after each completed request, and idle status every
 15 seconds. Focus and network recovery also refresh status. Cached data remains
 available during failed reads. Account changes fence outstanding monitor reads.
+
+Image freshness compares the saved build configuration digest with the current
+repository configuration, runtime, and delivery capabilities. Project status
+updates from another provider's build must not invalidate already built images.
+Provider rows open a dialog for live logs, build settings, and history. Explicit
+setup navigation opens immediately; background status failures do not silently
+cancel the navigation.
 
 Runtime credential delivery version 1 does not require an image rebuild when
 credentials rotate. Older images require an update after authentication changes;

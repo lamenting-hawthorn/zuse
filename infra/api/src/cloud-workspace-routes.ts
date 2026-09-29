@@ -453,8 +453,32 @@ const storedBuildRepositories = (
 	});
 };
 
+/** Keep creation and freshness checks on the same content-based configuration. */
+export const cloudAccountImageConfiguration = (input: {
+	readonly mode: "update" | "rebuild";
+	readonly templateVersion: string;
+	readonly codexAuthDeliveryVersion: number;
+	readonly providerAuthDeliveryVersion: number;
+	readonly projects: readonly Pick<
+		CloudProjectRecord,
+		"projectId" | "configurationDigest"
+	>[];
+}) => ({
+	mode: input.mode,
+	templateVersion: input.templateVersion,
+	codexAuthDeliveryVersion: input.codexAuthDeliveryVersion,
+	providerAuthDeliveryVersion: input.providerAuthDeliveryVersion,
+	repositories: input.projects
+		.map((project) => ({
+			projectId: project.projectId,
+			configurationDigest: project.configurationDigest,
+		}))
+		.sort((left, right) => left.projectId.localeCompare(right.projectId)),
+});
+
 export const isCloudAccountImageOutdated = (input: {
 	readonly imagePromotedAtMs: number;
+	readonly configurationChanged?: boolean;
 	readonly imageTemplateVersion: string;
 	readonly currentTemplateVersion: string | undefined;
 	readonly projects: ReadonlyArray<{
@@ -470,11 +494,12 @@ export const isCloudAccountImageOutdated = (input: {
 	readonly providerAuthDeliveryVersion?: 1;
 	readonly requiredProviderAuthDeliveryVersion?: 1;
 }) =>
-	input.projects.some(
-		(project) =>
-			project.state !== "ready" ||
-			project.updatedAtMs > input.imagePromotedAtMs,
-	) ||
+	(input.configurationChanged ??
+		input.projects.some(
+			(project) =>
+				project.state !== "ready" ||
+				project.updatedAtMs > input.imagePromotedAtMs,
+		)) ||
 	input.providers.some(
 		(status) =>
 			input.providerAuthDeliveryVersion !== 1 &&
@@ -582,10 +607,28 @@ const cloudAccountImage = Effect.fn("cloudAccountImage")(function* (
 			status.method !== undefined &&
 			(status.state === "expired" || status.state === "error"),
 	);
+	const currentConfigurationDigest =
+		active === undefined
+			? undefined
+			: yield* sha256Hex(
+					JSON.stringify(
+						cloudAccountImageConfiguration({
+							mode: buildMode(active) ?? "update",
+							templateVersion: active.templateVersion,
+							codexAuthDeliveryVersion:
+								active.settings?.codexAuthDeliveryVersion === 1 ? 1 : 0,
+							providerAuthDeliveryVersion:
+								active.settings?.providerAuthDeliveryVersion === 1 ? 1 : 0,
+							projects,
+						}),
+					),
+				);
 	const outdated =
 		active !== undefined &&
 		isCloudAccountImageOutdated({
 			imagePromotedAtMs: active.updatedAtMs,
+			configurationChanged:
+				active.configurationDigest !== currentConfigurationDigest,
 			imageTemplateVersion: active.templateVersion,
 			currentTemplateVersion: provider?.templateVersion,
 			projects,
@@ -3166,22 +3209,17 @@ export const routeCloudWorkspaceRequest = (
 					202,
 				);
 			const configurationDigest = yield* sha256Hex(
-				JSON.stringify({
-					mode: effectiveMode,
-					templateVersion: provider.templateVersion,
-					codexAuthDeliveryVersion:
-						apiConfiguration.cloudCodexAuthBrokerEnrollmentEnabled ? 1 : 0,
-					providerAuthDeliveryVersion:
-						apiConfiguration.cloudProviderAuthBrokerEnrollmentEnabled ? 1 : 0,
-					repositories: projects
-						.map((project) => ({
-							projectId: project.projectId,
-							configurationDigest: project.configurationDigest,
-						}))
-						.sort((left, right) =>
-							left.projectId.localeCompare(right.projectId),
-						),
-				}),
+				JSON.stringify(
+					cloudAccountImageConfiguration({
+						mode: effectiveMode,
+						templateVersion: provider.templateVersion,
+						codexAuthDeliveryVersion:
+							apiConfiguration.cloudCodexAuthBrokerEnrollmentEnabled ? 1 : 0,
+						providerAuthDeliveryVersion:
+							apiConfiguration.cloudProviderAuthBrokerEnrollmentEnabled ? 1 : 0,
+						projects,
+					}),
+				),
 			);
 			const anchor = projects[0] as CloudProjectRecord;
 			const build: CloudProjectBuildRecord = {

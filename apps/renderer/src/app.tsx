@@ -1,4 +1,5 @@
-import { CloudBuildNotice } from "./components/cloud-build-notice.tsx";
+import { CloudBuildMonitor } from "./components/cloud-build-monitor.tsx";
+import { Spinner } from "./components/ui/spinner.tsx";
 import { useCloudOnboarding } from "./hooks/use-cloud-onboarding.ts";
 import { isHostedProduct } from "./lib/hosted-connect.ts";
 import { SurfaceFallback } from "./shell/surface-fallback.tsx";
@@ -128,11 +129,7 @@ export function App({ onReady }: { readonly onReady?: () => void }) {
 				onReady={onReady}
 				cloudOnboarding={cloudOnboarding}
 			/>
-			{onboardingCompleted ? (
-				<TooltipProvider>
-					<CloudBuildNotice hidden={cloudOnboarding.open} />
-				</TooltipProvider>
-			) : null}
+			{onboardingCompleted ? <CloudBuildMonitor /> : null}
 		</>
 	);
 }
@@ -317,7 +314,17 @@ function ReadyApp({
 			<TooltipProvider>
 				<AppearanceController />
 				<div className="relative z-50 flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-background text-foreground">
-					<Suspense fallback={<SurfaceFallback />}>
+					<Suspense
+						fallback={
+							<div
+								role="status"
+								aria-busy="true"
+								className="flex flex-1 items-center justify-center"
+							>
+								<Spinner className="size-5" />
+							</div>
+						}
+					>
 						<CloudOnboardingWizard
 							key={user?.id}
 							onFinish={() => {

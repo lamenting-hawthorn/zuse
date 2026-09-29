@@ -11,6 +11,7 @@ import {
 	CLOUD_CHECKOUT_STARTED,
 	type CloudSetupProgress,
 	type CloudSetupStep,
+	requestCloudOnboarding,
 } from "../../lib/cloud-onboarding.ts";
 import "@zuse/i18n/english/settings";
 import {
@@ -52,7 +53,7 @@ import { Button } from "../ui/button.tsx";
 import { Input } from "../ui/input.tsx";
 import { SegmentedTabs } from "../ui/segmented-tabs.tsx";
 import { CloudApiKeys } from "./cloud-api-keys.tsx";
-import { CloudImageBuildHistory } from "./cloud-image-build-history.tsx";
+import { CloudImageProviders } from "./cloud-image-providers.tsx";
 import { CloudImageReadiness } from "./cloud-image-readiness.tsx";
 import {
 	CloudSettingsGroup,
@@ -650,6 +651,23 @@ export function CloudWorkspacePool({
 							title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
 							description={uiMessage("settings:cloud_images_all_description")}
 						>
+							{onboarding === undefined ? (
+								<CloudSettingsRow
+									title={uiMessage("settings:cloud_setup_title")}
+									description={uiMessage(
+										"settings:cloud_setup_guide_description",
+									)}
+									action={
+										<Button
+											className={COMPACT_CLOUD_ACTION}
+											variant="ghost"
+											onClick={requestCloudOnboarding}
+										>
+											{uiMessage("settings:cloud_setup_open_guide")}
+										</Button>
+									}
+								/>
+							) : null}
 							<CloudImageReadiness
 								image={accountImage}
 								allProviders
@@ -686,39 +704,10 @@ export function CloudWorkspacePool({
 									{buildError}
 								</p>
 							)}
-							{providers.map((provider) => {
-								const image = providerImages.find(
-									(image) => image.providerId === provider.providerId,
-								);
-								return (
-									<div key={provider.providerId}>
-										<CloudSettingsRow
-											title={cloudProviderLabel(provider.providerId)}
-											description={
-												image?.state === "building"
-													? image.progressPhase
-													: image?.errorCode
-											}
-											action={
-												<Badge
-													variant={
-														image?.state === "ready"
-															? "success"
-															: image?.state === "failed"
-																? "error"
-																: "warning"
-													}
-												>
-													{uiMessage(
-														`settings:cloud_images_state_${image?.state ?? "checking"}`,
-													)}
-												</Badge>
-											}
-										/>
-										<CloudImageBuildHistory builds={image?.builds ?? []} />
-									</div>
-								);
-							})}
+							<CloudImageProviders
+								providers={providers}
+								images={providerImages}
+							/>
 						</CloudSettingsGroup>
 					) : null}
 				</>

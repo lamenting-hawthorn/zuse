@@ -159,8 +159,10 @@ function BuildAccordion({
 
 export function CloudImageBuildHistory({
 	builds,
+	expandLatest = false,
 }: {
 	readonly builds: ReadonlyArray<CloudAccountImageBuildAttempt>;
+	readonly expandLatest?: boolean;
 }) {
 	const { message: uiMessage } = useUiMessages(["settings"]);
 
@@ -181,7 +183,11 @@ export function CloudImageBuildHistory({
 			<div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
 				{uiMessage("settings:cloud_image_build_history_latest_build")}
 			</div>
-			<BuildAccordion build={latest} />
+			<BuildAccordion
+				key={latest.buildId}
+				build={latest}
+				defaultOpen={expandLatest}
+			/>
 			{previous.length === 0 ? null : (
 				<details className="group/history border-border border-t">
 					<summary className="flex h-7 cursor-pointer list-none items-center gap-2 px-3 text-[11px] text-muted-foreground hover:text-foreground">

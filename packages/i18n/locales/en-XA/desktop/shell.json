@@ -90,16 +90,5 @@
 	"hosted_archive_chat": "⟦ÀÀrchïïvëë {{title}}⟧",
 	"hosted_restore_chat": "⟦Rëëstôôrëë {{title}}⟧",
 	"hosted_sign_in_failed": "⟦Côôüüld nôôt sïïgn ïïn. Chëëck yôôüür côônnëëctïïôôn àànd try ààgààïïn.⟧",
-	"cloud_build_ready": "⟦Clôôüüd ïïmààgëë rëëààdy⟧",
-	"cloud_build_reconnecting": "⟦Côônnëëctïïôôn ïïntëërrüüptëëd. Rëëtryïïng stààtüüs ààüütôômààtïïcààlly…⟧",
-	"cloud_build_ready_description": "⟦Yôôüür üüpdààtëëd ïïmààgëë ïïs rëëààdy fôôr nëëw clôôüüd chààts.⟧",
-	"cloud_build_background": "⟦Büüïïlds côôntïïnüüëë whëën yôôüü lëëààvëë Sëëttïïngs.⟧",
-	"cloud_build_setup": "⟦Clôôüüd sëëtüüp⟧",
-	"cloud_build_dismiss": "⟦Dïïsmïïss⟧",
-	"cloud_build_progress": "⟦büüïïldïïng · {{phase}}⟧",
-	"cloud_build_preparing": "⟦prëëpààrïïng⟧",
-	"cloud_build_failed": "⟦büüïïld fààïïlëëd⟧",
-	"cloud_build_auth": "⟦rëëcôônnëëct ààgëënt⟧",
-	"cloud_build_needed": "⟦ïïmààgëë büüïïld nëëëëdëëd⟧",
 	"cloud_image_leave_warning": "⟦Yôôüür clôôüüd ïïmààgëë hààs üünbüüïïlt chààngëës. Lëëààvëë Sëëttïïngs? Yôôüü cààn rëëtüürn tôô Clôôüüd Wôôrkspààcëë sëëttïïngs tôô fïïnïïsh büüïïldïïng.⟧"
 }

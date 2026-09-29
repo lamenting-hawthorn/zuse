@@ -22,12 +22,6 @@ let generation = 0;
 let requestSequence = 0;
 let latestImages: readonly CloudAccountImage[] = [];
 
-export const cloudImageNeedsBuild = (image: CloudAccountImage): boolean =>
-	image.state === "outdated" ||
-	image.state === "not-built" ||
-	image.state === "failed" ||
-	image.state === "auth-broken";
-
 /** Refresh every placement, including the default alias used by Settings. */
 export const refreshCloudImages = async (): Promise<
 	readonly CloudAccountImage[]

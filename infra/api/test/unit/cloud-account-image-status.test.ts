@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+	cloudAccountImageConfiguration,
 	codexAuthModeForAccountBuild,
 	isCloudAccountImageOutdated,
 	providerAuthModeForAccountBuild,
@@ -10,6 +11,7 @@ import type { CloudProjectBuildRecord } from "../../src/cloud-workspace-store.ts
 
 const imageStatus = (overrides: {
 	readonly imagePromotedAtMs?: number;
+	readonly configurationChanged?: boolean;
 	readonly imageTemplateVersion?: string;
 	readonly currentTemplateVersion?: string;
 	readonly projects?: ReadonlyArray<{
@@ -165,5 +167,58 @@ describe("cloud account image status", () => {
 				"runtime-v2",
 			)?.buildId,
 		).toBe("newest");
+	});
+});
+
+describe("image configuration freshness across providers", () => {
+	const configuration = (
+		projects: readonly { projectId: string; configurationDigest: string }[],
+	) =>
+		JSON.stringify(
+			cloudAccountImageConfiguration({
+				mode: "rebuild",
+				templateVersion: "runtime-v2",
+				codexAuthDeliveryVersion: 1,
+				providerAuthDeliveryVersion: 1,
+				projects,
+			}),
+		);
+	test("another provider finishing does not invalidate an unchanged image", () => {
+		const original = {
+			projectId: "repo",
+			configurationDigest: "unchanged",
+			state: "ready",
+			updatedAtMs: 100,
+		};
+		const afterOtherBuild = { ...original, updatedAtMs: 300 };
+		expect(
+			imageStatus({
+				projects: [afterOtherBuild],
+				configurationChanged:
+					configuration([original]) !== configuration([afterOtherBuild]),
+			}),
+		).toBe(false);
+	});
+	test("configuration edits and repository removal invalidate the image even without a newer timestamp", () => {
+		const projects = [{ projectId: "repo", configurationDigest: "original" }];
+		for (const next of [
+			[],
+			[{ projectId: "repo", configurationDigest: "changed" }],
+		]) {
+			expect(
+				imageStatus({
+					configurationChanged: configuration(projects) !== configuration(next),
+				}),
+			).toBe(true);
+		}
+	});
+	test("repository ordering does not invalidate a build", () => {
+		const projects = [
+			{ projectId: "b", configurationDigest: "b" },
+			{ projectId: "a", configurationDigest: "a" },
+		];
+		expect(configuration(projects)).toBe(
+			configuration([...projects].reverse()),
+		);
 	});
 });

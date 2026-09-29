@@ -90,16 +90,5 @@
 	"hosted_archive_chat": "归档 {{title}}",
 	"hosted_restore_chat": "恢复 {{title}}",
 	"hosted_sign_in_failed": "无法登录。请检查网络连接，然后重试。",
-	"cloud_build_ready": "Cloud image ready",
-	"cloud_build_reconnecting": "Connection interrupted. Retrying status automatically…",
-	"cloud_build_ready_description": "Your updated image is ready for new cloud chats.",
-	"cloud_build_background": "Builds continue when you leave Settings.",
-	"cloud_build_setup": "Cloud setup",
-	"cloud_build_dismiss": "Dismiss",
-	"cloud_build_progress": "building · {{phase}}",
-	"cloud_build_preparing": "preparing",
-	"cloud_build_failed": "build failed",
-	"cloud_build_auth": "reconnect agent",
-	"cloud_build_needed": "image build needed",
 	"cloud_image_leave_warning": "Your cloud image has unbuilt changes. Leave Settings? You can return to Cloud Workspace settings to finish building."
 }

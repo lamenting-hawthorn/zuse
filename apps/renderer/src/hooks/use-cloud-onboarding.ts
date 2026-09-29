@@ -25,7 +25,8 @@ export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
 		if (!enabled || accountId === null) return;
 		let disposed = false;
 		let sequence = 0;
-		const check = async (force = false) => {
+		const check = async () => {
+			if (openRef.current) return;
 			const request = ++sequence;
 			try {
 				const entitlements = await loadCloudEntitlements();
@@ -36,22 +37,19 @@ export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
 				}
 				if (openRef.current) return;
 				if (
-					!force &&
-					(deferred.current === accountId ||
-						cloudOnboardingCompleted(window.localStorage, accountId))
+					deferred.current === accountId ||
+					cloudOnboardingCompleted(window.localStorage, accountId)
 				)
 					return;
 				// Existing users with a built image should not be forced through setup again.
 				const placement = await loadCloudWorkspacePlacement();
 				if (disposed || request !== sequence) return;
 				if (
-					!force &&
-					(placement.providers.length === 0 ||
-						placement.images.length !== placement.providers.length)
+					placement.providers.length === 0 ||
+					placement.images.length !== placement.providers.length
 				)
 					return;
 				if (
-					force ||
 					cloudOnboardingRequired({
 						subscribed: placement.subscribed,
 						completed: false,
@@ -69,7 +67,13 @@ export function useCloudOnboarding(accountId: string | null, enabled: boolean) {
 		const stop = subscribeControlPlaneSessionCache((key) => {
 			if (key === "cloud-workspace:entitlements") void check();
 		});
-		const resume = () => void check(true);
+		const resume = () => {
+			// Explicit navigation must not wait on entitlement or image requests.
+			// The wizard loads account status and exposes retry controls itself.
+			sequence += 1;
+			openRef.current = true;
+			setOwner(accountId);
+		};
 		window.addEventListener(CLOUD_ONBOARDING_RESUME, resume);
 		void check();
 		return () => {
