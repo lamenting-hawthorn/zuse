@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +16,31 @@ import {
 import { sanitizedSshBridgeFailure } from "../../src/ssh/ssh-bridge-errors.ts";
 
 describe("cloud ssh service", () => {
+	test("OpenSSH reuses connections per workspace with bounded idle and dead-peer lifetimes", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "zuse-ssh-config-"));
+		const path = join(directory, "config");
+		await writeFile(path, managedSshConfig("/unused-bridge"));
+		const settings = (host: string) =>
+			Object.fromEntries(
+				execFileSync("ssh", ["-G", "-T", "-F", path, host], { encoding: "utf8" })
+					.trim()
+					.split("\n")
+					.map((line) => {
+						const space = line.indexOf(" ");
+						return [line.slice(0, space), line.slice(space + 1)];
+					}),
+			);
+		const first = settings("zuse-workspace_one");
+		const second = settings("zuse-workspace_two");
+		expect(first.controlmaster).toBe("auto");
+		expect(first.controlpersist).toBe("120");
+		expect(first.serveraliveinterval).toBe("10");
+		expect(first.serveralivecountmax).toBe("3");
+		expect(first.controlpath).toContain("/.zuse/ssh/");
+		expect(first.controlpath).not.toBe(second.controlpath);
+		expect(settings("unrelated-host").controlmaster).toBe("false");
+	});
+
 	test("managed config wires the bridge as ProxyCommand for zuse-* hosts", () => {
 		const config = managedSshConfig(
 			'env ELECTRON_RUN_AS_NODE=1 "/app" "/b.cjs"',

@@ -170,6 +170,15 @@ export const managedSshConfig = (bridgeCommand: string): string =>
 		`\tIdentityFile ${keyPath()}`,
 		"\tIdentitiesOnly yes",
 		"\tConnectTimeout 15",
+		// Sync opens a command for each batch. Reuse the authenticated transport
+		// so every scan does not depend on another DNS/TLS/WebSocket handshake.
+		// The private SSH directory contains one hashed socket per destination.
+		"\tControlMaster auto",
+		`\tControlPath ${join(sshRoot(), "control-%C")}`,
+		"\tControlPersist 120",
+		// Detect a paused/restarted runtime instead of retaining a dead master.
+		"\tServerAliveInterval 10",
+		"\tServerAliveCountMax 3",
 		"\tStrictHostKeyChecking accept-new",
 		`\tUserKnownHostsFile ${join(sshRoot(), "known_hosts")}`,
 		`\tProxyCommand ${bridgeCommand} %n`,
