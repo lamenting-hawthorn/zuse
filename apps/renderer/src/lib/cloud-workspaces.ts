@@ -1,4 +1,7 @@
-import { cloudSessionPlaceholder } from "@zuse/client-runtime/cloud-catalog";
+import {
+	cloudChatPlaceholder,
+	cloudSessionPlaceholder,
+} from "@zuse/client-runtime/cloud-catalog";
 import {
 	openCloudTranscriptCheckpoint,
 	openCloudTranscriptPage,
@@ -10,7 +13,6 @@ import type {
 } from "@zuse/client-runtime/resource-state";
 import type { SessionTimelineProjection } from "@zuse/contracts";
 import {
-	Chat,
 	type ChatId,
 	type CloudChatSummary,
 	type CloudWorkspace,
@@ -49,6 +51,7 @@ import {
 	stopCloudHistory,
 } from "../lib/session-timeline-client-bus.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
+import { useArchivePreviewStore } from "../store/archive-preview.ts";
 import { useChatsStore } from "../store/chats.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useUiStore } from "../store/ui.ts";
@@ -308,29 +311,19 @@ export const stageCloudChat = (
 	registerCloudChat(summary, projectId);
 	const accepted = cloudSummaryForEnvironment(summary.workspaceId) ?? summary;
 	registerCloudEnvironmentResolver(accepted);
-	const now = new Date(accepted.createdAt);
-	const archivedAt =
-		accepted.archivedAt === undefined ? null : new Date(accepted.archivedAt);
 	const activeSessionId = cloudSummaryActiveSessionId(accepted);
-	const chat = Chat.make({
-		id: accepted.chatId,
+	const chat = cloudChatPlaceholder(
+		{ ...accepted, activeSessionId },
 		projectId,
-		worktreeId: null,
-		title: accepted.title,
-		titleProvenance: "manual",
-		activeSessionId,
-		originSessionId: null,
-		archivedAt,
-		lastUserMessageAt:
-			accepted.lastUserMessageAt == null
-				? null
-				: new Date(accepted.lastUserMessageAt),
-		lastMessageAt:
-			accepted.lastMessageAt === null ? null : new Date(accepted.lastMessageAt),
-		lastReadAt: now,
-		createdAt: now,
-		updatedAt: new Date(accepted.updatedAt),
-	});
+	);
+	const archives = useArchivePreviewStore.getState();
+	if (chat.archivedAt !== null) {
+		archives.upsertChat(chat);
+	} else if (
+		archives.chatsByProject[projectId]?.some((row) => row.id === chat.id)
+	) {
+		archives.removeChat(chat.id, projectId);
+	}
 	const session =
 		activeSessionId === null
 			? null
@@ -373,7 +366,7 @@ export const stageCloudChat = (
 				sessionId: accepted.initialSessionId,
 				role: "user",
 				content: { _tag: "user", text: legacyFirstMessage, goal: false },
-				createdAt: now,
+				createdAt: new Date(accepted.createdAt),
 			}),
 		);
 	}

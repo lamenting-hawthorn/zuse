@@ -515,7 +515,9 @@ export function MainShell() {
 		openFile !== null ||
 		changesTabOpen ||
 		!leftSidebarOpen;
-	const showMainTabs = showMainChrome && activeMainTab !== "archives";
+	const fullWidthPage =
+		activeMainTab === "archives" || activeMainTab === "usage";
+	const showMainTabs = showMainChrome && !fullWidthPage;
 
 	// Persist the three-pane layout in localStorage so widths survive reloads.
 	const { defaultLayout, onLayoutChanged } = useDefaultLayout({
@@ -556,7 +558,7 @@ export function MainShell() {
 	useAnimatedPanelVisibility(
 		rightPanelRef,
 		rightPanelElementRef,
-		rightSidebarOpen,
+		rightSidebarOpen && !fullWidthPage,
 		`${rightSidebarWidth}%`,
 		selectedChatKey ?? "no-chat",
 	);
@@ -793,7 +795,9 @@ export function MainShell() {
 								) : null}
 							</div>
 						</main>
-						{selectedChatRef !== null && activeContext.status === "ready" ? (
+						{!fullWidthPage &&
+						selectedChatRef !== null &&
+						activeContext.status === "ready" ? (
 							<Suspense fallback={null}>
 								<BottomTerminalDock
 									chatRef={selectedChatRef}
@@ -804,7 +808,7 @@ export function MainShell() {
 						) : null}
 					</div>
 				</Panel>
-				<Separator className="workspace-separator" />
+				<Separator className="workspace-separator" disabled={fullWidthPage} />
 				<Panel
 					id="files"
 					defaultSize="22%"
@@ -824,7 +828,7 @@ export function MainShell() {
 						// dock defaults to closed (`rightSidebarOpen: false`); the
 						// persisted/default panel width would otherwise fire here and
 						// flip the sidebar open before the collapse effect runs.
-						if (prev === undefined) return;
+						if (prev === undefined || fullWidthPage) return;
 						if (selectedChatRef === null) return;
 						if (
 							rightPanelElementRef.current?.classList.contains(
@@ -842,13 +846,17 @@ export function MainShell() {
 						}
 					}}
 				>
-					<div className="workspace-column workspace-right-column">
+					<div
+						className="workspace-column workspace-right-column"
+						hidden={fullWidthPage}
+						inert={fullWidthPage}
+					>
 						<div className="workspace-surface flex min-h-0 flex-1 flex-col">
 							<Suspense fallback={<TopBarFallback />}>
 								<TopBarRight />
 							</Suspense>
 							<div className="flex min-h-0 flex-1 flex-col">
-								{shouldMountRightPane(rightSidebarOpen) ? (
+								{shouldMountRightPane(rightSidebarOpen && !fullWidthPage) ? (
 									<Suspense fallback={<SurfaceFallback />}>
 										<RightPane directoryUnavailable={directoryUnavailable} />
 									</Suspense>

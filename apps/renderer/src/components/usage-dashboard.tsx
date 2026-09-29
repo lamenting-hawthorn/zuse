@@ -151,7 +151,7 @@ export function UsageDashboard({
 					{uiMessage("usage:usage_dashboard_usage")}
 				</h1>
 			</header>
-			<div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 px-6 pt-5">
+			<div className="flex w-full flex-wrap items-center justify-between gap-3 px-6 pt-5">
 				<p className="text-xs text-muted-foreground">{scopeLabel}</p>
 				<div className="flex shrink-0 items-center gap-2">
 					<fieldset
@@ -259,7 +259,7 @@ function UsageSkeleton() {
 
 	return (
 		<div
-			className="mx-auto min-h-0 w-full max-w-6xl flex-1 space-y-6 overflow-hidden px-6 py-6"
+			className="min-h-0 w-full flex-1 space-y-6 overflow-hidden px-6 py-6"
 			role="status"
 			aria-label={uiMessage("usage:usage_dashboard_loading_usage")}
 		>
@@ -361,7 +361,7 @@ function UsageReportView({
 
 	return (
 		<div className="min-h-0 flex-1 overflow-auto">
-			<div className="mx-auto w-full max-w-6xl space-y-6 px-6 py-6">
+			<div className="w-full space-y-6 px-6 py-6">
 				<UsageChart
 					groups={report.groups}
 					bySource={report.bySource}

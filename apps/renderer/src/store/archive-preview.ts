@@ -1,3 +1,4 @@
+import { cloudSessionPlaceholder } from "@zuse/client-runtime/cloud-catalog";
 import type {
 	Chat,
 	ChatId,
@@ -162,11 +163,14 @@ export const useArchivePreviewStore = create<ArchivePreviewState>(
 							chatsByProject: {
 								...state.chatsByProject,
 								[projectId]: [
-									...chats.filter((chat) => chat.archivedAt !== null),
+									...chats.filter(
+										(chat) =>
+											chat.archivedAt !== null &&
+											cloudSummaryForChat(chat.id) === null,
+									),
 									...(state.chatsByProject[projectId] ?? []).filter(
 										(chat) =>
-											cloudSummaryForChat(chat.id) !== null &&
-											!chats.some((candidate) => candidate.id === chat.id),
+											cloudSummaryForChat(chat.id)?.archivedAt !== undefined,
 									),
 								].sort((a, b) => archiveSortTime(b) - archiveSortTime(a)),
 							},
@@ -213,6 +217,27 @@ export const useArchivePreviewStore = create<ArchivePreviewState>(
 					},
 					errorByChat: { ...state.errorByChat, [chat.id]: null },
 				}));
+				const cloud = cloudSummaryForChat(chat.id);
+				if (cloud !== null) {
+					// Archived compute is offline. Read its retained transcript through
+					// the cloud timeline, without dispatching to the active local shell.
+					const session = cloudSessionPlaceholder(
+						cloud,
+						chat.projectId,
+						cloud.activeSessionId ?? cloud.initialSessionId,
+					);
+					set((state) => ({
+						previewsByChat: {
+							...state.previewsByChat,
+							[chat.id]: { chat, sessions: [session] },
+						},
+						selectedSessionByChat: {
+							...state.selectedSessionByChat,
+							[chat.id]: session.id,
+						},
+					}));
+					return Promise.resolve();
+				}
 				const cached = get().previewsByChat[chat.id];
 				if (cached !== undefined) {
 					const selected =

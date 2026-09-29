@@ -16,8 +16,9 @@ import {
 	Search01Icon,
 } from "@zuse/icons/solid-rounded";
 import { ChevronLeft } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
+import { cloudSummaryForChat } from "../lib/cloud-workspace-catalog.ts";
 import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client-bus.ts";
 import { useSessionTimelineResource } from "../lib/session-timeline-client-bus.ts";
 import { cn } from "../lib/utils.ts";
@@ -104,11 +105,15 @@ export function ArchivedChatsPage({
 	const environmentId = useEnvironmentCatalogStore(
 		(state) => state.activeEnvironmentId,
 	);
+	const selectedCloud =
+		selectedChatId === null ? null : cloudSummaryForChat(selectedChatId);
 	const timeline = useSessionTimelineResource(
 		selectedSessionId === null
 			? null
 			: {
-					environmentId: EnvironmentId.make(environmentId),
+					environmentId: EnvironmentId.make(
+						selectedCloud?.workspaceId ?? environmentId,
+					),
 					sessionId: selectedSessionId,
 				},
 		"connect",
@@ -142,7 +147,7 @@ export function ArchivedChatsPage({
 	useEffect(() => setQuery(""), [projectId]);
 
 	useEffect(() => {
-		if (selectedChatId === null) {
+		if (selectedChatId === null || selectedCloud !== null) {
 			setArchiveJob(null);
 			setDirectoryStatus(null);
 			return;
@@ -195,7 +200,7 @@ export function ArchivedChatsPage({
 			cancelled = true;
 			if (timer !== null) window.clearTimeout(timer);
 		};
-	}, [environmentId, selectedChatId]);
+	}, [environmentId, selectedChatId, selectedCloud]);
 
 	if (projectId === null) {
 		return <CenteredState text="Select a project to view archived chats." />;
@@ -225,7 +230,7 @@ export function ArchivedChatsPage({
 							</p>
 						</div>
 					</div>
-					<label className="mt-5 flex h-8 max-w-xl items-center gap-2 rounded-md border border-input bg-card px-2.5 text-xs shadow-xs/5 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/24">
+					<label className="mt-5 flex h-7 max-w-xl items-center gap-2 rounded-md border border-input bg-card px-2.5 text-xs shadow-xs/5 focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/24">
 						<HugeiconsIcon
 							icon={Search01Icon}
 							className="size-4 shrink-0 text-muted-foreground"
@@ -244,7 +249,7 @@ export function ArchivedChatsPage({
 					</label>
 				</header>
 				<div className="min-h-0 flex-1 overflow-y-auto px-8 py-5 max-[800px]:px-4">
-					{projectError !== null ? (
+					{projectError !== null && archivedChats.length === 0 ? (
 						<CenteredState
 							text={projectError}
 							action="Retry"
@@ -256,7 +261,8 @@ export function ArchivedChatsPage({
 								)
 							}
 						/>
-					) : projectLoading || !projectLoaded ? (
+					) : (projectLoading || !projectLoaded) &&
+						archivedChats.length === 0 ? (
 						<CenteredState text="Loading archived chats…" loading />
 					) : filteredChats.length === 0 ? (
 						<CenteredState
@@ -267,30 +273,51 @@ export function ArchivedChatsPage({
 							}
 						/>
 					) : (
-						<ul className="mx-auto flex w-full max-w-4xl flex-col divide-y divide-border/45">
-							{filteredChats.map((chat) => (
-								<li key={chat.id}>
-									<button
-										type="button"
-										onClick={() =>
-											void openChat(EnvironmentId.make(environmentId), chat)
-										}
-										className="flex min-h-11 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors duration-150 ease-out hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset motion-reduce:transition-none"
+						<ul className="flex w-full flex-col gap-1">
+							{filteredChats.map((chat, index) => (
+								<Fragment key={chat.id}>
+									{index === 0 ||
+									formatDate(
+										filteredChats[index - 1]?.archivedAt ??
+											filteredChats[index - 1]?.updatedAt ??
+											new Date(0),
+									) !== formatDate(chat.archivedAt ?? chat.updatedAt) ? (
+										<li className="mb-1 mt-6 px-4 text-xs font-medium text-muted-foreground first:mt-0">
+											{formatDate(chat.archivedAt ?? chat.updatedAt)}
+										</li>
+									) : null}
+									<li
+										key={chat.id}
+										className="flex items-center gap-3 rounded-md px-2 hover:bg-muted/45"
 									>
-										<HugeiconsIcon
-											icon={ArchiveIcon}
-											className="size-3.5 shrink-0 text-muted-foreground"
-										/>
-										<span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-											{chat.title}
-										</span>
-										<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-											{uiMessage("chat:archived_chats_page_archived_sentence", {
-												value: formatDate(chat.archivedAt ?? chat.updatedAt),
-											})}
-										</span>
-									</button>
-								</li>
+										<button
+											type="button"
+											onClick={() =>
+												void openChat(EnvironmentId.make(environmentId), chat)
+											}
+											className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md px-2 text-left outline-none transition-colors duration-150 ease-out hover:bg-muted/45 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset motion-reduce:transition-none"
+										>
+											<HugeiconsIcon
+												icon={ArchiveIcon}
+												className="size-3.5 shrink-0 text-muted-foreground"
+											/>
+											<span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+												{chat.title}
+											</span>
+											<span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+												{uiMessage(
+													"chat:archived_chats_page_archived_sentence",
+													{
+														value: formatDate(
+															chat.archivedAt ?? chat.updatedAt,
+														),
+													},
+												)}
+											</span>
+										</button>
+										<RestoreArchivedChatButton chat={chat} />
+									</li>
+								</Fragment>
 							))}
 						</ul>
 					)}
@@ -477,6 +504,42 @@ function CenteredState({
 				<Button variant="outline" size="sm" onClick={onAction}>
 					{action}
 				</Button>
+			) : null}
+		</div>
+	);
+}
+
+function RestoreArchivedChatButton({ chat }: { readonly chat: Chat }) {
+	const { message: uiMessage } = useUiMessages(["chat"]);
+	const restoring = useArchivePreviewStore(
+		(state) => state.restoringByChat[chat.id] === true,
+	);
+	const error = useArchivePreviewStore(
+		(state) => state.restoreErrorByChat[chat.id] ?? null,
+	);
+	return (
+		<div className="flex shrink-0 flex-col items-end gap-1">
+			<Button
+				variant="ghost"
+				size="sm"
+				className="h-7 gap-1.5"
+				disabled={restoring}
+				onClick={() => void useChatsStore.getState().unarchive(chat.id)}
+				aria-label={`${uiMessage("chat:archived_chats_page_unarchive")} ${chat.title}`}
+			>
+				{restoring ? (
+					<Spinner className="size-3.5" />
+				) : (
+					<HugeiconsIcon icon={ArchiveArrowUpIcon} className="size-3.5" />
+				)}
+				{restoring
+					? uiMessage("chat:archived_chats_page_unarchiving")
+					: uiMessage("chat:archived_chats_page_unarchive")}
+			</Button>
+			{error !== null ? (
+				<p role="alert" className="max-w-64 text-xs text-destructive">
+					{error}
+				</p>
 			) : null}
 		</div>
 	);
