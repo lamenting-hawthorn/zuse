@@ -10,7 +10,12 @@ import {
 	type UpdateStatus,
 } from "@zuse/contracts";
 import { parseReleaseVersion } from "@zuse/utils/release-version";
-import { app, type BrowserWindow, ipcMain } from "electron";
+import {
+	app,
+	type BrowserWindow,
+	ipcMain,
+	autoUpdater as nativeUpdater,
+} from "electron";
 import {
 	autoUpdater,
 	CancellationToken,
@@ -133,22 +138,65 @@ export function installUpdate(): void {
 	if (coordinator.switching || lastStatus.kind !== "ready" || installingUpdate)
 		return;
 	installingUpdate = true;
-	autoUpdater.quitAndInstall();
+	clearAutomaticCheckRetry();
+	try {
+		if (process.platform === "darwin") {
+			// electron-updater has prepared a local ZIP feed, but Squirrel still
+			// needs to fetch, unpack, and validate it. Own the native callbacks so
+			// a failed attempt cannot leave a stale quit callback on a later retry.
+			nativeUpdater.once("before-quit-for-update", armInstallExitWatchdog);
+			nativeUpdater.once("update-downloaded", quitAfterNativeStaging);
+			nativeUpdater.checkForUpdates();
+		} else {
+			autoUpdater.quitAndInstall();
+			if (installingUpdate) armInstallExitWatchdog();
+		}
+	} catch (error) {
+		failUpdateInstall(error);
+	}
+}
 
-	// Relaunch watchdog. On macOS, `quitAndInstall` hands off to Squirrel.Mac
-	// (ShipIt), which waits for THIS process to terminate, swaps the bundle, and
-	// relaunches. The relaunch is scheduled the instant `quitAndInstall` runs, so
-	// once we're here the only thing that can strand it is the old process
-	// failing to exit promptly (a hung fiber teardown, a wedged child, Electron
-	// waiting on a stuck `will-quit`). If we're still alive after a short grace
-	// period, force the exit so ShipIt can proceed — the symptom this fixes is
-	// "the app quit but never reopened".
-	setTimeout(() => {
+let installExitTimer: NodeJS.Timeout | null = null;
+
+function armInstallExitWatchdog(): void {
+	if (installExitTimer !== null || !installingUpdate) return;
+	// Only force exit once the native updater has started quitting. Starting
+	// this timer at the button click can kill Squirrel's staging server before
+	// it has prepared an installation or arranged the relaunch.
+	installExitTimer = setTimeout(() => {
 		console.warn(
-			"[zuse:updater] still alive after quitAndInstall — forcing exit so the updater can relaunch",
+			"[zuse:updater] shutdown stalled after installer handoff — forcing exit",
 		);
 		app.exit(0);
-	}, 4000).unref();
+	}, 4000);
+	installExitTimer.unref();
+}
+
+function quitAfterNativeStaging(): void {
+	try {
+		nativeUpdater.quitAndInstall();
+	} catch (error) {
+		failUpdateInstall(error);
+	}
+}
+
+function failUpdateInstall(error: unknown): void {
+	if (installExitTimer !== null) clearTimeout(installExitTimer);
+	installExitTimer = null;
+	if (process.platform === "darwin") {
+		nativeUpdater.removeListener(
+			"before-quit-for-update",
+			armInstallExitWatchdog,
+		);
+		nativeUpdater.removeListener("update-downloaded", quitAfterNativeStaging);
+	}
+	installingUpdate = false;
+	console.error("[zuse:updater] install failed", error);
+	emit({
+		kind: "error",
+		message: "Couldn’t install the update. Try again.",
+		retryable: true,
+	});
 }
 
 const statusListeners = new Set<(status: UpdateStatus) => void>();
@@ -219,6 +267,7 @@ function runUpdateCheck(
 	kind: "automatic" | "manual",
 	attempt = 0,
 ): Promise<void> {
+	if (installingUpdate) return Promise.resolve();
 	if (kind === "manual") clearAutomaticCheckRetry();
 	if (updateCheckInFlight !== null) return updateCheckInFlight;
 
@@ -228,6 +277,7 @@ function runUpdateCheck(
 		.then(() =>
 			coordinator.run(
 				async () => {
+					if (installingUpdate) return;
 					configureChannel();
 					const result = await autoUpdater.checkForUpdates();
 					if (
@@ -371,6 +421,10 @@ export function startAutoUpdater(window: UpdaterWindow): void {
 	autoUpdater.on("error", (err: Error) => {
 		if (coordinator.switching) return;
 		clearStallTimer();
+		if (installingUpdate) {
+			failUpdateInstall(err);
+			return;
+		}
 		// checkForUpdates emits this event before rejecting its promise. The
 		// owned check path above decides whether to retry or surface the failure,
 		// avoiding duplicate/raw error toasts.
