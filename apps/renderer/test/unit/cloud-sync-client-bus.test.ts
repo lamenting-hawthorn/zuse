@@ -43,6 +43,7 @@ import {
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.clearAllMocks();
+	mocks.catalogListeners = [];
 	mocks.prepare.mockResolvedValue({
 		hostAlias: "zuse-workspace",
 		remotePath: "/remote/repo",
@@ -105,7 +106,10 @@ test("desktop rejection does not leave an active worker blocking retries", async
 	expect(mocks.configure).toHaveBeenCalledTimes(2);
 });
 
-test("ready transition during teardown starts the worker after teardown completes", async () => {
+test.each([
+	"paused",
+	"archived",
+])("ready transition during %s teardown starts the worker after teardown completes", async (state) => {
 	vi.resetModules();
 	vi.stubGlobal("window", {});
 	mocks.summaries = [{ workspaceId: "workspace", state: "ready" }];
@@ -119,7 +123,7 @@ test("ready transition during teardown starts the worker after teardown complete
 					resolve({ workspaceId: "workspace", enabled: false, state: "idle" });
 			}),
 	);
-	mocks.summaries = [{ workspaceId: "workspace", state: "paused" }];
+	mocks.summaries = [{ workspaceId: "workspace", state }];
 	for (const listener of mocks.catalogListeners) listener();
 	// Reconnect before the queued stop even enters its body.
 	mocks.summaries = [{ workspaceId: "workspace", state: "ready" }];
@@ -130,6 +134,36 @@ test("ready transition during teardown starts the worker after teardown complete
 	expect(
 		mocks.configure.mock.calls.filter(([input]) => input.enabled),
 	).toHaveLength(2);
+	mocks.summaries = [];
+	await bus.disableCloudSync("workspace");
+	vi.unstubAllGlobals();
+});
+
+test("archived catalog entries clean up after restart and resume sync when ready", async () => {
+	vi.resetModules();
+	vi.stubGlobal("window", {});
+	mocks.catalogListeners = [];
+	mocks.summaries = [{ workspaceId: "workspace", state: "archived" }];
+	const bus = await import("../../src/lib/cloud-sync-client-bus.ts");
+	await vi.advanceTimersByTimeAsync(0);
+	expect(mocks.configure).toHaveBeenCalledWith(
+		expect.objectContaining({
+			workspaceId: "workspace",
+			enabled: false,
+			archived: true,
+			localPath: "/local/repo",
+		}),
+	);
+	for (const listener of mocks.catalogListeners) listener();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(mocks.configure).toHaveBeenCalledTimes(1);
+	expect(mocks.prefs).not.toHaveBeenCalled();
+	mocks.summaries = [{ workspaceId: "workspace", state: "ready" }];
+	for (const listener of mocks.catalogListeners) listener();
+	await vi.advanceTimersByTimeAsync(0);
+	expect(mocks.configure).toHaveBeenLastCalledWith(
+		expect.objectContaining({ enabled: true, localPath: "/local/repo" }),
+	);
 	mocks.summaries = [];
 	await bus.disableCloudSync("workspace");
 	vi.unstubAllGlobals();

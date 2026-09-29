@@ -180,6 +180,7 @@ const startSync = (workspaceId: string): Promise<void> =>
 
 export const cloudSyncLocalPath = async (
 	workspaceId: string,
+	prepare = true,
 ): Promise<string | null> => {
 	const summary = cloudSummaryForEnvironment(workspaceId);
 	return summary === null
@@ -188,10 +189,14 @@ export const cloudSyncLocalPath = async (
 				workspaceId,
 				summary.repositoryDisplayName,
 				summary.branch,
+				prepare,
 			)) ?? null);
 };
 
-const stopSyncNow = async (workspaceId: string): Promise<void> => {
+const stopSyncNow = async (
+	workspaceId: string,
+	archived = false,
+): Promise<void> => {
 	cancelAccessRefresh(workspaceId);
 	clearTimeout(setupRetryTimers.get(workspaceId));
 	setupRetryTimers.delete(workspaceId);
@@ -205,7 +210,10 @@ const stopSyncNow = async (workspaceId: string): Promise<void> => {
 	const status = await app?.cloudSyncConfigure?.({
 		workspaceId,
 		enabled: false,
-		localPath: "",
+		localPath: archived
+			? ((await cloudSyncLocalPath(workspaceId, false)) ?? "")
+			: "",
+		...(archived ? { archived: true } : {}),
 		hostAlias: `zuse-${workspaceId}`,
 		remotePath: "",
 	});
@@ -217,14 +225,14 @@ const stopSyncNow = async (workspaceId: string): Promise<void> => {
 	}
 };
 
-const stopSync = (workspaceId: string): Promise<void> => {
+const stopSync = (workspaceId: string, archived = false): Promise<void> => {
 	const entry = active.get(workspaceId);
 	if (entry) {
 		entry.stopped = true;
 		entry.abort.abort();
 	}
 	return lifecycleQueue
-		.run(workspaceId, () => stopSyncNow(workspaceId))
+		.run(workspaceId, () => stopSyncNow(workspaceId, archived))
 		.finally(() => reconcileSyncs());
 };
 
@@ -239,6 +247,8 @@ export const disableCloudSync = async (workspaceId: string): Promise<void> => {
 	setCloudSyncPrefs(workspaceId, { enabled: false });
 	await stopSync(workspaceId);
 };
+
+const archiveCleanupRequested = new Set<string>();
 
 let wired = false;
 const wire = (): void => {
@@ -273,11 +283,27 @@ const wire = (): void => {
 	const startAutomaticSyncs = () => {
 		const summaries = useCloudChatCatalogStore.getState().summaries;
 
+		for (const summary of summaries) {
+			if (summary.state !== "archived") {
+				archiveCleanupRequested.delete(summary.workspaceId);
+			} else if (!archiveCleanupRequested.has(summary.workspaceId)) {
+				archiveCleanupRequested.add(summary.workspaceId);
+				void stopSync(summary.workspaceId, true).catch((cause) => {
+					setLocalStatus(summary.workspaceId, {
+						state: "error",
+						error: errorMessage(cause, "Local sync cleanup failed."),
+					});
+				});
+			}
+		}
+
 		reconcileAutomaticCloudSyncs({
 			summaries,
 			activeWorkspaceIds: new Set([
-				...active.keys(),
-				...setupRetryTimers.keys(),
+				...[...active.keys()].filter((id) => !archiveCleanupRequested.has(id)),
+				...[...setupRetryTimers.keys()].filter(
+					(id) => !archiveCleanupRequested.has(id),
+				),
 			]),
 			enabled: (workspaceId) =>
 				cloudSyncPreferenceEnabled(cloudSyncPrefsFor(workspaceId)),

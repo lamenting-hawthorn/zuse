@@ -97,6 +97,7 @@ export interface AppBridge {
 		workspaceId: string,
 		repositoryName: string,
 		branch: string,
+		prepare?: boolean,
 	) => Promise<string | null>;
 	readonly onCloudSyncStatus?: (
 		handler: (status: CloudSyncStatus) => void,
@@ -144,6 +145,7 @@ export interface CloudSshPrepared {
 }
 
 export interface CloudSyncConfigure {
+	readonly archived?: boolean;
 	readonly workspaceId: string;
 	readonly enabled: boolean;
 	readonly localPath: string;

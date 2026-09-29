@@ -18,7 +18,7 @@ import {
 	symlink,
 	writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { createGunzip, gzipSync } from "node:zlib";
 import { cloudSshConfigPath } from "../ssh/cloud-ssh-service.ts";
@@ -208,6 +208,68 @@ export const localBaseline = async (
 	}
 	return result;
 };
+/** Remove unchanged owned files, retaining local edits and unowned contents. */
+export const removeSyncSnapshot = async (
+	root: string,
+	workspaceId: string,
+): Promise<void> => {
+	if (!root) return;
+	root = resolve(root);
+	// Check the root and all ancestors before reading ownership or walking files.
+	for (let path = root; ; path = dirname(path)) {
+		const info = await exists(path);
+		if (info && (!info.isDirectory() || info.isSymbolicLink()))
+			throw new Error(
+				"Local sync cleanup refused a non-directory or symlink ancestor.",
+			);
+		if (path === dirname(path)) break;
+	}
+	if (!(await exists(root))) return;
+	const manifest = await readSyncManifest(root, workspaceId);
+	if (manifest.pending?.length)
+		throw new Error(
+			"Local sync folder preserved: snapshot publication was interrupted.",
+		);
+	const removed = new Set<string>();
+	const directories = new Set<string>();
+	for (const file of manifest.files) {
+		// Verify immediately before unlinking, including parent symlinks. Edited
+		// files and paths replaced by directories or symlinks remain untouched.
+		if ((await localBaseline(root, [file])).length !== 1) continue;
+		await rm(join(root, file.path), { force: true });
+		removed.add(file.path);
+		for (
+			let parent = dirname(file.path);
+			parent !== ".";
+			parent = dirname(parent)
+		)
+			directories.add(parent);
+	}
+	// Only visit ancestors of removed files, never traverse local-only trees
+	// such as node_modules. Non-empty directories are deliberately retained.
+	for (const path of [...directories].sort(
+		(a, b) => b.split("/").length - a.split("/").length,
+	)) {
+		await assertParents(root, path);
+		await rmdir(join(root, path)).catch((cause: NodeJS.ErrnoException) => {
+			if (
+				!["ENOTEMPTY", "EEXIST", "ENOENT", "ENOTDIR"].includes(cause.code ?? "")
+			)
+				throw cause;
+		});
+	}
+	// Keep ownership metadata alongside leftovers so the workspace can sync
+	// again without adopting an unrelated non-empty directory.
+	if (removed.size > 0)
+		await writeSyncManifest(root, {
+			...manifest,
+			files: manifest.files.filter((file) => !removed.has(file.path)),
+		});
+	if ((await readdir(root)).some((name) => name !== SYNC_MARKER_FILE)) return;
+	await rm(join(root, SYNC_MARKER_FILE));
+	await rmdir(root);
+};
+
 export const readSyncManifest = async (
 	root: string,
 	workspaceId: string,

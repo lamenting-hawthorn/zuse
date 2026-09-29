@@ -227,8 +227,7 @@ import {
 } from "./startup-readiness.ts";
 import {
 	CloudSyncManager,
-	cloudSyncDefaultPath,
-	SYNC_MARKER_FILE,
+	prepareCloudSyncDefaultPath,
 } from "./sync/cloud-sync-service.ts";
 import { TailnetEnvironmentManager } from "./tailnet/environment-service.ts";
 import { PortForwardManager } from "./tunnels/port-forward-service.ts";
@@ -2284,6 +2283,7 @@ async function createMainWindow() {
 				return null;
 
 			return cloudSyncManager.configure({
+				archived: input.archived === true,
 				workspaceId: input.workspaceId,
 				enabled: input.enabled,
 				localPath: input.localPath,
@@ -2305,24 +2305,20 @@ async function createMainWindow() {
 			workspaceId: unknown,
 			repository: unknown,
 			branch: unknown,
+			prepare: unknown,
 		) => {
 			if (
 				typeof workspaceId !== "string" ||
 				!/^[A-Za-z0-9_-]+$/u.test(workspaceId)
 			)
 				return null;
-			const path = cloudSyncDefaultPath(
+			return prepareCloudSyncDefaultPath(
 				app.getPath("home"),
+				workspaceId,
 				repository,
 				branch,
+				prepare !== false,
 			);
-			if (path === null) return null;
-			await fs.mkdir(path, { recursive: true });
-			const marker = Path.join(path, SYNC_MARKER_FILE);
-			if ((await fs.readdir(path)).length > 0 && !fsSync.existsSync(marker))
-				return null;
-			await fs.writeFile(marker, `${JSON.stringify({ workspaceId })}\n`);
-			return path;
 		},
 	);
 

@@ -397,6 +397,7 @@ const bridge = {
 			return () => ipcRenderer.off("cloudSync:readFile", wrapped);
 		},
 		cloudSyncConfigure: (input: {
+			readonly archived?: boolean;
 			readonly workspaceId: string;
 			readonly enabled: boolean;
 			readonly localPath: string;
@@ -410,12 +411,14 @@ const bridge = {
 			workspaceId: string,
 			repositoryName: string,
 			branch: string,
+			prepare?: boolean,
 		) =>
 			ipcRenderer.invoke(
 				"app:cloudSyncDefaultPath",
 				workspaceId,
 				repositoryName,
 				branch,
+				prepare,
 			) as Promise<string | null>,
 		onCloudSyncStatus: (handler: (status: unknown) => void) => {
 			const wrapped = (_event: Electron.IpcRendererEvent, status: unknown) =>
