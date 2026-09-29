@@ -1,8 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { parse } from "jsonc-parser";
+import { WIRE_PROTOCOL_VERSION } from "../../../packages/contracts/src/handshake.ts";
 import { readBoatEnvironment } from "../src/boat-environment.ts";
 import { supportsSandboxBilling } from "../src/sandbox-provider-availability.ts";
+import { assertRuntimeCompatibility } from "./runtime-deploy-compatibility.mjs";
 
 const confirmation = "deploy-api.zuse.sh";
 const configPath = "wrangler.production.jsonc";
@@ -104,6 +106,19 @@ if (vars.POLAR_ENVIRONMENT !== "production" || missingValues.length > 0) {
 	);
 	process.exit(1);
 }
+
+const runtimeResponse = await fetch(vars.CLOUD_WORKSPACE_RUNTIME_MANIFEST_URL, {
+	signal: AbortSignal.timeout(15_000),
+});
+if (!runtimeResponse.ok)
+	throw new Error(
+		`Production runtime manifest request failed: ${runtimeResponse.status}`,
+	);
+assertRuntimeCompatibility(
+	await runtimeResponse.json(),
+	vars.CLOUD_WORKSPACE_RUNTIME_SIGNING_PUBLIC_JWK,
+	WIRE_PROTOCOL_VERSION,
+);
 
 const secretsResult = spawnSync(
 	"bunx",

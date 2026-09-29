@@ -565,6 +565,40 @@ describe("cloud workspace reconciler", () => {
 		);
 	});
 
+	test.each([
+		{ age: 40_000, state: "provisioning", expected: "provisioning" },
+		{ age: 130_000, state: "provisioning", expected: "failed" },
+		{ age: 40_000, state: "setup", expected: "failed" },
+	] as const)("bounds runtime installation separately from enrollment: $state / $age", async ({
+		age,
+		state,
+		expected,
+	}) => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const now = Date.now();
+				const workspace = yield* seedWorkspace({
+					workspaceId: "install-window",
+					state,
+					desiredState: "ready",
+					statusCode: "resume-runtime-restarting",
+					requestConfig: {
+						runtimeInstallPending: true,
+						startupTimings: {
+							allocatedAt: now - age,
+							...(state === "setup" ? { enrolledAt: now - age } : {}),
+						},
+					},
+				});
+				yield* reconcileCloudWorkspace(workspace.workspaceId);
+				return yield* (yield* CloudWorkspaceStore).getWorkspace(
+					workspace.workspaceId,
+				);
+			}).pipe(Effect.provide(testLayer)),
+		);
+		expect(result?.state).toBe(expected);
+	});
+
 	test("gives an enrolled runtime a fresh gateway connection window", async () => {
 		const enrolledAt = Date.now();
 		const result = await Effect.runPromise(

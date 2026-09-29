@@ -11,7 +11,10 @@ import {
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 
-import { WIRE_PROTOCOL_VERSION } from "@zuse/contracts";
+import {
+	MIN_SUPPORTED_WIRE_PROTOCOL_VERSION,
+	WIRE_PROTOCOL_VERSION,
+} from "@zuse/contracts";
 
 const serverRoot = dirname(new URL(import.meta.url).pathname);
 const packageRoot = dirname(serverRoot);
@@ -172,7 +175,10 @@ const manifest = {
 	url: runtimeUrl,
 	architecture: "linux-x64",
 	sha256,
-	wireProtocol: { min: WIRE_PROTOCOL_VERSION, max: WIRE_PROTOCOL_VERSION },
+	wireProtocol: {
+		min: MIN_SUPPORTED_WIRE_PROTOCOL_VERSION,
+		max: WIRE_PROTOCOL_VERSION,
+	},
 	toolchain: {
 		version: toolchainManifest.version,
 		sha256: createHash("sha256").update(toolchainManifestBytes).digest("hex"),

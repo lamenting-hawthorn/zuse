@@ -44,6 +44,7 @@ import {
 	WebSocketTicketStore,
 } from "./browser-http.ts";
 import { sshBridgeApp } from "./ssh-bridge.ts";
+import { supportsWireProtocol } from "./wire-compatibility.ts";
 
 const PairRequest = Schema.Struct({
 	code: Schema.String,
@@ -598,7 +599,7 @@ export const wsServerProtocolLayer = (
 					);
 					if (!ok) return yield* json({ error: "unauthorized" }, 401);
 				}
-				if (receivedVersion !== WIRE_PROTOCOL_VERSION) {
+				if (!supportsWireProtocol(receivedVersion)) {
 					log("ws.protocol.reject", {
 						expectedVersion: WIRE_PROTOCOL_VERSION,
 						receivedVersion: Number.isFinite(receivedVersion)

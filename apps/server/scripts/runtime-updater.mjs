@@ -111,9 +111,12 @@ const fetchWithRetry = async (url, label, decode) => {
 			lastCause = cause;
 		}
 	}
-	throw new Error(`${label} failed after ${retryDelaysMs.length} attempts`, {
-		cause: lastCause,
-	});
+	throw new Error(
+		`${label} failed after ${retryDelaysMs.length} attempts: ${lastCause instanceof Error ? lastCause.message : "unknown failure"}`,
+		{
+			cause: lastCause,
+		},
+	);
 };
 
 const fetchManifest = () =>
