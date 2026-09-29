@@ -214,24 +214,9 @@ export const decodeRuntimeSummary = (
 			try: (): Promise<unknown> => request.json(),
 			catch: () => badRequest("invalid_json"),
 		});
-		if (
-			typeof body !== "object" ||
-			body === null ||
-			Array.isArray(body) ||
-			Object.keys(body).some(
-				(key) =>
-					!new Set([
-						"summaryRevision",
-						"title",
-						"lastActivityAt",
-						"activeSessionId",
-						"sessionHeadVersion",
-					]).has(key),
-			)
-		)
-			return yield* Effect.fail(badRequest("invalid_runtime_summary"));
 		const decoded = yield* Schema.decodeUnknownEffect(
 			CloudWorkspaceRuntimeSummary,
+			{ onExcessProperty: "error" },
 		)(body).pipe(Effect.mapError(() => badRequest("invalid_runtime_summary")));
 		if (
 			!Number.isSafeInteger(decoded.summaryRevision) ||

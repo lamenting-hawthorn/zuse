@@ -1,3 +1,4 @@
+import { AgentSessionId, CloudWorkspaceRuntimeSummary } from "@zuse/contracts";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
@@ -8,6 +9,30 @@ import {
 } from "../../src/cloud-workspace-routes.ts";
 
 describe("cloud workspace runtime ready status", () => {
+	it.each([
+		1_000,
+		null,
+		undefined,
+	])("accepts runtime recovery summaries with lastUserMessageAt=%s", async (lastUserMessageAt) => {
+		const summary = new CloudWorkspaceRuntimeSummary({
+			summaryRevision: 1,
+			title: "Recovered conversation",
+			lastActivityAt: 2_000,
+			lastUserMessageAt,
+			activeSessionId: AgentSessionId.make("session-current"),
+			sessionHeadVersion: 9,
+		});
+		const decoded = await Effect.runPromise(
+			decodeRuntimeSummary(
+				new Request("https://api.test/runtime/summary", {
+					method: "POST",
+					body: JSON.stringify(summary),
+				}),
+			),
+		);
+		expect(decoded).toEqual(summary);
+	});
+
 	it("retires terminal storage loss without changing ordinary launch timing", () => {
 		expect(
 			launchFailureNextActionAt({
