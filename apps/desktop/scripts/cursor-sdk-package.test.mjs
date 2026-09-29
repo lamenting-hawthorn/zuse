@@ -9,9 +9,10 @@ import afterPack, { stageCursorHelpers } from "./cursor-sdk-package.mjs";
 
 const require = createRequire(import.meta.url);
 
-// Exercise the pinned SDK's own locator, without credentials or a model request.
-// Its webpack module has no public export; fail on SDK layout changes so an
-// upgrade cannot silently invalidate this packaged-runtime regression check.
+/**
+ * Load the pinned SDK's real locator without credentials or a model request.
+ * Fail on webpack layout changes so upgrades cannot silently invalidate this check.
+ */
 async function sdkLocator(runtime) {
 	const source = await readFile(require.resolve("@cursor/sdk"), "utf8");
 	const key = "./src/agent/platform-package-locator.ts";
@@ -103,10 +104,12 @@ test("universal packaging stages both architectures only after merging", async (
 	try {
 		const contents = join(root, "Zuse.app", "Contents");
 		const context = {
+			outDir: root,
 			appOutDir: root,
 			electronPlatformName: "darwin",
 			arch: Arch.arm64,
 			packager: {
+				computeAppOutDir: (outDir, arch) => join(outDir, `mac-${Arch[arch]}`),
 				appInfo: { productFilename: "Zuse" },
 				info: {
 					options: {
@@ -116,7 +119,13 @@ test("universal packaging stages both architectures only after merging", async (
 			},
 		};
 		// Temporary per-architecture hook must not require or stage helpers.
-		await afterPack(context);
+		for (const arch of [Arch.arm64, Arch.x64]) {
+			await afterPack({
+				...context,
+				arch,
+				appOutDir: `${context.packager.computeAppOutDir(root, Arch.universal)}-${Arch[arch]}-temp`,
+			});
+		}
 		for (const arch of ["arm64", "x64"]) {
 			const bin = join(
 				contents,
@@ -144,3 +153,62 @@ test("universal packaging stages both architectures only after merging", async (
 		await rm(root, { recursive: true, force: true });
 	}
 });
+
+for (const architecture of ["arm64", "x64"]) {
+	test(`stages standalone ${architecture} helpers alongside a universal target`, async () => {
+		const { Arch } = await import("electron-builder");
+		const root = await mkdtemp(join(tmpdir(), "zuse-cursor-mixed-"));
+		try {
+			const arch = Arch[architecture];
+			const appOutDir = join(root, `mac-${architecture}`);
+			const contents = join(appOutDir, "Zuse.app", "Contents");
+			const packageName = `sdk-darwin-${architecture}`;
+			const bin = join(
+				contents,
+				"Resources",
+				"app.asar.unpacked/node_modules/@cursor/sdk/node_modules/@cursor",
+				packageName,
+				"bin",
+			);
+			await mkdir(bin, { recursive: true });
+			for (const name of ["rg", "cursorsandbox"]) {
+				await writeFile(join(bin, name), architecture, { mode: 0o755 });
+			}
+			await afterPack({
+				outDir: root,
+				appOutDir,
+				arch,
+				electronPlatformName: "darwin",
+				packager: {
+					computeAppOutDir: (outDir, targetArch) =>
+						join(outDir, `mac-${Arch[targetArch]}`),
+					appInfo: { productFilename: "Zuse" },
+					info: {
+						options: {
+							targets: new Map([
+								[
+									"mac",
+									new Map([
+										[Arch.universal, []],
+										[arch, []],
+									]),
+								],
+							]),
+						},
+					},
+				},
+			});
+			for (const name of ["rg", "cursorsandbox"]) {
+				assert.equal(
+					await readFile(
+						join(contents, "node_modules/@cursor", packageName, "bin", name),
+						"utf8",
+					),
+					architecture,
+				);
+			}
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+}

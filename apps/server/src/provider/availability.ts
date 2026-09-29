@@ -184,6 +184,7 @@ const collectText = (
 		),
 	);
 
+/** Capture a scoped CLI process, draining both streams concurrently when stderr is requested. */
 const runCapture = (cmd: Command.Command, includeStderr = false) =>
 	Effect.gen(function* () {
 		const executor = yield* CommandExecutor.ChildProcessSpawner;
@@ -866,6 +867,7 @@ const parseGrokModelsAuth = (output: string): AccountInfo => {
 	return { authStatus: "unknown" };
 };
 
+/** Check CLI-reported login within the probe deadline; failures remain inconclusive. */
 const probeGrokAccount = (
 	cliPath: string,
 ): Effect.Effect<AccountInfo, never, CommandExecutor.ChildProcessSpawner> =>

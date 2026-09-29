@@ -1,6 +1,6 @@
 import { constants } from "node:fs";
 import { access, cp, mkdir, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 /** Stage helpers where the SDK's executable-relative lookup can reach them. */
 export async function stageCursorHelpers(
@@ -45,6 +45,7 @@ export async function stageCursorHelpers(
 		throw new Error(`No Cursor SDK helpers packaged for ${platform}`);
 }
 
+/** Stage final app helpers before signing, leaving temporary universal slices untouched. */
 export default async function afterPack(context) {
 	const platform = context.electronPlatformName;
 	if (platform !== "darwin" && platform !== "linux") return;
@@ -52,11 +53,15 @@ export default async function afterPack(context) {
 	// Universal builds run this hook for each temporary architecture and again
 	// after merging. Stage only after the merge, before signing, so architecture
 	// specific helpers do not enter Electron's Mach-O merge pass.
-	if (platform === "darwin") {
-		const universal = [...context.packager.info.options.targets.values()].some(
-			(targets) => targets.has(Arch.universal),
+	if (platform === "darwin" && context.arch !== Arch.universal) {
+		// electron-builder 25 names universal slices from the universal output
+		// directory, not from the independently requested architecture output.
+		const universalOutput = context.packager.computeAppOutDir(
+			context.outDir,
+			Arch.universal,
 		);
-		if (universal && context.arch !== Arch.universal) return;
+		const sliceOutput = `${universalOutput}-${Arch[context.arch]}-temp`;
+		if (resolve(context.appOutDir) === resolve(sliceOutput)) return;
 	}
 	const contentsRoot =
 		platform === "darwin"
