@@ -44,6 +44,10 @@ Triage uses the standard `needs-triage`, `needs-info`, `ready-for-agent`, `ready
 
 This monorepo uses a multi-context domain-documentation layout. See `internal-docs/agents/domain.md`.
 
+## Cloud Provider Integrations
+
+- Before adding or enabling a sandbox provider, read [the provider usage and billing requirements](internal-docs/cloud/adding-sandbox-providers.md). Usage reporting to Polar is required for workspace and image-build activity, independently of invoice export. Providers without reliable settlement evidence must remain excluded from billing-enforced placement.
+
 ## Documentation Boundaries
 
 - Before changing cloud runtime data paths, bootstrap scripts, or resume/recovery behavior, read [runtime data recovery](internal-docs/cloud/runtime-data-recovery.md). Verify existing sandbox data before initializing, moving, or replacing any runtime database.

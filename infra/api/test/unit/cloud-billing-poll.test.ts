@@ -1,7 +1,13 @@
+import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { billingPollRequest } from "../../src/cloud-billing-usage-source.ts";
+import {
+	billingPollRequest,
+	ingestPolledBillingEvents,
+} from "../../src/cloud-billing-usage-source.ts";
 import { BoxBillingUsageSourceModule } from "../../src/cloud-billing-usage-sources/box.ts";
 import { E2bBillingUsageSourceModule } from "../../src/cloud-billing-usage-sources/e2b.ts";
+
+import { serviceUnavailable } from "../../src/errors.ts";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -121,4 +127,55 @@ it("aborts a stalled poll after the request budget", async () => {
 	await vi.advanceTimersByTimeAsync(30_000);
 	expect(await outcome).toEqual(new Error("request budget exceeded"));
 	expect(timeout).toHaveBeenCalledWith(30_000);
+});
+
+it("settles later poll events after a failure and retries without duplicating usage", async () => {
+	const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	const settled = new Set<string>();
+	const attempts: string[] = [];
+	let unavailable = true;
+	const poll = () =>
+		Effect.runPromise(
+			ingestPolledBillingEvents({
+				provider: "box",
+				events: [null, "failing", "healthy"],
+				normalize: (payload) =>
+					typeof payload === "string" ? { id: payload } : null,
+				ingest: (event) =>
+					Effect.gen(function* () {
+						attempts.push(event.id);
+						if (event.id === "failing" && unavailable)
+							return yield* Effect.fail(
+								serviceUnavailable("box_usage_unavailable"),
+							);
+						if (settled.has(event.id)) return { metered: false };
+						settled.add(event.id);
+						return { metered: true };
+					}),
+			}),
+		);
+	expect(await poll()).toBe(1);
+	expect(attempts).toEqual(["failing", "healthy"]);
+	expect([...settled]).toEqual(["healthy"]);
+	expect(warn).toHaveBeenCalledWith(
+		"[cloud-billing] polled execution settlement failed",
+		{ provider: "box", eventId: "failing", code: "box_usage_unavailable" },
+	);
+	unavailable = false;
+	expect(await poll()).toBe(1);
+	expect(await poll()).toBe(0);
+	expect([...settled]).toEqual(["healthy", "failing"]);
+});
+
+it("does not hide unexpected defects during settlement", async () => {
+	await expect(
+		Effect.runPromise(
+			ingestPolledBillingEvents({
+				provider: "box",
+				events: ["event"],
+				normalize: () => ({ id: "event" }),
+				ingest: () => Effect.die(new Error("database defect")),
+			}),
+		),
+	).rejects.toThrow("database defect");
 });

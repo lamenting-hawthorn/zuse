@@ -13,6 +13,10 @@ import {
 	type CloudBillingPeriodRecord,
 	CloudBillingStore,
 } from "./cloud-billing-store.ts";
+import {
+	confirmedUsageExport,
+	makeCloudUsageStoreMemory,
+} from "./cloud-usage-store.ts";
 
 /** Deterministic in-memory implementation for route and reconciler tests. */
 export const CloudBillingStoreMemory = Layer.sync(CloudBillingStore, () => {
@@ -85,7 +89,9 @@ export const CloudBillingStoreMemory = Layer.sync(CloudBillingStore, () => {
 			usageProvisional: reservedCost > 0,
 		};
 	};
+	const usageExports = makeCloudUsageStoreMemory();
 	return CloudBillingStore.of({
+		...usageExports,
 		hasProviderEvent: (provider, eventId) =>
 			Effect.succeed(events.has(`${provider}:${eventId}`)),
 		isProviderEventFinalized: (provider, eventId, providerExecutionId) =>
@@ -251,7 +257,21 @@ export const CloudBillingStoreMemory = Layer.sync(CloudBillingStore, () => {
 				finalizedEvents.add(eventKey);
 				if (executionKey !== undefined) finalizedEvents.add(executionKey);
 				return metered;
-			}),
+			}).pipe(
+				Effect.tap((metered) =>
+					metered
+						? Effect.forEach(
+								batch.usage,
+								(item) =>
+									usageExports.enqueueUsageExport(
+										confirmedUsageExport(item),
+										item.nowMs,
+									),
+								{ discard: true },
+							)
+						: Effect.void,
+				),
+			),
 		reserveCost: (input) =>
 			Effect.sync(() => {
 				const period = periods.get(input.periodId);

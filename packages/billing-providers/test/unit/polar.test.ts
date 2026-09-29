@@ -170,6 +170,28 @@ describe("Polar billing provider", () => {
 		]);
 	});
 
+	test("preserves observation time when retrying usage exports", async () => {
+		const fake = makeClient();
+		const provider = makePolarBillingProvider(config, { client: fake.client });
+		await Effect.runPromise(
+			provider.reportMeterEvent?.({
+				accountId: "account_1",
+				eventName: "zuse_cloud_runtime_observed_ms",
+				units: 60_000,
+				idempotencyKey: "runtime:boxd:machine:1000:61000",
+				occurredAtMs: 61_000,
+				metadata: { provider: "boxd", billable: "false" },
+			}) ?? Effect.void,
+		);
+		expect(fake.calls.meterEvents).toEqual([
+			expect.objectContaining({
+				occurredAtMs: 61_000,
+				idempotencyKey: "runtime:boxd:machine:1000:61000",
+				units: 60_000,
+			}),
+		]);
+	});
+
 	test("reads Polar's authoritative customer meter", async () => {
 		const fake = makeClient();
 		const provider = makePolarBillingProvider(config, { client: fake.client });

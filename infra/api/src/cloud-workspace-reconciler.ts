@@ -19,6 +19,7 @@ import { allocatedComputeCostMicros } from "./cloud-billing.ts";
 import { CloudBillingStore } from "./cloud-billing-store.ts";
 import { githubInstallationGrants } from "./cloud-github-app.ts";
 import { deleteCloudTranscriptObjects } from "./cloud-transcript.ts";
+import { observeCloudRuntimeUsage } from "./cloud-usage.ts";
 import {
 	MAX_MEMORY_RESTARTS,
 	MEMORY_PRESSURE_WAIT_MS,
@@ -98,12 +99,13 @@ export const reserveProviderCost = Effect.fn("reserveProviderCost")(
 		readonly resourceId: string;
 		readonly provider: string;
 		readonly providerSandboxId?: string;
-		readonly runningSinceMs: number;
+		readonly runningSinceMs?: number;
 		readonly nowMs: number;
 		readonly vcpuCount: number;
 		readonly memoryMib: number;
 	}) {
 		const config = yield* ApiConfiguration;
+		yield* observeCloudRuntimeUsage({ ...input, observedAtMs: input.nowMs });
 		if (
 			!config.cloudBillingEnforcementEnabled &&
 			!config.cloudBillingExportEnabled
@@ -127,9 +129,9 @@ export const reserveProviderCost = Effect.fn("reserveProviderCost")(
 			return config.cloudBillingEnforcementEnabled;
 		}
 		const startedAtMs = Math.max(
-			input.runningSinceMs,
+			input.runningSinceMs ?? input.nowMs,
 			period.periodStartMs,
-			config.cloudBillingCutoverAtMs ?? input.runningSinceMs,
+			config.cloudBillingCutoverAtMs ?? input.runningSinceMs ?? input.nowMs,
 		);
 		const endedAtMs = Math.min(
 			Math.max(startedAtMs + 60_000, input.nowMs + 60_000),
@@ -1504,7 +1506,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 			resourceId: workspace.workspaceId,
 			provider: workspace.provider,
 			providerSandboxId: workspace.providerSandboxId,
-			runningSinceMs: workspace.runningSinceMs ?? nowMs,
+			runningSinceMs: workspace.runningSinceMs,
 			nowMs,
 			...resolveSandboxResources(provider, workspaceSizeId(workspace)),
 		});

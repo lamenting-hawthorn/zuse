@@ -483,6 +483,16 @@ describe("Box reported cost settlement", () => {
 				);
 			expect((await list(oldPeriodId)).items).toHaveLength(0);
 			expect((await list(newPeriodId)).items).toHaveLength(0);
+			expect(
+				await runtime.runPromise(
+					Effect.gen(function* () {
+						return yield* (yield* CloudBillingStore).pendingUsageExports(
+							end,
+							100,
+						);
+					}),
+				),
+			).toEqual([]);
 			failSecondWindow = false;
 			expect(await ingest(boatClose)).toMatchObject({ metered: true });
 			expect(calls.slice(-2)).toEqual([
@@ -505,6 +515,22 @@ describe("Box reported cost settlement", () => {
 				expect((await list("empty")).items).toHaveLength(0);
 				expect((await list("inverted")).items).toHaveLength(0);
 			}
+			const usageExports = await runtime.runPromise(
+				Effect.gen(function* () {
+					return yield* (yield* CloudBillingStore).pendingUsageExports(
+						end,
+						100,
+					);
+				}),
+			);
+			expect(
+				usageExports.map((event) => event.units).sort((a, b) => a - b),
+			).toEqual([1230, 9870]);
+			expect(
+				usageExports.every(
+					(event) => event.eventName === "zuse_cloud_provider_cost_micros",
+				),
+			).toBe(true);
 			expect(calls).toHaveLength(4);
 			const callCount = calls.length;
 			expect(await ingest(close)).toMatchObject({ metered: false });
@@ -512,6 +538,16 @@ describe("Box reported cost settlement", () => {
 				await ingest({ ...close, id: "poll-close" }, "poll"),
 			).toMatchObject({ metered: false });
 			expect(calls).toHaveLength(callCount);
+			expect(
+				await runtime.runPromise(
+					Effect.gen(function* () {
+						return yield* (yield* CloudBillingStore).pendingUsageExports(
+							end,
+							100,
+						);
+					}),
+				),
+			).toEqual(usageExports);
 			expect((await list(newPeriodId)).items).toHaveLength(1);
 		} finally {
 			await runtime.dispose();

@@ -1267,3 +1267,35 @@ export const apiCloudCatalogChanges = pgTable(
 		),
 	],
 );
+
+export const apiCloudRuntimeObservations = pgTable(
+	"api_cloud_runtime_observations",
+	{
+		provider: text("provider").notNull(),
+		providerSandboxId: text("provider_sandbox_id").notNull(),
+		observation: jsonb("observation").notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.provider, table.providerSandboxId] }),
+	],
+);
+
+export const apiCloudUsageOutbox = pgTable(
+	"api_cloud_usage_outbox",
+	{
+		eventId: text("event_id").primaryKey(),
+		payload: jsonb("payload").notNull(),
+		createdAt: bigint("created_at", { mode: "number" }).notNull(),
+		nextAttemptAt: bigint("next_attempt_at", { mode: "number" }).notNull(),
+		attemptCount: bigint("attempt_count", { mode: "number" })
+			.notNull()
+			.default(0),
+		acknowledgedAt: bigint("acknowledged_at", { mode: "number" }),
+		lastError: text("last_error"),
+	},
+	(table) => [
+		index("api_cloud_usage_outbox_pending_idx")
+			.on(table.nextAttemptAt, table.eventId)
+			.where(sql`${table.acknowledgedAt} IS NULL`),
+	],
+);

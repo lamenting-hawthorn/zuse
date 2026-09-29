@@ -188,6 +188,7 @@ interface Env extends SlackBindings {
 	readonly BOXD_MACHINE_SIZE?: string;
 	readonly CLOUD_BILLING_ENFORCEMENT_ENABLED?: string;
 	readonly CLOUD_BILLING_EXPORT_ENABLED?: string;
+	readonly CLOUD_USAGE_EXPORT_ENABLED?: string;
 	readonly CLOUD_BILLING_CUTOVER_AT?: string;
 	/** Additive rollout gate. Accepted rows continue draining when disabled. */
 	readonly CLOUD_COMMAND_MAILBOX_ENABLED?: string;
@@ -351,6 +352,8 @@ const build = (env: Env, directStartup = false): ReturnType<typeof makeApi> => {
 		throw new Error(
 			"Polar and POLAR_CLOUD_OVERAGE_METER_ID are required for billing export",
 		);
+	if (env.CLOUD_USAGE_EXPORT_ENABLED === "true" && !billing.polarConfigured)
+		throw new Error("Polar is required for cloud usage export");
 	const boatEnvironment = readBoatEnvironment(env);
 	const cloudDataEncryptionKey =
 		env.CLOUD_DATA_ENCRYPTION_KEY ?? env.CLOUD_CREDENTIAL_VAULT_KEY;
@@ -399,6 +402,7 @@ const build = (env: Env, directStartup = false): ReturnType<typeof makeApi> => {
 		]),
 		cloudBillingEnforcementEnabled,
 		cloudBillingExportEnabled,
+		cloudUsageExportEnabled: env.CLOUD_USAGE_EXPORT_ENABLED === "true",
 		cloudCommandMailboxEnabled: env.CLOUD_COMMAND_MAILBOX_ENABLED === "true",
 		cloudCodexAuthBrokerEnrollmentEnabled:
 			env.CLOUD_CODEX_AUTH_BROKER_ENROLLMENT_ENABLED === "true",

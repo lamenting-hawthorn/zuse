@@ -14,6 +14,11 @@ import {
 	customerOverageCents,
 	DEFAULT_CLOUD_BILLING_POLICY,
 } from "./cloud-billing.ts";
+import {
+	type CloudUsageStoreApi,
+	confirmedUsageExport,
+	makeCloudUsageStorePg,
+} from "./cloud-usage-store.ts";
 
 export interface CloudBillingPeriodRecord {
 	readonly periodId: string;
@@ -36,7 +41,7 @@ export type CloudBillingUsageRecord = CloudBillingUsageItem & {
 	readonly nowMs: number;
 };
 
-export interface CloudBillingStoreApi {
+export interface CloudBillingStoreApi extends CloudUsageStoreApi {
 	readonly hasProviderEvent: (
 		provider: string,
 		eventId: string,
@@ -354,7 +359,9 @@ export const CloudBillingStorePg = Layer.effect(
 					usageProvisional: provisionalRows[0]?.present ?? false,
 				};
 			}).pipe(Effect.orDie);
+		const usageExports = makeCloudUsageStorePg(sql);
 		return CloudBillingStore.of({
+			...usageExports,
 			hasProviderEvent: (provider, eventId) =>
 				sql<{
 					readonly present: boolean;
@@ -545,6 +552,10 @@ export const CloudBillingStorePg = Layer.effect(
 					${input.providerEventId ?? null}, ${input.providerExecutionId ?? null}, ${input.startedAt}, ${input.endedAt}, ${input.vcpuCount},
 					${input.memoryMib}, ${input.providerCostMicros}, ${input.status}, ${input.nowMs}) ON CONFLICT DO NOTHING RETURNING entry_id`;
 						if (inserted.length === 0) continue;
+						yield* usageExports.enqueueUsageExport(
+							confirmedUsageExport(input),
+							input.nowMs,
+						);
 						yield* sql`DELETE FROM api_cloud_billing_reservations WHERE period_id = ${input.periodId} AND resource_kind = ${input.resourceKind} AND resource_id = ${input.resourceId}`;
 						yield* sql`INSERT INTO api_cloud_billing_ledger (entry_id, period_id, account_id, kind, amount_micros, source_id, metadata, occurred_at, created_at)
 					VALUES (${`ledger:${input.entryId}`}, ${input.periodId}, ${input.accountId}, 'provider-cost', ${input.providerCostMicros}, ${input.entryId}, ${JSON.stringify({ provider: input.provider, resourceKind: input.resourceKind, resourceId: input.resourceId })}, ${input.endedAt}, ${input.nowMs}) ON CONFLICT DO NOTHING`;
@@ -699,6 +710,8 @@ export const CloudBillingStorePg = Layer.effect(
 				ON CONFLICT DO NOTHING`.pipe(Effect.asVoid, Effect.orDie),
 			purgeExpiredRawEvents: (nowMs) =>
 				Effect.gen(function* () {
+					yield* sql`DELETE FROM api_cloud_usage_outbox WHERE acknowledged_at <= ${nowMs - 7 * 24 * 60 * 60 * 1_000}`;
+					yield* sql`DELETE FROM api_cloud_runtime_observations WHERE (observation->>'observedAtMs')::bigint <= ${nowMs - 90 * 24 * 60 * 60 * 1_000}`;
 					yield* sql`DELETE FROM api_provider_event_deliveries WHERE received_at <= ${nowMs - 90 * 24 * 60 * 60 * 1_000}`;
 					yield* sql`DELETE FROM api_provider_event_finalizations WHERE expires_at <= ${nowMs}`;
 					const rows = yield* sql<{
