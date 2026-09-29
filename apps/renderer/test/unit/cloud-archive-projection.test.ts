@@ -5,13 +5,24 @@ import {
 	FolderId,
 	SessionId,
 } from "@zuse/contracts";
-import { beforeEach, expect, it } from "vitest";
+import { Effect } from "effect";
+import { beforeEach, expect, it, vi } from "vitest";
 import { useCloudChatCatalogStore } from "../../src/lib/cloud-workspace-catalog.ts";
-import { stageCloudChat } from "../../src/lib/cloud-workspaces.ts";
+import {
+	stageCloudChat,
+	useCloudChatsStore,
+} from "../../src/lib/cloud-workspaces.ts";
 import {
 	setArchiveCommandForTest,
 	useArchivePreviewStore,
 } from "../../src/store/archive-preview.ts";
+
+vi.mock("../../src/lib/rpc-client.ts", async (original) => ({
+	...(await original<typeof import("../../src/lib/rpc-client.ts")>()),
+	getControlPlaneRpcClient: async () => ({
+		"cloud.chats.list": () => Effect.succeed({ chats: [] }),
+	}),
+}));
 
 const projectId = FolderId.make("archive-projection-project");
 const summary = CloudChatSummary.make({
@@ -119,4 +130,26 @@ it("does not resurrect an archive from an older catalog revision", () => {
 	expect(useArchivePreviewStore.getState().chatsByProject[projectId]).toEqual(
 		[],
 	);
+});
+
+it("removes deleted cloud archives and their open previews from every project on refresh", async () => {
+	const otherProjectId = FolderId.make("archive-projection-other");
+	stageCloudChat(summary, projectId);
+	stageCloudChat(summary, otherProjectId);
+	for (const id of [projectId, otherProjectId]) {
+		const chat = useArchivePreviewStore.getState().chatsByProject[id]?.[0];
+		if (!chat) throw new Error("Cloud archive is missing");
+		await useArchivePreviewStore
+			.getState()
+			.openChat(EnvironmentId.make("local"), chat);
+	}
+	await useCloudChatsStore.getState().hydrate();
+	expect(useCloudChatsStore.getState().error).toBeNull();
+	const archives = useArchivePreviewStore.getState();
+	for (const id of [projectId, otherProjectId]) {
+		expect(archives.chatsByProject[id]).toEqual([]);
+		expect(archives.selectedChatByProject[id]).toBeNull();
+	}
+	expect(archives.previewsByChat[summary.chatId]).toBeUndefined();
+	expect(archives.selectedSessionByChat[summary.chatId]).toBeUndefined();
 });

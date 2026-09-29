@@ -249,6 +249,26 @@ export function ArchivedChatsPage({
 					</label>
 				</header>
 				<div className="min-h-0 flex-1 overflow-y-auto px-8 py-5 max-[800px]:px-4">
+					{projectError !== null && archivedChats.length > 0 ? (
+						<div role="alert" className="mb-4 flex items-center gap-3 text-sm">
+							<p className="min-w-0 flex-1 text-destructive">{projectError}</p>
+							<Button
+								variant="outline"
+								size="sm"
+								className="h-7 shrink-0"
+								disabled={projectLoading}
+								onClick={() =>
+									void loadProject(
+										EnvironmentId.make(environmentId),
+										projectId,
+										true,
+									)
+								}
+							>
+								{uiMessage("common:retry")}
+							</Button>
+						</div>
+					) : null}
 					{projectError !== null && archivedChats.length === 0 ? (
 						<CenteredState
 							text={projectError}

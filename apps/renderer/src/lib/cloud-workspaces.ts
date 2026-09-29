@@ -17,7 +17,7 @@ import {
 	type CloudChatSummary,
 	type CloudWorkspace,
 	EnvironmentId,
-	type FolderId,
+	FolderId,
 	type GitOriginInfo,
 	Message,
 	MessageId,
@@ -528,6 +528,14 @@ const removeDeletedCloudPlaceholders = (
 	removed: ReadonlyArray<CloudChatSummary>,
 ): void => {
 	if (removed.length === 0) return;
+	const chatIds = new Set(removed.map((summary) => summary.chatId));
+	const archives = useArchivePreviewStore.getState();
+	for (const [projectId, chats] of Object.entries(archives.chatsByProject)) {
+		for (const chat of chats) {
+			if (chatIds.has(chat.id))
+				archives.removeChat(chat.id, FolderId.make(projectId));
+		}
+	}
 	for (const summary of removed) {
 		const ref = {
 			environmentId: EnvironmentId.make(summary.workspaceId),
@@ -538,7 +546,6 @@ const removeDeletedCloudPlaceholders = (
 			timelineReadingPositionStore?.remove(ref),
 		]).catch(() => undefined);
 	}
-	const chatIds = new Set(removed.map((summary) => summary.chatId));
 	const sessionIds = new Set(
 		removed.map((summary) => summary.initialSessionId),
 	);
