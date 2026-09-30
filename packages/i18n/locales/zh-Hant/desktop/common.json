@@ -55,5 +55,13 @@
 	"cloud_workspace_settings": "雲端工作區設定",
 	"recording_shortcut": "正在錄製 {{label}} 的快捷鍵",
 	"recording_new_shortcut": "正在錄製新操作的快捷鍵",
-	"provider_settings": "供應商設定"
+	"provider_settings": "供應商設定",
+	"startup_surface_loading_zuse": "正在加載Zuse",
+	"startup_surface_zuse": "Zuse",
+	"startup_surface_still_starting_zuse": "仍在開始 Zuse...",
+	"startup_surface_zuse_couldn_t_start": "Zuse無法啟動",
+	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "本地伺服器不可用。您的資料仍在磁碟上。",
+	"startup_surface_try_again": "再試一次",
+	"startup_surface_reload": "重新載入",
+	"startup_surface_copy_details": "複製詳細信息"
 }

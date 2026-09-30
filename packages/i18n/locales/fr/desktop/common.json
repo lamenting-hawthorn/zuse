@@ -55,5 +55,13 @@
 	"cloud_workspace_settings": "Paramètres de l’espace de travail cloud",
 	"recording_shortcut": "Enregistrement du raccourci pour {{label}}",
 	"recording_new_shortcut": "Enregistrement du raccourci pour une nouvelle action",
-	"provider_settings": "Paramètres du fournisseur"
+	"provider_settings": "Paramètres du fournisseur",
+	"startup_surface_loading_zuse": "Chargement Zuse",
+	"startup_surface_zuse": "Zuse",
+	"startup_surface_still_starting_zuse": "Toujours en train de démarrer Zuse…",
+	"startup_surface_zuse_couldn_t_start": "Zuse n'a pas pu démarrer",
+	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "Le serveur local n'est pas devenu disponible. Vos données sont toujours sur le disque.",
+	"startup_surface_try_again": "Réessayez",
+	"startup_surface_reload": "Recharger",
+	"startup_surface_copy_details": "Copier les détails"
 }

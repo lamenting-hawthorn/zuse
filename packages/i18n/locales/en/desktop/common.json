@@ -55,5 +55,13 @@
 	"cloud_workspace_settings": "Cloud workspace settings",
 	"recording_shortcut": "Recording shortcut for {{label}}",
 	"recording_new_shortcut": "Recording shortcut for new binding",
-	"provider_settings": "Provider settings"
+	"provider_settings": "Provider settings",
+	"startup_surface_loading_zuse": "Loading Zuse",
+	"startup_surface_zuse": "Zuse",
+	"startup_surface_still_starting_zuse": "Still starting Zuse…",
+	"startup_surface_zuse_couldn_t_start": "Zuse couldn’t start",
+	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "The local server did not become available. Your data is still on disk.",
+	"startup_surface_try_again": "Try again",
+	"startup_surface_reload": "Reload",
+	"startup_surface_copy_details": "Copy details"
 }

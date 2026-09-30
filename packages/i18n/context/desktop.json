@@ -4277,7 +4277,7 @@
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_loading_zuse": {
+	"common:startup_surface_loading_zuse": {
 		"source": "Loading Zuse",
 		"locations": [
 			{
@@ -4285,9 +4285,9 @@
 				"line": 91
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_zuse": {
+	"common:startup_surface_zuse": {
 		"source": "Zuse",
 		"locations": [
 			{
@@ -4295,9 +4295,9 @@
 				"line": 109
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_still_starting_zuse": {
+	"common:startup_surface_still_starting_zuse": {
 		"source": "Still starting Zuse…",
 		"locations": [
 			{
@@ -4305,9 +4305,9 @@
 				"line": 99
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_zuse_couldn_t_start": {
+	"common:startup_surface_zuse_couldn_t_start": {
 		"source": "Zuse couldn’t start",
 		"locations": [
 			{
@@ -4315,9 +4315,9 @@
 				"line": 112
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": {
+	"common:startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": {
 		"source": "The local server did not become available. Your data is still on disk.",
 		"locations": [
 			{
@@ -4325,9 +4325,9 @@
 				"line": 116
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_try_again": {
+	"common:startup_surface_try_again": {
 		"source": "Try again",
 		"locations": [
 			{
@@ -4335,23 +4335,19 @@
 				"line": 133
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_reload": {
+	"common:startup_surface_reload": {
 		"source": "Reload",
 		"locations": [
-			{
-				"path": "apps/renderer/src/components/browser-pane.tsx",
-				"line": 1539
-			},
 			{
 				"path": "apps/renderer/src/components/startup-surface.tsx",
 				"line": 140
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
-	"chat:startup_surface_copy_details": {
+	"common:startup_surface_copy_details": {
 		"source": "Copy details",
 		"locations": [
 			{
@@ -4359,7 +4355,7 @@
 				"line": 150
 			}
 		],
-		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	},
 	"chat:subagent_row_agent_running": {
 		"source": "Agent running",
@@ -8338,11 +8334,15 @@
 			},
 			{
 				"path": "apps/renderer/src/components/file-editor.tsx",
-				"line": 729
+				"line": 803
 			},
 			{
 				"path": "apps/renderer/src/components/git-stack-menu.tsx",
 				"line": 138
+			},
+			{
+				"path": "apps/renderer/src/components/message-row.tsx",
+				"line": 1619
 			},
 			{
 				"path": "apps/renderer/src/components/permissions-inspector.tsx",
@@ -8350,11 +8350,15 @@
 			},
 			{
 				"path": "apps/renderer/src/components/settings/cloud-workspace-pool.tsx",
-				"line": 545
+				"line": 614
 			},
 			{
 				"path": "apps/renderer/src/components/settings/keybindings-editor.tsx",
 				"line": 302
+			},
+			{
+				"path": "apps/renderer/src/components/settings/organization-sharing-pane.tsx",
+				"line": 73
 			},
 			{
 				"path": "apps/renderer/src/components/settings/pokedex-pane.tsx",
@@ -8365,12 +8369,20 @@
 				"line": 76
 			},
 			{
+				"path": "apps/renderer/src/components/ui/spinner.tsx",
+				"line": 20
+			},
+			{
 				"path": "apps/renderer/src/main.tsx",
 				"line": 118
 			},
 			{
 				"path": "apps/renderer/src/notch-main.tsx",
 				"line": 242
+			},
+			{
+				"path": "apps/renderer/src/startup-application.tsx",
+				"line": 103
 			}
 		],
 		"context": "common interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
