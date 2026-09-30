@@ -371,7 +371,8 @@ function ScopedCloudWorkspacePool({
 		try {
 			await operation();
 			await load(true);
-			void refreshCloudImages().catch(() => undefined);
+			if (section !== "billing")
+				void refreshCloudImages().catch(() => undefined);
 		} catch (cause) {
 			const message =
 				cause instanceof CloudWorkspaceOpError &&
@@ -390,13 +391,15 @@ function ScopedCloudWorkspacePool({
 	};
 
 	const checkout = () =>
-		run("checkout", async () => {
-			const result = await runCloudControl((client) =>
-				client["machines.checkout"]({ offerId: CLOUD_WORKSPACE_OFFER_ID }),
-			);
-			window.dispatchEvent(new Event(CLOUD_CHECKOUT_STARTED));
-			await openExternal(result.checkoutUrl);
-		});
+		run("checkout", () =>
+			openExternal(async () => {
+				const result = await runCloudControl((client) =>
+					client["machines.checkout"]({ offerId: CLOUD_WORKSPACE_OFFER_ID }),
+				);
+				window.dispatchEvent(new Event(CLOUD_CHECKOUT_STARTED));
+				return result.checkoutUrl;
+			}),
+		);
 
 	const saveOverageCap = () =>
 		run("billing-cap", async () => {
@@ -800,6 +803,29 @@ function ScopedCloudWorkspacePool({
 				</>
 			) : null}
 
+			{canManageBilling &&
+			(section === "billing" || (section === "all" && view === "usage")) ? (
+				<CloudSettingsGroup title={uiMessage("settings:workspace_billing")}>
+					<CloudSettingsRow
+						title={uiMessage("settings:cloud_workspace_pool_invoices")}
+						description={uiMessage(
+							"settings:cloud_machines_pane_manage_payment_details_and_invoices_in_the_billing_portal",
+						)}
+						action={
+							<Button
+								size="xs"
+								variant="ghost"
+								className={COMPACT_CLOUD_ACTION}
+								loading={busy === "billing-portal"}
+								onClick={() => void openBillingPortal()}
+							>
+								{uiMessage("settings:cloud_workspace_pool_invoices")}
+							</Button>
+						}
+					/>
+				</CloudSettingsGroup>
+			) : null}
+
 			{subscribed &&
 			serviceAvailable &&
 			canManageBilling &&
@@ -924,17 +950,6 @@ function ScopedCloudWorkspacePool({
 													`${item.resourceKind} ${item.resourceId}: ${formatUsdMicros(item.providerCostMicros)}${item.status === "provisional" ? " (provisional)" : ""}`,
 											)
 											.join(" · ")
-							}
-							action={
-								<Button
-									size="xs"
-									variant="ghost"
-									className={COMPACT_CLOUD_ACTION}
-									loading={busy === "billing-portal"}
-									onClick={() => void openBillingPortal()}
-								>
-									{uiMessage("settings:cloud_workspace_pool_invoices")}
-								</Button>
 							}
 						/>
 					</CloudSettingsGroup>

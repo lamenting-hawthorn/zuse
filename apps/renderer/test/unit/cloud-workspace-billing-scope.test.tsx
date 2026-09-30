@@ -54,6 +54,18 @@ it("identifies Personal billing and preserves its checkout action", () => {
 	const markup = renderToStaticMarkup(<CloudWorkspacePool section="billing" />);
 	expect(markup).toContain("Cloud · Personal");
 	expect(markup).toContain("Subscribe");
+	expect(markup).toContain("Manage payment details and invoices");
+});
+
+it("routes finance-only members to billing even when a content settings page was selected", () => {
+	fixture.scope = { kind: "organization", organizationId: "org_a" };
+	fixture.role = "billing";
+	const markup = renderToStaticMarkup(
+		<CloudWorkspacePool section="repositories" />,
+	);
+	expect(markup).toContain("Cloud · Acme");
+	expect(markup).toContain("Manage payment details and invoices");
+	expect(markup).not.toContain("Connect GitHub");
 });
 
 it.each([
@@ -69,8 +81,11 @@ it.each([
 	expect(markup).not.toContain("Cloud · Personal");
 	if (role === "admin" || role === "billing") {
 		expect(markup).toContain("Subscribe");
+		// Billing remains accessible before activation and after cancellation.
+		expect(markup).toContain("Manage payment details and invoices");
 	} else {
 		expect(markup).not.toContain("Subscribe");
+		expect(markup).not.toContain("Manage payment details and invoices");
 		expect(markup).toContain("Only workspace admins and billing members");
 	}
 });

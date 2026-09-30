@@ -1,11 +1,26 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
 	loadOrganizationWorkspaces,
+	organizationWorkspacesAvailable,
 	useOrganizationWorkspaces,
 } from "../../src/lib/organization-workspaces.ts";
 import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 
 const request = vi.hoisted(() => vi.fn());
+afterEach(() => vi.unstubAllEnvs());
+
+it.each([
+	[true, "https://api-staging.zuse.sh", undefined, true],
+	[true, "https://api.zuse.sh", undefined, false],
+	[false, "https://api-staging.zuse.sh", undefined, false],
+	[true, "https://api-staging.zuse.sh", "false", false],
+	[false, "https://api-staging.zuse.sh", "true", true],
+])("workspace switcher availability: dev=%s api=%s flag=%s", (dev, api, flag, expected) => {
+	vi.stubEnv("DEV", dev);
+	vi.stubEnv("VITE_ZUSE_API_URL", api);
+	vi.stubEnv("VITE_ORGANIZATION_WORKSPACES", flag);
+	expect(organizationWorkspacesAvailable()).toBe(expected);
+});
 vi.mock("../../src/lib/organization-client.ts", () => ({
 	runOrganizations: request,
 }));

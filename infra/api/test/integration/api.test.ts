@@ -409,6 +409,7 @@ describe("@zuse/api", () => {
 		const checkoutReturns: string[] = [];
 		const portalOwners: string[] = [];
 		let role = "admin";
+		let membershipStatus = "active";
 		const workos = vi
 			.spyOn(globalThis, "fetch")
 			.mockImplementation(async (input) => {
@@ -422,9 +423,9 @@ describe("@zuse/api", () => {
 					data: [
 						{
 							id: "member_a",
-							user_id: "user_a",
+							user_id: url.searchParams.get("user_id"),
 							organization_id: url.searchParams.get("organization_id"),
-							status: "active",
+							status: membershipStatus,
 							role: { slug: role },
 						},
 					],
@@ -461,14 +462,19 @@ describe("@zuse/api", () => {
 				true,
 			),
 		);
-		const call = (path: string, scope: string, body?: unknown) =>
+		const call = (
+			path: string,
+			scope: string,
+			body?: unknown,
+			actor = "user_a",
+		) =>
 			billingApi.fetch(
 				new Request(
 					`${API_ISSUER}${scope.startsWith("organization:") ? `${WORKSPACE_API_PREFIX}${scope.slice(13)}` : ""}${path}`,
 					{
 						method: "POST",
 						headers: {
-							authorization: "Bearer test-token:user_a",
+							authorization: `Bearer test-token:${actor}`,
 							"content-type": "application/json",
 							[WORKSPACE_SCOPE_HEADER]: scope,
 						},
@@ -520,9 +526,41 @@ describe("@zuse/api", () => {
 			expect(portalOwners).toHaveLength(3);
 			role = "billing";
 			expect(
-				(await call(ApiPaths.billingPortal, "organization:org_a")).status,
+				(
+					await call(
+						ApiPaths.billingPortal,
+						"organization:org_a",
+						undefined,
+						"user_finance",
+					)
+				).status,
 			).toBe(200);
 			expect(portalOwners.at(-1)).toBe("organization:org_a");
+			expect(
+				(
+					await call(
+						ApiPaths.billingCheckout,
+						"organization:org_a",
+						{
+							offerId: CLOUD_WORKSPACE_OFFER_ID,
+						},
+						"user_finance",
+					)
+				).status,
+			).toBe(200);
+			expect(checkoutOwners.at(-1)).toBe("organization:org_a");
+			membershipStatus = "inactive";
+			expect(
+				(
+					await call(
+						ApiPaths.billingPortal,
+						"organization:org_a",
+						undefined,
+						"user_finance",
+					)
+				).status,
+			).toBe(403);
+			expect(portalOwners).toHaveLength(4);
 		} finally {
 			workos.mockRestore();
 			await billingApi.dispose();

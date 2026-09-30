@@ -1,5 +1,5 @@
 import { makeResourceKey } from "@zuse/client-runtime/resource-ref";
-import { EnvironmentId } from "@zuse/contracts";
+import { CloudWorkspaceOpError, EnvironmentId } from "@zuse/contracts";
 import { Effect } from "effect";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -64,6 +64,34 @@ afterEach(() => {
 	resetSessionTimelineClientBusForTest();
 	vi.unstubAllGlobals();
 	vi.unstubAllEnvs();
+});
+
+it("keeps rejected organization settings isolated and restores local Personal settings on return", async () => {
+	const personal = {
+		...useSettingsStore.getState(),
+		branchNamingPrefix: "personal-only",
+	};
+	const key = makeResourceKey<SettingsSlice>("environment-settings", {
+		environmentId: EnvironmentId.make(getLocalEnvironmentId()),
+	});
+	const bus = getRendererClientBus();
+	bus.snapshot(key);
+	bus.overlay(key, { initialData: personal, update: () => personal });
+	selectRendererWorkspace({ kind: "organization", organizationId: "org_a" });
+	mocks.read.mockReturnValue(
+		Effect.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
+	);
+	await expect(loadWorkspaceSettings()).rejects.toBeDefined();
+	expect(useSettingsStore.getState()).toMatchObject({
+		loaded: false,
+		phase: "error",
+		branchNamingPrefix: "",
+	});
+	selectRendererWorkspace({ kind: "personal" });
+	expect(useSettingsStore.getState()).toMatchObject({
+		loaded: true,
+		branchNamingPrefix: "personal-only",
+	});
 });
 
 it("keeps device appearance but excludes Personal agent settings and host paths in an organization", async () => {
