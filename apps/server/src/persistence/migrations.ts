@@ -183,16 +183,27 @@ export const MigrationsLive = Layer.effectDiscard(
 						migration_id: number;
 					}>`SELECT migration_id FROM effect_sql_migrations WHERE migration_id IN (58, 59) AND name = 'collaboration_foundation'`;
 					if (legacy.length === 0) return;
-					if (legacy[0]?.migration_id === 58) {
+					const masters =
+						yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id = 58 AND name = 'masters'`;
+					if (legacy[0]?.migration_id === 58 || masters.length > 0) {
+						// Some development builds used 58 for masters. Preserve those
+						// tables while applying main's missing question-receipt schema.
 						yield* Migration0058QuestionAnswerDeliveries;
 						yield* sql`UPDATE effect_sql_migrations SET name = 'question_answer_deliveries' WHERE migration_id = 58`;
+					}
+					if (legacy[0]?.migration_id === 58) {
 						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (59, 'event_sequence_index')`;
 					} else {
 						yield* sql`UPDATE effect_sql_migrations SET name = 'event_sequence_index' WHERE migration_id = 59`;
 					}
 					yield* Migration0059EventSequenceIndex;
-					yield* Migration0060ChatUserMessageTime;
-					yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (60, 'chat_user_message_time'), (61, 'collaboration_foundation')`;
+					const recency =
+						yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id = 60 AND name = 'chat_user_message_time'`;
+					if (recency.length === 0) {
+						yield* Migration0060ChatUserMessageTime;
+						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (60, 'chat_user_message_time')`;
+					}
+					yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (61, 'collaboration_foundation')`;
 				}),
 			);
 		}
