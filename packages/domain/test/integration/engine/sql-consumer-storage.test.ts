@@ -38,6 +38,68 @@ const insertEvent = (
 	});
 
 describe("SqlConsumerStorage", () => {
+	test.each([
+		"unknown-mode",
+		null,
+		123,
+	])("still rejects unsupported runtime mode %s", async (runtimeMode) => {
+		const failure = await run(
+			Effect.gen(function* () {
+				yield* createDomainTestSchema();
+				const sql = yield* SqlClient.SqlClient;
+				yield* insertEvent("bad-mode", "session-1", 1, {
+					_tag: "SessionRuntimeModeSet",
+					runtimeMode,
+					updatedAt: 1,
+				});
+				return yield* makeSqlConsumerStorage(sql)
+					.eventsAfter(0)
+					.pipe(Effect.flip);
+			}),
+		);
+		expect(failure).toMatchObject({
+			_tag: "DispatchPersistenceDecodeError",
+			recordId: "bad-mode",
+		});
+	});
+
+	test("replays legacy auto mode with approval required without rewriting history", async () => {
+		const result = await run(
+			Effect.gen(function* () {
+				yield* createDomainTestSchema();
+				const sql = yield* SqlClient.SqlClient;
+				yield* insertEvent("legacy-created", "session-1", 1, {
+					_tag: "SessionCreated",
+					sessionId: "session-1",
+					chatId: "chat-1",
+					projectId: "project-1",
+					createdAt: 1,
+					runtimeMode: "auto",
+				});
+				yield* insertEvent("legacy-mode", "session-1", 2, {
+					_tag: "SessionRuntimeModeSet",
+					runtimeMode: "auto",
+					updatedAt: 2,
+				});
+				return {
+					consumer: yield* makeSqlConsumerStorage(sql).eventsAfter(0),
+					dispatch: yield* makeSqlDispatchStorage(sql).events("session-1"),
+					stored:
+						yield* sql`SELECT json_extract(payload_json, '$.runtimeMode') AS mode FROM events ORDER BY sequence`,
+				};
+			}),
+		);
+		for (const events of [result.consumer, result.dispatch]) {
+			expect(events).toHaveLength(2);
+			expect(
+				events.map(({ event }) =>
+					"runtimeMode" in event ? event.runtimeMode : null,
+				),
+			).toEqual(["approval-required", "approval-required"]);
+		}
+		expect(result.stored).toEqual([{ mode: "auto" }, { mode: "auto" }]);
+	});
+
 	test("loads events after the durable cursor in global sequence order", async () => {
 		const result = await run(
 			Effect.gen(function* () {

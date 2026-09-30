@@ -1,4 +1,5 @@
-import { Schema } from "effect";
+import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "@zuse/contracts";
+import { Schema, SchemaTransformation } from "effect";
 
 import { SegmentKind, SettlementOutcome } from "./commands.js";
 import {
@@ -6,9 +7,25 @@ import {
 	SessionCreatedEventFields,
 } from "./session-fields.js";
 
+// Historical events used "auto". Match the session read model's safe default;
+// command validation still accepts only current runtime modes.
+const EventRuntimeMode = Schema.Union([
+	RuntimeMode,
+	Schema.Literal("auto"),
+]).pipe(
+	Schema.decodeTo(
+		RuntimeMode,
+		SchemaTransformation.transform({
+			decode: (mode) => (mode === "auto" ? DEFAULT_RUNTIME_MODE : mode),
+			encode: (mode) => mode,
+		}),
+	),
+);
+
 export const SessionEvent = Schema.Union([
 	Schema.TaggedStruct("SessionCreated", {
 		...SessionCreatedEventFields,
+		runtimeMode: Schema.optionalKey(EventRuntimeMode),
 		providerStartJson: Schema.optional(Schema.String),
 	}),
 	Schema.TaggedStruct("SessionTitleSet", {
@@ -26,7 +43,7 @@ export const SessionEvent = Schema.Union([
 		updatedAt: Schema.Number,
 	}),
 	Schema.TaggedStruct("SessionRuntimeModeSet", {
-		runtimeMode: SessionConfigurationFields.runtimeMode,
+		runtimeMode: EventRuntimeMode,
 		updatedAt: Schema.Number,
 	}),
 	Schema.TaggedStruct("SessionPermissionModeSet", {

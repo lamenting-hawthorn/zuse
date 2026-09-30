@@ -1,4 +1,4 @@
-import { type Organization, STAGING_API_URL } from "@zuse/contracts";
+import type { Organization } from "@zuse/contracts";
 import { createAtomStore } from "../state/atom-store.ts";
 import {
 	assertRendererAccountCurrent,
@@ -7,10 +7,7 @@ import {
 } from "./renderer-account.ts";
 
 export const organizationWorkspacesAvailable = (): boolean =>
-	import.meta.env.VITE_ORGANIZATION_WORKSPACES === "true" ||
-	(import.meta.env.VITE_ORGANIZATION_WORKSPACES === undefined &&
-		import.meta.env.DEV &&
-		import.meta.env.VITE_ZUSE_API_URL === STAGING_API_URL);
+	import.meta.env.VITE_ORGANIZATION_WORKSPACES !== "false";
 
 export const useOrganizationWorkspaces = createAtomStore<{
 	organizations: ReadonlyArray<Organization>;

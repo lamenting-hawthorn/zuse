@@ -11,8 +11,11 @@ afterEach(() => vi.unstubAllEnvs());
 
 it.each([
 	[true, "https://api-staging.zuse.sh", undefined, true],
-	[true, "https://api.zuse.sh", undefined, false],
-	[false, "https://api-staging.zuse.sh", undefined, false],
+	[true, "https://api.zuse.sh", undefined, true],
+	[false, "https://api-staging.zuse.sh", undefined, true],
+	[true, undefined, undefined, true],
+	[false, undefined, undefined, true],
+	[false, "https://api.zuse.sh", "false", false],
 	[true, "https://api-staging.zuse.sh", "false", false],
 	[false, "https://api-staging.zuse.sh", "true", true],
 ])("workspace switcher availability: dev=%s api=%s flag=%s", (dev, api, flag, expected) => {
