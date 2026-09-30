@@ -8,6 +8,7 @@ import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import type {
 	AgentEvent,
 	AgentSessionId,
+	AgentTurnId,
 	AttachmentRef,
 	FolderId,
 	StartSessionInput,
@@ -29,6 +30,10 @@ vi.mock("@cursor/sdk", async (importOriginal) => {
 });
 
 import { startCursorSession } from "../../../src/drivers/cursor.ts";
+import {
+	makeTurnScopedSessionHandle,
+	type TurnScopedProviderEventEnvelope,
+} from "../../../src/kernel/turn-protocol.ts";
 
 const AttachmentsTest = Layer.succeed(AttachmentService, {
 	upload: () => Effect.die("not used"),
@@ -114,10 +119,119 @@ const makeAgent = () => {
 	};
 };
 
+const collectTurnEvents = async () => {
+	const events: TurnScopedProviderEventEnvelope[] = [];
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const raw = yield* startCursorSession(
+				input,
+				"/tmp/workspace",
+				"managed-key",
+				sessionId,
+			);
+			const handle = yield* makeTurnScopedSessionHandle(raw);
+			const idle = deferred<void>();
+			const fiber = yield* Stream.runForEach(handle.events, (event) =>
+				Effect.sync(() => {
+					events.push(event);
+					if (event.event._tag === "Status" && event.event.status === "idle")
+						idle.resolve();
+				}),
+			).pipe(Effect.forkChild);
+			yield* handle.send("turn-1" as AgentTurnId, "yooo");
+			yield* Effect.promise(() => idle.promise);
+			yield* handle.close();
+			yield* Fiber.join(fiber);
+		}).pipe(Effect.provide(AttachmentsTest)),
+	);
+	return events;
+};
+
 describe("bundled provider SDK sessions", () => {
 	beforeEach(() => {
 		sdk.create.mockReset();
 		sdk.resume.mockReset();
+	});
+
+	it("preserves the captured Cursor plan rejection through the turn boundary", async () => {
+		const message =
+			"Model unavailable on Start Start includes Composer 2.5, Grok 4.7, Grok 4.6, and Grok 4.5 with fixed settings. Switch to an included model to continue.";
+		const fake = makeAgent();
+		fake.send.mockResolvedValue({
+			...makeRun([
+				{
+					type: "status",
+					agent_id: "agent-1",
+					run_id: "run-1",
+					status: "ERROR",
+					message,
+				},
+			]),
+			wait: async () => ({ id: "run-1", status: "error", error: { message } }),
+		});
+		sdk.create.mockResolvedValue(fake.agent);
+		const events = await collectTurnEvents();
+		expect(events.filter((event) => event.event._tag === "Error")).toEqual([
+			{
+				scope: "turn",
+				turnId: "turn-1",
+				event: expect.objectContaining({
+					_tag: "Error",
+					message,
+					providerId: "cursor",
+				}),
+			},
+		]);
+		expect(events.filter((event) => event.event._tag === "Completed")).toEqual([
+			{
+				scope: "turn",
+				turnId: "turn-1",
+				event: { _tag: "Completed", reason: "error" },
+			},
+		]);
+	});
+
+	it.each([
+		["FINISHED", "finished", "ended"],
+		["CANCELLED", "cancelled", "interrupted"],
+	] as const)("waits for the %s result and retains trailing usage", async (status, resultStatus, reason) => {
+		const fake = makeAgent();
+		fake.send.mockResolvedValue({
+			...makeRun([
+				{ type: "status", agent_id: "agent-1", run_id: "run-1", status },
+				{
+					type: "usage",
+					agent_id: "agent-1",
+					run_id: "run-1",
+					usage: {
+						inputTokens: 10,
+						outputTokens: 5,
+						cacheReadTokens: 0,
+						cacheWriteTokens: 0,
+						totalTokens: 15,
+					},
+				},
+			]),
+			wait: async () => ({ id: "run-1", status: resultStatus }),
+		});
+		sdk.create.mockResolvedValue(fake.agent);
+		const events = await collectTurnEvents();
+		expect(events.filter((event) => event.event._tag === "Completed")).toEqual([
+			{ scope: "turn", turnId: "turn-1", event: { _tag: "Completed", reason } },
+		]);
+		expect(events.filter((event) => event.event._tag === "UsageDelta")).toEqual(
+			[
+				{
+					scope: "turn",
+					turnId: "turn-1",
+					event: expect.objectContaining({
+						_tag: "UsageDelta",
+						inputTokens: 10,
+						outputTokens: 5,
+					}),
+				},
+			],
+		);
 	});
 
 	it("creates with the managed key and supports follow-up sends", async () => {
