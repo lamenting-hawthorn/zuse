@@ -1,4 +1,9 @@
 import { refreshCloudImages } from "../../lib/cloud-image-monitor.ts";
+import {
+	loadCloudAuth,
+	peekCloudAuth,
+} from "../../lib/cloud-workspace-session-cache.ts";
+import { subscribeControlPlaneSessionCache } from "../../lib/control-plane-client.ts";
 import "@zuse/i18n/english/settings";
 import {
 	type CloudAuthLoginOperation,
@@ -236,8 +241,10 @@ const authFailureMessage = (cause: unknown, fallback: string): string => {
 export function CloudWorkspaceAuth() {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
-	const [status, setStatus] = useState<CloudAuthStatus | null>(null);
-	const [loading, setLoading] = useState(true);
+	const [status, setStatus] = useState<CloudAuthStatus | null>(
+		() => peekCloudAuth() ?? null,
+	);
+	const [loading, setLoading] = useState(() => peekCloudAuth() === undefined);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [selectedProvider, setSelectedProvider] =
 		useState<CloudAuthProvider | null>(null);
@@ -250,11 +257,9 @@ export function CloudWorkspaceAuth() {
 	);
 	const [error, setError] = useState<string | null>(null);
 
-	const refresh = useCallback(async () => {
+	const refresh = useCallback(async (force = true) => {
 		try {
-			setStatus(
-				await runCloudControl((client) => client["cloud.auth.status"]()),
-			);
+			setStatus(await loadCloudAuth(force));
 			setError(null);
 		} catch (cause) {
 			setError(
@@ -269,10 +274,16 @@ export function CloudWorkspaceAuth() {
 	}, []);
 
 	useEffect(() => {
-		void refresh();
-		const onFocus = () => void refresh();
+		void refresh(false);
+		const unsubscribe = subscribeControlPlaneSessionCache((key) => {
+			if (key === "cloud-workspace:auth") void refresh(false);
+		});
+		const onFocus = () => void refresh(false);
 		window.addEventListener("focus", onFocus);
-		return () => window.removeEventListener("focus", onFocus);
+		return () => {
+			unsubscribe();
+			window.removeEventListener("focus", onFocus);
+		};
 	}, [refresh]);
 
 	useEffect(() => {
@@ -312,50 +323,36 @@ export function CloudWorkspaceAuth() {
 		[status, uiMessage],
 	);
 
-	const openProviderSetup = async (providerId: CloudAuthProvider) => {
-		setBusy(`open:${providerId}`);
+	const openProviderSetup = (providerId: CloudAuthProvider) => {
 		setError(null);
-		try {
-			if (status?.authorityState !== "ready") {
-				setStatus(
-					await runCloudControl((client) => client["cloud.auth.provision"]()),
-				);
-			}
-			setSelectedProvider(providerId);
-			setMethod(providerId === "cursor" ? "api-key" : "subscription");
-			setOperation(null);
-			setSecret("");
-			setBaseUrl("");
-			setModelProvider("");
-		} catch (cause) {
-			setError(
-				authFailureMessage(
-					cause,
-					"Agent setup could not be started. Your existing chats are unaffected.",
-				),
-			);
-		} finally {
-			setBusy(null);
-		}
+		setSelectedProvider(providerId);
+		setMethod(providerId === "cursor" ? "api-key" : "subscription");
+		setOperation(null);
+		setSecret("");
+		setBaseUrl("");
+		setModelProvider("");
 	};
 
 	const configure = async () => {
-		if (
-			selectedProvider === null ||
-			status?.encryptionKeyId === undefined ||
-			status.encryptionPublicJwk === undefined
-		)
-			return;
+		if (selectedProvider === null || busy !== null) return;
 		setBusy(`configure:${selectedProvider}`);
 		setError(null);
 		try {
-			const ciphertext = await sealSecret(status.encryptionPublicJwk, secret);
+			const ready = await runCloudControl((client) =>
+				client["cloud.auth.provision"](),
+			);
+			setStatus(ready);
+			const { encryptionKeyId, encryptionPublicJwk } = ready;
+			if (encryptionKeyId === undefined || encryptionPublicJwk === undefined) {
+				throw new Error("Cloud authentication is not ready");
+			}
+			const ciphertext = await sealSecret(encryptionPublicJwk, secret);
 			await runCloudControl((client) =>
 				client["cloud.auth.configure"]({
 					providerId: selectedProvider,
 					method,
 					sealedSecret: {
-						keyId: status.encryptionKeyId ?? "",
+						keyId: encryptionKeyId,
 						ciphertext,
 					},
 					...(method === "custom" && baseUrl.trim().length > 0
@@ -368,12 +365,14 @@ export function CloudWorkspaceAuth() {
 			);
 			setSecret("");
 			setSelectedProvider(null);
-			await refresh();
+			void refresh();
 			void refreshCloudImages().catch(() => undefined);
-		} catch {
-			await refresh();
+		} catch (cause) {
 			setError(
-				"The provider rejected the credential or its real status check failed. The secret was not returned to the app.",
+				authFailureMessage(
+					cause,
+					"Agent setup or credential verification failed. Please try again.",
+				),
 			);
 		} finally {
 			setBusy(null);
@@ -381,7 +380,11 @@ export function CloudWorkspaceAuth() {
 	};
 
 	const startLogin = async () => {
-		if (selectedProvider !== "codex" && selectedProvider !== "grok") return;
+		if (
+			busy !== null ||
+			(selectedProvider !== "codex" && selectedProvider !== "grok")
+		)
+			return;
 		setBusy(`login:${selectedProvider}`);
 		setError(null);
 		try {
@@ -565,8 +568,7 @@ export function CloudWorkspaceAuth() {
 										size="sm"
 										variant="settings"
 										className={COMPACT_AUTH_ACTION}
-										loading={busy === `open:${providerId}`}
-										disabled={loading || busy?.startsWith("open:") === true}
+										disabled={busy !== null}
 										onClick={() => void openProviderSetup(providerId)}
 									>
 										{isConnected
@@ -586,7 +588,7 @@ export function CloudWorkspaceAuth() {
 			<Dialog
 				open={selectedProvider !== null}
 				onOpenChange={(open) => {
-					if (!open) closeProviderSetup();
+					if (!open && busy === null) closeProviderSetup();
 				}}
 			>
 				<DialogPopup className="max-w-[420px]">
@@ -625,6 +627,11 @@ export function CloudWorkspaceAuth() {
 					</DialogHeader>
 					<form className="contents" onSubmit={submitProviderSetup}>
 						<DialogPanel className="space-y-3.5 pb-4 pt-1">
+							{displayedError === null ? null : (
+								<p role="alert" className="text-xs text-destructive">
+									{displayedError}
+								</p>
+							)}
 							{selectedProvider === "cursor" ? null : (
 								<div className="space-y-1.5">
 									<p className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
@@ -635,6 +642,7 @@ export function CloudWorkspaceAuth() {
 									<CloudAuthMethodTabs
 										value={method}
 										onValueChange={(authMethod) => {
+											if (busy !== null) return;
 											setMethod(authMethod);
 											setOperation(null);
 										}}
@@ -947,7 +955,9 @@ export function CloudWorkspaceAuth() {
 											className={COMPACT_AUTH_ACTION}
 											size="xs"
 											loading={busy?.startsWith("login:") === true}
-											disabled={operation?.state === "authorizing"}
+											disabled={
+												busy !== null || operation?.state === "authorizing"
+											}
 										>
 											{operation?.state === "connected"
 												? uiMessage("settings:cloud_workspace_auth_reauthorize")
@@ -970,7 +980,7 @@ export function CloudWorkspaceAuth() {
 											className={COMPACT_AUTH_ACTION}
 											size="xs"
 											loading={busy?.startsWith("configure:") === true}
-											disabled={!canConfigure}
+											disabled={busy !== null || !canConfigure}
 										>
 											{uiMessage(
 												"settings:cloud_workspace_auth_save_and_verify",

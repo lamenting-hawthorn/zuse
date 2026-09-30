@@ -1,4 +1,5 @@
-import { homedir } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { Effect } from "effect";
@@ -20,8 +21,7 @@ import {
 	selectNewestCliPathCandidate,
 } from "../../src/provider/availability.ts";
 
-const { parseGrokAuthJson, extractTier, decodeJwtPayload } =
-	grokAuthTestHelpers;
+const { parseGrokModelsAuth, probeGrokAccount } = grokAuthTestHelpers;
 const { parseClaudeCredentials } = claudeAuthTestHelpers;
 
 describe("supported provider CLIs", () => {
@@ -145,86 +145,89 @@ describe("resolveCodexCapabilities — version-gated feature floors", () => {
 	});
 });
 
-describe("grok auth probe — tier extraction & parseGrokAuthJson", () => {
-	it("decodeJwtPayload handles a real-ish JWT payload", () => {
-		// payload: {"tier":7,"email":"u@x.ai"}
-		const jwt =
-			"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0aWVyIjo3LCJlbWFpbCI6InVAeC5haSJ9.signature";
-		const claims = decodeJwtPayload(jwt);
-		expect(claims).toEqual({ tier: 7, email: "u@x.ai" });
-	});
-
-	it("extractTier finds top-level tier (number)", () => {
-		expect(extractTier({ tier: 7 })).toBe(7);
-		expect(extractTier({ xai_tier: "5" })).toBe(5);
-	});
-
-	it("extractTier finds nested tier", () => {
-		expect(extractTier({ subscription: { tier: 6 } })).toBe(6);
-		expect(extractTier({ xai: { plan: { tier: 4 } } })).toBe(4);
-	});
-
-	it("extractTier DFS-finds deep tier key", () => {
-		expect(extractTier({ a: { b: { weird_tier: "8" } } })).toBe(8);
-	});
-
-	it("parseGrokAuthJson accepts X Premium+ / SuperGrok tiers", () => {
-		const raw = JSON.stringify({
-			"user@x.ai": {
-				key: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0aWVyIjo0LCJlbWFpbCI6InVzZXJAeC5haSJ9.sig",
-				email: "user@x.ai",
-			},
+describe("Grok CLI authentication", () => {
+	it.each([
+		"You are logged in with grok.com.\nAvailable models:\n * grok-4.6 (default)",
+		"You are logged in with grok.com.\nSuperGrok Heavy",
+		"You are logged in with grok.com.\nSuperGrok Pro",
+	])("accepts the CLI login without inferring a subscription tier", (output) => {
+		expect(parseGrokModelsAuth(output)).toEqual({
+			authStatus: "authenticated",
+			authType: "cli",
+			authLabel: "Grok account",
 		});
-		const info = parseGrokAuthJson(raw);
-		expect(info.authStatus).toBe("authenticated");
-		expect(info.authLabel).toBe("Grok subscription");
-		expect(info.authEmail).toBe("user@x.ai");
 	});
-
-	it("parseGrokAuthJson returns Requires... only for confirmed below-entitlement tier", () => {
-		const raw = JSON.stringify({
-			"free@x.ai": {
-				key: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0aWVyIjozLCJlbWFpbCI6ImZyZWVAeC5haSJ9.sig",
-				email: "free@x.ai",
-			},
+	it.each([
+		"You are not logged in.",
+		"Not authenticated",
+	])("recognizes signed-out output", (output) => {
+		expect(parseGrokModelsAuth(output)).toEqual({
+			authStatus: "unauthenticated",
 		});
-		const info = parseGrokAuthJson(raw);
-		expect(info.authLabel).toBe("Requires SuperGrok or X Premium+");
 	});
-
-	it("parseGrokAuthJson is non-blocking (Grok label) when token present but no usable tier", () => {
-		const raw = JSON.stringify({
-			"paying@x.ai": {
-				// token decodes but has no tier key at all
-				key: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6InBheWluZ0B4LmFpIn0.sig",
-				email: "paying@x.ai",
-			},
-		});
-		const info = parseGrokAuthJson(raw);
-		expect(info.authLabel).toBe("Grok");
-		expect(info.authEmail).toBe("paying@x.ai");
+	it.each([
+		"",
+		"Available models:\n * grok-4.6",
+		"Unexpected CLI response",
+	])("keeps inconclusive output unknown", (output) => {
+		expect(parseGrokModelsAuth(output)).toEqual({ authStatus: "unknown" });
 	});
+});
 
-	it("parseGrokAuthJson accepts access_token / jwt / token field names", () => {
-		const raw = JSON.stringify({
-			"u@x.ai": {
-				access_token:
-					"eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0aWVyIjo1LCJlbWFpbCI6InVAeC5haSJ9.sig",
-				email: "u@x.ai",
-			},
-		});
-		expect(parseGrokAuthJson(raw).authLabel).toBe("Grok subscription");
+describe.skipIf(process.platform === "win32")("Grok CLI probe", () => {
+	it.each([
+		["console.log('You are logged in with grok.com.')", "authenticated"],
+		["console.error('You are logged in with grok.com.')", "authenticated"],
+		["console.log('You are not logged in.')", "unauthenticated"],
+		[
+			"console.log('You are logged in with grok.com.'); process.exitCode = 1",
+			"unknown",
+		],
+		["console.log('Unrecognized output')", "unknown"],
+	])("uses only a successful models command: %s", async (body, authStatus) => {
+		const directory = await mkdtemp(join(tmpdir(), "zuse-grok-probe-"));
+		try {
+			const cli = join(directory, "grok");
+			await writeFile(
+				cli,
+				`#!${process.execPath}\nif (process.argv[2] !== 'models') process.exit(2);\n${body}\n`,
+				{ mode: 0o755 },
+			);
+			const result = await Effect.runPromise(
+				probeGrokAccount(cli).pipe(Effect.provide(NodeServices.layer)),
+			);
+			expect(result.authStatus).toBe(authStatus);
+			expect(result.authLabel ?? "").not.toContain("Requires");
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
 	});
-
-	it("parseGrokAuthJson for unparseable file still returns authenticated (non-blocking)", () => {
-		const info = parseGrokAuthJson("{not json");
-		expect(info.authStatus).toBe("authenticated");
-		expect(info.authLabel).toBe("Grok");
-	});
-
-	it("parseGrokAuthJson for empty entry still authenticated", () => {
-		const info = parseGrokAuthJson(JSON.stringify({}));
-		expect(info.authLabel).toBe("Grok");
+	it("bounds a stalled CLI probe", async () => {
+		const directory = await mkdtemp(join(tmpdir(), "zuse-grok-timeout-"));
+		try {
+			const cli = join(directory, "grok");
+			await writeFile(
+				cli,
+				`#!${process.execPath}\nsetInterval(() => {}, 1000);\n`,
+				{ mode: 0o755 },
+			);
+			expect(
+				await Effect.runPromise(
+					probeGrokAccount(cli).pipe(Effect.provide(NodeServices.layer)),
+				),
+			).toEqual({ authStatus: "unknown" });
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	}, 7000);
+	it("keeps a missing executable inconclusive", async () => {
+		expect(
+			await Effect.runPromise(
+				probeGrokAccount("/nonexistent/zuse-grok").pipe(
+					Effect.provide(NodeServices.layer),
+				),
+			),
+		).toEqual({ authStatus: "unknown" });
 	});
 });
 

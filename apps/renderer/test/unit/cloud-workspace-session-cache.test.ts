@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-it("retains subscribed placement for the app session and refreshes only explicitly", async () => {
+it("keeps placement visible while refreshing stale display data in the background", async () => {
 	let slow = false;
 	let resolveImage!: (value: unknown) => void;
 	const pendingImage = new Promise((resolve) => {
@@ -50,12 +50,12 @@ it("retains subscribed placement for the app session and refreshes only explicit
 	const placement = await loadCloudWorkspacePlacement();
 	expect(placement.subscribed).toBe(true);
 	expect(placement.images).toEqual([image]);
-	// Settings and New Chat reuse data without any timed network refresh.
+	// Display data revalidates without blocking; entitlement decisions remain session-scoped.
 	expect(await loadCloudImage("box")).toEqual(image);
 	expect((await loadCloudEntitlements()).entitlements[0]?.status).toBe(
 		"active",
 	);
-	expect(imageStatus).toHaveBeenCalledTimes(1);
+	await vi.waitFor(() => expect(imageStatus).toHaveBeenCalledTimes(2));
 	expect(entitlements).toHaveBeenCalledTimes(1);
 	const refreshed = loadCloudImage("box", true);
 	expect(await loadCloudImage("box")).toEqual(image);

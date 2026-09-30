@@ -44,6 +44,67 @@ describe("usage limits store", () => {
 		expect(environmentIds).toEqual(["local"]);
 	});
 
+	it("forces a refresh even while cached readings are fresh", async () => {
+		rpc.mockReturnValue(Effect.succeed({ providers: [] }));
+		await useUsageLimitsStore.getState().load();
+		await useUsageLimitsStore.getState().refresh(true);
+		expect(rpc).toHaveBeenCalledTimes(2);
+		expect(rpc).toHaveBeenLastCalledWith({
+			forceRefresh: true,
+			providerId: undefined,
+		});
+	});
+
+	it("retains readings and their timestamp on failure and recovers on retry", async () => {
+		const provider = {
+			providerId: "codex" as const,
+			planLabel: "Plus",
+			windows: [],
+			creditsRemaining: 25,
+			fetchedAt: new Date().toISOString(),
+			source: "api" as const,
+		};
+		rpc.mockReturnValue(Effect.succeed({ providers: [provider] }));
+		await useUsageLimitsStore.getState().load();
+		const lastLoadedAt = useUsageLimitsStore.getState().lastLoadedAt;
+		rpc.mockImplementation(() => {
+			throw new Error("Offline");
+		});
+		await useUsageLimitsStore.getState().refresh(true);
+		expect(useUsageLimitsStore.getState()).toMatchObject({
+			providers: [provider],
+			lastLoadedAt,
+			error: "Offline",
+			loading: false,
+		});
+		rpc.mockReturnValue(Effect.succeed({ providers: [provider] }));
+		await useUsageLimitsStore.getState().refresh(true);
+		expect(useUsageLimitsStore.getState().error).toBeNull();
+	});
+
+	it("does not cache initial request failures as successful readings", async () => {
+		rpc.mockImplementation(() => {
+			throw new Error("Offline");
+		});
+		await useUsageLimitsStore.getState().load();
+		await useUsageLimitsStore.getState().load();
+		expect(rpc).toHaveBeenCalledTimes(2);
+		expect(useUsageLimitsStore.getState()).toMatchObject({
+			providers: [],
+			lastLoadedAt: null,
+			error: "Offline",
+			loading: false,
+		});
+	});
+
+	it("reloads readings after the cache expires", async () => {
+		rpc.mockReturnValue(Effect.succeed({ providers: [] }));
+		await useUsageLimitsStore.getState().load();
+		useUsageLimitsStore.setState({ lastLoadedAt: Date.now() - 60_001 });
+		await useUsageLimitsStore.getState().load();
+		expect(rpc).toHaveBeenCalledTimes(2);
+	});
+
 	it("loads persisted limit history for dashboard sparklines", async () => {
 		const point = {
 			providerId: "claude" as const,

@@ -3,10 +3,23 @@ import type {
 	CloudProject,
 	CloudProviderOption,
 } from "@zuse/contracts";
+import {
+	CloudAccountImage as CloudAccountImageSchema,
+	CloudAuthStatus,
+	CloudGithubStatus,
+	CloudProjectList,
+	CloudProviderList,
+} from "@zuse/contracts";
+import { Schema } from "effect";
 
-import { runCachedControlPlane } from "./control-plane-client.ts";
+import {
+	invalidateControlPlaneCache,
+	peekControlPlaneCache,
+	runCachedControlPlane,
+} from "./control-plane-client.ts";
 
 const cloudWorkspaceCacheKeys = {
+	auth: "cloud-workspace:auth",
 	providers: "cloud-workspace:providers",
 	projects: "cloud-workspace:projects",
 	entitlements: "cloud-workspace:entitlements",
@@ -18,18 +31,36 @@ const cloudWorkspaceCacheKeys = {
 		`cloud-workspace:image:${providerId ?? "default"}`,
 } as const;
 
+const decodeAuth = Schema.decodeUnknownSync(CloudAuthStatus);
+export const peekCloudAuth = () =>
+	peekControlPlaneCache(cloudWorkspaceCacheKeys.auth, decodeAuth);
+export const loadCloudAuth = (refresh = false) =>
+	runCachedControlPlane(
+		cloudWorkspaceCacheKeys.auth,
+		(client) => client["cloud.auth.status"](),
+		{ refresh, decode: decodeAuth },
+	);
+export const peekCloudGithub = () =>
+	peekControlPlaneCache(
+		cloudWorkspaceCacheKeys.github,
+		Schema.decodeUnknownSync(CloudGithubStatus),
+	);
+
 export const loadCloudProviders = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.providers,
 		(client) => client["cloud.providers"](),
-		{ refresh },
+		{ refresh, decode: Schema.decodeUnknownSync(CloudProviderList) },
 	);
+
+export const invalidateCloudProjects = () =>
+	invalidateControlPlaneCache(cloudWorkspaceCacheKeys.projects);
 
 export const loadCloudProjects = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.projects,
 		(client) => client["cloud.projects.list"](),
-		{ refresh },
+		{ refresh, decode: Schema.decodeUnknownSync(CloudProjectList) },
 	);
 
 export const loadCloudEntitlements = (refresh = false) =>
@@ -43,14 +74,14 @@ export const loadCloudImage = (providerId?: string, refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.image(providerId),
 		(client) => client["cloud.image.status"]({ providerId }),
-		{ refresh },
+		{ refresh, decode: Schema.decodeUnknownSync(CloudAccountImageSchema) },
 	);
 
 export const loadCloudGithub = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.github,
 		(client) => client["cloud.github.status"](),
-		{ refresh },
+		{ refresh, decode: Schema.decodeUnknownSync(CloudGithubStatus) },
 	);
 
 export const loadCloudWorkspaces = (refresh = false) =>
@@ -131,9 +162,11 @@ export const loadCloudWorkspacePlacement = async (
 
 /** Warm data shared by New Chat and Cloud Workspace settings. */
 export const prefetchCloudWorkspaceSession = async (): Promise<void> => {
+	const auth = loadCloudAuth().catch(() => undefined);
 	const placement = await loadCloudWorkspacePlacement();
 	const background: Array<Promise<unknown>> = [
 		loadCloudGithub(),
+		auth,
 		loadCloudWorkspaces(),
 	];
 	if (placement.subscribed) {

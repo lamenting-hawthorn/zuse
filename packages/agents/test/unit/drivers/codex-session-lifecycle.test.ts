@@ -23,12 +23,16 @@ import { Effect, Fiber, Layer, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderDriverEvent } from "../../../src/kernel/driver.ts";
 
+const readAttachmentPath = vi.fn(() =>
+	Effect.succeed<{ path: string; mimeType: string } | null>(null),
+);
+
 const AttachmentsTest = Layer.succeed(AttachmentService, {
 	upload: () => Effect.die("not used"),
 	saveText: () => Effect.die("not used"),
 	read: () => Effect.succeed(null),
 	readForSession: () => Effect.succeed(null),
-	readPath: () => Effect.succeed(null),
+	readPath: readAttachmentPath,
 });
 
 const input = (
@@ -52,6 +56,8 @@ const installAppServer = (
 	initialMissingMcpInventories = 0,
 	terminateOnMcpInventory = false,
 ) => {
+	const requests: Array<{ method: string; params: unknown }> = [];
+	const turnInputs: unknown[] = [];
 	let mcpInventoryReads = 0;
 	let startupTerminated = false;
 	let terminate: ((error: Error) => void) | undefined;
@@ -64,6 +70,7 @@ const installAppServer = (
 			appServerExit = options.onUnexpectedTermination ?? null;
 			return {
 				request: vi.fn(async (method: string, params?: unknown) => {
+					requests.push({ method, params });
 					const record = (params ?? {}) as Record<string, unknown>;
 					switch (method) {
 						case "config/mcpServer/reload":
@@ -130,6 +137,7 @@ const installAppServer = (
 							} as never);
 							return { thread: { id: "forked-thread" } };
 						case "turn/start":
+							turnInputs.push(record.input);
 							options.onNotification({
 								method: "turn/started",
 								params: {
@@ -147,6 +155,8 @@ const installAppServer = (
 		},
 	);
 	return {
+		requests,
+		turnInputs,
 		notify: (notification: ServerNotification) => {
 			if (notify === undefined) throw new Error("App server is not running");
 			notify(notification);
@@ -160,7 +170,9 @@ const installAppServer = (
 
 const withSession = async <A>(
 	options: {
+		readonly runtimeMode?: import("@zuse/contracts").RuntimeMode;
 		readonly resumeCursor?: string | null;
+		readonly apiKey?: string;
 		readonly forkFromResume?: boolean;
 		readonly missingResume?: boolean;
 		readonly initialMissingMcpInventories?: number;
@@ -183,11 +195,11 @@ const withSession = async <A>(
 			startCodexSession(
 				input({ forkFromResume: options.forkFromResume }),
 				cwd,
-				null,
+				options.apiKey ?? null,
 				"fake-codex",
 				"session-1" as AgentSessionId,
 				async () => ({ _tag: "AllowOnce" }),
-				() => "full-access",
+				() => options.runtimeMode ?? "full-access",
 				async () => ({ id: "browser-test", ok: true }),
 				"bun",
 				null,
@@ -266,10 +278,45 @@ const requestNativeQuestion = (
 afterEach(() => {
 	appServerRequest = null;
 	appServerExit = null;
+	readAttachmentPath.mockReset();
+	readAttachmentPath.mockImplementation(() => Effect.succeed(null));
 	vi.restoreAllMocks();
 });
 
 describe("Codex session cursor persistence", () => {
+	it("sends automatic review on fresh, resumed, and subsequent turns", async () => {
+		for (const resumeCursor of [null, "existing-thread"]) {
+			await withSession(
+				{ runtimeMode: "auto", resumeCursor },
+				async (handle, appServer) => {
+					const method =
+						resumeCursor === null ? "thread/start" : "thread/resume";
+					expect(appServer.requests).toContainEqual({
+						method,
+						params: expect.objectContaining({
+							approvalPolicy: "on-request",
+							approvalsReviewer: "auto_review",
+							sandbox: "workspace-write",
+						}),
+					});
+					await Effect.runPromise(handle.send("Review the project"));
+					await expect
+						.poll(() => appServer.requests)
+						.toContainEqual({
+							method: "turn/start",
+							params: expect.objectContaining({
+								approvalPolicy: "on-request",
+								approvalsReviewer: "auto_review",
+								sandboxPolicy: expect.objectContaining({
+									type: "workspaceWrite",
+								}),
+							}),
+						});
+				},
+			);
+		}
+	});
+
 	it("ends an idle stream once without inventing a turn failure", async () => {
 		const onUnexpectedTermination = vi.fn();
 		await withSession(
@@ -665,6 +712,83 @@ describe("Codex session cursor persistence", () => {
 					text: "Started a fresh Codex thread.",
 				},
 			]);
+		});
+	});
+});
+
+describe("Codex API-key delivery", () => {
+	it("passes the supplied key to the app server before starting a thread", async () => {
+		await withSession({ apiKey: "test-api-key" }, async () => {
+			expect(
+				Reflect.get(
+					vi.mocked(CodexAppServerClient.start).mock.calls[0]?.[0] ?? {},
+					"apiKey",
+				),
+			).toBe("test-api-key");
+		});
+	});
+});
+
+describe("Codex file attachments", () => {
+	it.each([
+		"image/png",
+		"image/jpg",
+	])("keeps %s attachments as native images", async (mimeType) => {
+		const path = "/workspace/.context/attachments/image";
+		readAttachmentPath.mockImplementation(() =>
+			Effect.succeed({ path, mimeType }),
+		);
+		await withSession({}, async (handle, appServer) => {
+			await Effect.runPromise(
+				handle.send("inspect", [
+					{ id: "image", originalName: "image", mimeType },
+				]),
+			);
+			await expect.poll(() => appServer.turnInputs.length).toBe(1);
+			expect(appServer.turnInputs[0]).toContainEqual({
+				type: "localImage",
+				path,
+			});
+		});
+	});
+
+	it.each([
+		"missing-report",
+		"pending-report",
+	])("reports %s instead of sending an incomplete turn", async (id) => {
+		await withSession({}, async (handle, appServer) => {
+			await Effect.runPromise(
+				handle.send("inspect", [
+					{ id, originalName: "report.md", mimeType: "text/markdown" },
+				]),
+			);
+			const events = await takeEvents(handle.events, 3);
+			expect(events).toContainEqual({
+				_tag: "Error",
+				message: expect.stringContaining("report.md"),
+			});
+			expect(appServer.turnInputs).toEqual([]);
+		});
+	});
+
+	it("includes an uploaded Markdown report in the agent turn", async () => {
+		const path =
+			"/workspace/.context/attachments/report/zuse-security-report.md";
+		readAttachmentPath.mockImplementation(() =>
+			Effect.succeed({ path, mimeType: "text/markdown" }),
+		);
+		await withSession({}, async (handle, appServer) => {
+			await Effect.runPromise(
+				handle.send("fix these issues", [
+					{
+						id: "report",
+						originalName: "zuse-security-report.md",
+						mimeType: "text/markdown",
+					},
+				]),
+			);
+			await expect.poll(() => appServer.turnInputs.length).toBe(1);
+			expect(JSON.stringify(appServer.turnInputs[0])).toContain(path);
 		});
 	});
 });

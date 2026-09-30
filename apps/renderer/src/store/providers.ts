@@ -1,5 +1,6 @@
 import type {
 	AgentAvailability,
+	CloudAuthStatus,
 	CredentialSetResult,
 	ProviderId,
 } from "@zuse/contracts";
@@ -7,7 +8,11 @@ import { CommandId, EnvironmentId } from "@zuse/contracts";
 import { toastManager } from "../components/ui/toast.tsx";
 import { applyCloudProviderAuthentication } from "../lib/cloud-provider-availability.ts";
 import { cloudSummaryForEnvironment } from "../lib/cloud-workspace-catalog.ts";
-import { runControlPlane } from "../lib/control-plane-client.ts";
+import {
+	loadCloudAuth,
+	peekCloudAuth,
+} from "../lib/cloud-workspace-session-cache.ts";
+import { subscribeControlPlaneSessionCache } from "../lib/control-plane-client.ts";
 import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client-bus.ts";
 import { formatError } from "../lib/format-error.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
@@ -131,12 +136,41 @@ type ProvidersState = {
 	readonly removeCredential: (providerId: ProviderId) => Promise<void>;
 };
 
+const hostedAvailability = (
+	auth: CloudAuthStatus,
+): ReadonlyArray<AgentAvailability> =>
+	auth.providers
+		.filter((p) => p.providerId === "claude" || p.providerId === "codex")
+		.map((p) => ({
+			providerId: p.providerId,
+			displayName: p.providerId === "claude" ? "Claude" : "Codex",
+			runtimeAvailable: p.state === "connected",
+			cliInstalled: false,
+			cliLoggedIn: false,
+			hasApiKey: false,
+			authStatus:
+				p.state === "connected"
+					? ("authenticated" as const)
+					: ("unauthenticated" as const),
+			status:
+				p.state === "connected" ? ("ready" as const) : ("warning" as const),
+		}));
+const cachedAuth = isHostedProduct() ? peekCloudAuth() : undefined;
+const initialAvailability: ProviderAvailabilitySnapshot =
+	cachedAuth === undefined
+		? EMPTY_AVAILABILITY_SNAPSHOT
+		: {
+				availability: hostedAvailability(cachedAuth),
+				availabilityLoaded: true,
+				loading: false,
+				error: null,
+			};
+
 export const useProvidersStore = create<ProvidersState>((set, get) => ({
-	availability: [],
-	loading: false,
-	availabilityLoaded: false,
-	error: null,
-	availabilityByEnvironment: {},
+	...initialAvailability,
+	availabilityByEnvironment: Object.fromEntries(
+		cachedAuth === undefined ? [] : [["local", initialAvailability]],
+	),
 	updateStateByProvider: {},
 	load: async () => {
 		await get().loadFor(activeEnvironmentId());
@@ -195,45 +229,20 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
 				cloudSummary?.codexAuthMode === "broker-v1";
 			const rawRequest =
 				isHostedProduct() && environmentId === "local"
-					? runControlPlane((client) => client["cloud.auth.status"]()).then(
-							(auth) =>
-								auth.providers
-									.filter(
-										(p) =>
-											p.providerId === "claude" || p.providerId === "codex",
-									)
-									.map((p) => ({
-										providerId: p.providerId,
-										displayName: p.providerId === "claude" ? "Claude" : "Codex",
-										runtimeAvailable: p.state === "connected",
-										cliInstalled: false,
-										cliLoggedIn: false,
-										hasApiKey: false,
-										authStatus:
-											p.state === "connected"
-												? ("authenticated" as const)
-												: ("unauthenticated" as const),
-										status:
-											p.state === "connected"
-												? ("ready" as const)
-												: ("warning" as const),
-									})),
-						)
+					? loadCloudAuth(force).then((auth) => hostedAvailability(auth))
 					: providerCommand<
 							{ readonly refresh: boolean },
 							ReadonlyArray<AgentAvailability>
 						>(environmentId, "provider.availability", { refresh: force });
 			const list = brokered
-				? await Promise.all([
-						rawRequest,
-						runControlPlane((client) => client["cloud.auth.status"]()),
-					]).then(([availability, auth]) =>
-						applyCloudProviderAuthentication({
-							availability,
-							auth,
-							codexAuthMode: cloudSummary?.codexAuthMode,
-							providerAuthMode: cloudSummary?.providerAuthMode,
-						}),
+				? await Promise.all([rawRequest, loadCloudAuth(force)]).then(
+						([availability, auth]) =>
+							applyCloudProviderAuthentication({
+								availability,
+								auth,
+								codexAuthMode: cloudSummary?.codexAuthMode,
+								providerAuthMode: cloudSummary?.providerAuthMode,
+							}),
 					)
 				: await rawRequest;
 			const publishActive = environmentId === activeEnvironmentId();
@@ -324,3 +333,24 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
 		}
 	},
 }));
+
+// Settings and the web picker share one account status; a background update
+// immediately changes model visibility without another blocking probe.
+subscribeControlPlaneSessionCache((key) => {
+	if (key !== "cloud-workspace:auth" || !isHostedProduct()) return;
+	const auth = peekCloudAuth();
+	if (auth === undefined) return;
+	const snapshot = {
+		availability: hostedAvailability(auth),
+		availabilityLoaded: true,
+		loading: false,
+		error: null,
+	};
+	useProvidersStore.setState((state) => ({
+		...(activeEnvironmentId() === "local" ? snapshot : {}),
+		availabilityByEnvironment: {
+			...state.availabilityByEnvironment,
+			local: snapshot,
+		},
+	}));
+});

@@ -958,7 +958,7 @@
 	"cloud_setup_later": "Finish later",
 	"cloud_setup_finish": "Start using Cloud",
 	"cloud_images_all_description": "Rebuild images for every cloud provider in one step. Existing chats keep their current environment.",
-	"cloud_images_start_failed": "Could not start builds for {{providers}}. Other builds continue. Retry after they finish.",
+	"cloud_images_start_failed": "Could not start the build for {{providers}}. Try again.",
 	"cloud_images_state_checking": "Checking",
 	"cloud_images_state_building": "Building",
 	"cloud_images_state_auth-broken": "Reconnect agent",
@@ -969,7 +969,7 @@
 	"cloud_setup_open_guide": "Open setup guide",
 	"cloud_setup_guide_description": "Connect GitHub, sign in to your agents, and build your cloud images.",
 	"cloud_images_details_description": "Build progress, logs, configuration, and previous builds.",
-	"cloud_images_no_builds": "No builds yet. Use Rebuild image to build images for all providers.",
+	"cloud_images_no_builds": "No builds yet. Select this provider and build its image to get started.",
 	"organizations_organizations": "Organizations",
 	"organizations_manage_team": "Manage your team and invitations.",
 	"organizations_sign_in_to_manage_your_team": "Sign in to manage your team",
@@ -1067,5 +1067,10 @@
 	"self_hosted_authorize_this_server_with_code": "Authorize this server with code",
 	"self_hosted_copy_code": "Copy code",
 	"self_hosted_open_authorization": "Open authorization",
-	"self_hosted_setup_stopped": "Setup stopped:"
+	"self_hosted_setup_stopped": "Setup stopped:",
+	"cloud_images_selected_description": "Build an image for the selected provider. Existing chats keep their current environment.",
+	"cloud_images_recommended": "Recommended",
+	"cloud_images_view_logs": "{{provider}} build logs",
+	"settings_page_provider_update_notifications": "供應商更新通知",
+	"settings_page_provider_update_notifications_description": "當代理供應商有新版本可用時顯示通知。預設關閉。"
 }

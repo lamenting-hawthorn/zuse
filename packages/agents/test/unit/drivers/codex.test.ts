@@ -4,6 +4,7 @@ import {
 	buildCodexTurnMode,
 	CodexTextCheckpointAccumulator,
 	codexApprovalPolicy,
+	codexApprovalsReviewer,
 	codexDetachedAgentFromRawSpawn,
 	codexDetachedAgentFromSubAgentActivity,
 	codexDetachedAgentToolUse,
@@ -738,6 +739,8 @@ describe("codexReasoningEffort", () => {
 		);
 		expect(codexReasoningEffort(descriptor("gpt-5.4"), "xhigh")).toBeNull();
 		expect(codexReasoningEffort(descriptor("gpt-6-astra"), "max")).toBe("max");
+		expect(codexReasoningEffort(descriptor("gpt-6.1-sol"), "max")).toBe("max");
+		expect(codexReasoningEffort(descriptor("gpt-6.1-sol"), "ultra")).toBeNull();
 		expect(codexReasoningEffort(liveDescriptor(["low", "high"]), "xhigh")).toBe(
 			null,
 		);
@@ -863,5 +866,33 @@ describe("Codex reconnect notifications", () => {
 				"thread-1",
 			),
 		).toEqual([]);
+	});
+});
+
+describe("Codex native automatic review", () => {
+	it("uses the risk reviewer inside a workspace sandbox", () => {
+		expect(codexApprovalPolicy("auto", "default")).toBe("on-request");
+		expect(codexApprovalsReviewer("auto", "default")).toBe("auto_review");
+		expect(codexSandboxPolicy("auto", "default", "/tmp")).toMatchObject({
+			type: "workspaceWrite",
+		});
+	});
+	it("keeps locked access interactive and full access unrestricted", () => {
+		expect(codexApprovalsReviewer("approval-required", "default")).toBe("user");
+		expect(codexApprovalPolicy("approval-required", "default")).toBe(
+			"untrusted",
+		);
+		expect(codexApprovalPolicy("full-access", "default")).toBe("never");
+		expect(codexSandboxPolicy("full-access", "default", "/tmp")).toEqual({
+			type: "dangerFullAccess",
+		});
+	});
+	it("does not let automatic review escape plan mode", () => {
+		expect(codexApprovalPolicy("auto", "plan")).toBe("never");
+		expect(codexApprovalsReviewer("auto", "plan")).toBe("user");
+		expect(codexSandboxPolicy("auto", "plan", "/tmp")).toEqual({
+			type: "readOnly",
+			networkAccess: false,
+		});
 	});
 });

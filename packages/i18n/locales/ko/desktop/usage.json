@@ -72,5 +72,16 @@
 	"usage_dashboard_no_usage_has_been_recorded_yet": "아직 기록된 사용량이 없습니다.",
 	"usage_dashboard_usage_limits": "사용량 한도",
 	"usage_dashboard_view_all": "{{value1}} 모두 보기",
-	"usage_dashboard_page_summary": "{{range}} / {{total}}"
+	"usage_dashboard_page_summary": "{{range}} / {{total}}",
+	"usage_limits_menu_credits": "{{value}} 크레딧 남음",
+	"usage_limits_menu_stale": "새로고침에 실패했습니다. 이전 데이터를 표시하며, 최신 정보가 아닐 수 있습니다.",
+	"usage_limits_menu_failed": "사용 한도를 불러올 수 없습니다. 다시 새로고침해 주세요.",
+	"usage_limits_unavailable_account": "이 계정에서는 사용할 수 없습니다",
+	"usage_limits_unavailable_scope": "이 범위의 사용 한도를 확인할 수 없습니다",
+	"usage_limits_sign_in_kiro": "한도를 보려면 kiro-cli login으로 로그인하세요",
+	"usage_limits_sign_in": "한도를 보려면 {{provider}}에 로그인하세요",
+	"usage_limits_expired_kiro": "세션이 만료되었습니다: kiro-cli login을 실행하세요",
+	"usage_limits_expired": "{{provider}} 세션이 만료되었습니다: 다시 로그인하세요",
+	"usage_limits_load_failed": "한도를 불러올 수 없습니다: 다시 시도하세요",
+	"usage_limits_no_data": "사용량 데이터가 없습니다"
 }

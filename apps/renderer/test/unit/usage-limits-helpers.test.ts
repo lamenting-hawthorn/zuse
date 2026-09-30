@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { resetsInLabel } from "../../src/components/usage/usage-meter.tsx";
-import { usageLimitsUnavailableLabel } from "../../src/lib/usage-limits-display.ts";
+import {
+	creditUsage,
+	formatCredits,
+	percentLeft,
+	usageLimitsUnavailableLabel,
+} from "../../src/lib/usage-limits-display.ts";
 import { usagePace } from "../../src/lib/usage-pace.ts";
 
 describe("usage limit display helpers", () => {
@@ -56,5 +61,36 @@ describe("usage limit display helpers", () => {
 		expect(usageLimitsUnavailableLabel("claude", undefined)).toBe(
 			"No usage data available",
 		);
+	});
+});
+
+describe("quota values", () => {
+	it.each([
+		[0, 100],
+		[100, 0],
+		[-10, 100],
+		[120, 0],
+		[NaN, null],
+		[Infinity, null],
+		[null, null],
+		[undefined, null],
+	])("bounds remaining percentage for %s", (used, remaining) => {
+		expect(percentLeft(used)).toBe(remaining);
+	});
+	it("does not invent totals for exhausted or unknown credit windows", () => {
+		expect(creditUsage(0, 100)).toBeNull();
+		expect(creditUsage(50, null)).toBeNull();
+		expect(creditUsage(50, 50)).toEqual({
+			used: 50,
+			remaining: 50,
+			limit: 100,
+		});
+		expect(formatCredits(0)).toBe("0");
+		expect(formatCredits(1500)).toBe("1.5k");
+		expect(formatCredits(Infinity)).toBe("—");
+	});
+	it("handles missing and invalid resets", () => {
+		expect(resetsInLabel(null)).toBeNull();
+		expect(resetsInLabel("invalid")).toBeNull();
 	});
 });

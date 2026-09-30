@@ -1,6 +1,7 @@
 import type { WorkspaceScope } from "@zuse/contracts";
 import { Effect } from "effect";
 import type { getCloudControlClient } from "./cloud-control-client.ts";
+import { hostedAccountId, isHostedProduct } from "./hosted-connect.ts";
 import {
 	assertRendererAccountCurrent,
 	rendererAccountSnapshot,
@@ -55,13 +56,82 @@ export const controlPlaneClient = (): Promise<MemoizeClient> =>
 
 type SessionCacheEntry = {
 	value?: Promise<unknown>;
+	snapshot?: unknown;
+	checkedAt?: number;
 	pending?: Promise<unknown>;
-	expiresAt: number;
+	expiresAt?: number;
 };
 
-const sessionCaches = new Map<string, Map<string, SessionCacheEntry>>();
+const sessionCache = new Map<string, SessionCacheEntry>();
+subscribeRendererAccount(() => sessionCache.clear());
 const cacheListeners = new Set<(key: string) => void>();
-subscribeRendererAccount(() => sessionCaches.clear());
+
+// Persist only explicitly opted-in, schema-validated display data.
+export type ControlPlaneCacheOptions<Result> = {
+	readonly refresh?: boolean;
+	readonly maxAgeMs?: number;
+	readonly decode?: (value: unknown) => Result;
+};
+let accountId: string | null = null;
+export const setControlPlaneCacheAccount = (id: string | null): void => {
+	accountId = id;
+};
+const cacheScope = () => {
+	const subject = rendererAccountSnapshot().subject;
+	return subject === undefined
+		? isHostedProduct()
+			? hostedAccountId()
+			: accountId
+		: subject;
+};
+const storageKey = (key: string) => {
+	const workspace = rendererWorkspaceSnapshot();
+	const scopedKey =
+		workspace.scope.kind === "personal"
+			? key
+			: `${encodeURIComponent(workspace.key)}:${key}`;
+	const scope = cacheScope();
+	return scope === null
+		? null
+		: `zuse.control-plane.v1:${encodeURIComponent(scope)}:${scopedKey}`;
+};
+const entryKey = (key: string) =>
+	JSON.stringify([
+		cacheScope(),
+		rendererAccountSnapshot().epoch,
+		rendererWorkspaceSnapshot().key,
+		key,
+	]);
+const readEntry = <Result>(
+	key: string,
+	options?: ControlPlaneCacheOptions<Result>,
+): SessionCacheEntry | undefined => {
+	const memoryKey = entryKey(key);
+	const existing = sessionCache.get(memoryKey);
+	if (existing || !options?.decode) return existing;
+	const storedKey = storageKey(key);
+	if (storedKey === null) return undefined;
+	try {
+		const raw = window.localStorage.getItem(storedKey);
+		if (raw === null) return undefined;
+		const stored = JSON.parse(raw);
+		const snapshot = options.decode(stored.value);
+		const entry = {
+			snapshot,
+			value: Promise.resolve(snapshot),
+			checkedAt: undefined,
+		};
+		sessionCache.set(memoryKey, entry);
+		return entry;
+	} catch {
+		return undefined;
+	}
+};
+export const peekControlPlaneCache = <Result>(
+	key: string,
+	decode: (value: unknown) => Result,
+): Result | undefined =>
+	readEntry(key, { decode })?.snapshot as Result | undefined;
 
 export const subscribeControlPlaneSessionCache = (
 	listener: (key: string) => void,
@@ -73,77 +143,122 @@ export const subscribeControlPlaneSessionCache = (
 };
 
 /** Successful reads stay cached for the renderer session until explicitly refreshed
- * or cleared on account changes. Reads during a refresh retain the last value.
+ * or cleared on account changes. Opted-in display snapshots persist across reloads
+ * and revalidate in the background, at most once every five minutes per session.
+ * Restored snapshots revalidate on their first read. Failed refreshes retain data.
  */
 export const runCachedControlPlane = <Result>(
 	key: string,
 	effect: (
 		client: Awaited<ReturnType<typeof getCloudControlClient>>,
 	) => Effect.Effect<Result, unknown>,
-	options?: { readonly refresh?: boolean; readonly maxAgeMs?: number },
+	options?: ControlPlaneCacheOptions<Result>,
 ): Promise<Result> => {
 	const account = rendererAccountSnapshot();
 	const workspace = rendererWorkspaceSnapshot();
-	const partition = JSON.stringify([
-		account.subject,
-		account.epoch,
-		workspace.key,
-	]);
-	let sessionCache = sessionCaches.get(partition);
-	if (sessionCache === undefined) {
-		sessionCache = new Map();
-		sessionCaches.set(partition, sessionCache);
-	}
-	const cache = sessionCache;
-	const previous = cache.get(key);
-	const entry: SessionCacheEntry = options?.refresh
-		? { value: previous?.value, expiresAt: previous?.expiresAt ?? 0 }
-		: (previous ?? { expiresAt: 0 });
-	const current = (value: unknown): Result => {
+	const current = (value: Result): Result => {
 		assertRendererAccountCurrent(account);
 		assertRendererWorkspaceCurrent(workspace);
-		return value as Result;
+		if (entryKey(key) !== memoryKey)
+			throw new Error(
+				"The connection account changed. Reconnect this environment.",
+			);
+		return value;
 	};
-	if (!options?.refresh && entry.value && entry.expiresAt > Date.now()) {
-		return entry.value.then(current);
-	}
+	const memoryKey = entryKey(key);
+	const persistedKey = options?.decode ? storageKey(key) : null;
+	const previous = readEntry(key, options);
+	// A refresh after a mutation must not join a read started before that write.
+	const entry: SessionCacheEntry = options?.refresh
+		? {
+				value: previous?.value,
+				snapshot: previous?.snapshot,
+				checkedAt: previous?.checkedAt,
+				expiresAt: previous?.expiresAt,
+			}
+		: (previous ?? {});
+	const cached = entry.value as Promise<Result> | undefined;
+	const stale =
+		options?.decode &&
+		(entry.checkedAt === undefined ||
+			Date.now() - entry.checkedAt >= 5 * 60_000);
+	const expired =
+		options?.maxAgeMs !== undefined && (entry.expiresAt ?? 0) <= Date.now();
+	if (!options?.refresh && cached && !stale && !expired)
+		return cached.then(current);
 	if (!entry.pending) {
-		cache.set(key, entry);
-		entry.pending = runCloudControl(effect).then(
+		sessionCache.set(memoryKey, entry);
+		const request = runCloudControl(effect).then(
 			(value) => {
 				current(value);
 				if (
-					sessionCaches.get(partition) === cache &&
-					cache.get(key) === entry
+					sessionCache.get(memoryKey) === entry &&
+					entryKey(key) === memoryKey
 				) {
-					entry.value = Promise.resolve(value);
-					entry.pending = undefined;
+					const changed =
+						!options?.decode ||
+						JSON.stringify(entry.snapshot) !== JSON.stringify(value);
+					if (changed) entry.snapshot = value;
+					entry.checkedAt = Date.now();
 					entry.expiresAt =
 						Date.now() + (options?.maxAgeMs ?? Number.POSITIVE_INFINITY);
-					for (const listener of cacheListeners) listener(key);
+					entry.value = Promise.resolve(entry.snapshot);
+					if (persistedKey !== null) {
+						try {
+							window.localStorage.setItem(
+								persistedKey,
+								JSON.stringify({ value: entry.snapshot }),
+							);
+						} catch {
+							/* Best-effort cache. */
+						}
+					}
+					entry.pending = undefined;
+					if (changed) for (const listener of cacheListeners) listener(key);
 				}
 				return value;
 			},
 			(cause) => {
-				if (cache.get(key) === entry) {
+				if (
+					sessionCache.get(memoryKey) === entry &&
+					entryKey(key) === memoryKey
+				) {
 					entry.pending = undefined;
-					if (!entry.value) cache.delete(key);
+					entry.checkedAt = Date.now();
+					if (!entry.value) sessionCache.delete(memoryKey);
 				}
 				throw cause;
 			},
 		);
+		entry.pending = request;
+	}
+	if (!options?.refresh && cached && !expired) {
+		void entry.pending.catch(() => undefined);
+		return cached.then(current);
 	}
 	return entry.pending as Promise<Result>;
 };
 
+/** Discard a display snapshot after a write, including its persisted copy. */
+export const invalidateControlPlaneCache = (key: string): void => {
+	sessionCache.delete(entryKey(key));
+	const persistedKey = storageKey(key);
+	if (persistedKey !== null) {
+		try {
+			window.localStorage.removeItem(persistedKey);
+		} catch {
+			/* Best-effort cache. */
+		}
+	}
+};
+
 export const clearControlPlaneSessionCache = (prefix?: string): void => {
 	if (prefix === undefined) {
-		sessionCaches.clear();
+		sessionCache.clear();
 		return;
 	}
-	for (const cache of sessionCaches.values()) {
-		for (const key of cache.keys()) {
-			if (key.startsWith(prefix)) cache.delete(key);
-		}
+	for (const key of sessionCache.keys()) {
+		if ((JSON.parse(key) as unknown[]).at(-1)?.toString().startsWith(prefix))
+			sessionCache.delete(key);
 	}
 };

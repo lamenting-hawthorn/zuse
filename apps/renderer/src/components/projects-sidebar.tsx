@@ -158,7 +158,6 @@ import { useRegisterPane } from "../store/pane-focus.ts";
 import { subscribeSessionTerminals } from "../store/session-runtime.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useUiStore } from "../store/ui.ts";
-import { useUsageStore } from "../store/usage.ts";
 import { useWorkspaceStore } from "../store/workspace.ts";
 import { EMPTY_WORKTREES, useWorktreesStore } from "../store/worktrees.ts";
 import { openAddComputerDialog } from "./add-computer-dialog.tsx";
@@ -179,6 +178,11 @@ const RenameDialog = lazy(() =>
 const ComputerSwitcher = lazy(() =>
 	import("./computer-switcher.tsx").then((module) => ({
 		default: module.ComputerSwitcher,
+	})),
+);
+const UsageLimitsMenu = lazy(() =>
+	import("./usage/usage-limits-submenu.tsx").then((module) => ({
+		default: module.UsageLimitsMenu,
 	})),
 );
 
@@ -1224,8 +1228,6 @@ function SidebarFooter() {
 	const { message: uiMessage } = useUiMessages(["common", "projects"]);
 
 	const setView = useUiStore((state) => state.setView);
-	const openUsage = useUiStore((state) => state.openUsage);
-	const prefetchUsage = useUsageStore((state) => state.prefetch);
 
 	return (
 		<div className="flex h-9 items-center justify-between px-2">
@@ -1233,13 +1235,9 @@ function SidebarFooter() {
 			<div className="flex items-center gap-0.5">
 				{!isHostedProduct() && <SidebarAgentCount />}
 				{!isHostedProduct() && (
-					<SidebarFooterIcon
-						icon={Analytics01Icon}
-						label={uiMessage("projects:projects_sidebar_usage")}
-						onPointerEnter={() => void prefetchUsage(null)}
-						onFocus={() => void prefetchUsage(null)}
-						onClick={() => openUsage("global")}
-					/>
+					<Suspense fallback={<span className="size-7" />}>
+						<UsageLimitsMenu />
+					</Suspense>
 				)}
 				<SidebarFooterIcon
 					icon={Settings01Icon}

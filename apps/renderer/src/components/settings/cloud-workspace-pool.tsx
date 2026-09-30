@@ -13,6 +13,7 @@ import {
 	type CloudSetupStep,
 	requestCloudOnboarding,
 } from "../../lib/cloud-onboarding.ts";
+import { peekCloudGithub } from "../../lib/cloud-workspace-session-cache.ts";
 import "@zuse/i18n/english/settings";
 import {
 	CLOUD_WORKSPACE_OFFER_ID,
@@ -36,10 +37,14 @@ import {
 	useSyncExternalStore,
 } from "react";
 import { useAuth } from "../../hooks/use-auth.ts";
-import { cloudProviderLabel } from "../../lib/cloud-provider-presentation.ts";
+import {
+	cloudProviderLabel,
+	selectedCloudProvider,
+} from "../../lib/cloud-provider-presentation.ts";
 import { cloudWorkspaceAccessPresentation } from "../../lib/cloud-workspace-access.ts";
 import {
 	hasCloudEntitlement,
+	invalidateCloudProjects,
 	loadCloudBillingSummary,
 	loadCloudBillingUsage,
 	loadCloudEntitlements,
@@ -167,8 +172,10 @@ function ScopedCloudWorkspacePool({
 		readonly CloudAccountImage[]
 	>([]);
 	useEffect(() => subscribeCloudImages(setProviderImages), []);
+	const [chosenProvider, setChosenProvider] = useState<string | null>(null);
+	const selectedProvider = selectedCloudProvider(providers, chosenProvider);
 	const accountImage = cloudImageGroupStatus(
-		providers.map((provider) => provider.providerId),
+		selectedProvider === null ? [] : [selectedProvider],
 		providerImages,
 	);
 	const [workspaces, setWorkspaces] = useState<ReadonlyArray<CloudWorkspace>>(
@@ -181,16 +188,30 @@ function ScopedCloudWorkspacePool({
 	const [capDollars, setCapDollars] = useState("25");
 	const [githubRepos, setGithubRepos] = useState<
 		ReadonlyArray<GithubRepoSummary>
-	>([]);
-	const [githubAuthenticated, setGithubAuthenticated] = useState(false);
+	>(() => peekCloudGithub()?.repositories ?? []);
+	const [githubAuthenticated, setGithubAuthenticated] = useState(
+		() =>
+			peekCloudGithub()?.installations.some(
+				(installation) => !installation.suspended,
+			) ?? false,
+	);
 	const [githubStatus, setGithubStatus] = useState<CloudGithubStatus | null>(
-		null,
+		() => peekCloudGithub() ?? null,
 	);
 	const [reposLoading, setReposLoading] = useState(false);
 	const [busy, setBusy] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
-	const [imageError, setImageError] = useState<string | null>(null);
+	const [imageLoadError, setImageLoadError] = useState<string | null>(null);
+	const [failedImageProviders, setFailedImageProviders] = useState<
+		readonly string[] | null
+	>(null);
+	const imageError =
+		failedImageProviders !== null &&
+		selectedProvider !== null &&
+		!failedImageProviders.includes(selectedProvider)
+			? null
+			: imageLoadError;
 	const [projectError, setProjectError] = useState<string | null>(null);
 	const [view, setView] = useState<"setup" | "usage" | "activity">("setup");
 	const access = cloudWorkspaceAccessPresentation({
@@ -199,7 +220,7 @@ function ScopedCloudWorkspacePool({
 	});
 	const subscribed = access.subscribed;
 	const loadGithubRepos = useCallback(async (refresh = false) => {
-		setReposLoading(true);
+		setReposLoading(peekCloudGithub() === undefined);
 		try {
 			const result = await Promise.race([
 				loadCloudGithub(refresh),
@@ -216,9 +237,7 @@ function ScopedCloudWorkspacePool({
 				result.installations.some((installation) => !installation.suspended),
 			);
 		} catch {
-			setGithubStatus(null);
-			setGithubRepos([]);
-			setGithubAuthenticated(false);
+			// Keep the last successful repository list during transient failures.
 		} finally {
 			setReposLoading(false);
 		}
@@ -228,10 +247,22 @@ function ScopedCloudWorkspacePool({
 		async (refresh = false) => {
 			if (!isSignedIn) return;
 			const requestSequence = ++loadSequence.current;
+			const workspaceData =
+				section === "billing"
+					? undefined
+					: Promise.allSettled([
+							loadCloudProviders(refresh),
+							loadCloudProjects(refresh),
+							loadCloudWorkspaces(refresh),
+							loadCloudProviders(refresh).then(({ providers }) =>
+								loadCloudProviderImages(providers, refresh),
+							),
+						]);
 			let loadedSubscribed = false;
 			try {
 				try {
 					const entitlements = await loadCloudEntitlements(refresh);
+					if (requestSequence !== loadSequence.current) return;
 					loadedSubscribed = hasCloudEntitlement(entitlements);
 					setEntitlementSubscribed(loadedSubscribed);
 					if (loadedSubscribed && canManageBilling) {
@@ -239,11 +270,13 @@ function ScopedCloudWorkspacePool({
 							loadCloudBillingSummary(refresh),
 							loadCloudBillingUsage(refresh),
 						]);
+						if (requestSequence !== loadSequence.current) return;
 						setBilling(summary);
 						setBillingUsage(usage.items);
 						setCapDollars(String(summary.overageCapMicros / 1_000_000));
 					}
 				} catch {
+					if (requestSequence !== loadSequence.current) return;
 					if (!loadedSubscribed) {
 						setError(
 							"Your Cloud Workspace subscription could not be verified.",
@@ -251,19 +284,13 @@ function ScopedCloudWorkspacePool({
 					}
 				}
 
-				if (section === "billing") {
+				if (workspaceData === undefined) {
 					setServiceAvailable(true);
 					return;
 				}
 				const [providerResult, projectResult, workspaceResult, imageResult] =
-					await Promise.allSettled([
-						loadCloudProviders(refresh),
-						loadCloudProjects(refresh),
-						loadCloudWorkspaces(refresh),
-						loadCloudProviders(refresh).then(({ providers }) =>
-							loadCloudProviderImages(providers, refresh),
-						),
-					]);
+					await workspaceData;
+				if (requestSequence !== loadSequence.current) return;
 				const apiResults = [
 					providerResult,
 					projectResult,
@@ -281,10 +308,22 @@ function ScopedCloudWorkspacePool({
 					setProjects(projectResult.value.projects);
 				if (workspaceResult.status === "fulfilled")
 					setWorkspaces(workspaceResult.value.workspaces);
-				if (requestSequence !== loadSequence.current) return;
 				if (imageResult.status === "fulfilled")
 					setProviderImages(imageResult.value.images);
-				setImageError(
+				setFailedImageProviders(
+					imageResult.status === "fulfilled" &&
+						providerResult.status === "fulfilled"
+						? providerResult.value.providers
+								.filter(
+									(provider) =>
+										!imageResult.value.images.some(
+											(image) => image.providerId === provider.providerId,
+										),
+								)
+								.map((provider) => provider.providerId)
+						: null,
+				);
+				setImageLoadError(
 					imageResult.status === "fulfilled" && imageResult.value.complete
 						? null
 						: "Cloud image status is temporarily unavailable. Refresh in a moment; existing cloud chats are unaffected.",
@@ -302,6 +341,7 @@ function ScopedCloudWorkspacePool({
 								}).serviceError,
 				);
 			} catch {
+				if (requestSequence !== loadSequence.current) return;
 				setServiceAvailable(false);
 				setError(
 					cloudWorkspaceAccessPresentation({
@@ -310,7 +350,7 @@ function ScopedCloudWorkspacePool({
 					}).serviceError,
 				);
 			} finally {
-				setSetupLoading(false);
+				if (requestSequence === loadSequence.current) setSetupLoading(false);
 			}
 		},
 		[isSignedIn, section, canManageBilling],
@@ -318,8 +358,8 @@ function ScopedCloudWorkspacePool({
 
 	useEffect(() => {
 		if (authLoading || !isSignedIn) return;
-		void load(true);
-		if (section !== "billing") void loadGithubRepos(true);
+		void load();
+		if (section !== "billing") void loadGithubRepos();
 		return subscribeControlPlaneSessionCache((key) => {
 			if (key === "cloud-workspace:github" && section !== "billing")
 				void loadGithubRepos();
@@ -333,7 +373,7 @@ function ScopedCloudWorkspacePool({
 	);
 	const imageReady =
 		accountImage?.state === "ready" &&
-		busy !== "image:rebuild" &&
+		!busy?.startsWith("image:") &&
 		imageError === null &&
 		buildError === null;
 	const onProgress = onboarding?.onProgress;
@@ -478,6 +518,10 @@ function ScopedCloudWorkspacePool({
 				const connected = results.flatMap((result) =>
 					result.status === "fulfilled" ? [result.value] : [],
 				);
+				// Reads started before this write cannot replace the confirmed projects,
+				// including when only part of a multi-repository connection succeeds.
+				loadSequence.current += 1;
+				invalidateCloudProjects();
 				setProjects((current) => {
 					const ids = new Set(
 						connected.map(({ project }) => project.projectId),
@@ -494,23 +538,27 @@ function ScopedCloudWorkspacePool({
 		);
 	};
 
-	const buildAccountImage = () =>
+	const buildAccountImage = (mode: "update" | "rebuild") =>
 		run(
-			"image:rebuild",
+			`image:${mode}`,
 			async () => {
 				setBuildError(null);
 				const { providers: available } = await loadCloudProviders(true);
 				setProviders(available);
-				if (available.length === 0)
-					throw new Error("No cloud providers available");
+				if (
+					!available.some(
+						(provider) => provider.providerId === selectedProvider,
+					)
+				)
+					throw new Error("Selected cloud provider is no longer available");
 				const result = await rebuildCloudImages(
-					available.map((provider) => provider.providerId),
+					selectedProvider === null ? [] : [selectedProvider],
 					(providerId) =>
 						runCloudControl((client) =>
 							client["cloud.image.build"]({
-								mode: "rebuild",
+								mode,
 								providerId,
-								idempotencyKey: `settings-image:rebuild:${crypto.randomUUID()}`,
+								idempotencyKey: `settings-image:${mode}:${crypto.randomUUID()}`,
 							}),
 						),
 				);
@@ -739,7 +787,9 @@ function ScopedCloudWorkspacePool({
 					(onboarding === undefined || onboarding.step === "image") ? (
 						<CloudSettingsGroup
 							title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
-							description={uiMessage("settings:cloud_images_all_description")}
+							description={uiMessage(
+								"settings:cloud_images_selected_description",
+							)}
 						>
 							{onboarding === undefined ? (
 								<CloudSettingsRow
@@ -758,13 +808,22 @@ function ScopedCloudWorkspacePool({
 									}
 								/>
 							) : null}
+							<CloudImageProviders
+								providers={providers}
+								images={providerImages}
+								selectedProvider={selectedProvider}
+								onSelectProvider={(providerId) => {
+									setChosenProvider(providerId);
+									setBuildError(null);
+								}}
+								disabled={busy !== null}
+							/>
 							<CloudImageReadiness
 								image={accountImage}
-								allProviders
 								projects={projects}
 								busy={busy}
 								unavailable={imageError !== null || providers.length === 0}
-								onBuild={() => void buildAccountImage()}
+								onBuild={(mode) => void buildAccountImage(mode)}
 							/>
 							{imageError === null ? null : (
 								<div className="flex items-center justify-between gap-3 bg-destructive/10 px-3 py-2">
@@ -794,10 +853,6 @@ function ScopedCloudWorkspacePool({
 									{buildError}
 								</p>
 							)}
-							<CloudImageProviders
-								providers={providers}
-								images={providerImages}
-							/>
 						</CloudSettingsGroup>
 					) : null}
 				</>
