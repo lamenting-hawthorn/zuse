@@ -831,7 +831,7 @@ export function CloudWorkspacePool({
 											.slice(0, 3)
 											.map(
 												(item) =>
-													`${item.resourceKind} ${item.resourceId}: ${formatUsdMicros(item.providerCostMicros)}${item.status === "provisional" ? " (provisional)" : ""}`,
+													`${item.resourceKind} ${item.resourceId}: ${formatUsdMicros(item.providerCostMicros)}${item.measurement === "estimated" ? " (estimated)" : item.status === "provisional" ? " (provisional)" : ""}`,
 											)
 											.join(" · ")
 							}

@@ -37,7 +37,8 @@ with the other adapters. The adapter lives in
 
 The production deploy script refuses to deploy with the adapter enabled and
 the snapshot, version, or `BOXD_API_KEY` secret missing, or cloud billing
-enforcement enabled. Runtime placement also excludes boxd while billing is enforced.
+enforcement enabled without the estimated-balance opt-in. Runtime placement uses
+the same eligibility policy.
 
 When `BOXD_ORG` is set, the publisher creates a shared organization template so
 another identity in that organization can restore it. Without an explicit org,
@@ -94,13 +95,13 @@ publish with the same API key owner used by the Worker.
   does not revoke a Boxd link, because inbound proxy traffic can wake the VM.
 - There is no usage endpoint, lifecycle webhook, or event log, and machine
   records carry only `createdAt` and `hibernatedAt`, so no actual-cost settlement
-  source exists for boxd: reservations are made at the price schedule while
-  a run lasts, but nothing finalizes them. boxd placements are unbilled until
-  boxd exposes attributable usage. Runtime observations are independently
+  source exists for boxd. The optional [estimated balance policy](billing.md#interim-boxd-balance-deductions)
+  deducts sampled CPU/RAM estimates durably and enforces the balance cap until
+  attributable provider costs can replace them. Runtime observations are independently
   exported to Polar as `zuse_cloud_runtime_observed_ms` when
   `CLOUD_USAGE_EXPORT_ENABLED=true`; they are sampled activity, not exact costs.
-  See [usage operations](billing.md#usage-visibility-independent-of-invoices); keep the adapter off where cloud billing is
-  enforced (`CLOUD_BILLING_ENFORCEMENT_ENABLED`).
+  See [usage operations](billing.md#usage-visibility-independent-of-invoices); billing-enforced placement requires the explicit
+  `CLOUD_BOXD_ESTIMATES_CUTOVER_AT` opt-in and an installed estimate price schedule.
 - The 50 concurrent machine cap per organization counts hibernated machines
   and forks. Deleted workspaces free their slot; snapshots do not count.
 
