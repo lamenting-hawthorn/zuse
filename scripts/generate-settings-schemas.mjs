@@ -18,6 +18,7 @@ const providerIds = [
 ];
 const runtimeModes = [
 	"approval-required",
+	"auto",
 	"auto-accept-edits",
 	"auto-accept-edits-and-bash",
 	"full-access",
@@ -171,6 +172,7 @@ writeSchema("settings.schema.json", {
 		defaultAutoCreateWorktree: { type: "boolean" },
 		onboardingCompleted: { type: "boolean" },
 		appearanceMode: { enum: appearanceModes },
+		providerUpdateNotificationsEnabled: { type: "boolean", default: false },
 		completionSoundEnabled: { type: "boolean" },
 		completionSoundPreset: { enum: completionSounds },
 		analyticsEnabled: { type: "boolean" },

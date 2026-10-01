@@ -66,6 +66,20 @@ describe("API-key validation classification", () => {
 		vi.useRealTimers();
 	});
 
+	it("reports sandbox setup failures without blaming the key or connection", () => {
+		expect(
+			classifyApiKeyValidationError(
+				new Error(
+					"Local SDK sandboxing was requested, but sandboxing is not supported in this environment.",
+				),
+			),
+		).toEqual({
+			status: "unverified",
+			warning:
+				"The API key was saved, but Cursor's local sandbox could not start. Reinstall or update Zuse, then recheck the provider.",
+		});
+	});
+
 	it.each([
 		new AuthenticationError("Invalid API key"),
 		new CursorSdkError("Unauthorized", { status: 401 }),

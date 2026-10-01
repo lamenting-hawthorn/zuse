@@ -1,5 +1,5 @@
 import "@zuse/i18n/english/chat";
-import type { CloudProviderSize } from "@zuse/contracts";
+import type { CloudProviderOption, CloudProviderSize } from "@zuse/contracts";
 import { formatNumber, message } from "@zuse/i18n";
 
 const LOCALIZED_SIZE_PROVIDERS = new Set(["box", "boxd"]);
@@ -29,3 +29,19 @@ export const cloudProviderLabel = (providerId: string): string =>
 			: providerId === "e2b"
 				? "E2B"
 				: providerId;
+
+/** Keep server ordering for other providers, with boxd recommended first. */
+export const orderedCloudProviders = (
+	providers: readonly CloudProviderOption[],
+) =>
+	[...providers].sort(
+		(a, b) => Number(b.providerId === "boxd") - Number(a.providerId === "boxd"),
+	);
+
+export const selectedCloudProvider = (
+	providers: readonly CloudProviderOption[],
+	selected: string | null,
+): string | null =>
+	providers.find((provider) => provider.providerId === selected)?.providerId ??
+	orderedCloudProviders(providers)[0]?.providerId ??
+	null;

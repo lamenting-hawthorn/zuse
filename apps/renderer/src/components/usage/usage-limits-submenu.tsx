@@ -9,7 +9,13 @@ import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Analytics01Icon } from "@zuse/icons/solid-rounded";
 
 import { PROVIDER_DISPLAY } from "~/lib/provider-status";
-import { usageLimitsUnavailableLabel } from "~/lib/usage-limits-display";
+import {
+	boundedUsagePercent,
+	creditUsage,
+	formatCredits,
+	percentLeft,
+	usageLimitsUnavailableLabel,
+} from "~/lib/usage-limits-display";
 import { usagePace } from "~/lib/usage-pace";
 import { formatRelativeTime } from "~/lib/use-relative-time";
 import { useUiStore } from "~/store/ui";
@@ -17,12 +23,16 @@ import { useUsageStore } from "~/store/usage";
 import { useUsageLimitsStore } from "~/store/usage-limits";
 import { ProviderIcon } from "../provider-icons";
 import {
+	Menu,
 	MenuItem,
+	MenuPopup,
 	MenuSeparator,
 	MenuSub,
 	MenuSubPopup,
 	MenuSubTrigger,
+	MenuTrigger,
 } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { resetLabel, resetsInLabel, StickMeter } from "./usage-meter";
 
 const PROVIDERS: ReadonlyArray<ProviderId> = [
@@ -45,78 +55,6 @@ const placeholder = (providerId: ProviderId): ProviderUsageLimits => ({
 	unavailableReason: "no-credentials",
 });
 
-/** Compact absolute count for menu rows (e.g. 1479 → "1.5k"). */
-const formatCredits = (value: number): string => {
-	if (!Number.isFinite(value)) return "—";
-	const abs = Math.abs(value);
-	if (abs >= 10_000) return `${Math.round(value / 1000)}k`;
-	if (abs >= 1000) {
-		const k = value / 1000;
-		return `${k >= 10 ? Math.round(k) : k.toFixed(1).replace(/\.0$/, "")}k`;
-	}
-	return Number.isInteger(value) ? String(value) : value.toFixed(1);
-};
-
-/**
- * Derive used/limit from remaining credits + used%, when the API only
- * surfaces remaining + percent (Kiro credit windows).
- */
-const creditUsage = (
-	creditsRemaining: number | null,
-	usedPercent: number | null | undefined,
-): { used: number; limit: number; remaining: number } | null => {
-	if (
-		creditsRemaining === null ||
-		usedPercent === null ||
-		usedPercent === undefined ||
-		!Number.isFinite(creditsRemaining) ||
-		!Number.isFinite(usedPercent)
-	) {
-		return null;
-	}
-	const remaining = Math.max(0, creditsRemaining);
-	const fractionUsed = Math.min(100, Math.max(0, usedPercent)) / 100;
-	if (fractionUsed <= 0) {
-		return { used: 0, limit: remaining, remaining };
-	}
-	// At 100% we only know remaining (usually 0); skip absolute used/limit.
-	if (fractionUsed >= 1) return null;
-	const limit = remaining / (1 - fractionUsed);
-	if (!Number.isFinite(limit) || limit <= 0) return null;
-	const used = Math.max(0, limit - remaining);
-	return { used, limit, remaining };
-};
-
-const percentLeft = (usedPercent: number | null | undefined): number | null =>
-	usedPercent === null || usedPercent === undefined
-		? null
-		: Math.max(0, Math.round(100 - usedPercent));
-
-/** Right-side summary on the provider row (Grok-style "% left · reset"). */
-const rowSummary = (
-	provider: ProviderUsageLimits,
-	summary: UsageLimitWindow | undefined,
-): string | null => {
-	if (summary === undefined && provider.creditsRemaining === null) return null;
-	const left = percentLeft(summary?.usedPercent);
-	const reset = summary ? resetLabel(summary.resetsAt) : null;
-	const credits = creditUsage(
-		provider.creditsRemaining,
-		summary?.usedPercent ?? null,
-	);
-
-	const parts: string[] = [];
-	if (credits !== null) {
-		// Credit pools (Kiro): prefer absolute remaining so the row is actionable.
-		parts.push(`${formatCredits(credits.remaining)} cr`);
-		if (left !== null) parts.push(`${left}%`);
-	} else if (left !== null) {
-		parts.push(`${left}% left`);
-	}
-	if (reset) parts.push(reset);
-	return parts.length > 0 ? parts.join(" · ") : null;
-};
-
 function WindowDetail({
 	value,
 	creditsRemaining,
@@ -126,14 +64,11 @@ function WindowDetail({
 }) {
 	const { message: uiMessage } = useUiMessages(["usage"]);
 
-	const left = percentLeft(value.usedPercent);
+	const used = boundedUsagePercent(value.usedPercent);
+	const left = percentLeft(used);
 	const reset = resetsInLabel(value.resetsAt);
-	const pace = usagePace(
-		value.usedPercent,
-		value.resetsAt,
-		value.windowMinutes,
-	);
-	const credits = creditUsage(creditsRemaining, value.usedPercent);
+	const pace = usagePace(used, value.resetsAt, value.windowMinutes);
+	const credits = creditUsage(creditsRemaining, used);
 	return (
 		<div className="space-y-1.5 py-2">
 			<div className="flex items-center justify-between gap-4 text-xs">
@@ -147,8 +82,8 @@ function WindowDetail({
 				</span>
 			</div>
 			<StickMeter
-				percent={value.usedPercent}
-				tone={(value.usedPercent ?? 0) >= 80 ? "warning" : "default"}
+				percent={left}
+				tone={(used ?? 0) >= 80 ? "warning" : "default"}
 			/>
 			{credits !== null ? (
 				<div className="flex justify-between gap-4 text-[11px] text-muted-foreground tabular-nums">
@@ -193,29 +128,44 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 			state.providers.find((item) => item.providerId === providerId),
 		) ?? placeholder(providerId);
 	const loading = useUsageLimitsStore((state) => state.loading);
+	const error = useUsageLimitsStore((state) => state.error);
 	const waitingForInitialData =
 		loading && provider.fetchedAt === PLACEHOLDER_FETCHED_AT;
 	const summary = provider.windows
 		.slice()
 		.sort((a, b) => WINDOW_ORDER[a.scope] - WINDOW_ORDER[b.scope])[0];
-	const summaryText = rowSummary(provider, summary);
+	const left = percentLeft(summary?.usedPercent);
+	const reset = summary ? resetLabel(summary.resetsAt) : null;
+	const credits = provider.creditsRemaining;
+	const summaryText = [
+		credits !== null && Number.isFinite(credits)
+			? uiMessage("usage:usage_limits_menu_credits", {
+					value: formatCredits(Math.max(0, credits)),
+				})
+			: left !== null
+				? uiMessage("usage:usage_limits_submenu_left_2", { left: String(left) })
+				: null,
+		reset,
+	]
+		.filter(Boolean)
+		.join(" · ");
 
 	return (
 		<MenuSub>
-			<MenuSubTrigger disabled={waitingForInitialData}>
+			<MenuSubTrigger className="h-7" disabled={waitingForInitialData}>
 				<ProviderIcon providerId={providerId} className="size-3.5" />
 				<span className="min-w-0 flex-1 truncate">
 					{PROVIDER_DISPLAY[providerId]}
 				</span>
-				{summaryText !== null ? (
+				{summaryText !== "" ? (
 					<span className="max-w-[7.5rem] shrink-0 truncate text-right text-[11px] tabular-nums text-muted-foreground">
 						{summaryText}
 					</span>
 				) : null}
 			</MenuSubTrigger>
-			<MenuSubPopup className="w-80">
+			<MenuSubPopup className="w-80 max-w-[calc(100vw-1rem)]">
 				<div className="px-2 py-1.5">
-					<div className="flex items-center gap-2 border-b pb-2">
+					<div className="flex items-center gap-2 pb-2">
 						<ProviderIcon providerId={providerId} className="size-4" />
 						<div>
 							<div className="text-sm font-medium">
@@ -223,7 +173,9 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 							</div>
 							<div className="text-[11px] text-muted-foreground">
 								{provider.planLabel ??
-									(loading ? "Loading usage…" : "Usage limits")}
+									(loading
+										? uiMessage("usage:usage_limits_submenu_loading_usage")
+										: uiMessage("usage:usage_dashboard_usage_limits"))}
 							</div>
 						</div>
 					</div>
@@ -237,21 +189,23 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 									creditsRemaining={provider.creditsRemaining}
 								/>
 							))
-					) : (
+					) : provider.creditsRemaining === null ? (
 						<div className="py-6 text-center text-xs text-muted-foreground">
 							{loading
 								? uiMessage("usage:usage_limits_submenu_loading_usage")
 								: usageLimitsUnavailableLabel(
 										providerId,
-										provider.unavailableReason,
+										error ? "error" : provider.unavailableReason,
 									)}
 						</div>
-					)}
+					) : null}
 					{provider.creditsRemaining !== null ? (
-						<div className="border-t py-2 text-xs">
+						<div className="py-2 text-xs">
 							<RichMessage
 								id="usage:usage_limits_submenu_credits_remaining_sentence"
-								values={{ value: formatCredits(provider.creditsRemaining) }}
+								values={{
+									value: formatCredits(Math.max(0, provider.creditsRemaining)),
+								}}
 								components={{
 									part0: <span className="text-muted-foreground" />,
 									part1: (
@@ -262,7 +216,7 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 						</div>
 					) : null}
 					{provider.fetchedAt !== PLACEHOLDER_FETCHED_AT ? (
-						<div className="border-t pt-1.5 text-[10px] text-muted-foreground">
+						<div className="pt-1.5 text-[10px] text-muted-foreground">
 							{uiMessage("usage:usage_limits_submenu_updated")}
 							{formatRelativeTime(provider.fetchedAt) ??
 								uiMessage("usage:usage_limits_submenu_just_now")}{" "}
@@ -283,15 +237,47 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 export function UsageLimitsMenuItems() {
 	const { message: uiMessage } = useUiMessages(["usage"]);
 
+	const loading = useUsageLimitsStore((state) => state.loading);
+	const error = useUsageLimitsStore((state) => state.error);
+	const hasReadings = useUsageLimitsStore(
+		(state) => state.providers.length > 0,
+	);
+	const refresh = useUsageLimitsStore((state) => state.refresh);
 	const openUsage = useUiStore((state) => state.openUsage);
 	const prefetchUsage = useUsageStore((state) => state.prefetch);
 	return (
 		<>
-			<MenuSeparator />
+			<div className="px-2 py-1 text-xs font-medium">
+				{uiMessage("usage:usage_dashboard_usage_limits")}
+			</div>
+			{error ? (
+				<div role="alert" className="px-2 py-1 text-xs text-muted-foreground">
+					{uiMessage(
+						hasReadings
+							? "usage:usage_limits_menu_stale"
+							: "usage:usage_limits_menu_failed",
+					)}
+				</div>
+			) : null}
+			{loading ? (
+				<div role="status" className="px-2 py-1 text-xs text-muted-foreground">
+					{uiMessage("usage:usage_limits_submenu_loading_usage")}
+				</div>
+			) : null}
 			{PROVIDERS.map((providerId) => (
 				<ProviderMenuItem key={providerId} providerId={providerId} />
 			))}
+			<MenuSeparator />
 			<MenuItem
+				className="h-7"
+				disabled={loading}
+				closeOnClick={false}
+				onClick={() => void refresh(true)}
+			>
+				{uiMessage("usage:usage_dashboard_refresh_usage")}
+			</MenuItem>
+			<MenuItem
+				className="h-7"
 				onPointerEnter={() => void prefetchUsage(null)}
 				onFocus={() => void prefetchUsage(null)}
 				onClick={() => openUsage("global")}
@@ -299,7 +285,42 @@ export function UsageLimitsMenuItems() {
 				<HugeiconsIcon icon={Analytics01Icon} />
 				{uiMessage("usage:usage_limits_submenu_full_usage")}
 			</MenuItem>
-			<MenuSeparator />
 		</>
+	);
+}
+
+export function UsageLimitsMenu() {
+	const { message } = useUiMessages(["usage"]);
+	const load = useUsageLimitsStore((state) => state.load);
+	const label = message("usage:usage_dashboard_usage_limits");
+	return (
+		<Menu
+			onOpenChange={(open) => {
+				if (open) void load();
+			}}
+		>
+			<Tooltip>
+				<TooltipTrigger
+					render={
+						<MenuTrigger
+							aria-label={label}
+							onPointerEnter={() => void load()}
+							onFocus={() => void load()}
+							className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						/>
+					}
+				>
+					<HugeiconsIcon icon={Analytics01Icon} className="size-4" />
+				</TooltipTrigger>
+				<TooltipPopup side="top">{label}</TooltipPopup>
+			</Tooltip>
+			<MenuPopup
+				side="top"
+				align="end"
+				className="w-72 max-w-[calc(100vw-1rem)]"
+			>
+				<UsageLimitsMenuItems />
+			</MenuPopup>
+		</Menu>
 	);
 }

@@ -17,10 +17,12 @@ Cursor runs through the SDK bundled with Zuse. It does not require a separate Cu
 
 Open **Settings → Providers → Cursor**, enter a Cursor API key, and save it. The key is required and is stored in the macOS Keychain rather than `settings.json`.
 
+The account must include Cursor SDK access. [Cursor Start does not include the SDK](https://cursor.com/help/account-and-billing/cursor-start), even though it includes Composer 2.5 in Cursor itself. If Cursor reports **Model unavailable on Start**, use a key from an account with SDK access; retrying the same key or choosing another included model does not resolve the plan restriction.
+
 Zuse performs a bounded readiness check against the SDK. Provider status distinguishes:
 
-- **Ready** — the key was verified and the SDK returned a usable model.
-- **Needs attention** — the key was saved but could not be verified, commonly because the service was unreachable.
+- **Ready** — the SDK successfully streamed a short readiness response.
+- **Needs attention** — the key was saved but the readiness check failed. A sandbox startup failure is reported separately from connectivity failures.
 - **Error** — the provider explicitly rejected the key.
 
 An unverified key is not treated as invalid. You can recheck after connectivity recovers; the live session remains authoritative.

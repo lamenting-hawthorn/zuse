@@ -87,6 +87,7 @@ const freshSettings = (): SettingsFile =>
 		defaultAutonomyLevel: "approval-gated",
 		onboardingCompleted: false,
 		appearanceMode: "dark",
+		providerUpdateNotificationsEnabled: false,
 		completionSoundEnabled: false,
 		completionSoundPreset: "chime",
 		providerEnabled: seedProviderEnabled(),
@@ -126,6 +127,7 @@ const isProviderId = (v: unknown): v is ProviderId =>
 	v === "kiro";
 
 const isRuntimeMode = (v: unknown): v is SettingsFile["defaultRuntimeMode"] =>
+	v === "auto" ||
 	v === "approval-required" ||
 	v === "auto-accept-edits" ||
 	v === "auto-accept-edits-and-bash" ||
@@ -554,6 +556,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		defaultAutonomyLevel: autonomy,
 		onboardingCompleted: onboarding,
 		appearanceMode,
+		providerUpdateNotificationsEnabled:
+			obj.providerUpdateNotificationsEnabled === true,
 		completionSoundEnabled,
 		completionSoundPreset,
 		providerBinaryPaths:
@@ -842,6 +846,10 @@ export const ConfigStoreServiceLive = Layer.effect(
 					onboardingCompleted:
 						patch.onboardingCompleted ?? cur.onboardingCompleted,
 					appearanceMode: patch.appearanceMode ?? cur.appearanceMode,
+					providerUpdateNotificationsEnabled:
+						patch.providerUpdateNotificationsEnabled ??
+						cur.providerUpdateNotificationsEnabled ??
+						false,
 					completionSoundEnabled:
 						patch.completionSoundEnabled ?? cur.completionSoundEnabled,
 					completionSoundPreset:
@@ -993,6 +1001,8 @@ export const ConfigStoreServiceLive = Layer.effect(
 						defaultAutonomyLevel: cur.defaultAutonomyLevel,
 						onboardingCompleted: onboarding,
 						appearanceMode,
+						providerUpdateNotificationsEnabled:
+							cur.providerUpdateNotificationsEnabled ?? false,
 						completionSoundEnabled,
 						completionSoundPreset,
 						providerEnabled,

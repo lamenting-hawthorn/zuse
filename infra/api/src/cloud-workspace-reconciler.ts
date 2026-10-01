@@ -36,6 +36,7 @@ import {
 } from "./cloud-workspace-memory.ts";
 import { cloudRepositoryWorkspacePath } from "./cloud-workspace-paths.ts";
 import { nextCloudWorkspaceRuntimeFence } from "./cloud-workspace-runtime-fence.ts";
+import { WORKSPACE_RUNTIME_UPDATE_SCRIPT } from "./cloud-workspace-runtime-update.ts";
 import {
 	type CloudProjectBuildRecord,
 	type CloudWorkspaceRecord,
@@ -51,7 +52,10 @@ import {
 } from "./cloud-workspace-store.ts";
 import { ApiConfiguration } from "./config.ts";
 import { randomToken, sha256Hex } from "./crypto.ts";
-import { SandboxOfferConfiguration } from "./sandbox-provider-module.ts";
+import {
+	type SandboxOfferConfig,
+	SandboxOfferConfiguration,
+} from "./sandbox-provider-module.ts";
 
 const RETRY_MS = 5_000;
 // Provider allocation happens before `allocatedAt`. Once compute exists, the
@@ -74,6 +78,31 @@ const ARCHIVE_QUIESCE_GRACE_MS = 1_500;
 const BILLING_RESERVATION_REFRESH_MS = 60_000;
 const RUNTIME_SIGNING_PUBLIC_JWK_FILE =
 	"/home/zuse/.zuse-runtime-signing-public.jwk";
+const runtimeUpdateEnvironment = (
+	config: SandboxOfferConfig,
+): Readonly<Record<string, string>> =>
+	config.runtimeManifestUrl === undefined
+		? {}
+		: {
+				ZUSE_RUNTIME_MANIFEST_URL: config.runtimeManifestUrl,
+				ZUSE_RUNTIME_PUBLIC_KEY_FILE: RUNTIME_SIGNING_PUBLIC_JWK_FILE,
+				ZUSE_RUNTIME_WIRE_PROTOCOL: String(WIRE_PROTOCOL_VERSION),
+			};
+
+const writeRuntimeSigningKey = (
+	provider: SandboxProviderAdapter,
+	providerSandboxId: string,
+	config: SandboxOfferConfig,
+) =>
+	config.runtimeSigningPublicJwk === undefined
+		? Effect.void
+		: provider.writeTextFile(
+				providerSandboxId,
+				RUNTIME_SIGNING_PUBLIC_JWK_FILE,
+				config.runtimeSigningPublicJwk,
+				"zuse",
+			);
+
 const PROJECT_BUILD_DIAGNOSTIC_MAX_LENGTH = 2_048;
 const PROJECT_BUILD_LOG_FILE = "/var/lib/zuse/project-build/build.log";
 const PROJECT_BUILD_LOG_MAX_LENGTH = 256 * 1_024;
@@ -380,7 +409,10 @@ export const cloudWorkspaceHasRetainedRuntimeData = (
 	workspace.statusCode === "agent-starting" ||
 	workspace.statusCode === "agent-running";
 
-export const WORKSPACE_RUNTIME_RESUME_SCRIPT = `set -e; timing() { echo "[cloud-timing] workspaceId=$ZUSE_CLOUD_WORKSPACE_ID generation=$ZUSE_RUNTIME_GENERATION stage=$1 atMs=$(date +%s%3N)" >> /var/lib/zuse/workspace/runtime.log; }; timing runtime.shell-start; runtime=/opt/zuse/current/bin.mjs; fallback=/usr/local/bin/zuse; log=/var/lib/zuse/workspace/runtime.log; rm -f /var/lib/zuse/workspace/failed /var/lib/zuse/workspace/credentials-ready /var/lib/zuse/workspace/credentials-ready-event; if [ -n "\${ZUSE_RUNTIME_MANIFEST_URL:-}" ] && [ -f "\${ZUSE_RUNTIME_PUBLIC_KEY_FILE:-}" ]; then timing runtime.update-start; if ZUSE_RUNTIME_INSTALL_ONLY=1 ZUSE_RUNTIME_SKIP_TOOLCHAIN=1 node /usr/local/lib/zuse/runtime-updater.mjs >> "$log" 2>&1; then timing runtime.update-end; else printf 'updating-runtime\n' >/var/lib/zuse/workspace/failure-phase; touch /var/lib/zuse/workspace/failed; exit 1; fi; fi; if [ ! -f /var/lib/zuse/workspace/repository-ready ]; then
+export const WORKSPACE_RUNTIME_RESUME_SCRIPT = `set -e; timing() { echo "[cloud-timing] workspaceId=$ZUSE_CLOUD_WORKSPACE_ID generation=$ZUSE_RUNTIME_GENERATION stage=$1 atMs=$(date +%s%3N)" >> /var/lib/zuse/workspace/runtime.log; }; timing runtime.shell-start; runtime=/opt/zuse/current/bin.mjs; fallback=/usr/local/bin/zuse; log=/var/lib/zuse/workspace/runtime.log; rm -f /var/lib/zuse/workspace/failed /var/lib/zuse/workspace/credentials-ready /var/lib/zuse/workspace/credentials-ready-event;
+${WORKSPACE_RUNTIME_UPDATE_SCRIPT}
+ensure_workspace_runtime 1
+if [ ! -f /var/lib/zuse/workspace/repository-ready ]; then
 if bash <<'ZUSE_WORKSPACE_REPOSITORY' >> "$log" 2>&1
 ${WORKSPACE_REPOSITORY_SOURCE}
 ZUSE_WORKSPACE_REPOSITORY
@@ -710,14 +742,7 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 						GITHUB_AUTH_SOURCE,
 						"zuse",
 					),
-					config.runtimeSigningPublicJwk === undefined
-						? Effect.void
-						: provider.writeTextFile(
-								sandbox.providerSandboxId,
-								RUNTIME_SIGNING_PUBLIC_JWK_FILE,
-								config.runtimeSigningPublicJwk,
-								"zuse",
-							),
+					writeRuntimeSigningKey(provider, sandbox.providerSandboxId, config),
 				],
 				{ concurrency: "unbounded", discard: true },
 			).pipe(Effect.orDie);
@@ -819,13 +844,7 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 						ZUSE_REPOSITORY_CACHE_MAX_BYTES: String(
 							apiConfig.cloudRepositoryCacheMaxBytes,
 						),
-						...(config.runtimeManifestUrl === undefined
-							? {}
-							: {
-									ZUSE_RUNTIME_MANIFEST_URL: config.runtimeManifestUrl,
-									ZUSE_RUNTIME_PUBLIC_KEY_FILE: RUNTIME_SIGNING_PUBLIC_JWK_FILE,
-									ZUSE_RUNTIME_WIRE_PROTOCOL: String(WIRE_PROTOCOL_VERSION),
-								}),
+						...runtimeUpdateEnvironment(config),
 					},
 					user: "zuse",
 				})
@@ -1370,24 +1389,15 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 					WORKSPACE_REPOSITORY_SOURCE,
 					"zuse",
 				),
-				config.runtimeSigningPublicJwk === undefined
-					? Effect.void
-					: provider
-							.writeTextFile(
-								providerSandboxId,
-								RUNTIME_SIGNING_PUBLIC_JWK_FILE,
-								config.runtimeSigningPublicJwk,
-								"zuse",
-							)
-							.pipe(
-								measureCloudStage(
-									{
-										workspaceId: workspace.workspaceId,
-										provider: provider.providerId,
-									},
-									"runtime.write-file",
-								),
-							),
+				writeRuntimeSigningKey(provider, providerSandboxId, config).pipe(
+					measureCloudStage(
+						{
+							workspaceId: workspace.workspaceId,
+							provider: provider.providerId,
+						},
+						"runtime.write-file",
+					),
+				),
 			],
 			{ concurrency: "unbounded", discard: true },
 		);
@@ -1457,13 +1467,7 @@ const restartWorkspaceRuntime = Effect.fn("restartCloudWorkspaceRuntime")(
 					ZUSE_USER_DATA: "/var/lib/zuse/user-data",
 					ZUSE_RUNTIME_GENERATION: String(runtimeFence.runtimeGeneration),
 					ZUSE_GATEWAY_EPOCH: String(runtimeFence.gatewayEpoch),
-					...(config.runtimeManifestUrl === undefined
-						? {}
-						: {
-								ZUSE_RUNTIME_MANIFEST_URL: config.runtimeManifestUrl,
-								ZUSE_RUNTIME_PUBLIC_KEY_FILE: RUNTIME_SIGNING_PUBLIC_JWK_FILE,
-								ZUSE_RUNTIME_WIRE_PROTOCOL: String(WIRE_PROTOCOL_VERSION),
-							}),
+					...runtimeUpdateEnvironment(config),
 				},
 				user: "zuse",
 			})
@@ -1969,6 +1973,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 						allocatedAtMs,
 					),
 					...runtimeFence,
+					runtimeInstallPending: config.runtimeManifestUrl !== undefined,
 					...(typeof workspace.requestConfig.sessionHeadVersion === "number"
 						? { runtimeSessionRecoveryPending: true }
 						: {}),
@@ -1978,12 +1983,17 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 						...(recovered === null ? { forkedAt: allocatedAtMs } : {}),
 					},
 				},
-				nextActionAtMs: allocatedAtMs + RUNTIME_CONNECTION_TIMEOUT_MS,
+				nextActionAtMs:
+					allocatedAtMs +
+					(config.runtimeManifestUrl === undefined
+						? RUNTIME_CONNECTION_TIMEOUT_MS
+						: RUNTIME_INSTALL_TIMEOUT_MS),
 				revision: allocatedWorkspace.revision + 1,
 				updatedAtMs: allocatedAtMs,
 			});
 			yield* Effect.all(
 				[
+					writeRuntimeSigningKey(provider, sandbox.providerSandboxId, config),
 					provider.writeTextFile(
 						sandbox.providerSandboxId,
 						WORKSPACE_BOOTSTRAP_FILE,
@@ -2001,11 +2011,18 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 			);
 			const runtimeOptions = {
 				command: "/bin/bash",
-				args: [WORKSPACE_BOOTSTRAP_FILE],
+				args: [
+					"-lc",
+					`set -e
+${WORKSPACE_RUNTIME_UPDATE_SCRIPT}
+ensure_workspace_runtime
+exec /bin/bash ${WORKSPACE_BOOTSTRAP_FILE}`,
+				],
 				tag: WORKSPACE_RUNTIME_PROCESS.tag,
 				cwd: "/home/zuse",
 				env: {
 					...project.cloudEnvironment,
+					...runtimeUpdateEnvironment(config),
 					ZUSE_CLOUD_WORKSPACE_ID: workspace.workspaceId,
 					ZUSE_RUNTIME_BOOT_TOKEN: boot.token,
 					ZUSE_API_URL: api.apiIssuer,

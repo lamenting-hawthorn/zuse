@@ -712,18 +712,56 @@ const waitForFile = Effect.fn("waitForCloudAuthFile")(function* (
 	return yield* Effect.fail(serviceUnavailable("cloud_auth_operation_timeout"));
 });
 
+// The version covers every uploaded program, including pinned CLI versions.
+// Keep readiness on the sandbox so API restarts do not repeat initialization.
+const AUTH_BOOTSTRAP_FILES = [
+	[AUTH_INITIALIZER, AUTH_INITIALIZER_SOURCE],
+	[AUTH_CONFIGURATOR, CONFIGURATOR_SOURCE],
+	[AUTH_LOGIN, LOGIN_SOURCE],
+	[AUTH_CANCEL, CANCEL_SOURCE],
+	[AUTH_VERIFY, VERIFY_SOURCE],
+	[AUTH_CODEX_GRANT, CODEX_GRANT_SOURCE],
+] as const;
+const AUTH_BOOTSTRAP_VERSION = `${AUTH_HOME}/bootstrap-version`;
+
 const initializeAuthority = Effect.fn("initializeCloudAuthAuthority")(
 	function* (authority: Authority) {
+		const version = yield* sha256Hex(JSON.stringify(AUTH_BOOTSTRAP_FILES));
+		const [
+			installedVersion,
+			existingIncarnation,
+			existingKey,
+			existingPublicKey,
+		] = yield* Effect.all(
+			[
+				AUTH_BOOTSTRAP_VERSION,
+				AUTH_STORAGE_INCARNATION_ID,
+				AUTH_KEY_ID,
+				AUTH_PUBLIC_JWK,
+			].map((path) => readOptional(authority, path)),
+			{ concurrency: 4 },
+		);
+		if (
+			installedVersion === version &&
+			existingIncarnation === authority.storageIncarnationId &&
+			existingKey &&
+			existingPublicKey &&
+			(yield* authority.provider
+				.pathExists(authority.sandboxId, `${AUTH_HOME}/private.pem`, "zuse")
+				.pipe(Effect.orElseSucceed(() => false)))
+		)
+			return authority;
+		// A failed repair must not leave a previously valid readiness marker behind.
+		yield* authority.provider
+			.writeTextFile(authority.sandboxId, AUTH_BOOTSTRAP_VERSION, "", "zuse")
+			.pipe(
+				Effect.mapError(() =>
+					serviceUnavailable("cloud_auth_initialize_failed"),
+				),
+			);
 		const initializerCompletion = `${AUTH_HOME}/operations/initialize-${crypto.randomUUID()}.done`;
 		yield* Effect.forEach(
-			[
-				[AUTH_INITIALIZER, AUTH_INITIALIZER_SOURCE],
-				[AUTH_CONFIGURATOR, CONFIGURATOR_SOURCE],
-				[AUTH_LOGIN, LOGIN_SOURCE],
-				[AUTH_CANCEL, CANCEL_SOURCE],
-				[AUTH_VERIFY, VERIFY_SOURCE],
-				[AUTH_CODEX_GRANT, CODEX_GRANT_SOURCE],
-			] as const,
+			AUTH_BOOTSTRAP_FILES,
 			([path, contents]) =>
 				authority.provider
 					.writeTextFile(authority.sandboxId, path, contents, "zuse")
@@ -790,6 +828,26 @@ const initializeAuthority = Effect.fn("initializeCloudAuthAuthority")(
 			return yield* Effect.fail(
 				serviceUnavailable("codex-auth-update-required"),
 			);
+		}
+		// Failed Grok installs must remain repairable on the next request.
+		const grokVersion = yield* readOptional(
+			authority,
+			`${AUTH_HOME}/grok-toolchain-version`,
+		);
+		if (grokVersion?.includes(GROK_EXTERNAL_AUTH_TOOLCHAIN_VERSION)) {
+			// Publish readiness only after initialization and toolchain validation succeed.
+			yield* authority.provider
+				.writeTextFile(
+					authority.sandboxId,
+					AUTH_BOOTSTRAP_VERSION,
+					version,
+					"zuse",
+				)
+				.pipe(
+					Effect.mapError(() =>
+						serviceUnavailable("cloud_auth_initialize_failed"),
+					),
+				);
 		}
 		return { ...authority, storageIncarnationId } satisfies Authority;
 	},
@@ -1156,7 +1214,9 @@ export const startCloudAuthLogin = Effect.fn("startCloudAuthLogin")(function* (
 	accountId: string,
 	providerId: "codex" | "grok",
 ) {
-	const authority = yield* ensureRunning(yield* provisionAuthority(accountId));
+	const authority = yield* ensureRunning(
+		yield* provisionAuthority(accountId, true),
+	);
 	if (providerId === "codex") {
 		yield* (yield* CloudWorkspaceStore).advanceCloudAuthEpoch({
 			accountId,

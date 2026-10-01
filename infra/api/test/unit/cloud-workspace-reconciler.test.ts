@@ -632,6 +632,60 @@ describe("cloud workspace reconciler", () => {
 		});
 	});
 
+	test("checks the published runtime before starting a workspace from an older image", async () => {
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const workspace = yield* seedWorkspace({
+					workspaceId: "workspace-old-image",
+					state: "queued",
+					desiredState: "ready",
+					statusCode: "start-queued",
+					requestConfig: {},
+				});
+				const control = yield* FakeSandboxProviderControlService;
+				yield* Ref.set(control.sandboxes, new Map());
+				const provider = yield* (yield* SandboxProviders).get("fake");
+				const start = vi.spyOn(provider, "startProcess");
+				const write = vi.spyOn(provider, "writeTextFile");
+				yield* reconcileCloudWorkspace(workspace.workspaceId).pipe(
+					Effect.provideService(SandboxOfferConfiguration, {
+						port: 47837,
+						createTimeoutSeconds: 3600,
+						keepAliveTimeoutSeconds: 600,
+						runtimeManifestUrl: "https://runtime.test/manifest.json",
+						runtimeSigningPublicJwk: "public-key",
+					}),
+				);
+				expect(start).toHaveBeenCalledWith(
+					"fake-workspace-old-image",
+					expect.objectContaining({
+						env: expect.objectContaining({
+							ZUSE_RUNTIME_MANIFEST_URL: "https://runtime.test/manifest.json",
+							ZUSE_RUNTIME_WIRE_PROTOCOL: "6",
+							ZUSE_RUNTIME_PUBLIC_KEY_FILE:
+								"/home/zuse/.zuse-runtime-signing-public.jwk",
+						}),
+					}),
+				);
+				expect(write).toHaveBeenCalledWith(
+					"fake-workspace-old-image",
+					"/home/zuse/.zuse-runtime-signing-public.jwk",
+					"public-key",
+					"zuse",
+				);
+				const args = start.mock.calls[0]?.[1].args?.join(" ") ?? "";
+				expect(args).toContain("runtime-updater.mjs");
+				expect(args.indexOf("runtime-updater.mjs")).toBeLessThan(
+					args.indexOf("exec /bin/bash"),
+				);
+				const saved = yield* (yield* CloudWorkspaceStore).getWorkspace(
+					workspace.workspaceId,
+				);
+				expect(saved?.requestConfig.runtimeInstallPending).toBe(true);
+			}).pipe(Effect.provide(testLayer)),
+		);
+	});
+
 	test.each([
 		"running",
 		"paused",
@@ -662,7 +716,12 @@ describe("cloud workspace reconciler", () => {
 					"fake-workspace-on-demand",
 					expect.objectContaining({
 						command: "/bin/bash",
-						args: ["/var/lib/zuse/project-build/workspace-bootstrap.sh"],
+						args: [
+							"-lc",
+							expect.stringContaining(
+								"exec /bin/bash /var/lib/zuse/project-build/workspace-bootstrap.sh",
+							),
+						],
 					}),
 				);
 				expect(extend).toHaveBeenCalledWith("fake-workspace-on-demand", 600);

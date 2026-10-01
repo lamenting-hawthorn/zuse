@@ -918,7 +918,7 @@
 	"cloud_setup_later": "⟦Fïïnïïsh lààtëër⟧",
 	"cloud_setup_finish": "⟦Stààrt üüsïïng Clôôüüd⟧",
 	"cloud_images_all_description": "⟦Rëëbüüïïld ïïmààgëës fôôr ëëvëëry clôôüüd prôôvïïdëër ïïn ôônëë stëëp. ËËxïïstïïng chààts këëëëp thëëïïr cüürrëënt ëënvïïrôônmëënt.⟧",
-	"cloud_images_start_failed": "⟦Côôüüld nôôt stààrt büüïïlds fôôr {{providers}}. ÔÔthëër büüïïlds côôntïïnüüëë. Rëëtry ààftëër thëëy fïïnïïsh.⟧",
+	"cloud_images_start_failed": "⟦Côôüüld nôôt stààrt thëë büüïïld fôôr {{providers}}. Try ààgààïïn.⟧",
 	"cloud_images_state_checking": "⟦Chëëckïïng⟧",
 	"cloud_images_state_building": "⟦Büüïïldïïng⟧",
 	"cloud_images_state_auth-broken": "⟦Rëëcôônnëëct ààgëënt⟧",
@@ -929,5 +929,10 @@
 	"cloud_setup_open_guide": "⟦ÔÔpëën sëëtüüp güüïïdëë⟧",
 	"cloud_setup_guide_description": "⟦Côônnëëct GïïtHüüb, sïïgn ïïn tôô yôôüür ààgëënts, àànd büüïïld yôôüür clôôüüd ïïmààgëës.⟧",
 	"cloud_images_details_description": "⟦Büüïïld prôôgrëëss, lôôgs, côônfïïgüürààtïïôôn, àànd prëëvïïôôüüs büüïïlds.⟧",
-	"cloud_images_no_builds": "⟦Nôô büüïïlds yëët. ÜÜsëë Rëëbüüïïld ïïmààgëë tôô büüïïld ïïmààgëës fôôr ààll prôôvïïdëërs.⟧"
+	"cloud_images_no_builds": "⟦Nôô büüïïlds yëët. Sëëlëëct thïïs prôôvïïdëër àànd büüïïld ïïts ïïmààgëë tôô gëët stààrtëëd.⟧",
+	"cloud_images_selected_description": "⟦Büüïïld ààn ïïmààgëë fôôr thëë sëëlëëctëëd prôôvïïdëër. ËËxïïstïïng chààts këëëëp thëëïïr cüürrëënt ëënvïïrôônmëënt.⟧",
+	"cloud_images_recommended": "⟦Rëëcôômmëëndëëd⟧",
+	"cloud_images_view_logs": "⟦{{provider}} büüïïld lôôgs⟧",
+	"settings_page_provider_update_notifications": "⟦Prôôvïïdëër üüpdààtëë nôôtïïfïïcààtïïôôns⟧",
+	"settings_page_provider_update_notifications_description": "⟦Shôôw àà nôôtïïfïïcààtïïôôn whëën àà nëëwëër vëërsïïôôn ôôf ààn ààgëënt prôôvïïdëër ïïs ààvààïïlààblëë. ÔÔff by dëëfààüült.⟧"
 }

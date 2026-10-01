@@ -15,7 +15,10 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CODEX_EXTERNAL_AUTH_TOOLCHAIN_VERSION } from "@zuse/contracts";
+import {
+	CODEX_EXTERNAL_AUTH_TOOLCHAIN_VERSION,
+	GROK_EXTERNAL_AUTH_TOOLCHAIN_VERSION,
+} from "@zuse/contracts";
 import {
 	makeSandboxProviders,
 	SandboxProviderError,
@@ -30,8 +33,11 @@ import {
 	CODEX_GRANT_SOURCE,
 	canSeedCloudAuthSnapshot,
 	cloudAuthAuthorityLabel,
+	cloudAuthStatus,
 	parseDeviceLoginOutput,
+	provisionCloudAuth,
 	snapshotCloudAuthAuthority,
+	startCloudAuthLogin,
 } from "../../src/cloud-auth-authority.ts";
 import {
 	CloudWorkspaceStore,
@@ -52,6 +58,121 @@ const grantAdditionalData = (sealed: Record<string, unknown>): Buffer =>
 			authorityEpoch: sealed.authorityEpoch,
 		}),
 	);
+
+describe("cloud auth setup reuse", () => {
+	test("initializes once across status, connect and device login, and repairs stale setup", async () => {
+		const home = "/home/zuse/.zuse/cloud-auth";
+		const files = new Map<string, string>();
+		let initializations = 0;
+		let failGrok = false;
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const store = yield* CloudWorkspaceStore;
+				yield* store.claimCloudAuthAuthority({
+					accountId: "account",
+					provider: "fake",
+					candidateStorageIncarnationId: "incarnation",
+					toolchainVersion: "test",
+					leaseOwner: "worker",
+					nowMs: 100,
+					leaseExpiresAtMs: 200,
+				});
+				yield* store.completeCloudAuthAuthorityProvisioning({
+					accountId: "account",
+					providerSandboxId: "authority",
+					storageIncarnationId: "incarnation",
+					toolchainVersion: "test",
+					leaseOwner: "worker",
+					nowMs: 150,
+				});
+				const fake = yield* (yield* SandboxProviders).get("fake");
+				const registry = yield* makeSandboxProviders({
+					registrations: [
+						{
+							adapter: {
+								...fake,
+								inspect: () =>
+									Effect.succeed({
+										providerSandboxId: "authority",
+										providerLabel: "authority",
+										state: "running" as const,
+									}),
+								pathExists: (_id, path) => Effect.succeed(files.has(path)),
+								readTextFile: (_id, path) =>
+									Effect.succeed(files.get(path) ?? ""),
+								writeTextFile: (_id, path, contents) =>
+									Effect.sync(() => {
+										files.set(path, contents);
+									}),
+								startProcess: (_id, spec) =>
+									Effect.sync(() => {
+										if (spec.tag !== "zuse-cloud-auth-initialize") return;
+										initializations++;
+										files.set(spec.args?.at(-1) ?? "", "ready");
+										files.set(`${home}/key-id`, "key");
+										files.set(`${home}/private.pem`, "private");
+										files.set(
+											`${home}/grok-toolchain-version`,
+											failGrok
+												? "unavailable"
+												: GROK_EXTERNAL_AUTH_TOOLCHAIN_VERSION,
+										);
+										files.set(`${home}/public.jwk.json`, "{}");
+										files.set(`${home}/storage-incarnation-id`, "incarnation");
+										files.set(
+											`${home}/codex-toolchain-version`,
+											CODEX_EXTERNAL_AUTH_TOOLCHAIN_VERSION,
+										);
+									}),
+							},
+						},
+					],
+					defaultProviderId: "fake",
+				});
+				yield* Effect.gen(function* () {
+					expect((yield* cloudAuthStatus("account")).authorityState).toBe(
+						"ready",
+					);
+					yield* provisionCloudAuth("account");
+					expect((yield* startCloudAuthLogin("account", "codex")).state).toBe(
+						"authorizing",
+					);
+					expect(initializations).toBe(1);
+					files.set(`${home}/bootstrap-version`, "old-version");
+					yield* cloudAuthStatus("account");
+					expect(initializations).toBe(2);
+					files.delete(`${home}/key-id`);
+					yield* cloudAuthStatus("account");
+					expect(initializations).toBe(3);
+					files.delete(`${home}/private.pem`);
+					failGrok = true;
+					yield* cloudAuthStatus("account");
+					expect(initializations).toBe(4);
+					expect(files.get(`${home}/bootstrap-version`)).toBe("");
+					failGrok = false;
+					yield* cloudAuthStatus("account");
+					expect(initializations).toBe(5);
+					yield* cloudAuthStatus("account");
+					expect(initializations).toBe(5);
+				}).pipe(Effect.provideService(SandboxProviders, registry));
+			}).pipe(
+				Effect.provide(
+					Layer.mergeAll(
+						CloudWorkspaceStoreMemory,
+						SandboxProvidersFake,
+						Config.layer({
+							apiIssuer: "https://api.test",
+							workosJwksUrl: "https://unused.test/jwks",
+							workosIssuer: "https://unused.test",
+							mintPrivateKey: Redacted.make("{}"),
+							mintPublicKey: "{}",
+						}),
+					),
+				),
+			),
+		);
+	});
+});
 
 describe("cloud auth authority identity", () => {
 	test.each([

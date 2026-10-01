@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "revision": 2026092801,
-  "generatedAt": "2026-09-28T00:00:00.000Z",
+  "revision": 2026092901,
+  "generatedAt": "2026-09-29T00:00:00.000Z",
   "providers": {
     "claude": {
       "models": [
@@ -375,6 +375,43 @@
     },
     "codex": {
       "models": [
+        {
+          "id": "gpt-6.1-sol",
+          "label": "GPT-6.1 Sol",
+          "badgeLabel": "New",
+          "optionDescriptors": [
+            {
+              "kind": "select",
+              "id": "reasoning",
+              "label": "Reasoning",
+              "options": [
+                {
+                  "id": "low",
+                  "label": "Low"
+                },
+                {
+                  "id": "medium",
+                  "label": "Medium"
+                },
+                {
+                  "id": "high",
+                  "label": "High"
+                },
+                {
+                  "id": "xhigh",
+                  "label": "Extra High"
+                },
+                {
+                  "id": "max",
+                  "label": "Max"
+                }
+              ],
+              "defaultId": "medium"
+            }
+          ],
+          "supportsPlanMode": true,
+          "supportsWebSearch": "native"
+        },
         {
           "id": "gpt-6-astra",
           "label": "GPT-6 Astra",
@@ -1541,6 +1578,12 @@
     }
   },
   "pricing": {
+    "gpt-6.1-sol": {
+      "input": 2,
+      "output": 10,
+      "cacheRead": 0.1,
+      "cacheCreate": 2.5
+    },
     "gpt-6-sol": {
       "input": 2,
       "output": 10,

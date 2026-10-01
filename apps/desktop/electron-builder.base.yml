@@ -72,6 +72,8 @@ extraResources:
 # MCP child scripts are spawned by external agent processes that can't read
 # inside the asar, so they must be unpacked too; their bridges rewrite
 # app.asar → app.asar.unpacked when resolving them.
+afterPack: scripts/cursor-sdk-package.mjs
+
 asar: true
 asarUnpack:
   - "**/*.node"

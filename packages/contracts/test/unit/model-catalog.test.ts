@@ -60,6 +60,7 @@ describe("bundled model catalog", () => {
 
 	it("makes GPT-6 Astra the Codex default with the full reasoning ladder", () => {
 		expect(modelsForProvider(catalog, "codex").map((m) => m.id)).toEqual([
+			"gpt-6.1-sol",
 			"gpt-6-astra",
 			"gpt-6-sol",
 			"gpt-6-luna",
@@ -86,6 +87,32 @@ describe("bundled model catalog", () => {
 		expect(reasoningOptions("codex", "gpt-6-luna", "reasoning")).toEqual(
 			ladder.slice(0, -1),
 		);
+	});
+
+	it("offers GPT-6.1 Sol with its supported reasoning tiers and pricing", () => {
+		expect(findModelDescriptor(catalog, "codex", "gpt-6.1-sol")).toMatchObject({
+			label: "GPT-6.1 Sol",
+			badgeLabel: "New",
+			supportsPlanMode: true,
+			supportsWebSearch: "native",
+			optionDescriptors: [expect.objectContaining({ defaultId: "medium" })],
+		});
+		expect(reasoningOptions("codex", "gpt-6.1-sol", "reasoning")).toEqual([
+			{ id: "low", label: "Low" },
+			{ id: "medium", label: "Medium" },
+			{ id: "high", label: "High" },
+			{ id: "xhigh", label: "Extra High" },
+			{ id: "max", label: "Max" },
+		]);
+		expect(visibleModelsForProvider(catalog, "codex")[0]?.id).toBe(
+			"gpt-6.1-sol",
+		);
+		expect(catalog.pricing["gpt-6.1-sol"]).toEqual({
+			input: 2,
+			output: 10,
+			cacheRead: 0.1,
+			cacheCreate: 2.5,
+		});
 	});
 
 	it("makes Fable 5.1 the Claude default and keeps aliases routed", () => {
@@ -291,7 +318,8 @@ describe("resolveModelCatalog", () => {
 		expect(resolved.source).toBe("remote");
 		expect(codex.live.status).toBe("ok");
 		const ids = codex.models.map((m) => m.id);
-		expect(ids.slice(0, 6)).toEqual([
+		expect(ids.slice(0, 7)).toEqual([
+			"gpt-6.1-sol",
 			"gpt-6-astra",
 			"gpt-6-sol",
 			"gpt-6-luna",
