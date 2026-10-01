@@ -105,9 +105,10 @@ publish with the same API key owner used by the Worker.
   does not revoke a Boxd link, because inbound proxy traffic can wake the VM.
 - There is no attributable actual-cost settlement feed wired into Zuse. Machine
   records carry only `createdAt` and `hibernatedAt`, so no actual-cost settlement
-  source exists for boxd: reservations are made at the price schedule while
-  a run lasts, but nothing finalizes them. boxd placements are unbilled until
-  boxd exposes attributable usage. Runtime observations are independently
+  source exists for boxd. The optional estimated balance policy durably deducts
+  sampled allocated CPU/RAM costs and enforces the balance cap until attributable
+  provider costs can replace them. Estimates are not confirmed invoice charges.
+  Runtime observations are independently
   exported to Polar as `zuse_cloud_runtime_observed_ms` when
   `CLOUD_USAGE_EXPORT_ENABLED=true`; they are sampled activity, not exact costs.
   See [usage operations](billing.md#usage-visibility-independent-of-invoices); billing-enforced placement requires the
