@@ -1,5 +1,5 @@
-export const WORKSPACE_RUNTIME_UPDATE_SCRIPT = `# Account snapshots can outlive a wire-protocol rollout. First launches check local
-# metadata without a network fetch; explicit restarts also apply runtime fixes.
+export const WORKSPACE_RUNTIME_UPDATE_SCRIPT = `# Account snapshots can lack runtime fixes without a wire-protocol change.
+# First launches and explicit restarts check the signed channel before starting.
 ensure_workspace_runtime() {
   [[ -n "\${ZUSE_RUNTIME_MANIFEST_URL:-}" ]] || return 0
   local status_dir=/var/lib/zuse/workspace

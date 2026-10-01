@@ -2000,7 +2000,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 					"-lc",
 					`set -e
 ${WORKSPACE_RUNTIME_UPDATE_SCRIPT}
-ensure_workspace_runtime
+ensure_workspace_runtime 1
 exec /bin/bash ${WORKSPACE_BOOTSTRAP_FILE}`,
 				],
 				tag: WORKSPACE_RUNTIME_PROCESS.tag,

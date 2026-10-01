@@ -1,6 +1,8 @@
+import { makeResourceKey } from "@zuse/client-runtime/resource-ref";
 import {
 	CommandId,
 	EnvironmentId,
+	RpcAccessDeniedError,
 	SessionId,
 	ThreadGoal,
 } from "@zuse/contracts";
@@ -16,6 +18,7 @@ import {
 } from "../../src/lib/session-goal-client-bus.ts";
 import {
 	getRendererClientBus,
+	registerRendererResourceDriver,
 	registerRendererResourcePersistence,
 	resetSessionTimelineClientBusForTest,
 	setSessionTimelineRpcClientForTest,
@@ -49,6 +52,64 @@ const goal = ThreadGoal.make({
 });
 
 describe("renderer session goal ClientBus adapter", () => {
+	it("still reconnects to renew an expired RPC credential", async () => {
+		setSessionTimelineRpcClientForTest(
+			async () =>
+				({
+					"session.goal.stream": () =>
+						Stream.fail(
+							new RpcAccessDeniedError({ code: "credential-expired" }),
+						),
+				}) as never,
+		);
+		const retained = retainSessionGoal(ref);
+		try {
+			await waitUntil(
+				() =>
+					getRendererClientBus().connection(environmentId).phase ===
+					"reconnecting",
+			);
+		} finally {
+			retained.lease.release();
+		}
+	});
+	it("keeps a sibling resource live when goal access is denied", async () => {
+		let connections = 0;
+		setSessionTimelineRpcClientForTest(async () => {
+			connections += 1;
+			return {
+				"session.goal.stream": () =>
+					Stream.fail(new RpcAccessDeniedError({ code: "access-denied" })),
+			} as never;
+		});
+		const bus = getRendererClientBus();
+		const siblingKey = makeResourceKey<number>("session-skills", ref);
+		let publish: ((value: number) => void) | undefined;
+		const unregister = registerRendererResourceDriver("session-skills", () => ({
+			start: (context) => {
+				publish = (value) => {
+					context.emit({ data: value, sync: "live" });
+				};
+			},
+			stop: () => {
+				publish = undefined;
+			},
+		}));
+		const sibling = bus.retain(siblingKey, { activation: "connect" });
+		const denied = retainSessionGoal(ref);
+		try {
+			await waitUntil(() => bus.snapshot(denied.key).sync === "failed");
+			expect(bus.connection(environmentId).phase).toBe("connected");
+			expect(publish).toBeDefined();
+			publish?.(1);
+			expect(bus.snapshot(siblingKey).data).toBe(1);
+			expect(connections).toBe(1);
+		} finally {
+			denied.lease.release();
+			sibling.release();
+			unregister();
+		}
+	});
 	afterEach(() => {
 		resetSessionGoalClientBusForTest();
 		resetSessionTimelineClientBusForTest();

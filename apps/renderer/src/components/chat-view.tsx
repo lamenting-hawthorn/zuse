@@ -279,7 +279,8 @@ export function ChatView({
 	const inFlight =
 		cloudActivity === null
 			? timeline.presentation.busy
-			: waitingMessages.length === 0 && cloudChatShowsWorking(cloudActivity);
+			: waitingMessages.length === 0 &&
+				cloudChatShowsWorking(cloudActivity, timeline.view.pendingCommands);
 	const permissionRequests =
 		useEnvironmentPermissions(environmentId).data?.requestsById ?? {};
 	const durableQuestionCount = timeline.presentation.interactions.filter(

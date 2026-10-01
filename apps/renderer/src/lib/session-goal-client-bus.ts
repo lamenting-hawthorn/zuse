@@ -26,7 +26,7 @@ import {
 } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useMemo } from "react";
-import type { MemoizeClient } from "./rpc-client.ts";
+import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -49,14 +49,6 @@ const sessionRefFromKey = (key: ResourceKey<unknown>): SessionRef | null =>
 
 const messageOf = (cause: unknown): string =>
 	cause instanceof Error ? cause.message : String(cause);
-
-const isGoalResourceFailure = (cause: unknown): boolean => {
-	const tag =
-		typeof cause === "object" && cause !== null && "_tag" in cause
-			? cause._tag
-			: null;
-	return tag === "GoalUnsupportedError" || tag === "SessionNotFoundError";
-};
 
 let driverStarts = 0;
 
@@ -109,7 +101,7 @@ const makeSessionGoalDriver = (): ResourceDriver<
 						context.emit({ sync: "failed" });
 						// A domain gap belongs to this keyed resource; only transport-level
 						// termination is allowed to restart the shared environment connection.
-						if (isGoalResourceFailure(failure)) return;
+						if (!isRpcClientTransportError(failure)) return;
 						getRendererClientBus().reportConnectionFault(
 							ref.environmentId,
 							{ phase: "failed", message: messageOf(failure) },

@@ -39,7 +39,7 @@ import { useSessionRuntimeStore } from "../store/session-runtime.ts";
 import { hostedCacheDatabaseName, isHostedProduct } from "./hosted-connect.ts";
 import { upsertLatestEntity } from "./latest-entity.ts";
 import { markRendererStartupMilestone } from "./performance-marks.ts";
-import type { MemoizeClient } from "./rpc-client.ts";
+import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -639,6 +639,7 @@ const reportConnectionFailure = (
 	generation: number,
 	cause: unknown,
 ): void => {
+	if (!isRpcClientTransportError(cause)) return;
 	getRendererClientBus().reportConnectionFault(
 		environmentId,
 		{

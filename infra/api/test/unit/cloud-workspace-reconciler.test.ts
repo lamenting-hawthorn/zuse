@@ -673,6 +673,7 @@ describe("cloud workspace reconciler", () => {
 				);
 				const args = start.mock.calls[0]?.[1].args?.join(" ") ?? "";
 				expect(args).toContain("runtime-updater.mjs");
+				expect(args).toContain("ensure_workspace_runtime 1\nexec /bin/bash");
 				expect(args.indexOf("runtime-updater.mjs")).toBeLessThan(
 					args.indexOf("exec /bin/bash"),
 				);

@@ -21,7 +21,7 @@ import type { EnvironmentId, FsEntry, FsTreeWatchEvent } from "@zuse/contracts";
 import { CommandId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { reconcileFileTreePaths } from "./file-tree-reconciliation.ts";
-import type { MemoizeClient } from "./rpc-client.ts";
+import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -407,6 +407,7 @@ const reportConnectionFailure = (
 	generation: number,
 	cause: unknown,
 ): void => {
+	if (!isRpcClientTransportError(cause)) return;
 	getRendererClientBus().reportConnectionFault(
 		environmentId,
 		{ phase: "failed", message: messageOf(cause) },

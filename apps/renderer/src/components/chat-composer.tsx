@@ -118,7 +118,6 @@ import {
 	cloudComposerSubmissionBlocked,
 	commitAcceptedComposerDelivery,
 	handoffComposerDraft,
-	isWaitingCloudSend,
 	shouldQueueComposerMessage,
 	withComposerContext,
 } from "../lib/composer-delivery.ts";
@@ -147,7 +146,6 @@ import {
 	setSessionGoal,
 	useSessionGoalResource,
 } from "../lib/session-goal-client-bus.ts";
-import { hasPendingTurnStart } from "../lib/session-runtime-state.ts";
 import { useRendererSessionTimeline } from "../lib/session-timeline-hooks.ts";
 import { useActiveWorkspaceRoot } from "../store/active-workspace.ts";
 import {
@@ -347,11 +345,6 @@ export function ChatComposer({
 					runtime: runtimeState,
 					timeline: timeline.view,
 				});
-	const turnStartPending = hasPendingTurnStart(
-		timeline.view.pendingCommands.filter(
-			(command) => !isCloudSession || !isWaitingCloudSend(command),
-		),
-	);
 	const durableCloudSendPending =
 		isCloudSession &&
 		cloudComposerSubmissionBlocked(timeline.view.pendingCommands);
@@ -362,7 +355,7 @@ export function ChatComposer({
 	const inFlight =
 		cloudActivity === null
 			? timeline.presentation.turnInFlight
-			: cloudChatShowsWorking(cloudActivity) || turnStartPending;
+			: cloudChatShowsWorking(cloudActivity, timeline.view.pendingCommands);
 	// Hold messages only while the provider is unavailable or an earlier message
 	// is already queued. Worktree setup is independent background work and must
 	// not delay an agent that has finished booting.

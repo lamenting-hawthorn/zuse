@@ -13,8 +13,11 @@ import { useMemo, useSyncExternalStore } from "react";
 import { hostedAuthState, subscribeHostedAuth } from "./hosted-session.ts";
 import { isHostedProduct } from "./platform-capabilities.ts";
 import { observeRendererAccount } from "./renderer-account.ts";
-import type { MemoizeClient } from "./rpc-client.ts";
-import { LOCAL_ENVIRONMENT_KEY } from "./rpc-client.ts";
+import {
+	isRpcClientTransportError,
+	LOCAL_ENVIRONMENT_KEY,
+	type MemoizeClient,
+} from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -70,6 +73,7 @@ const makeDriver = (): ResourceDriver<MemoizeClient, EnvironmentAuthData> => {
 					Effect.sync(() => {
 						if (!active || Cause.hasInterruptsOnly(cause)) return;
 						context.emit({ sync: "failed" });
+						if (!isRpcClientTransportError(Cause.squash(cause))) return;
 						getRendererClientBus().reportConnectionFault(
 							environmentId,
 							{ phase: "failed", message: messageOf(Cause.squash(cause)) },

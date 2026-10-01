@@ -48,8 +48,11 @@ import {
 	rendererWorkspaceSnapshot,
 	subscribeRendererWorkspace,
 } from "./renderer-workspace.ts";
-import type { MemoizeClient } from "./rpc-client.ts";
-import { getLocalEnvironmentId } from "./rpc-client.ts";
+import {
+	getLocalEnvironmentId,
+	isRpcClientTransportError,
+	type MemoizeClient,
+} from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -501,6 +504,7 @@ const makeDriver = (): ResourceDriver<MemoizeClient, SettingsSlice> => {
 					Effect.sync(() => {
 						if (!active || Cause.hasInterruptsOnly(cause)) return;
 						context.emit({ sync: "failed" });
+						if (!isRpcClientTransportError(Cause.squash(cause))) return;
 						getRendererClientBus().reportConnectionFault(
 							environmentId,
 							{ phase: "failed", message: messageOf(Cause.squash(cause)) },
