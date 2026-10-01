@@ -44,6 +44,7 @@ import {
 	filterCatalog,
 	filterChatCatalog,
 	filterChats,
+	filterPermissionCatalog,
 	filterSessionCatalog,
 	projectChatAccess,
 	withCatalogChanges,
@@ -2084,7 +2085,10 @@ const MessagesQueueResume = MemoizeRpcs.toLayerHandler(
 
 const PermissionRequests = MemoizeRpcs.toLayerHandler(
 	"permission.requests",
-	() => Stream.unwrap(Effect.map(PermissionService, (svc) => svc.requests())),
+	() =>
+		Stream.unwrap(Effect.map(PermissionService, (svc) => svc.requests())).pipe(
+			filterPermissionCatalog,
+		),
 );
 
 const PermissionDecide = MemoizeRpcs.toLayerHandler(

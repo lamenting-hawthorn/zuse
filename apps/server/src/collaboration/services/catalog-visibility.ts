@@ -3,10 +3,53 @@ import {
 	type ChatId,
 	type ChatSummaryChange,
 	type FolderId,
+	type PermissionRequestChange,
 	type SessionId,
 	type SessionSummaryChange,
 } from "@zuse/contracts";
 import { Context, Effect, Result, Stream } from "effect";
+import { SqlClient } from "effect/unstable/sql";
+
+/** Filter the existing live callback feed, including removal IDs, at the server. */
+export const filterPermissionCatalog = <E, R>(
+	stream: Stream.Stream<PermissionRequestChange, E, R>,
+) =>
+	Stream.unwrap(
+		Effect.gen(function* () {
+			const scope = yield* Effect.serviceOption(CatalogVisibility);
+			if (scope._tag === "None") return stream;
+			const sql = yield* SqlClient.SqlClient;
+			const known = new Set<string>();
+			return stream.pipe(
+				Stream.mapEffect((change) =>
+					Effect.gen(function* () {
+						if (change._tag === "remove")
+							return known.delete(change.requestId) ? [change] : [];
+						const sessions = yield* sql<{
+							id: string;
+						}>`SELECT id FROM sessions WHERE ${sql.in("chat_id", [...scope.value.chats])}`.pipe(
+							Effect.orDie,
+						);
+						const visible = new Set(sessions.map((s) => s.id));
+						if (change._tag === "snapshot") {
+							known.clear();
+							const requests = change.requests.filter((r) =>
+								visible.has(r.sessionId),
+							);
+							for (const r of requests) known.add(r.id);
+							return [{ ...change, requests }];
+						}
+						if (!visible.has(change.request.sessionId)) return [];
+						known.add(change.request.id);
+						return [change];
+					}),
+				),
+				Stream.flatMap((changes: ReadonlyArray<PermissionRequestChange>) =>
+					Stream.fromIterable(changes),
+				),
+			);
+		}),
+	);
 
 /** Installed only by the RPC boundary after verifying the account identity. */
 export class CatalogVisibility extends Context.Service<

@@ -1,6 +1,7 @@
 import {
 	ChatId,
 	FolderId,
+	PermissionDecision,
 	RpcAccessDeniedError,
 	SessionId,
 	WorktreeId,
@@ -9,6 +10,7 @@ import { Clock, Effect, Option, Schema } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { CatalogVisibility } from "../../collaboration/services/catalog-visibility.ts";
 import { WorkspaceFileAccess } from "../../collaboration/services/workspace-file-access.ts";
+import { PermissionService } from "../../provider/services/permission-service.ts";
 import { PtyService } from "../../pty/services/pty-service.ts";
 import { workspacePtyService } from "../../pty/workspace-pty-service.ts";
 import type { WorkspaceCredentialIdentity } from "../services/connection-identity.ts";
@@ -31,6 +33,9 @@ const register = (
 register("handshake", false, ["connect.handshake", "ping.ping"]);
 // Aggregate resource usage only; host configuration and runtime control stay denied.
 register("catalog", false, ["machine.resources.watch"]);
+register("catalog", false, ["permission.requests"]);
+register("catalog", true, ["permission.decide"]);
+register("session", false, ["permission.listPending"]);
 register("terminal", false, ["pty.list", "pty.output"]);
 register("terminal", true, [
 	"pty.open",
@@ -151,6 +156,35 @@ export const authorizeWorkspaceRpc = Effect.fn("authorizeWorkspaceRpc")(
 			const chat = rows[0];
 			if (chat === undefined || chat.project_id !== identity.projectId)
 				return yield* new RpcAccessDeniedError({ code: "access-denied" });
+			if (tag === "permission.decide") {
+				const input = yield* Schema.decodeUnknownEffect(
+					Schema.Struct({
+						requestId: Schema.String,
+						decision: PermissionDecision,
+					}),
+				)(payload);
+				// A chat grant cannot install folder-wide or global approval rules.
+				if (input.decision._tag === "AlwaysAllow")
+					return yield* new RpcAccessDeniedError({ code: "access-denied" });
+				const service = yield* Effect.serviceOption(PermissionService);
+				if (Option.isNone(service))
+					return yield* new RpcAccessDeniedError({ code: "access-denied" });
+				const sessions = yield* sql<{
+					id: string;
+				}>`SELECT id FROM sessions WHERE chat_id=${identity.chatId}`;
+				let found = false;
+				for (const session of sessions) {
+					const pending = yield* service.value.listPending(
+						SessionId.make(session.id),
+					);
+					if (pending.some((request) => request.id === input.requestId)) {
+						found = true;
+						break;
+					}
+				}
+				if (!found)
+					return yield* new RpcAccessDeniedError({ code: "access-denied" });
+			}
 			if (rule.target === "chat") {
 				const input = yield* Schema.decodeUnknownEffect(
 					Schema.Struct({ chatId: ChatId }),
