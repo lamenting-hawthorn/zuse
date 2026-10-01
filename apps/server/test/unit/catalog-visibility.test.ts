@@ -87,6 +87,43 @@ it("filters chat snapshots and updates without changing the host feed", async ()
 	]);
 });
 
+it("projects verified edit access consistently in snapshots, updates, lists and direct reads", async () => {
+	const shared = chat("shared");
+	const expected = Chat.make({ ...shared, readOnly: false });
+	const access = { ...scope("shared"), editableChats: new Set([shared.id]) };
+	const frames: ChatSummaryChange[] = [
+		{ _tag: "snapshot", chats: [shared, chat("private")] },
+		{ _tag: "change", chat: shared },
+	];
+	expect(
+		await Effect.runPromise(
+			Stream.fromIterable(frames).pipe(
+				filterChatCatalog,
+				Stream.runCollect,
+				Effect.provideService(CatalogVisibility, access),
+			),
+		),
+	).toEqual([
+		{ _tag: "snapshot", chats: [expected] },
+		{ _tag: "change", chat: expected },
+	]);
+	expect(
+		await Effect.runPromise(
+			filterChats([shared, chat("private")]).pipe(
+				Effect.provideService(CatalogVisibility, access),
+			),
+		),
+	).toEqual([expected]);
+	expect(
+		await Effect.runPromise(
+			projectChatAccess(shared).pipe(
+				Effect.provideService(CatalogVisibility, access),
+			),
+		),
+	).toEqual(expected);
+	expect(shared.readOnly).toBeUndefined();
+});
+
 it("projects read-only guest access consistently for list and direct reads without mutating stored chats", async () => {
 	const shared = chat("shared");
 	const privateChat = chat("private");

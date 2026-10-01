@@ -29,6 +29,8 @@ const register = (
 	for (const tag of tags) policy.set(tag, { target, edit });
 };
 register("handshake", false, ["connect.handshake", "ping.ping"]);
+// Aggregate resource usage only; host configuration and runtime control stay denied.
+register("catalog", false, ["machine.resources.watch"]);
 register("terminal", false, ["pty.list", "pty.output"]);
 register("terminal", true, [
 	"pty.open",
@@ -64,6 +66,7 @@ register("session", false, [
 	"session.events.head",
 	"session.messages.page",
 	"session.goal.get",
+	"session.goal.stream",
 	"attachments.read",
 ]);
 register("session", true, [
@@ -101,6 +104,7 @@ register("file", false, [
 	"git.workspaceChanges",
 	"git.changes",
 	"git.workspaceSnapshot",
+	"git.prDetails",
 	"git.diff",
 	"git.reviewPatches",
 	"git.reviewFileContents",
@@ -190,6 +194,7 @@ export const authorizeWorkspaceRpc = Effect.fn("authorizeWorkspaceRpc")(
 				terminalDirectory = path;
 			}
 			return {
+				permission,
 				terminalDirectory,
 				folderId: identity.projectId,
 				worktreeId:
@@ -205,6 +210,9 @@ export const authorizeWorkspaceRpc = Effect.fn("authorizeWorkspaceRpc")(
 			Effect.provideService(CatalogVisibility, {
 				chats: new Set([identity.chatId]),
 				projects: new Set([identity.projectId]),
+				editableChats: new Set(
+					fileScope.permission === "edit" ? [identity.chatId] : [],
+				),
 			}),
 			Effect.provideService(WorkspaceFileAccess, fileScope),
 		);

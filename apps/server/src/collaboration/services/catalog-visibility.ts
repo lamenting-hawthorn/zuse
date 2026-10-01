@@ -14,6 +14,8 @@ export class CatalogVisibility extends Context.Service<
 	{
 		readonly chats: ReadonlySet<ChatId>;
 		readonly projects: ReadonlySet<FolderId>;
+		/** Omitted for read-only guest scopes. Populated only from verified grants. */
+		readonly editableChats?: ReadonlySet<ChatId>;
 	}
 >()("zuse/collaboration/CatalogVisibility") {}
 
@@ -50,14 +52,14 @@ export const filterCatalog = <A>(
 		),
 	);
 
-const readOnlyChat = (chat: Chat): Chat =>
-	Chat.make({ ...chat, readOnly: true });
+const scopedChat = (scope: CatalogVisibility["Service"], chat: Chat): Chat =>
+	Chat.make({ ...chat, readOnly: !scope.editableChats?.has(chat.id) });
 
 export const projectChatAccess = Effect.fn("projectChatAccess")(function* (
 	chat: Chat,
 ) {
 	const scope = yield* Effect.serviceOption(CatalogVisibility);
-	return scope._tag === "None" ? chat : readOnlyChat(chat);
+	return scope._tag === "None" ? chat : scopedChat(scope.value, chat);
 });
 
 export const filterChats = Effect.fn("filterChats")(function* (
@@ -66,7 +68,9 @@ export const filterChats = Effect.fn("filterChats")(function* (
 	const scope = yield* Effect.serviceOption(CatalogVisibility);
 	return scope._tag === "None"
 		? chats
-		: chats.filter((chat) => scope.value.chats.has(chat.id)).map(readOnlyChat);
+		: chats
+				.filter((chat) => scope.value.chats.has(chat.id))
+				.map((chat) => scopedChat(scope.value, chat));
 });
 
 export const filterChatCatalog = <E, R>(
@@ -85,12 +89,12 @@ export const filterChatCatalog = <E, R>(
 											...change,
 											chats: change.chats
 												.filter((chat) => scope.value.chats.has(chat.id))
-												.map(readOnlyChat),
+												.map((chat) => scopedChat(scope.value, chat)),
 										});
 									return scope.value.chats.has(change.chat.id)
 										? Result.succeed({
 												...change,
-												chat: readOnlyChat(change.chat),
+												chat: scopedChat(scope.value, change.chat),
 											})
 										: Result.fail(undefined);
 								},

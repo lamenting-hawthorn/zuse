@@ -1,4 +1,5 @@
 import {
+	Chat,
 	ChatId,
 	FolderId,
 	PtyId,
@@ -9,6 +10,7 @@ import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Effect, Layer, ManagedRuntime, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { expect, it, vi } from "vitest";
+import { projectChatAccess } from "../../src/collaboration/services/catalog-visibility.ts";
 import { authorizeWorkspaceRpc } from "../../src/lan-auth/layers/workspace-rpc-authorization.ts";
 import { PtyService } from "../../src/pty/services/pty-service.ts";
 
@@ -67,6 +69,8 @@ it("scopes terminals to the verified chat, enforces View/Edit and expires output
 				yield* sql`CREATE TABLE projects (id TEXT, path TEXT)`;
 				yield* sql`CREATE TABLE chats (id TEXT, project_id TEXT, worktree_id TEXT)`;
 				yield* sql`CREATE TABLE worktrees (id TEXT, project_id TEXT, path TEXT)`;
+				yield* sql`CREATE TABLE sessions (id TEXT, chat_id TEXT)`;
+				yield* sql`INSERT INTO sessions VALUES ('session-shared', 'shared'), ('session-private', 'private')`;
 				yield* sql`INSERT INTO projects VALUES ('project', '/shared')`;
 				yield* sql`INSERT INTO chats VALUES ('shared', 'project', NULL)`;
 			}),
@@ -74,6 +78,81 @@ it("scopes terminals to the verified chat, enforces View/Edit and expires output
 		const list = Effect.flatMap(PtyService, (pty) =>
 			pty.list(PtyOwnerId.make("forged")),
 		);
+		await expect(
+			runtime.runPromise(
+				authorizeWorkspaceRpc(
+					Effect.succeed(null),
+					identity,
+					"session.goal.stream",
+					{ sessionId: "session-shared" },
+				),
+			),
+		).resolves.toBeNull();
+		await expect(
+			runtime.runPromise(
+				authorizeWorkspaceRpc(Effect.void, identity, "session.goal.stream", {
+					sessionId: "session-private",
+				}),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		await expect(
+			runtime.runPromise(
+				authorizeWorkspaceRpc(
+					Effect.succeed("sample"),
+					identity,
+					"machine.resources.watch",
+					{},
+				),
+			),
+		).resolves.toBe("sample");
+		for (const tag of [
+			"git.workspaceSnapshot",
+			"git.workspaceChanges",
+			"git.branches",
+			"git.prDetails",
+		]) {
+			await expect(
+				runtime.runPromise(
+					authorizeWorkspaceRpc(Effect.succeed("details"), identity, tag, {
+						folderId: identity.projectId,
+						worktreeId: null,
+					}),
+				),
+			).resolves.toBe("details");
+			await expect(
+				runtime.runPromise(
+					authorizeWorkspaceRpc(Effect.void, identity, tag, {
+						folderId: "other-project",
+						worktreeId: null,
+					}),
+				),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+			await expect(
+				runtime.runPromise(
+					authorizeWorkspaceRpc(Effect.void, identity, tag, {
+						folderId: identity.projectId,
+						worktreeId: "other-worktree",
+					}),
+				),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		}
+		for (const tag of ["machine.runtime.update", "machine.runtime.restart"]) {
+			await expect(
+				runtime.runPromise(
+					authorizeWorkspaceRpc(Effect.void, identity, tag, {}),
+				),
+			).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
+		}
+		await expect(
+			runtime.runPromise(
+				authorizeWorkspaceRpc(
+					Effect.void,
+					{ ...identity, expiresAt: 0 },
+					"machine.resources.watch",
+					{},
+				),
+			),
+		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
 		const catalog = await runtime.runPromise(
 			authorizeWorkspaceRpc(list, identity, "pty.list", { ownerId: "forged" }),
 		);
@@ -87,6 +166,33 @@ it("scopes terminals to the verified chat, enforces View/Edit and expires output
 			),
 		).rejects.toMatchObject({ _tag: "RpcAccessDeniedError" });
 		expect(write).not.toHaveBeenCalled();
+		permission = "edit";
+		const sharedChat = Chat.make({
+			id: identity.chatId,
+			projectId: identity.projectId,
+			title: "shared",
+			titleProvenance: "manual",
+			worktreeId: null,
+			activeSessionId: null,
+			originSessionId: null,
+			archivedAt: null,
+			lastMessageAt: null,
+			lastReadAt: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
+		const readChat = () =>
+			runtime.runPromise(
+				authorizeWorkspaceRpc(
+					projectChatAccess(sharedChat),
+					identity,
+					"chat.get",
+					{ chatId: identity.chatId },
+				),
+			);
+		expect((await readChat()).readOnly).toBe(false);
+		permission = "view";
+		expect((await readChat()).readOnly).toBe(true);
 		permission = "edit";
 		await runtime.runPromise(
 			authorizeWorkspaceRpc(input, identity, "pty.write", {}),
