@@ -4,8 +4,6 @@ import type { ClientRequest } from "@zuse/agents/codex-generated/ClientRequest";
 import type { InitializeResponse } from "@zuse/agents/codex-generated/InitializeResponse";
 import type { ServerNotification } from "@zuse/agents/codex-generated/ServerNotification";
 import type { ServerRequest } from "@zuse/agents/codex-generated/ServerRequest";
-import { sharedCodexMcpConfig } from "../user-mcp/shared.ts";
-import type { ResolvedMcpServer } from "../user-mcp/types.ts";
 import { reportCodexStderr } from "./codex-stderr-reporter.ts";
 import { DEVICE_COMMAND_TOOL_TIMEOUT_SECONDS } from "./device-command-tools.ts";
 
@@ -193,7 +191,6 @@ export class CodexAppServerClient {
 		readonly codexPath: string | null;
 		readonly env?: NodeJS.ProcessEnv;
 		readonly mcp?: CodexAppMcpLaunchConfig;
-		readonly sharedMcpServers?: ReadonlyArray<ResolvedMcpServer>;
 		readonly startupTimeoutMs?: number;
 		readonly onStderr?: (text: string) => void;
 		readonly onNotification: NotificationHandler;
@@ -244,16 +241,10 @@ export class CodexAppServerClient {
 			}
 			options.onServerRequest(request, respond);
 		};
-		const sharedMcp = sharedCodexMcpConfig(options.sharedMcpServers ?? []);
 		const child = spawn(
 			options.codexPath ?? "codex",
-			[...codexAppServerLaunchArgs(options.mcp), ...sharedMcp.args],
-			{
-				env: {
-					...(options.env ?? process.env),
-					...sharedMcp.env,
-				},
-			},
+			[...codexAppServerLaunchArgs(options.mcp)],
+			options.env === undefined ? undefined : { env: options.env },
 		);
 		child.stdout.setEncoding("utf8");
 		child.stderr.setEncoding("utf8");

@@ -35,7 +35,6 @@
 		"@zuse/cloud-commands": "*",
 		"@zuse/contracts": "*",
 		"@zuse/domain": "*",
-		"@zuse/extension-sdk": "workspace:*",
 		"@zuse/i18n": "workspace:*",
 		"@zuse/icons": "workspace:*",
 		"@zuse/utils": "*",

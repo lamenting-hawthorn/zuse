@@ -608,12 +608,10 @@ const providerSystemImage = (providerId: ProviderId): string => {
 			return "function";
 		case "kiro":
 			return "face.smiling";
-		default:
-			return "puzzlepiece.extension";
 	}
 };
 
 const sf = (name: string) => name as never;
 
 export const providerDisplayName = (providerId: ProviderId): string =>
-	PROVIDER_LABEL[providerId] ?? providerId;
+	PROVIDER_LABEL[providerId];

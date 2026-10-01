@@ -45,18 +45,6 @@ import { useUiStore } from "./store/ui.ts";
 
 import { useWorkspaceStore } from "./store/workspace.ts";
 
-const ExtensionHostController = lazy(() =>
-	import("./lib/extension-host-controller.tsx").then((module) => ({
-		default: module.ExtensionHostController,
-	})),
-);
-
-const ExtensionSurfaceHost = lazy(() =>
-	import("./lib/extension-surfaces.tsx").then((module) => ({
-		default: module.ExtensionSurfaceHost,
-	})),
-);
-
 const PrWatchController = lazy(() =>
 	import("./components/pr-watch-controller.tsx").then((module) => ({
 		default: module.PrWatchController,
@@ -136,10 +124,6 @@ export function App({ onReady }: { readonly onReady?: () => void }) {
 	);
 	return (
 		<>
-			<Suspense fallback={null}>
-				<ExtensionHostController />
-				<ExtensionSurfaceHost />
-			</Suspense>
 			<ReadyApp
 				onboardingCompleted={onboardingCompleted}
 				onReady={onReady}

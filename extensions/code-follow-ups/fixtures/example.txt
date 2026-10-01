@@ -1,5 +1,0 @@
-function checkout() {
-  // TODO(payments): support partial refunds
-  return false;
-}
-# FIXME: replace placeholder

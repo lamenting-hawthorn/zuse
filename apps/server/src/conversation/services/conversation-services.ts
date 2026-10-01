@@ -43,7 +43,6 @@ import type {
 	SessionId,
 	SessionModeUnsupportedError,
 	SessionNotFoundError,
-	SessionOperationUnsupportedError,
 	SessionStartError,
 	SkillRef,
 	ThreadGoal,
@@ -301,10 +300,7 @@ export interface ConversationOperations {
 		sessionId: SessionId,
 		itemId: AgentItemId,
 		answers: ReadonlyArray<UserQuestionAnswer>,
-	) => Effect.Effect<
-		void,
-		SessionNotFoundError | SessionOperationUnsupportedError
-	>;
+	) => Effect.Effect<void, SessionNotFoundError>;
 	/** Cancel a pending question without encoding cancellation as an answer. */
 	readonly cancelQuestion: (
 		sessionId: SessionId,

@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import * as fsSync from "node:fs";
 import { homedir } from "node:os";
 import * as NodePath from "node:path";
-import { runtimeDefaultModelFor as defaultModelFor } from "@zuse/client-runtime/provider-selection";
 import {
 	type AppearanceMode,
 	type BranchNamingStyle,
@@ -10,6 +9,7 @@ import {
 	type Command,
 	type CompletionSoundPreset,
 	defaultModelEnabledByProvider,
+	defaultModelFor,
 	type KeybindingRule,
 	KeybindingsFile,
 	MAX_KEYBINDING_RULES,
@@ -20,17 +20,14 @@ import {
 	resolveModelSlug,
 	SettingsFile,
 	type SubagentPresetState,
-	ThemeSelection,
 } from "@zuse/contracts";
 import {
 	Effect,
 	FileSystem,
 	Layer,
-	Option,
 	Path,
 	PubSub,
 	Ref,
-	Schema,
 	Semaphore,
 	Stream,
 } from "effect";
@@ -90,7 +87,6 @@ const freshSettings = (): SettingsFile =>
 		defaultAutonomyLevel: "approval-gated",
 		onboardingCompleted: false,
 		appearanceMode: "dark",
-		themeSelection: { _tag: "built-in", appearance: "dark" },
 		completionSoundEnabled: false,
 		completionSoundPreset: "chime",
 		providerEnabled: seedProviderEnabled(),
@@ -120,9 +116,14 @@ const serialize = (value: unknown): string =>
 /* ───────────── parse helpers — tolerant of legacy / missing fields ───────────── */
 
 const isProviderId = (v: unknown): v is ProviderId =>
-	typeof v === "string" &&
-	v.length <= 128 &&
-	/^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/.test(v);
+	v === "claude" ||
+	v === "codex" ||
+	v === "grok" ||
+	v === "cursor" ||
+	v === "gemini" ||
+	v === "opencode" ||
+	v === "opencode2" ||
+	v === "kiro";
 
 const isRuntimeMode = (v: unknown): v is SettingsFile["defaultRuntimeMode"] =>
 	v === "approval-required" ||
@@ -219,9 +220,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 			? (obj.defaultModelByProvider as Record<string, unknown>)
 			: {};
 	const models: Record<ProviderId, string> = { ...base.defaultModelByProvider };
-	for (const [rawId, v] of Object.entries(inputModels)) {
-		if (!isProviderId(rawId)) continue;
-		const id = rawId;
+	for (const id of PROVIDER_IDS) {
+		const v = inputModels[id];
 		if (typeof v === "string" && v.length > 0) {
 			models[id] = resolveModelSlug(BUNDLED_MODEL_CATALOG, id, v);
 		}
@@ -248,10 +248,6 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 	const appearanceMode = isAppearanceMode(obj.appearanceMode)
 		? obj.appearanceMode
 		: base.appearanceMode;
-	const themeSelection = Option.getOrElse(
-		Schema.decodeUnknownOption(ThemeSelection)(obj.themeSelection),
-		() => ({ _tag: "built-in" as const, appearance: appearanceMode }),
-	);
 
 	const completionSoundEnabled =
 		typeof obj.completionSoundEnabled === "boolean"
@@ -269,9 +265,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 	};
 	if (typeof obj.providerEnabled === "object" && obj.providerEnabled !== null) {
 		const flags = obj.providerEnabled as Record<string, unknown>;
-		for (const [rawId, v] of Object.entries(flags)) {
-			if (!isProviderId(rawId)) continue;
-			const id = rawId;
+		for (const id of PROVIDER_IDS) {
+			const v = flags[id];
 			if (typeof v === "boolean") providerEnabled[id] = v;
 		}
 	}
@@ -282,9 +277,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		obj.modelEnabledByProvider !== null
 	) {
 		const byProvider = obj.modelEnabledByProvider as Record<string, unknown>;
-		for (const [rawId, providerModels] of Object.entries(byProvider)) {
-			if (!isProviderId(rawId)) continue;
-			const id = rawId;
+		for (const id of PROVIDER_IDS) {
+			const providerModels = byProvider[id];
 			if (typeof providerModels !== "object" || providerModels === null) {
 				continue;
 			}
@@ -292,7 +286,6 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 			// Keep every boolean flag: the resolved catalog can know models the
 			// bundled snapshot doesn't (remote additions, live inventory), and a
 			// visibility choice for one must survive restarts.
-			modelEnabledByProvider[id] ??= {};
 			for (const [modelId, value] of Object.entries(flags)) {
 				if (modelId.length === 0 || modelId.length > 200) continue;
 				if (typeof value === "boolean") {
@@ -308,9 +301,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		obj.customModelIdsByProvider !== null
 	) {
 		const byProvider = obj.customModelIdsByProvider as Record<string, unknown>;
-		for (const [rawId, values] of Object.entries(byProvider)) {
-			if (!isProviderId(rawId)) continue;
-			const id = rawId;
+		for (const id of PROVIDER_IDS) {
+			const values = byProvider[id];
 			if (!Array.isArray(values)) continue;
 			const knownModelIds = new Set(
 				modelsForProvider(BUNDLED_MODEL_CATALOG, id).map((model) => model.id),
@@ -562,7 +554,6 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		defaultAutonomyLevel: autonomy,
 		onboardingCompleted: onboarding,
 		appearanceMode,
-		themeSelection,
 		completionSoundEnabled,
 		completionSoundPreset,
 		providerBinaryPaths:
@@ -571,7 +562,7 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 				? (Object.fromEntries(
 						Object.entries(obj.providerBinaryPaths).filter(
 							([key, value]) =>
-								PROVIDER_IDS.some((id) => id === key) &&
+								PROVIDER_IDS.includes(key as ProviderId) &&
 								typeof value === "string",
 						),
 					) as Record<string, string>)
@@ -851,7 +842,6 @@ export const ConfigStoreServiceLive = Layer.effect(
 					onboardingCompleted:
 						patch.onboardingCompleted ?? cur.onboardingCompleted,
 					appearanceMode: patch.appearanceMode ?? cur.appearanceMode,
-					themeSelection: patch.themeSelection ?? cur.themeSelection,
 					completionSoundEnabled:
 						patch.completionSoundEnabled ?? cur.completionSoundEnabled,
 					completionSoundPreset:

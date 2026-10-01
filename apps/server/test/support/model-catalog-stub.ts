@@ -1,8 +1,4 @@
-import {
-	bundledResolvedModelCatalog,
-	findModelDescriptor,
-	resolveModelSlug,
-} from "@zuse/contracts";
+import { bundledResolvedModelCatalog } from "@zuse/contracts";
 import { Effect, Layer, Stream } from "effect";
 
 import { ModelCatalogService } from "../../src/model-catalog/services/model-catalog-service.ts";
@@ -18,11 +14,13 @@ export const StubModelCatalogLive = Layer.succeed(ModelCatalogService, {
 	changes: () => Stream.make(bundledResolvedModelCatalog()),
 	findModel: (providerId, modelId) =>
 		Effect.succeed(
-			findModelDescriptor(bundledResolvedModelCatalog(), providerId, modelId),
+			bundledResolvedModelCatalog().providers[providerId].models.find(
+				(model) => model.id === modelId,
+			),
 		),
 	resolveSlug: (providerId, slug) =>
 		Effect.succeed(
-			resolveModelSlug(bundledResolvedModelCatalog(), providerId, slug),
+			bundledResolvedModelCatalog().providers[providerId].aliases[slug] ?? slug,
 		),
 	invalidateLive: () => Effect.void,
 });

@@ -92,7 +92,6 @@ export const ResumeStrategy = Schema.Literals([
 	"opencode-session-id",
 	"opencode2-session-id",
 	"kiro-session-id",
-	"acp-session-id",
 	"pi-session-file",
 	"none",
 ]);
@@ -1567,12 +1566,6 @@ export const SessionQuestionAttachmentsRpc = Rpc.make(
 	},
 );
 
-/** An installed provider cannot perform the requested session operation. */
-export class SessionOperationUnsupportedError extends Schema.TaggedErrorClass<SessionOperationUnsupportedError>()(
-	"SessionOperationUnsupportedError",
-	{ message: Schema.String },
-) {}
-
 export const SessionAnswerQuestionRpc = Rpc.make("session.answerQuestion", {
 	payload: Schema.Struct({
 		commandId: CommandId,
@@ -1581,7 +1574,7 @@ export const SessionAnswerQuestionRpc = Rpc.make("session.answerQuestion", {
 		answers: Schema.Array(UserQuestionAnswer),
 	}),
 	success: Schema.Void,
-	error: Schema.Union([SessionNotFoundError, SessionOperationUnsupportedError]),
+	error: SessionNotFoundError,
 });
 
 export const SessionCancelQuestionRpc = Rpc.make("session.cancelQuestion", {

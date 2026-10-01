@@ -3,7 +3,6 @@ import {
 	bundledResolvedModelCatalog,
 	CommandId,
 	EnvironmentId,
-	modelsForProvider,
 	ResolvedModelCatalog as ResolvedModelCatalogSchema,
 } from "@zuse/contracts";
 import { Schema } from "effect";
@@ -247,7 +246,7 @@ export const currentModelCatalog = (): ResolvedModelCatalog =>
 
 /** Live models for one provider, in picker order. */
 export const useProviderModels = (providerId: ProviderId) =>
-	useModelCatalogStore((s) => modelsForProvider(s.catalog, providerId));
+	useModelCatalogStore((s) => s.catalog.providers[providerId].models);
 
 /** Drop the renderer copy (environment switch / sign-out). */
 export const resetModelCatalogForEnvironment = (): void => {

@@ -25,8 +25,6 @@ import {
 	PtyCatalog,
 	RepositorySettings,
 	SessionId,
-	SessionModeUnsupportedError,
-	SessionOperationUnsupportedError,
 	ThreadGoal,
 	Worktree,
 	WorktreeCheckpointError,
@@ -114,9 +112,6 @@ import { TitleGenerator } from "../../src/provider/title-generator.ts";
 import { PtyService } from "../../src/pty/services/pty-service.ts";
 import { RepositorySettingsService } from "../../src/repository-settings/services/repository-settings-service.ts";
 import { StubModelCatalogLive } from "../support/model-catalog-stub.ts";
-
-let permissionModeFailure = false;
-let unsupportedProviderAnswer = false;
 
 const PROJECT_ID = "proj-test" as FolderId;
 const TEST_WORKTREE_ID = "wt-pikachu" as WorktreeId;
@@ -292,14 +287,7 @@ const StubProviderLive = Layer.succeed(ProviderService, {
 		}),
 	setCredential: () => Effect.succeed({ verification: "notChecked" }),
 	removeCredential: () => Effect.void,
-	setPermissionMode: () =>
-		permissionModeFailure
-			? Effect.fail(
-					new SessionModeUnsupportedError({
-						message: "unsupported extension mode",
-					}),
-				)
-			: Effect.void,
+	setPermissionMode: () => Effect.void,
 	questionAttachments: () =>
 		Stream.succeed({ _tag: "snapshot", attachments: [] }),
 	hasQuestionAttachment: () =>
@@ -329,10 +317,6 @@ const StubProviderLive = Layer.succeed(ProviderService, {
 				return yield* new AgentSessionNotFoundError({ sessionId });
 			}
 			if (providerAnswerAttempts <= failProviderAnswerAttempts) {
-				if (unsupportedProviderAnswer)
-					return yield* new SessionOperationUnsupportedError({
-						message: "Extension cannot answer questions.",
-					});
 				return yield* new AgentSessionNotFoundError({ sessionId });
 			}
 			if (providerAnswerBarrier !== null) {
@@ -814,7 +798,6 @@ const withRuntime = async <A>(
 const store = TestConversation;
 
 beforeEach(() => {
-	unsupportedProviderAnswer = false;
 	providerGoals.clear();
 	testCommandSequence = 0;
 	providerStartInputs = [];
@@ -2920,40 +2903,6 @@ describe("ConversationServices — chat & session lifecycle", () => {
 			await runtime.dispose();
 			rmSync(directory, { recursive: true, force: true });
 		}
-	});
-
-	it("does not persist a permission mode rejected by the provider", async () => {
-		await withRuntime(async (run) => {
-			const { initialSession } = await run(
-				Effect.flatMap(store, (s) =>
-					s.createChat({
-						projectId: PROJECT_ID,
-						providerId: "claude",
-						model: "claude-opus-4-8",
-					}),
-				),
-			);
-			permissionModeFailure = true;
-			try {
-				await expect(
-					run(
-						Effect.flatMap(store, (s) =>
-							s.setPermissionMode(
-								initialSession.id,
-								"plan",
-								"unsupported-mode",
-							),
-						),
-					),
-				).rejects.toThrow("unsupported extension mode");
-				const got = await run(
-					Effect.flatMap(store, (s) => s.getSession(initialSession.id)),
-				);
-				expect(got.permissionMode).toBe(initialSession.permissionMode);
-			} finally {
-				permissionModeFailure = false;
-			}
-		});
 	});
 
 	it("renameSession, setRuntimeMode and setPermissionMode persist", async () => {
@@ -5977,11 +5926,7 @@ describe("ConversationServices — provider event persistence", () => {
 		}
 	});
 
-	it.each([
-		false,
-		true,
-	])("keeps a rejected question answer pending and delivers its retry exactly once (unsupported=%s)", async (unsupported) => {
-		unsupportedProviderAnswer = unsupported;
+	it("keeps a rejected question answer pending and delivers its retry exactly once", async () => {
 		const itemId = "question-reject-once" as never;
 		const answers = [{ questionIndex: 0, selected: [0] }];
 		scriptedEvents = [
@@ -6036,10 +5981,6 @@ describe("ConversationServices — provider event persistence", () => {
 					),
 				);
 				expect(rejected._tag).toBe("Failure");
-				if (unsupported)
-					expect(JSON.stringify(rejected)).toContain(
-						"SessionOperationUnsupportedError",
-					);
 				expect(providerAnswerAttempts).toBe(1);
 
 				const afterRejection = await run(

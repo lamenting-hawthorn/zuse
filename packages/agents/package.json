@@ -35,8 +35,7 @@
 		"@zuse/acp": "*",
 		"@zuse/contracts": "*",
 		"effect": "catalog:",
-		"zod": "^4.0.0",
-		"@zuse/extension-sdk": "workspace:*"
+		"zod": "^4.0.0"
 	},
 	"devDependencies": {
 		"@repo/typescript-config": "*",

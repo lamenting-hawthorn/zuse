@@ -1,17 +1,13 @@
-import "@zuse/i18n/english/extensions";
 import "@zuse/i18n/english/settings";
 import type { IconSvgElement } from "@hugeicons/react";
 import { message as uiMessage } from "@zuse/i18n";
 import {
 	BrowserIcon,
-	CodeIcon,
 	ConnectIcon,
 	DocumentAttachmentIcon,
 	KeyboardIcon,
-	Link01Icon,
 	PackageIcon,
-	PuzzleIcon,
-	ServerStack01Icon,
+	PlugSocketIcon,
 	Settings01Icon,
 	SmartPhone01Icon,
 	TaskDone01Icon,
@@ -45,22 +41,6 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		section: { kind: "providers" },
 	},
 	{
-		id: "agent-plugins",
-		get label() {
-			return uiMessage("extensions:plugins_title");
-		},
-		Icon: CodeIcon,
-		section: { kind: "agent-plugins" },
-	},
-	{
-		id: "extensions",
-		get label() {
-			return uiMessage("extensions:title");
-		},
-		Icon: PuzzleIcon,
-		section: { kind: "extensions" },
-	},
-	{
 		id: "defaults",
 		get label() {
 			return uiMessage("settings:settings_navigation_default_models");
@@ -73,7 +53,7 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		get label() {
 			return uiMessage("settings:settings_navigation_mcp_servers");
 		},
-		Icon: ServerStack01Icon,
+		Icon: PlugSocketIcon,
 		section: { kind: "mcp" },
 	},
 	{
@@ -81,7 +61,7 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		get label() {
 			return uiMessage("settings:settings_navigation_integrations");
 		},
-		Icon: Link01Icon,
+		Icon: ConnectIcon,
 		section: { kind: "integrations" },
 	},
 	{

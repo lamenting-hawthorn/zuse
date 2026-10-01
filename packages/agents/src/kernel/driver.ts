@@ -5,7 +5,6 @@ import type {
 	FileRef,
 	PermissionMode,
 	PlanApprovalOutcome,
-	SessionModeUnsupportedError,
 	SkillRef,
 	ThreadGoal,
 	ThreadGoalSetInput,
@@ -33,9 +32,7 @@ export interface ProviderSessionHandle {
 	) => Effect.Effect<void>;
 	readonly interrupt: () => Effect.Effect<void>;
 	readonly close: () => Effect.Effect<void>;
-	readonly setPermissionMode: (
-		mode: PermissionMode,
-	) => Effect.Effect<void, SessionModeUnsupportedError>;
+	readonly setPermissionMode: (mode: PermissionMode) => Effect.Effect<void>;
 	readonly answerQuestion: (
 		itemId: AgentItemId,
 		answers: ReadonlyArray<UserQuestionAnswer>,

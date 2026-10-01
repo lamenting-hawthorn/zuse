@@ -1,5 +1,3 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import Path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
@@ -64,11 +62,7 @@ describe("packaged renderer assets", () => {
 				}
 				return new Response("asset bytes");
 			});
-		const handle = createRendererAssetHandler({
-			rendererRoot,
-			fetchFile,
-			realpath: async (path) => path,
-		});
+		const handle = createRendererAssetHandler({ rendererRoot, fetchFile });
 
 		const wasm = await handle(
 			new Request("zuse://renderer/assets/ghostty.wasm"),
@@ -88,11 +82,7 @@ describe("packaged renderer assets", () => {
 		const fetchFile = vi
 			.fn<(absolutePath: string, request: Request) => Promise<Response>>()
 			.mockResolvedValue(new Response("module bytes"));
-		const handle = createRendererAssetHandler({
-			rendererRoot,
-			fetchFile,
-			realpath: async (path) => path,
-		});
+		const handle = createRendererAssetHandler({ rendererRoot, fetchFile });
 
 		const head = await handle(
 			new Request("zuse://renderer/assets/main.js", { method: "HEAD" }),
@@ -124,35 +114,4 @@ describe("packaged renderer assets", () => {
 			"application/octet-stream",
 		);
 	});
-});
-
-it("retains real filesystem containment when serving packaged modules", async () => {
-	const root = await mkdtemp(Path.join(tmpdir(), "renderer-assets-"));
-	const outside = await mkdtemp(Path.join(tmpdir(), "renderer-outside-"));
-	try {
-		await writeFile(Path.join(root, "entry.js"), "export default 1;");
-		await writeFile(Path.join(outside, "private.js"), "private");
-		await symlink(
-			Path.join(outside, "private.js"),
-			Path.join(root, "escape.js"),
-		);
-		const handle = createRendererAssetHandler({
-			rendererRoot: root,
-			fetchFile: async (path) => new Response(await readFile(path)),
-		});
-		const module = await handle(new Request("zuse://renderer/entry.js"));
-		expect(module.headers.get("content-type")).toBe(
-			"text/javascript; charset=utf-8",
-		);
-		expect(await module.text()).toBe("export default 1;");
-		expect(
-			(await handle(new Request("zuse://renderer/escape.js"))).status,
-		).toBe(403);
-		expect(
-			(await handle(new Request("zuse://renderer/missing.js"))).status,
-		).toBe(404);
-	} finally {
-		await rm(root, { recursive: true, force: true });
-		await rm(outside, { recursive: true, force: true });
-	}
 });

@@ -24,9 +24,7 @@
 		"./structural-tuple-key": "./src/structural-tuple-key.ts",
 		"./zuse-user-data": "./src/zuse-user-data.ts",
 		"./reaper": "./src/reaper.ts",
-		"./linux-memory": "./src/linux-memory.ts",
-		"./workspace-files": "./src/workspace-files.ts",
-		"./unpacked-path": "./src/unpacked-path.ts"
+		"./linux-memory": "./src/linux-memory.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",
@@ -35,9 +33,8 @@
 		"test:integration": "vitest run test/integration --passWithNoTests"
 	},
 	"dependencies": {
-		"effect": "catalog:",
-		"ignore": "^7.0.0",
-		"fflate": "0.8.2"
+		"fflate": "0.8.2",
+		"effect": "catalog:"
 	},
 	"devDependencies": {
 		"@repo/typescript-config": "*",

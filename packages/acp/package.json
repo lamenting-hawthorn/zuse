@@ -6,8 +6,7 @@
 	"exports": {
 		"./connection": "./src/connection.ts",
 		"./protocol": "./src/protocol.ts",
-		"./rpc-client": "./src/rpc-client.ts",
-		"./process": "./src/process.ts"
+		"./rpc-client": "./src/rpc-client.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

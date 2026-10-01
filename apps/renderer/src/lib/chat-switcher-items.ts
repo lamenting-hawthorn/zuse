@@ -1,4 +1,3 @@
-import "@zuse/i18n/english/extensions";
 import { compareChatRecency } from "@zuse/client-runtime/chat-recency";
 import "@zuse/i18n/english/shell";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -26,15 +25,7 @@ export interface ChatSwitcherSettingsRow {
 	readonly icon: IconSvgElement;
 	readonly section: SettingsSection;
 }
-export interface ChatSwitcherExtensionRow {
-	readonly kind: "extension";
-	readonly id: string;
-	readonly label: string;
-	readonly run: () => Promise<void>;
-}
-
 export type ChatSwitcherRow =
-	| ChatSwitcherExtensionRow
 	| ChatSwitcherChatRow
 	| ChatSwitcherCommandRow
 	| ChatSwitcherSettingsRow;
@@ -54,7 +45,7 @@ const QUICK_ACTIONS: ReadonlySet<Command> = new Set([
 	"toggle-terminal",
 ]);
 
-const settingsRows = (): ReadonlyArray<ChatSwitcherSettingsRow> =>
+const SETTINGS_ROWS: ReadonlyArray<ChatSwitcherSettingsRow> =
 	SETTINGS_NAVIGATION.map((item) => ({
 		kind: "settings",
 		label: item.label,
@@ -66,31 +57,14 @@ const settingsRows = (): ReadonlyArray<ChatSwitcherSettingsRow> =>
 export function chatSwitcherSections(
 	chats: ReadonlyArray<ChatSwitcherChatRow>,
 	query: string,
-	extensions: ReadonlyArray<ChatSwitcherExtensionRow> = [],
 ): ReadonlyArray<ChatSwitcherSection> {
-	const SETTINGS_ROWS = settingsRows();
 	const commandQuery = commandSearchQuery(query);
-	const searchExtensions = (commandQuery ?? query).trim();
-	const extensionSection: ChatSwitcherSection = {
-		label: uiMessage("extensions:commands"),
-		rows:
-			searchExtensions.length === 0
-				? extensions
-				: fuzzysort
-						.go(searchExtensions, extensions, {
-							key: "label",
-							threshold: 0.3,
-							limit: SEARCH_LIMIT,
-						})
-						.map((result) => result.obj),
-	};
 	if (commandQuery !== null) {
 		return [
 			{
 				label: uiMessage("shell:chat_switcher_items_commands"),
 				rows: commandRowsForQuery(query),
 			},
-			...(extensionSection.rows.length ? [extensionSection] : []),
 		];
 	}
 	const availableChats = chats.filter((row) => row.chat.archivedAt === null);
@@ -107,7 +81,6 @@ export function chatSwitcherSections(
 					})
 					.map((result) => result.obj),
 			},
-			...(extensionSection.rows.length ? [extensionSection] : []),
 			{
 				label: uiMessage("shell:chat_switcher_items_commands"),
 				rows: commandRowsForQuery(`>${search}`),
@@ -133,7 +106,6 @@ export function chatSwitcherSections(
 			label: uiMessage("shell:chat_switcher_items_quick_actions"),
 			rows: commands.filter((row) => QUICK_ACTIONS.has(row.command)),
 		},
-		...(extensionSection.rows.length ? [extensionSection] : []),
 		{
 			label: uiMessage("shell:chat_switcher_items_settings"),
 			rows: SETTINGS_ROWS,

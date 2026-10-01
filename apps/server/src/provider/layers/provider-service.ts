@@ -27,7 +27,6 @@ import {
 } from "@zuse/analytics";
 import {
 	AgentAvailability,
-	AgentEvent,
 	type AgentItemId,
 	type AgentSessionId,
 	AgentSessionNotFoundError,
@@ -38,29 +37,15 @@ import {
 	type PermissionDecision,
 	type PermissionKind,
 	type ProviderEventEnvelope,
-	ProviderId,
-	SessionModeUnsupportedError,
-	SessionOperationUnsupportedError,
-	ThreadGoal,
+	type ProviderId,
 	type ThreadGoalSetInput,
 	type UserQuestion,
 } from "@zuse/contracts";
 import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
-import {
-	Cache,
-	Effect,
-	FileSystem,
-	Layer,
-	Schema,
-	Semaphore,
-	Stream,
-} from "effect";
+import { Cache, Effect, FileSystem, Layer, Semaphore, Stream } from "effect";
 import { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
 import { AnalyticsService } from "../../analytics/services/analytics-service.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
-import { createExecutorGateway } from "../../executor/gateway.ts";
-import { readExecutorProfile } from "../../executor/service.ts";
-import { ExtensionService } from "../../extension/services/extension-service.ts";
 import {
 	legacyAppOwnedCodexServerNames,
 	readNativeServers,
@@ -127,18 +112,7 @@ export const ProviderServiceLive = Layer.effect(
 		const configStore = yield* ConfigStoreService;
 		const mcp = yield* McpService;
 		const analytics = yield* AnalyticsService;
-		const extensions = yield* ExtensionService;
 		const runtime = yield* Effect.context<never>();
-		const executorGateway = createExecutorGateway(() =>
-			Effect.runPromise(
-				readExecutorProfile().pipe(
-					Effect.provideService(CredentialsService, credentials),
-				),
-			),
-		);
-		yield* Effect.addFinalizer(() =>
-			Effect.promise(() => executorGateway.close()),
-		);
 		const registry = makeProviderSessionRegistry<
 			AgentSessionId,
 			SessionEntry
@@ -313,67 +287,7 @@ export const ProviderServiceLive = Layer.effect(
 										status: "warning",
 										statusMessage: validation.warning,
 									});
-					const extensionProviders = yield* extensions.providers();
-					const extensionAvailability = yield* Effect.forEach(
-						extensionProviders,
-						(descriptor) =>
-							Effect.promise(async () => {
-								const providerId = Schema.decodeUnknownSync(ProviderId)(
-									descriptor.id,
-								);
-								try {
-									const probe = (await Effect.runPromise(
-										extensions.invokeProvider(descriptor.id, "probe", {}),
-									)) as {
-										readonly available?: boolean;
-										readonly authenticated?: boolean;
-										readonly version?: string;
-										readonly message?: string;
-									};
-									return AgentAvailability.make({
-										providerId,
-										displayName: descriptor.displayName,
-										runtimeKind: "extension",
-										runtimeAvailable: probe.available === true,
-										cliInstalled: false,
-										cliVersion: probe.version,
-										cliLoggedIn: probe.authenticated === true,
-										hasApiKey: probe.authenticated === true,
-										authStatus:
-											probe.authenticated === true
-												? "authenticated"
-												: "unauthenticated",
-										status:
-											probe.available === true && probe.authenticated === true
-												? "ready"
-												: "warning",
-										statusMessage: probe.message,
-										lastCheckedAt: new Date(),
-									});
-								} catch (cause) {
-									return AgentAvailability.make({
-										providerId,
-										displayName: descriptor.displayName,
-										runtimeKind: "extension",
-										runtimeAvailable: false,
-										cliInstalled: false,
-										cliLoggedIn: false,
-										hasApiKey: false,
-										authStatus: "unknown",
-										status: "error",
-										statusMessage:
-											cause instanceof Error ? cause.message : String(cause),
-										lastCheckedAt: new Date(),
-									});
-								}
-							}),
-						{ concurrency: 4 },
-					);
-					return [
-						...legacyProviders,
-						cursorAvailability,
-						...extensionAvailability,
-					];
+					return [...legacyProviders, cursorAvailability];
 				}),
 		});
 
@@ -477,15 +391,6 @@ export const ProviderServiceLive = Layer.effect(
 						);
 					}
 					const cwd = input.cwdOverride ?? folder.path;
-					const sharedMcpServers = yield* Effect.tryPromise({
-						try: () => executorGateway.servers(),
-						catch: () =>
-							new AgentSessionStartError({
-								providerId: input.providerId,
-								reason:
-									"Could not load shared plugins. Check Executor in Plugins settings.",
-							}),
-					});
 					// Canonicalize retired / shorthand slugs and attach the resolved
 					// descriptor (curated seed merged with the live inventory) so
 					// drivers never read a static model list.
@@ -538,178 +443,7 @@ export const ProviderServiceLive = Layer.effect(
 							? managedCredential.secret
 							: null;
 					let providerHandle: ProviderSessionHandle;
-					const extensionDescriptor = (yield* extensions.providers()).find(
-						(provider) => provider.id === input.providerId,
-					);
-					if (extensionDescriptor !== undefined) {
-						if (
-							resumeCursor !== null &&
-							!extensionDescriptor.capabilities.includes("resume")
-						) {
-							return yield* Effect.fail(
-								new AgentSessionStartError({
-									providerId: input.providerId,
-									reason: "This extension provider does not support resume.",
-								}),
-							);
-						}
-						if (
-							input.forkFromResume === true &&
-							!extensionDescriptor.capabilities.includes("fork")
-						) {
-							return yield* Effect.fail(
-								new AgentSessionStartError({
-									providerId: input.providerId,
-									reason: "This extension provider does not support fork.",
-								}),
-							);
-						}
-						yield* extensions
-							.invokeProvider(extensionDescriptor.id, "start", {
-								input: {
-									sessionId,
-									projectId: input.folderId,
-									cwd,
-									model: input.model ?? null,
-									resumeCursor,
-									forkFromResume: input.forkFromResume ?? false,
-									permissionMode: input.permissionMode ?? "default",
-									modelOptions: input.modelOptions ?? {},
-									mcpServers: sharedMcpServers,
-								},
-							})
-							.pipe(
-								Effect.mapError(
-									(cause) =>
-										new AgentSessionStartError({
-											providerId: input.providerId,
-											reason: cause.reason,
-										}),
-								),
-							);
-						providerHandle = {
-							events: extensions.providerEvents(sessionId).pipe(
-								Stream.map((event) => {
-									try {
-										return Schema.decodeUnknownSync(AgentEvent)(event);
-									} catch (cause) {
-										return {
-											_tag: "Error" as const,
-											message: `Extension emitted an invalid provider event: ${String(cause)}`,
-										};
-									}
-								}),
-							),
-							send: (text, attachments, fileRefs, skillRefs) =>
-								attachments?.length || fileRefs?.length || skillRefs?.length
-									? Effect.die(
-											new Error(
-												"Extension providers currently accept text prompts. Paste the relevant context into your message instead of attaching files or skills.",
-											),
-										)
-									: extensions
-											.invokeProvider(extensionDescriptor.id, "send", {
-												sessionId,
-												text,
-											})
-											.pipe(Effect.asVoid, Effect.orDie),
-							interrupt: () =>
-								extensions
-									.invokeProvider(extensionDescriptor.id, "interrupt", {
-										sessionId,
-									})
-									.pipe(Effect.asVoid, Effect.orDie),
-							close: () =>
-								extensions
-									.invokeProvider(extensionDescriptor.id, "close", {
-										sessionId,
-									})
-									.pipe(Effect.asVoid, Effect.orDie),
-							setPermissionMode: (mode) =>
-								extensions
-									.invokeProvider(extensionDescriptor.id, "setPermissionMode", {
-										sessionId,
-										mode,
-									})
-									.pipe(
-										Effect.asVoid,
-										Effect.mapError(
-											(cause) =>
-												new SessionModeUnsupportedError({
-													message: cause.reason,
-												}),
-										),
-									),
-							answerQuestion: (itemId, answers) =>
-								extensions
-									.invokeProvider(extensionDescriptor.id, "answerQuestion", {
-										sessionId,
-										itemId,
-										answers,
-									})
-									.pipe(
-										Effect.asVoid,
-										Effect.mapError((cause) => new Error(cause.reason)),
-									),
-							...(extensionDescriptor.capabilities.includes("planApproval")
-								? {
-										respondToPlan: (itemId, outcome, feedback) =>
-											extensions
-												.invokeProvider(
-													extensionDescriptor.id,
-													"respondToPlan",
-													{ sessionId, itemId, outcome, feedback },
-												)
-												.pipe(Effect.asVoid, Effect.orDie),
-									}
-								: {}),
-							...(extensionDescriptor.capabilities.includes("mcp")
-								? {
-										updateMcpServers: (servers) =>
-											extensions
-												.invokeProvider(
-													extensionDescriptor.id,
-													"updateMcpServers",
-													{ sessionId, servers },
-												)
-												.pipe(Effect.asVoid, Effect.orDie),
-									}
-								: {}),
-							...(extensionDescriptor.capabilities.includes("goals")
-								? {
-										getGoal: () =>
-											extensions
-												.invokeProvider(extensionDescriptor.id, "getGoal", {
-													sessionId,
-												})
-												.pipe(
-													Effect.map((goal) =>
-														goal === null
-															? null
-															: Schema.decodeUnknownSync(ThreadGoal)(goal),
-													),
-													Effect.orDie,
-												),
-										setGoal: (goal: ThreadGoalSetInput) =>
-											extensions
-												.invokeProvider(extensionDescriptor.id, "setGoal", {
-													sessionId,
-													goal,
-												})
-												.pipe(
-													Effect.map(Schema.decodeUnknownSync(ThreadGoal)),
-													Effect.orDie,
-												),
-										clearGoal: () =>
-											extensions
-												.invokeProvider(extensionDescriptor.id, "clearGoal", {
-													sessionId,
-												})
-												.pipe(Effect.asVoid, Effect.orDie),
-									}
-								: {}),
-						};
-					} else if (input.providerId === "gemini") {
+					if (input.providerId === "gemini") {
 						// Same story as Grok: hand the driver the user's installed
 						// `gemini` binary. Surface a clean install message rather than
 						// letting spawn fail with ENOENT inside the driver.
@@ -764,7 +498,6 @@ export const ProviderServiceLive = Layer.effect(
 							geminiMcpCommand,
 							orchestrationTools,
 							resumeCursor,
-							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "pi") {
 						const binary = yield* resolveCliPath("pi", binaryPaths).pipe(
@@ -840,7 +573,6 @@ export const ProviderServiceLive = Layer.effect(
 							kiroMcpCommand,
 							orchestrationTools,
 							resumeCursor,
-							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "grok") {
 						// Same story as Claude/Codex: hand the driver the user's
@@ -887,7 +619,6 @@ export const ProviderServiceLive = Layer.effect(
 							orchestrationTools,
 							resumeCursor,
 							providerEventCursor,
-							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "opencode") {
 						// OpenCode spawns a local HTTP server (`opencode serve`) and we
@@ -924,7 +655,6 @@ export const ProviderServiceLive = Layer.effect(
 							opencodePath,
 							sessionId,
 							resumeCursor,
-							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "opencode2") {
 						const opencode2Path = yield* resolveCliPath(
@@ -956,12 +686,7 @@ export const ProviderServiceLive = Layer.effect(
 							buildRequestPermission(input.folderId),
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "cursor") {
-						const userMcpServers = [
-							...(yield* mcp.resolveForCursorSession(cwd)).filter(
-								(s) => s.name !== "zuse_executor",
-							),
-							...sharedMcpServers,
-						];
+						const userMcpServers = yield* mcp.resolveForCursorSession(cwd);
 						providerHandle = yield* startCursorSession(
 							driverInput,
 							cwd,
@@ -995,12 +720,7 @@ export const ProviderServiceLive = Layer.effect(
 								}),
 							);
 						}
-						const userMcpServers = [
-							...(yield* mcp.resolveForClaudeSession(cwd)).filter(
-								(s) => s.name !== "zuse_executor",
-							),
-							...sharedMcpServers,
-						];
+						const userMcpServers = yield* mcp.resolveForClaudeSession(cwd);
 
 						providerHandle = yield* startClaudeSession(
 							driverInput,
@@ -1018,7 +738,7 @@ export const ProviderServiceLive = Layer.effect(
 							orchestrationTools,
 							userMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
-					} else if (input.providerId === "codex") {
+					} else {
 						// Same story as Claude: we don't ship the SDK's bundled native
 						// CLI, so hand it the user's installed `codex` binary. Surface a
 						// clean install message if it's missing instead of the SDK's
@@ -1094,15 +814,7 @@ export const ProviderServiceLive = Layer.effect(
 							() => {
 								registry.invalidateIfCurrent(sessionId, generation);
 							},
-							sharedMcpServers,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
-					} else {
-						return yield* Effect.fail(
-							new AgentSessionStartError({
-								providerId: input.providerId,
-								reason: `Provider is unavailable or its extension is disabled: ${input.providerId}`,
-							}),
-						);
 					}
 					const handle = yield* makeTurnScopedSessionHandle(
 						providerHandle,
@@ -1433,17 +1145,7 @@ export const ProviderServiceLive = Layer.effect(
 				lifecycleWorker.run(
 					sessionId,
 					Effect.gen(function* () {
-						const { handle, providerId } = yield* lookup(sessionId);
-						const descriptor = (yield* extensions.providers()).find(
-							(candidate) => candidate.id === providerId,
-						);
-						if (
-							descriptor &&
-							!descriptor.capabilities.includes("answerQuestion")
-						)
-							return yield* new SessionOperationUnsupportedError({
-								message: "This extension does not support answering questions.",
-							});
+						const { handle } = yield* lookup(sessionId);
 						yield* questionAttachments.deliverAnswer(
 							sessionId,
 							itemId,
@@ -1503,20 +1205,20 @@ export const ProviderServiceLive = Layer.effect(
 					),
 				),
 			getGoal: (sessionId) =>
-				Effect.flatMap(lookup(sessionId), ({ handle }) =>
-					"getGoal" in handle && typeof handle.getGoal === "function"
+				Effect.flatMap(lookup(sessionId), ({ providerId, handle }) =>
+					providerId === "codex" || providerId === "grok"
 						? (handle as unknown as GoalCapableHandle).getGoal()
 						: Effect.fail(new AgentSessionNotFoundError({ sessionId })),
 				),
 			setGoal: (sessionId, goal: ThreadGoalSetInput) =>
-				Effect.flatMap(lookup(sessionId), ({ handle }) =>
-					"setGoal" in handle && typeof handle.setGoal === "function"
+				Effect.flatMap(lookup(sessionId), ({ providerId, handle }) =>
+					providerId === "codex" || providerId === "grok"
 						? (handle as unknown as GoalCapableHandle).setGoal(goal)
 						: Effect.fail(new AgentSessionNotFoundError({ sessionId })),
 				),
 			clearGoal: (sessionId) =>
-				Effect.flatMap(lookup(sessionId), ({ handle }) =>
-					"clearGoal" in handle && typeof handle.clearGoal === "function"
+				Effect.flatMap(lookup(sessionId), ({ providerId, handle }) =>
+					providerId === "codex" || providerId === "grok"
 						? (handle as unknown as GoalCapableHandle).clearGoal()
 						: Effect.fail(new AgentSessionNotFoundError({ sessionId })),
 				),

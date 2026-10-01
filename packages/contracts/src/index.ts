@@ -17,8 +17,6 @@ export * from "./connect-links.ts";
 export * from "./context.ts";
 export * from "./device-bridge.ts";
 export * from "./diagnostics.ts";
-export * from "./executor.ts";
-export * from "./extension.ts";
 export * from "./external-thread.ts";
 export * from "./fs.ts";
 export * from "./git.ts";

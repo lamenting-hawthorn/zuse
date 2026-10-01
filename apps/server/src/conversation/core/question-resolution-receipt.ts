@@ -80,11 +80,7 @@ export const settleDurableQuestionResolution = (
 	sessionId: SessionId,
 	itemId: AgentItemId,
 	resolution: DurableQuestionResolution,
-): Effect.Effect<
-	void,
-	| import("@zuse/contracts").AgentSessionNotFoundError
-	| import("@zuse/contracts").SessionOperationUnsupportedError
-> =>
+): Effect.Effect<void, import("@zuse/contracts").AgentSessionNotFoundError> =>
 	Effect.gen(function* () {
 		if (yield* provider.hasQuestionAttachment(sessionId, itemId)) {
 			if (resolution._tag === "answer") {

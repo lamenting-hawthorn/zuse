@@ -8,7 +8,6 @@ import { withCodexControlClient } from "@zuse/agents/drivers/codex-control-clien
 import { readKiroAuthContext } from "@zuse/agents/drivers/kiro-auth";
 import {
 	AgentAvailability,
-	type BuiltinProviderId,
 	type CliVersionStatus,
 	type CodexFeature,
 	type LatestVersionStatus,
@@ -27,7 +26,7 @@ import { PROVIDER_CLI_REGISTRY } from "./provider-cli-registry.ts";
 export { SUPPORTED_PROVIDER_CLIS } from "./provider-cli-registry.ts";
 
 interface ProviderProbe {
-	readonly providerId: Exclude<BuiltinProviderId, "cursor">;
+	readonly providerId: Exclude<ProviderId, "cursor">;
 	readonly displayName: string;
 	readonly cliBinary: string;
 	/**
@@ -206,7 +205,7 @@ export const selectCliPathCandidate = (
 	candidates: ReadonlyArray<string>,
 ): string | null => {
 	if (candidates.length === 0) return null;
-	if (cliBinary !== "codex") return candidates[0] ?? null;
+	if (cliBinary !== "codex") return candidates[0]!;
 
 	// Some environments can prepend a managed Codex shim to PATH for internals.
 	// Provider settings should report the user's real Codex install, not that
@@ -405,13 +404,10 @@ export const resolveCodexCapabilities = (
 export const parseCliVersion = (raw: string): CliVersion | null => {
 	const match = raw.match(/(\d+)\.(\d+)\.(\d+)/);
 	if (match === null) return null;
-	const [, major, minor, patch] = match;
-	if (major === undefined || minor === undefined || patch === undefined)
-		return null;
 	return {
-		major: Number.parseInt(major, 10),
-		minor: Number.parseInt(minor, 10),
-		patch: Number.parseInt(patch, 10),
+		major: Number.parseInt(match[1]!, 10),
+		minor: Number.parseInt(match[2]!, 10),
+		patch: Number.parseInt(match[3]!, 10),
 		raw: raw.trim(),
 	};
 };
@@ -598,9 +594,11 @@ export const buildUpdateCommand = (
 		.filter((p) => p.length > 0)
 		.map(normalizeCommandPath);
 
-	const nativeUpdate = probe.nativeUpdate;
-	if (nativeUpdate !== null && norms.some((p) => nativeUpdate.matches(p))) {
-		return nativeUpdate.command;
+	if (
+		probe.nativeUpdate !== null &&
+		norms.some((p) => probe.nativeUpdate!.matches(p))
+	) {
+		return probe.nativeUpdate.command;
 	}
 
 	if (probe.npmPackage !== null) {
@@ -906,7 +904,7 @@ const extractTier = (claims: unknown): number | null => {
 	// Last resort: DFS for any *tier* key with a numeric-ish value
 	const stack: unknown[] = [obj];
 	while (stack.length > 0) {
-		const cur = stack.pop();
+		const cur = stack.pop()!;
 		if (!cur || typeof cur !== "object") continue;
 		for (const [k, v] of Object.entries(cur as Record<string, unknown>)) {
 			if (k.toLowerCase().includes("tier")) {
@@ -1167,7 +1165,7 @@ const probeOpencodeAccount: Effect.Effect<
 });
 
 const probeAccount = (
-	providerId: Exclude<BuiltinProviderId, "cursor">,
+	providerId: Exclude<ProviderId, "cursor">,
 	cliPath: string,
 ): Effect.Effect<
 	AccountInfo,

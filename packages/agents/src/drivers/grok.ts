@@ -31,8 +31,6 @@ import { issueProviderMcpSession } from "../kernel/provider-mcp-session.ts";
 import { makeStdioMcpFallback } from "../kernel/stdio-mcp-fallback.ts";
 import { makeBoundedQuestionCallbackRegistry } from "../kernel/user-question-answer.ts";
 import { prefixFirstPromptWithWorkspaceInstructions } from "../kernel/workspace-instructions.ts";
-import { sharedAcpMcpServers } from "../user-mcp/shared.ts";
-import type { ResolvedMcpServer } from "../user-mcp/types.ts";
 import { handleFsRequest } from "./acp/fs.ts";
 import {
 	handleAcpNativePermissionRequest,
@@ -196,7 +194,6 @@ export const startGrokSession = (
 	orchestrationTools: OrchestrationSessionTools | null = null,
 	resumeCursor: string | null = null,
 	providerEventCursor: string | null = null,
-	sharedMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
 ): Effect.Effect<
 	GrokSessionHandle,
 	AgentSessionStartError,
@@ -935,22 +932,9 @@ export const startGrokSession = (
 				sessionId,
 				providerLabel: "Grok",
 				httpServers: init.mcp.http
-					? [
-							...grokMcpServers,
-							...(await sharedAcpMcpServers(sharedMcpServers, true)),
-						]
-					: [
-							...(await stdioMcpFallback.ensure()),
-							...(await sharedAcpMcpServers(sharedMcpServers, false)),
-						],
-				...(init.mcp.http
-					? {
-							fallbackServers: async () => [
-								...(await stdioMcpFallback.ensure()),
-								...(await sharedAcpMcpServers(sharedMcpServers, false)),
-							],
-						}
-					: {}),
+					? grokMcpServers
+					: await stdioMcpFallback.ensure(),
+				...(init.mcp.http ? { fallbackServers: stdioMcpFallback.ensure } : {}),
 				resumeCursor: cursor,
 				providerEventCursor: eventCursor.value(),
 				shouldReplaceMissingSession: (cause) =>

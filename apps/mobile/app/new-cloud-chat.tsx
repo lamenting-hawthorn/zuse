@@ -1,9 +1,8 @@
 import { useAtomValue } from "@effect/atom-react";
-import { runtimeDefaultModelFor as defaultModelFor } from "@zuse/client-runtime/provider-selection";
 import {
 	DEFAULT_RUNTIME_MODE,
+	defaultModelFor,
 	type ProviderId,
-	providerLabel,
 	type RuntimeMode,
 } from "@zuse/contracts";
 import { router, Stack, useLocalSearchParams } from "expo-router";
@@ -18,7 +17,11 @@ import {
 import { SelectorRow } from "~/components/selector-row";
 import { Button } from "~/components/ui/button";
 import { connectionErrorMessage } from "~/lib/connection-error-message";
-import { modelOptionsForProvider, RUNTIME_OPTIONS } from "~/lib/model-options";
+import {
+	modelOptionsForProvider,
+	PROVIDER_LABEL,
+	RUNTIME_OPTIONS,
+} from "~/lib/model-options";
 import { authAccountAtom, signIn } from "~/store/auth";
 import {
 	cloudAuthenticatedProvidersAtom,
@@ -161,12 +164,12 @@ export default function NewCloudChatScreen() {
 						label={
 							provider === undefined
 								? "Connect a provider"
-								: providerLabel(provider)
+								: PROVIDER_LABEL[provider]
 						}
 						disabled={busy}
 						options={providers.map((id) => ({
 							key: id,
-							label: providerLabel(id),
+							label: PROVIDER_LABEL[id],
 							selected: id === provider,
 							onSelect: () => {
 								setAgent(id);
