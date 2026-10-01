@@ -174,7 +174,6 @@ const annotationTools: ReadonlyArray<{
 type PreviewServerInfo = DiscoveredPreview;
 
 const fallbackLocalServers: ReadonlyArray<PreviewServerInfo> = [
-	{ name: "T3 Code", port: 3773, loopbackOnly: true },
 	{ name: "Vite", port: 5173, loopbackOnly: true },
 	{ name: "Zuse", port: 5733, loopbackOnly: true },
 	{ name: "Next.js", port: 3000, loopbackOnly: true },

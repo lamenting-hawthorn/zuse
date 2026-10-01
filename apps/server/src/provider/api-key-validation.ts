@@ -39,6 +39,13 @@ export const classifyApiKeyValidationError = (
 	cause: unknown,
 ): ApiKeyValidationResult => {
 	const message = messageOf(cause);
+	if (/sandboxing is not supported in this environment/i.test(message)) {
+		return {
+			status: "unverified",
+			warning:
+				"The API key was saved, but Cursor's local sandbox could not start. Reinstall or update Zuse, then recheck the provider.",
+		};
+	}
 	const explicitAuthenticationFailure =
 		cause instanceof AuthenticationError ||
 		(cause instanceof CursorSdkError && cause.status === 401) ||

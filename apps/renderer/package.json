@@ -14,7 +14,9 @@
 		"test:wallpaper-browser": "node test/integration/wallpaper.browser.mjs",
 		"test:startup-browser": "node test/integration/react-startup.browser.mjs",
 		"test:integration": "vp test run test/integration --passWithNoTests",
-		"test:cloud-setup-browser": "node test/integration/cloud-setup.browser.mjs"
+		"test:cloud-repository-state-browser": "node test/integration/cloud-repository-state.browser.mjs",
+		"test:cloud-setup-browser": "node test/integration/cloud-setup.browser.mjs",
+		"test:cloud-image-selection-browser": "node test/integration/cloud-image-selection.browser.mjs"
 	},
 	"dependencies": {
 		"@base-ui/react": "^1.4.1",

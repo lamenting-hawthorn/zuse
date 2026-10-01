@@ -101,11 +101,7 @@ function deriveState(
 	// Pi owns authentication; an uncertain probe must not claim sign-in is required.
 	if (providerId === "pi") return { kind: "ready", via: "native" };
 
-	// For subscription-gated providers, the server-side probe
-	// (parseGrokAuthJson etc.) sets authLabel to "Requires SuperGrok or X Premium+"
-	// (or equivalent) when the JWT tier is insufficient, even if cliLoggedIn
-	// is true. We surface this as a distinct state so onboarding no longer
-	// lies to paying users who already have the plan.
+	// Only explicit provider subscription verdicts gate onboarding.
 	if (a.cliLoggedIn) {
 		const subInfo = SUBSCRIPTION_INFO[providerId];
 		const unmet =

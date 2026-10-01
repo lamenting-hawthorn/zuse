@@ -28,8 +28,8 @@ import type { ModelCatalog } from "./schema.ts";
  */
 export const BUNDLED_MODEL_CATALOG = {
 	schemaVersion: 1,
-	revision: 2026092801,
-	generatedAt: "2026-09-28T00:00:00.000Z",
+	revision: 2026092901,
+	generatedAt: "2026-09-29T00:00:00.000Z",
 	providers: {
 		// Claude Code. Effort tiers and per-model knobs match the published
 		// Claude Agent SDK contract.
@@ -99,6 +99,13 @@ export const BUNDLED_MODEL_CATALOG = {
 		},
 		codex: {
 			models: [
+				codexReasoningModel("gpt-6.1-sol", "GPT-6.1 Sol", {
+					badgeLabel: "New",
+					additionalReasoningOptions: [
+						{ id: "xhigh", label: "Extra High" },
+						{ id: "max", label: "Max" },
+					],
+				}),
 				codexReasoningModel("gpt-6-astra", "GPT-6 Astra", {
 					badgeLabel: "New",
 					defaultModel: true,
@@ -594,6 +601,9 @@ export const BUNDLED_MODEL_CATALOG = {
 	// sessions still price. Fable 5.1 assumes Fable 5 pricing until Anthropic
 	// publishes a separate rate.
 	pricing: {
+		// Official launch pricing, verified 2026-09-29:
+		// https://developers.openai.com/api/docs/models/gpt-6.1-sol
+		"gpt-6.1-sol": { input: 2, output: 10, cacheRead: 0.1, cacheCreate: 2.5 },
 		// Official launch pricing, verified 2026-09-22:
 		// https://developers.openai.com/api/docs/models/gpt-6-sol
 		// https://developers.openai.com/api/docs/models/gpt-6-luna

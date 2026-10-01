@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	cloudProviderLabel,
 	cloudProviderSizeLabel,
+	orderedCloudProviders,
+	selectedCloudProvider,
 } from "../../src/lib/cloud-provider-presentation.ts";
 
 afterEach(async () => {
@@ -69,4 +71,22 @@ describe("cloud provider size presentation", () => {
 			}),
 		).toBe("GPU XL");
 	});
+});
+
+it("recommends boxd while preserving explicit selections and handling catalog changes", () => {
+	const providers = ["box", "e2b", "boxd"].map((providerId) => ({
+		providerId,
+		displayName: providerId,
+	}));
+	expect(orderedCloudProviders(providers).map((p) => p.providerId)).toEqual([
+		"boxd",
+		"box",
+		"e2b",
+	]);
+	expect(providers[0]?.providerId).toBe("box");
+	expect(selectedCloudProvider(providers, null)).toBe("boxd");
+	expect(selectedCloudProvider(providers, "e2b")).toBe("e2b");
+	expect(selectedCloudProvider(providers, "removed")).toBe("boxd");
+	expect(selectedCloudProvider(providers.slice(0, 2), null)).toBe("box");
+	expect(selectedCloudProvider([], "boxd")).toBeNull();
 });

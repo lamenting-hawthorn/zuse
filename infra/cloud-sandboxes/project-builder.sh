@@ -54,6 +54,90 @@ parse_repository_record() {
 	workspace_path="${fields[5]}"
 }
 
+# This runs only in the disposable image-build sandbox, never the auth authority.
+# Freeze inherited auth trees before killing them so queued flock initializers
+# cannot start new children while their predecessors are being removed.
+quiesce_auth_processes() {
+	node - "$1" "$2" <<'JS'
+const { readdirSync, readFileSync, statSync } = require('node:fs');
+const [authHome, uidText] = process.argv.slice(2);
+const uid = Number(uidText);
+if (!authHome.startsWith('/') || !Number.isInteger(uid)) throw new Error('Invalid auth process scope');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const gone = error => error.code === 'ENOENT' || error.code === 'ESRCH';
+const inspect = pid => {
+  try {
+    const directory = `/proc/${pid}`;
+    const stat = readFileSync(`${directory}/stat`, 'utf8');
+    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return { pid, parent: Number(fields[1]), state: fields[0], start: fields[19], uid: statSync(directory).uid };
+  } catch (error) { if (gone(error)) return undefined; throw error; }
+};
+const signal = (entry, name) => {
+  const current = inspect(entry.pid);
+  if (!current || current.start !== entry.start || current.state === 'Z') return;
+  try { process.kill(entry.pid, name); } catch (error) { if (!gone(error)) throw error; }
+};
+const targets = new Map();
+(async () => {
+  try {
+    let stable = false;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const entries = readdirSync('/proc').filter(name => /^\d+$/.test(name)).map(name => inspect(Number(name))).filter(Boolean);
+      const byPid = new Map(entries.map(entry => [entry.pid, entry]));
+      const protectedPids = new Set();
+      for (let pid = process.pid; pid && !protectedPids.has(pid); pid = byPid.get(pid)?.parent) protectedPids.add(pid);
+      const selected = new Set();
+      for (const entry of entries) {
+        if (entry.uid !== uid || entry.state === 'Z' || protectedPids.has(entry.pid)) continue;
+        if (targets.get(entry.pid)?.start === entry.start) { selected.add(entry.pid); continue; }
+        try {
+          const args = readFileSync(`/proc/${entry.pid}/cmdline`, 'utf8').split('\0');
+          if (args.some(arg => arg.startsWith(`${authHome}/`))) selected.add(entry.pid);
+        } catch (error) { if (!gone(error)) throw error; }
+      }
+      // Include children even when their command line no longer mentions authHome.
+      let added;
+      do {
+        added = false;
+        for (const entry of entries) {
+          if (entry.uid === uid && entry.state !== 'Z' && !protectedPids.has(entry.pid) && selected.has(entry.parent) && !selected.has(entry.pid)) {
+            selected.add(entry.pid); added = true;
+          }
+        }
+      } while (added);
+      let changed = false;
+      for (const pid of selected) {
+        const entry = byPid.get(pid);
+        if (targets.get(pid)?.start !== entry.start || entry.state !== 'T') changed = true;
+        targets.set(pid, entry);
+        signal(entry, 'SIGSTOP');
+      }
+      if (!changed) { stable = true; break; }
+      await sleep(20);
+    }
+    if (!stable) throw new Error('Auth process tree did not quiesce');
+  } finally {
+    // Kill only the frozen clone processes, including children ignoring SIGTERM.
+    const errors = [];
+    for (const entry of targets.values()) {
+      try { signal(entry, 'SIGKILL'); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(errors, 'Failed to stop inherited auth processes');
+  }
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const alive = [...targets.values()].filter(entry => {
+      const current = inspect(entry.pid);
+      return current && current.start === entry.start && current.state !== 'Z';
+    });
+    if (alive.length === 0) return;
+    await sleep(20);
+  }
+  throw new Error('Inherited auth processes did not exit');
+})().catch(error => { console.error(error.message); process.exitCode = 70; });
+JS
+}
+
 main() {
 	mkdir -p "$status_dir"
 	rm -f "$status_dir/ready" "$status_dir/failed" "$status_dir/failure-phase"
@@ -61,6 +145,9 @@ main() {
 
 	phase=validating-input
 	[[ -s "$manifest" ]] || mark_failed 64
+
+	phase=quiescing-auth
+	quiesce_auth_processes /home/zuse/.zuse/cloud-auth "$(id -u zuse)" || mark_failed 70
 
 	phase=syncing-repository
 	mkdir -p "$cache_root"
@@ -146,7 +233,8 @@ main() {
 	while IFS= read -r repository_record; do
 		parse_repository_record "$repository_record" || mark_failed 64
 		source_commit="$(git -C "$workspace_path" rev-parse "origin/$default_branch")"
-		if git -C "$workspace_path" ls-tree -r --name-only "$source_commit" | grep -Ev '(^|/)\.env\.(example|sample|template)$' | grep -Eq '(^|/)\.env($|\.)'; then
+		# Drain the listing: grep -q can SIGPIPE upstream and make pipefail hide a match.
+		if git -C "$workspace_path" ls-tree -r --name-only "$source_commit" | grep -Ev '(^|/)\.env\.(example|sample|template)$' | grep -E '(^|/)\.env($|\.)' >/dev/null; then
 			mark_failed 71
 		fi
 		git -C "$workspace_path" config --unset-all http.https://github.com/.extraheader 2>/dev/null || true
@@ -154,6 +242,7 @@ main() {
 	done <"$manifest"
 	find /home/zuse -type f -name '*history' -delete
 	if pgrep -u zuse -f '(gh auth|claude|codex|grok)' >/dev/null 2>&1; then
+		printf 'Image still contains a running agent or authentication process.\n' >&2
 		mark_failed 70
 	fi
 	phase=finalizing

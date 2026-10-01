@@ -72,13 +72,7 @@ const LOGIN_HINT: Partial<Record<ProviderId, string>> = {
 	kiro: "kiro-cli login",
 };
 
-/**
- * Providers that have a known paid-plan requirement for full agent usage.
- * For Grok we now decode the `tier` claim from `~/.grok/auth.json` JWT:
- *   - tier >= 4 → authLabel = "Grok subscription" (positive, shows plan, toggle works)
- *   - lower / unknown → authLabel = "Requires SuperGrok or X Premium+" → violet nag + disabled
- * The frontend only forces the subscription alarm/disable when the label contains "Requires".
- */
+/** Providers with an explicitly reported paid-plan requirement. */
 const SUBSCRIPTION_INFO: Partial<
 	Record<ProviderId, { readonly plan: string; readonly url: string }>
 > = {
@@ -108,13 +102,7 @@ export function ProviderCard({
 	const persistedEnabled =
 		useSettingsStore((s) => s.providerEnabled[providerId]) ?? true;
 
-	// For providers that have a known subscription gate (grok, cursor), we only
-	// force-disable + show the violet alarm *when the server probe explicitly
-	// tells us the requirement is unmet* (i.e. authLabel contains "Requires").
-	// Once the user has a real login (auth.json with email/tier), the probe
-	// returns clean "authenticated + authEmail" and we treat the card normally.
-	// This removes the permanent "you still need to subscribe" lie for paying
-	// Grok users while still protecting people on free tiers from silent 403s.
+	// Only an explicit provider verdict can gate access. Grok uses CLI login status.
 	const unmetSubscriptionRequirement =
 		subscription !== undefined &&
 		availability?.authLabel?.toLowerCase().includes("require") === true;

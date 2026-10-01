@@ -27,7 +27,10 @@ import { AppearanceController } from "./lib/appearance.tsx";
 
 import { installClientBusOnlineBridge } from "./lib/client-bus-online.ts";
 import { prefetchCloudWorkspaceSession } from "./lib/cloud-workspace-session-cache.ts";
-import { clearControlPlaneSessionCache } from "./lib/control-plane-client.ts";
+import {
+	clearControlPlaneSessionCache,
+	setControlPlaneCacheAccount,
+} from "./lib/control-plane-client.ts";
 
 import { markRendererStartupMilestone } from "./lib/performance-marks.ts";
 
@@ -273,6 +276,7 @@ function ReadyApp({
 	useEffect(() => {
 		if (!onboardingCompleted) return;
 		const identity = user?.id ?? null;
+		setControlPlaneCacheAccount(identity);
 		if (cloudCacheIdentity.current !== identity) {
 			clearControlPlaneSessionCache("cloud-workspace:");
 			cloudCacheIdentity.current = identity;
