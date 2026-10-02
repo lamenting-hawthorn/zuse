@@ -14,6 +14,7 @@ import {
 	ModelCatalog,
 	modelsForProvider,
 	normalizeModelCatalog,
+	PROVIDER_CAPABILITIES,
 	PROVIDER_IDS,
 	pickNewerModelCatalog,
 	ResolvedModelCatalog,
@@ -51,9 +52,14 @@ describe("bundled model catalog", () => {
 		expect(decoded.revision).toBeGreaterThan(2026_01_01_00);
 	});
 
-	it("covers every provider", () => {
-		expect(catalogProviderIds(catalog)).toEqual(PROVIDER_IDS);
-		for (const providerId of PROVIDER_IDS) {
+	it("covers provider catalogs; connection-backed models come from live inventory", () => {
+		const bundledProviders = PROVIDER_IDS.filter(
+			(providerId) =>
+				PROVIDER_CAPABILITIES[providerId].credentialSource === "provider",
+		);
+		expect(catalogProviderIds(catalog)).toEqual(bundledProviders);
+		expect(modelsForProvider(catalog, "zuse")).toEqual([]);
+		for (const providerId of bundledProviders) {
 			expect(modelsForProvider(catalog, providerId).length).toBeGreaterThan(0);
 		}
 	});

@@ -1,4 +1,8 @@
-import { AgentTurnId, ComposerInput } from "@zuse/contracts";
+import {
+	AgentTurnId,
+	ComposerInput,
+	QueuedMessageInput,
+} from "@zuse/contracts";
 import { Schema } from "effect";
 
 export const ProviderStartRequest = Schema.Struct({
@@ -21,4 +25,8 @@ export const decodeProviderModelOptions = Schema.decodeUnknownEffect(
 
 export const decodeProviderTurnInput = Schema.decodeUnknownEffect(
 	Schema.fromJsonString(ComposerInput),
+);
+
+export const decodeQueuedTurnInput = Schema.decodeUnknownEffect(
+	Schema.fromJsonString(QueuedMessageInput),
 );

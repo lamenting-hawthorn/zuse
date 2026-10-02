@@ -9,6 +9,38 @@ import {
 const sessionId = SessionId.make("session-interactions");
 
 describe("durable session interactions", () => {
+	it("replays a queued author and retains that author when the prompt is edited", () => {
+		const actor = { subject: "author", membershipId: "original-membership" };
+		const input = {
+			text: "queued",
+			attachments: [],
+			fileRefs: [],
+			skillRefs: [],
+			actor,
+		};
+		const enqueued = timelineEventFromDomain(sessionId, {
+			_tag: "QueuedTurnEnqueued",
+			queueId: "queue",
+			inputJson: JSON.stringify(input),
+			position: 0,
+			createdAt: 1,
+			ready: true,
+		});
+		const projection = applyTimelineEvent(emptyTimelineProjection(), enqueued);
+		expect(projection.queue.items[0]?.actor).toEqual(actor);
+		const updated = timelineEventFromDomain(sessionId, {
+			_tag: "QueuedTurnUpdated",
+			queueId: "queue",
+			inputJson: JSON.stringify({ ...input, text: "edited" }),
+			updatedAt: 2,
+			ready: true,
+		});
+		const replay = applyTimelineEvent(projection, updated);
+		expect(replay.queue.items[0]).toMatchObject({
+			actor,
+			input: { text: "edited" },
+		});
+	});
 	it("restores an unanswered question from the timeline and settles it only on its answer", () => {
 		const questions = [{ question: "Choose", options: ["A", "B"] }];
 		const question = Message.make({

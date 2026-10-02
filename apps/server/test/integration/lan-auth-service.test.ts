@@ -1,4 +1,5 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
+import { ChatId, FolderId, RpcAccessDeniedError } from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Duration, Effect, Layer, ManagedRuntime, Result } from "effect";
 import { TestClock } from "effect/testing";
@@ -131,6 +132,49 @@ describe("LanAuthService", () => {
 		});
 	});
 
+	it("keeps scoped gateway tokens ephemeral and revokes authority on existing identities", async () => {
+		await withRuntime(async (run) => {
+			await run(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					let allowed = true;
+					const token = yield* auth.mintToken("gateway", undefined, {
+						kind: "workspace",
+						subject: "member",
+						membershipId: "membership-member",
+						workspaceId: "cloud-workspace",
+						chatId: ChatId.make("chat"),
+						projectId: FolderId.make("project"),
+						expiresAt: Number.MAX_SAFE_INTEGER,
+						authorize: Effect.suspend(() =>
+							allowed
+								? Effect.succeed("view" as const)
+								: Effect.fail(
+										new RpcAccessDeniedError({ code: "access-denied" }),
+									),
+						),
+					});
+					const identity = yield* auth.authenticateToken(token.token);
+					expect(identity?.kind).toBe("workspace");
+					if (identity?.kind !== "workspace")
+						throw new Error("Missing scoped identity");
+					expect(yield* identity.authorize).toBe("view");
+					expect(yield* auth.listTokens()).toEqual([]);
+					allowed = false;
+					expect((yield* identity.authorize.pipe(Effect.result))._tag).toBe(
+						"Failure",
+					);
+					allowed = true;
+					yield* auth.revokeToken(token.id);
+					expect(yield* auth.authenticateToken(token.token)).toBeNull();
+					expect((yield* identity.authorize.pipe(Effect.result))._tag).toBe(
+						"Failure",
+					);
+				}),
+			);
+		});
+	});
+
 	it("revokes tokens and never exposes token hashes in summaries", async () => {
 		await withRuntime(async (run) => {
 			const minted = await run(
@@ -159,6 +203,49 @@ describe("LanAuthService", () => {
 			expect(JSON.stringify(summaries)).not.toContain("token_hash");
 			expect(JSON.stringify(summaries)).not.toContain(minted.token);
 			expect(summaries[0]?.revokedAt).toBeInstanceOf(Date);
+		});
+	});
+
+	it("uses a resolved transport endpoint consistently for browser and native pairing", async () => {
+		await withRuntime(async (run) => {
+			await run(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					for (const httpBaseUrl of [
+						"http://localhost:32123",
+						"https://vps.example.test",
+						"http://[::1]:32123",
+					]) {
+						const pairing = yield* auth.createPairingCode({ httpBaseUrl });
+						expect(pairing.browserUrl).toBe(
+							`${httpBaseUrl}/#pair=${pairing.code}`,
+						);
+						expect(pairing.qrText).toBe(pairing.browserUrl);
+						expect(pairing.pairingUrl).toBe(
+							httpBaseUrl.replace(/^http/u, "ws"),
+						);
+						const redeemed = yield* auth.redeemPairingCode(pairing.code);
+						expect(yield* auth.verifyToken(redeemed.token)).toBe(true);
+						const subsequent = yield* auth.createPairingCode();
+						expect(subsequent.browserUrl).toBe(
+							`${httpBaseUrl}/#pair=${subsequent.code}`,
+						);
+					}
+					for (const httpBaseUrl of [
+						"javascript:alert(1)",
+						"http://user:password@localhost",
+						"http://localhost:0",
+						"https://example.test/?secret=value",
+						"https://example.test/#token",
+					]) {
+						const failure = yield* auth
+							.createPairingCode({ httpBaseUrl })
+							.pipe(Effect.flip);
+						expect(failure._tag).toBe("LanAuthError");
+						expect(failure.reason).toBe("invalid_pairing_endpoint");
+					}
+				}),
+			);
 		});
 	});
 
@@ -617,6 +704,58 @@ describe("LanAuthService", () => {
 					}),
 				),
 			).resolves.toBe(true);
+		});
+	});
+
+	it("requires a verified account subject and expiration for connect identities", async () => {
+		await withRuntime(async (run) => {
+			const mintKey = await generateKeyPair("EdDSA", { extractable: true });
+			const mintPublicKey = JSON.stringify(await exportJWK(mintKey.publicKey));
+			const { auth, environmentId } = await run(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					const environmentId = yield* auth.environmentId();
+					yield* auth.saveApiConfig({
+						apiUrl: "https://api.test",
+						apiIssuer: "https://api.test",
+						environmentId,
+						environmentCredential: "zec_test",
+						mintPublicKey,
+					});
+					return { auth, environmentId };
+				}),
+			);
+			const expiresAt = Math.floor(Date.now() / 1000) + 60;
+			const sign = (claims: { sub?: string; exp?: number }) =>
+				new SignJWT({ environmentId, ...claims })
+					.setProtectedHeader({ alg: "EdDSA", typ: "connect+jwt" })
+					.setIssuer("https://api.test")
+					.setAudience(`zuse-env:${environmentId}`)
+					.sign(mintKey.privateKey);
+			const valid = await sign({ sub: "account-a", exp: expiresAt });
+			expect(await run(auth.authenticateToken(valid))).toEqual({
+				kind: "account",
+				subject: "account-a",
+				expiresAt: expiresAt * 1000,
+			});
+			for (const claims of [
+				{ sub: "account-a" },
+				{ exp: expiresAt },
+				{ sub: "", exp: expiresAt },
+				{ sub: "account-a", exp: 1 },
+			]) {
+				const token = await sign(claims);
+				expect(await run(auth.authenticateToken(token))).toBeNull();
+				expect(await run(auth.verifyToken(token))).toBe(false);
+			}
+			const paired = await run(auth.mintToken("paired"));
+			expect(await run(auth.authenticateToken(paired.token))).toEqual({
+				kind: "paired",
+				tokenId: paired.id,
+				deviceId: null,
+			});
+			await run(auth.revokeToken(paired.id));
+			expect(await run(auth.authenticateToken(paired.token))).toBeNull();
 		});
 	});
 

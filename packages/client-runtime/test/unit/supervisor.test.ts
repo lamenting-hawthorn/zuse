@@ -536,4 +536,36 @@ describe("connection supervisor", () => {
 		expect(harness.disposed).toEqual([1, 2]);
 		expect(harness.supervisor.snapshots()).toEqual([]);
 	});
+	test("reconnects while an old same-key client is still closing", async () => {
+		const closed = deferred<void>();
+		let id = 0;
+		const harness = makeHarness({
+			createClient: async () => {
+				const client = { id: ++id };
+				return {
+					client,
+					dispose: () => (client.id === 1 ? closed.promise : Promise.resolve()),
+				};
+			},
+		});
+		const previous = harness.supervisor.get({ key: "cloud" });
+		await runClient(previous.getClient());
+		const removal = harness.supervisor.remove({ key: "cloud" });
+		const current = harness.supervisor.get({ key: "cloud" });
+		expect(current).not.toBe(previous);
+		expect(await runClient(current.getClient())).toEqual({ id: 2 });
+		closed.resolve();
+		await removal;
+		expect(harness.supervisor.get({ key: "cloud" })).toBe(current);
+		await expect(runClient(previous.getClient())).rejects.toThrow(
+			"connection removed",
+		);
+		await harness.supervisor.dispose();
+	});
+	test("removing a missing connection does not create an entry", async () => {
+		const harness = makeHarness();
+		await harness.supervisor.remove({ key: "missing" });
+		expect(harness.created).toEqual([]);
+		expect(harness.supervisor.snapshots()).toEqual([]);
+	});
 });

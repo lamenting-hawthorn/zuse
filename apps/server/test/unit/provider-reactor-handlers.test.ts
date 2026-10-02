@@ -256,7 +256,28 @@ describe("provider reactor handlers", () => {
 		]);
 	});
 
-	it("requeues a scheduled successor that was superseded before replay", async () => {
+	it.each([
+		[false, true],
+		[true, true],
+		[false, false],
+	])("preserves the queued author on recovery (rich=%s, allowed=%s)", async (rich, allowed) => {
+		const actor = { subject: "author", membershipId: "original-membership" };
+		const inputJson = JSON.stringify({
+			text: "preserve me",
+			attachments: rich
+				? [
+						{
+							id: "attachment",
+							mimeType: "image/png",
+							originalName: "image.png",
+						},
+					]
+				: [],
+			fileRefs: [],
+			skillRefs: [],
+			annotations: [],
+			actor,
+		});
 		const dispatched: Array<{
 			readonly commandId: string;
 			readonly command: { readonly _tag: string };
@@ -303,6 +324,7 @@ describe("provider reactor handlers", () => {
 			provider: {} as ProviderReactorHandlersOptions["provider"],
 			sessionDomain,
 			autoNameChat: () => Effect.void,
+			authorizeQueuedTurn: () => Effect.succeed(allowed),
 		});
 
 		await Effect.runPromise(
@@ -315,23 +337,37 @@ describe("provider reactor handlers", () => {
 					_tag: "StartScheduledSuccessor",
 					turnId: AgentTurnId.make("turn-scheduled"),
 					queueId: "queue-1",
-					inputJson:
-						'{"text":"preserve me","attachments":[],"fileRefs":[],"skillRefs":[],"annotations":[]}',
+					inputJson,
 				},
 			}),
 		);
 
+		if (!allowed) {
+			expect(dispatched).toEqual([
+				expect.objectContaining({
+					command: expect.objectContaining({
+						_tag: "EnqueueTurn",
+						inputJson,
+						ready: false,
+					}),
+				}),
+			]);
+			expect(completed).toEqual(["reactor:scheduled-successor:event-ready:0"]);
+			return;
+		}
 		expect(dispatched.map(({ command }) => command._tag)).toEqual([
 			"SubmitTurn",
 			"EnqueueTurn",
 		]);
+		expect(dispatched[0]).toMatchObject({
+			command: { contentJson: expect.stringContaining(JSON.stringify(actor)) },
+		});
 		expect(dispatched[1]).toMatchObject({
 			commandId: "reactor:scheduled-successor:event-ready:0:requeue",
 			command: {
 				_tag: "EnqueueTurn",
 				queueId: "queue-1",
-				inputJson:
-					'{"text":"preserve me","attachments":[],"fileRefs":[],"skillRefs":[],"annotations":[]}',
+				inputJson,
 				position: 0,
 				ready: true,
 			},

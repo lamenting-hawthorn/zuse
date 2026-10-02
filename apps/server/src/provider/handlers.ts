@@ -41,6 +41,14 @@ import { Effect, Layer, Result, Schedule, Stream } from "effect";
 import type { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
 import { SqlClient } from "effect/unstable/sql";
 import { AnalyticsService } from "../analytics/services/analytics-service.ts";
+import {
+	filterCatalog,
+	filterChatCatalog,
+	filterChats,
+	filterPermissionCatalog,
+	filterSessionCatalog,
+	projectChatAccess,
+} from "../collaboration/services/catalog-visibility.ts";
 import { ConfigStoreService } from "../config-store/services/config-store-service.ts";
 import {
 	decodeChatStartupIntent,
@@ -58,6 +66,7 @@ import {
 	SessionService,
 	TranscriptService,
 } from "../conversation/services/conversation-services.ts";
+import { connectionWorkspaceActor } from "../lan-auth/services/connection-identity.ts";
 import { resolveCliPath, resolveUpdateCommand } from "./availability.ts";
 import { BrowserBridgeService } from "./services/browser-bridge-service.ts";
 import { CredentialsService } from "./services/credentials-service.ts";
@@ -314,7 +323,13 @@ const SessionList = MemoizeRpcs.toLayerHandler(
 	"session.list",
 	({ projectId, includeArchived }) =>
 		Effect.flatMap(SessionService, (svc) =>
-			svc.listSessions(projectId, includeArchived ?? false),
+			svc
+				.listSessions(projectId, includeArchived ?? false)
+				.pipe(
+					Effect.flatMap((items) =>
+						filterCatalog(items, (scope, item) => scope.chats.has(item.chatId)),
+					),
+				),
 		),
 );
 
@@ -388,7 +403,7 @@ const SessionStreamChanges = MemoizeRpcs.toLayerHandler(
 					live,
 				);
 			}),
-		).pipe(Stream.orDie),
+		).pipe(filterSessionCatalog, Stream.orDie),
 );
 
 const SessionCreate = MemoizeRpcs.toLayerHandler("session.create", (input) =>
@@ -428,12 +443,16 @@ const ChatList = MemoizeRpcs.toLayerHandler(
 	"chat.list",
 	({ projectId, includeArchived }) =>
 		Effect.flatMap(ChatService, (svc) =>
-			svc.listChats(projectId, includeArchived ?? false),
+			svc
+				.listChats(projectId, includeArchived ?? false)
+				.pipe(Effect.flatMap(filterChats)),
 		),
 );
 
 const ChatGet = MemoizeRpcs.toLayerHandler("chat.get", ({ chatId }) =>
-	Effect.flatMap(ChatService, (svc) => svc.getChat(chatId)),
+	Effect.flatMap(ChatService, (svc) => svc.getChat(chatId)).pipe(
+		Effect.flatMap(projectChatAccess),
+	),
 );
 
 const ChatArchivePreview = MemoizeRpcs.toLayerHandler(
@@ -1321,15 +1340,24 @@ const ChatCreate = MemoizeRpcs.toLayerHandler(
 	}),
 );
 
+const listVisibleChatCreationOperations = (projectId: FolderId) =>
+	listChatCreationOperations(projectId).pipe(
+		Effect.flatMap((operations) =>
+			filterCatalog(operations, (scope, operation) =>
+				scope.chats.has(operation.chatId),
+			),
+		),
+	);
+
 const ChatCreationList = MemoizeRpcs.toLayerHandler(
 	"chat.creation.list",
-	({ projectId }) => listChatCreationOperations(projectId),
+	({ projectId }) => listVisibleChatCreationOperations(projectId),
 );
 
 const ChatCreationStream = MemoizeRpcs.toLayerHandler(
 	"chat.creation.stream",
 	({ projectId }) =>
-		Stream.fromEffect(listChatCreationOperations(projectId)).pipe(
+		Stream.fromEffect(listVisibleChatCreationOperations(projectId)).pipe(
 			Stream.repeat(Schedule.spaced("1 second")),
 			Stream.changesWith(
 				(previous, next) =>
@@ -1491,7 +1519,7 @@ const ChatStreamChanges = MemoizeRpcs.toLayerHandler(
 	({ projectId }) =>
 		Stream.unwrap(
 			Effect.map(ChatService, (svc) => svc.streamChatChanges(projectId)),
-		),
+		).pipe(filterChatCatalog),
 );
 
 const ChatSetWorktree = MemoizeRpcs.toLayerHandler(
@@ -1912,7 +1940,7 @@ const SessionGoalStream = MemoizeRpcs.toLayerHandler(
 		),
 );
 
-const MessagesSend = MemoizeRpcs.toLayerHandler(
+export const MessagesSend = MemoizeRpcs.toLayerHandler(
 	"messages.send",
 	({ commandId, sessionId, text, input, asGoal, clientMessageId }) => {
 		console.log(
@@ -1927,8 +1955,10 @@ const MessagesSend = MemoizeRpcs.toLayerHandler(
 				`[rpc.messages.send] attachments: ${JSON.stringify(input.attachments)}`,
 			);
 		}
-		return Effect.flatMap(MessageService, (svc) =>
-			svc.sendMessage(
+		return Effect.gen(function* () {
+			const svc = yield* MessageService;
+			const actor = yield* connectionWorkspaceActor;
+			yield* svc.sendMessage(
 				commandId,
 				sessionId,
 				input?.text ?? text ?? "",
@@ -1938,8 +1968,11 @@ const MessagesSend = MemoizeRpcs.toLayerHandler(
 				input?.annotations,
 				asGoal,
 				clientMessageId,
-			),
-		);
+				undefined,
+				undefined,
+				actor,
+			);
+		});
 	},
 );
 
@@ -1963,6 +1996,7 @@ const MessagesQueueAdd = MemoizeRpcs.toLayerHandler(
 		Effect.gen(function* () {
 			const svc = yield* QueueService;
 			const analytics = yield* AnalyticsService;
+			const actor = yield* connectionWorkspaceActor;
 			const result = yield* svc.addQueuedMessage(
 				commandId,
 				sessionId,
@@ -1970,6 +2004,7 @@ const MessagesQueueAdd = MemoizeRpcs.toLayerHandler(
 				queueId,
 				ready,
 				flush,
+				actor,
 			);
 			yield* analytics.capture("queue action performed", { action: "add" });
 			return result;
@@ -2043,7 +2078,10 @@ const MessagesQueueResume = MemoizeRpcs.toLayerHandler(
 
 const PermissionRequests = MemoizeRpcs.toLayerHandler(
 	"permission.requests",
-	() => Stream.unwrap(Effect.map(PermissionService, (svc) => svc.requests())),
+	() =>
+		Stream.unwrap(Effect.map(PermissionService, (svc) => svc.requests())).pipe(
+			filterPermissionCatalog,
+		),
 );
 
 const PermissionDecide = MemoizeRpcs.toLayerHandler(

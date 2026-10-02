@@ -198,6 +198,9 @@ export class WorkspaceMailbox {
 			envelope.destructionFence,
 			envelope.createdAt,
 			envelope.dependencies,
+			...(envelope.actor === undefined
+				? []
+				: [envelope.actor.subject, envelope.actor.membershipId]),
 		]);
 	}
 

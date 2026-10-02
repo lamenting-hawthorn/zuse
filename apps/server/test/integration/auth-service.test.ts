@@ -7,6 +7,7 @@ import type { SessionBundle } from "../../src/auth/layers/workos.ts";
 import { AuthService } from "../../src/auth/services/auth-service.ts";
 import { AuthShell } from "../../src/auth/services/auth-shell.ts";
 import { SessionStore } from "../../src/auth/services/session-store.ts";
+import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
 import { CredentialsService } from "../../src/provider/services/credentials-service.ts";
 
 const originalFetch = globalThis.fetch;
@@ -172,6 +173,94 @@ const mockAuthenticate = (
 	}) as typeof fetch;
 	return calls;
 };
+
+describe("AuthService connection account boundary", () => {
+	const tokenFor = (subject: string, expiresAt = Date.now() + 60_000) =>
+		Effect.flatMap(AuthService, (svc) => svc.getAccessToken()).pipe(
+			Effect.provideService(ConnectionIdentity, {
+				kind: "account",
+				subject,
+				expiresAt,
+			}),
+		);
+
+	it("returns tokens to the same verified account and trusted local callers", async () => {
+		const bundle = makeBundle();
+		const harness = makeHarness(bundle);
+		try {
+			expect(await harness.run(tokenFor(bundle.user.id))).toBe(
+				bundle.accessToken,
+			);
+			expect(
+				await harness.run(
+					Effect.flatMap(AuthService, (svc) => svc.getAccessToken()),
+				),
+			).toBe(bundle.accessToken);
+		} finally {
+			await harness.dispose();
+		}
+	});
+
+	it.each([
+		"fresh",
+		"expiring",
+	])("rejects another account before using a %s token", async (state) => {
+		const calls = mockAuthenticate(() => {
+			throw new Error("Must not refresh");
+		});
+		const harness = makeHarness(
+			makeBundle({
+				expiresAt: Date.now() + (state === "fresh" ? 900_000 : 1_000),
+			}),
+		);
+		try {
+			await expect(harness.run(tokenFor("teammate"))).rejects.toMatchObject({
+				_tag: "AuthTokenError",
+				reason: "This connection cannot use the host account.",
+			});
+			expect(calls).toHaveLength(0);
+		} finally {
+			await harness.dispose();
+		}
+	});
+
+	it("rejects an expired connection even when the stored token is fresh", async () => {
+		const harness = makeHarness(makeBundle());
+		try {
+			await expect(
+				harness.run(tokenFor("user_123", Date.now() - 1)),
+			).rejects.toMatchObject({
+				_tag: "AuthTokenError",
+				reason: "This connection cannot use the host account.",
+			});
+		} finally {
+			await harness.dispose();
+		}
+	});
+
+	it("does not return a different account observed under the refresh lock", async () => {
+		const replacement = makeBundle({
+			refreshToken: "other-account-refresh",
+			user: { ...makeBundle().user, id: "other-account" },
+		});
+		let switchAccount = false;
+		const harness = makeHarness(makeBundle({ expiresAt: Date.now() + 1_000 }), {
+			onRead: (stored) => {
+				if (switchAccount) return replacement;
+				switchAccount = true;
+				return stored;
+			},
+		});
+		try {
+			await expect(harness.run(tokenFor("user_123"))).rejects.toMatchObject({
+				_tag: "AuthTokenError",
+				reason: "This connection cannot use the host account.",
+			});
+		} finally {
+			await harness.dispose();
+		}
+	});
+});
 
 describe("AuthService WorkOS refresh", () => {
 	it("proactively refreshes a five-minute production token before it expires", async () => {

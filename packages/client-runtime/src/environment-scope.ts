@@ -1,3 +1,45 @@
+import type { WorkspaceScope } from "@zuse/contracts";
+
+export const workspaceScopeKey = (scope: WorkspaceScope): string =>
+	scope.kind === "personal"
+		? "personal"
+		: `organization:${scope.organizationId}`;
+
+export type CloudChatRoute = {
+	readonly scope: WorkspaceScope;
+	readonly workspaceId: string;
+};
+
+/** Authenticated locator only: this URL never carries an access grant. */
+export const cloudChatRoute = ({
+	scope,
+	workspaceId,
+}: CloudChatRoute): string =>
+	`/w/${scope.kind === "personal" ? "personal" : `organization/${encodeURIComponent(scope.organizationId)}`}/chat/${encodeURIComponent(workspaceId)}`;
+
+export const parseCloudChatRoute = (
+	pathname: string,
+): CloudChatRoute | null => {
+	const match = /^\/w\/(personal|organization\/([^/]+))\/chat\/([^/]+)$/u.exec(
+		pathname,
+	);
+	if (match === null) return null;
+	try {
+		return {
+			scope:
+				match[1] === "personal"
+					? { kind: "personal" }
+					: {
+							kind: "organization",
+							organizationId: decodeURIComponent(match[2] ?? ""),
+						},
+			workspaceId: decodeURIComponent(match[3] ?? ""),
+		};
+	} catch {
+		return null;
+	}
+};
+
 export type EnvironmentRoute =
 	| {
 			readonly environmentId: string;

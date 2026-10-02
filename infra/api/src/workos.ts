@@ -1,5 +1,9 @@
-import type { ApiAuthTokenGrant, ApiAuthTokenResponse } from "@zuse/contracts";
-import { Context, Effect, Layer } from "effect";
+import {
+	type ApiAuthTokenGrant,
+	type ApiAuthTokenResponse,
+	AuthUser,
+} from "@zuse/contracts";
+import { Context, Effect, Layer, Schema } from "effect";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { ApiConfiguration } from "./config.ts";
 import {
@@ -195,29 +199,31 @@ export const WorkosVerifierLive: Layer.Layer<
 							serviceUnavailable("workos_auth_invalid_response"),
 						);
 					}
-					const profile = body.user;
-					const user =
-						typeof profile === "object" && profile !== null
-							? (profile as Record<string, unknown>)
-							: null;
-					const nullableText = (value: unknown): string | null =>
-						typeof value === "string" ? value : null;
+					const user = yield* Schema.decodeUnknownEffect(
+						Schema.Struct({
+							id: Schema.String,
+							email: Schema.String,
+							first_name: Schema.optional(Schema.NullOr(Schema.String)),
+							last_name: Schema.optional(Schema.NullOr(Schema.String)),
+							profile_picture_url: Schema.optional(
+								Schema.NullOr(Schema.String),
+							),
+						}),
+					)(body.user).pipe(
+						Effect.mapError(() =>
+							serviceUnavailable("workos_auth_invalid_response"),
+						),
+					);
 					return {
-						...(user !== null &&
-						typeof user.id === "string" &&
-						typeof user.email === "string"
-							? {
-									user: {
-										id: user.id,
-										email: user.email,
-										firstName: nullableText(user.first_name),
-										lastName: nullableText(user.last_name),
-										profilePictureUrl: nullableText(user.profile_picture_url),
-									},
-								}
-							: {}),
 						access_token: body.access_token,
 						refresh_token: body.refresh_token,
+						user: AuthUser.make({
+							id: user.id,
+							email: user.email,
+							firstName: user.first_name ?? null,
+							lastName: user.last_name ?? null,
+							profilePictureUrl: user.profile_picture_url ?? null,
+						}),
 					};
 				},
 			),

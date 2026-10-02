@@ -1,3 +1,21 @@
+import { Schema } from "effect";
+import { ChatAccessPermission, WorkspaceActor } from "./collaboration.ts";
+
+export const CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY =
+	"workspace-authorization-v1" as const;
+export const CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY =
+	"command-author-v1" as const;
+export const CloudRuntimeAccessRequest = Schema.Struct({
+	actorId: Schema.NonEmptyString,
+	membershipId: Schema.optional(Schema.NonEmptyString),
+	runtimeGeneration: Schema.Number,
+	gatewayEpoch: Schema.Number,
+});
+export const CloudRuntimeAccessResponse = Schema.Struct({
+	permission: ChatAccessPermission,
+	actor: Schema.optional(WorkspaceActor),
+});
+
 const FRAME_MAGIC = [0x5a, 0x55, 0x53, 0x45] as const; // "ZUSE"
 const FRAME_VERSION = 1;
 const FRAME_HEADER_BYTES = 9;

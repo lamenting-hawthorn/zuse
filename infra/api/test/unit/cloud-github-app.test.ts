@@ -4,9 +4,13 @@ import { importPKCS8, jwtVerify, SignJWT } from "jose";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
+	completeGithubInstallation,
+	githubAuthorizationCallback,
+	githubAuthorizationUrl,
 	githubInstallationCredentialForRepository,
 	githubInstallationGrantForRepository,
 	githubInstallCallbackForwardUrl,
+	makeGithubInstallUrl,
 	normalizeGithubPrivateKey,
 } from "../../src/cloud-github-app.ts";
 
@@ -15,6 +19,7 @@ import {
 	CloudWorkspaceStoreMemory,
 } from "../../src/cloud-workspace-store.ts";
 import { layer as configurationLayer } from "../../src/config.ts";
+import { ApiStoreMemory } from "../../src/store.ts";
 
 describe("GitHub App repository credentials", () => {
 	const grant = {
@@ -119,6 +124,250 @@ describe("GitHub App installation callback routing", () => {
 });
 
 describe("GitHub installation failure isolation", () => {
+	test.each([
+		["account", "User"],
+		["organization:team", "User"],
+		["account", "Organization"],
+		["organization:team", "Organization"],
+	])("links to %s from GitHub %s without an install callback, only after explicit selection", async (ownerId, accountType) => {
+		const keys = generateKeyPairSync("ed25519");
+		const app = generateKeyPairSync("rsa", { modulusLength: 2048 });
+		const runtime = ManagedRuntime.make(
+			Layer.mergeAll(
+				CloudWorkspaceStoreMemory,
+				ApiStoreMemory,
+				configurationLayer({
+					apiIssuer: "https://api-staging.zuse.sh",
+					workosJwksUrl: "unused",
+					workosIssuer: "unused",
+					workosApiKey: Redacted.make("workos-test"),
+					organizationWorkspacesEnabled: true,
+					mintPrivateKey: Redacted.make(
+						JSON.stringify(keys.privateKey.export({ format: "jwk" })),
+					),
+					mintPublicKey: JSON.stringify(
+						keys.publicKey.export({ format: "jwk" }),
+					),
+					githubApp: {
+						appId: "1",
+						clientId: "client",
+						clientSecret: Redacted.make("secret"),
+						slug: "zuse",
+						privateKey: Redacted.make(
+							app.privateKey
+								.export({ format: "pem", type: "pkcs8" })
+								.toString(),
+						),
+					},
+				}),
+			),
+		);
+		const installation = {
+			id: 123,
+			app_id: 1,
+			account: { id: 7, login: "octocat", type: accountType },
+			repository_selection: "selected",
+			suspended_at: null,
+		};
+		let memberActive = true;
+		let installed = false;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes("/user_management/organization_memberships?"))
+					return Response.json({
+						data: memberActive
+							? [
+									{
+										id: "membership",
+										organization_id: "team",
+										user_id: "account",
+										status: "active",
+										role: { slug: "admin" },
+									},
+								]
+							: [],
+						list_metadata: { after: null },
+					});
+				if (url.endsWith("/organizations/team"))
+					return Response.json({ id: "team", name: "Example team" });
+				if (url.endsWith("/login/oauth/access_token"))
+					return Response.json({ access_token: "user-token" });
+				if (url.endsWith("/user")) return Response.json({ id: 7 });
+				if (url.includes("/user/installations?"))
+					return Response.json(
+						!installed
+							? { installations: [] }
+							: {
+									installations: [
+										installation,
+										{
+											...installation,
+											id: 456,
+											account: { id: 8, login: "other-person", type: "User" },
+										},
+										{
+											...installation,
+											id: 789,
+											account: {
+												id: 9,
+												login: "unowned-org",
+												type: "Organization",
+											},
+										},
+									],
+								},
+					);
+				if (url.includes("/memberships/orgs/"))
+					return Response.json({
+						role: url.endsWith("/octocat") ? "admin" : "member",
+						state: "active",
+					});
+				if (url.endsWith("/app/installations/123"))
+					return Response.json(installation);
+				throw new Error("Unexpected GitHub request");
+			}),
+		);
+		try {
+			const installUrl = await runtime.runPromise(
+				makeGithubInstallUrl(ownerId, "account"),
+			);
+			const start = await runtime.runPromise(
+				githubAuthorizationCallback(
+					new Request(
+						githubAuthorizationUrl(installUrl, "https://api-staging.zuse.sh"),
+					),
+				),
+			);
+			const cookie = start.headers.get("set-cookie")?.split(";")[0] ?? "";
+			const authorize = new URL(start.headers.get("location") ?? "");
+			expect(authorize.pathname).toBe("/login/oauth/authorize");
+			const callback = new URL(
+				authorize.searchParams.get("redirect_uri") ?? "",
+			);
+			callback.searchParams.set(
+				"state",
+				authorize.searchParams.get("state") ?? "",
+			);
+			callback.searchParams.set("code", "one-use-code");
+			const rejected = await runtime.runPromise(
+				githubAuthorizationCallback(new Request(callback)).pipe(Effect.result),
+			);
+			expect(rejected).toMatchObject({
+				failure: { code: "invalid_github_browser_state" },
+			});
+			const fresh = await runtime.runPromise(
+				githubAuthorizationCallback(
+					new Request(callback, { headers: { cookie } }),
+				),
+			);
+			expect(fresh.status).toBe(302);
+			expect(new URL(fresh.headers.get("location") ?? "").pathname).toBe(
+				"/apps/zuse/installations/new",
+			);
+			installed = true;
+			callback.searchParams.set("code", "after-install-code");
+			const chooser = await runtime.runPromise(
+				githubAuthorizationCallback(
+					new Request(callback, { headers: { cookie } }),
+				),
+			);
+			const html = await chooser.text();
+			expect(html).toContain("Use this account: octocat");
+			expect(html).toContain("Manage repository access");
+			expect(html).toContain('target="_blank" rel="noopener noreferrer"');
+			expect(html).not.toContain("other-person");
+			expect(html).not.toContain("unowned-org");
+			expect(html).not.toContain("user-token");
+			const store = await runtime.runPromise(CloudWorkspaceStore);
+			expect(
+				await runtime.runPromise(store.listGithubInstallations(ownerId)),
+			).toEqual([]);
+			const csrf = /name="csrf" value="([^"]+)"/.exec(html)?.[1] ?? "";
+			const select = () =>
+				new Request(callback.origin + callback.pathname, {
+					method: "POST",
+					headers: { cookie, origin: callback.origin },
+					body: new URLSearchParams({ csrf }),
+				});
+			if (ownerId.startsWith("organization:")) {
+				expect(html).toContain("Example team");
+				memberActive = false;
+				const removed = await runtime.runPromise(
+					githubAuthorizationCallback(select()).pipe(Effect.result),
+				);
+				expect(removed).toMatchObject({
+					failure: { code: "organization_access_denied" },
+				});
+				memberActive = true;
+			}
+			const crossOrigin = select();
+			crossOrigin.headers.set("origin", "https://attacker.example");
+			expect(
+				await runtime.runPromise(
+					githubAuthorizationCallback(crossOrigin).pipe(Effect.result),
+				),
+			).toMatchObject({ failure: { code: "invalid_github_install_state" } });
+			const connected = await runtime.runPromise(
+				githubAuthorizationCallback(select()),
+			);
+			expect(await connected.text()).toContain("octocat is connected");
+			expect(connected.headers.get("set-cookie")).toContain("Max-Age=0");
+			expect(
+				await runtime.runPromise(store.listGithubInstallations(ownerId)),
+			).toHaveLength(1);
+			expect(
+				await runtime.runPromise(
+					store.listGithubInstallations("other-account"),
+				),
+			).toEqual([]);
+			// Idempotent duplicate form submission never makes duplicate installations.
+			await runtime.runPromise(githubAuthorizationCallback(select()));
+			expect(
+				await runtime.runPromise(store.listGithubInstallations(ownerId)),
+			).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+	test("an installation ID and install state alone cannot link an unverified GitHub account", async () => {
+		const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+		const runtime = ManagedRuntime.make(
+			Layer.merge(
+				CloudWorkspaceStoreMemory,
+				configurationLayer({
+					apiIssuer: "https://api-staging.zuse.sh",
+					workosJwksUrl: "unused",
+					workosIssuer: "unused",
+					mintPrivateKey: Redacted.make(
+						JSON.stringify(privateKey.export({ format: "jwk" })),
+					),
+					mintPublicKey: JSON.stringify(publicKey.export({ format: "jwk" })),
+					githubApp: {
+						appId: "app",
+						slug: "test",
+						privateKey: Redacted.make("unused"),
+					},
+				}),
+			),
+		);
+		try {
+			const url = new URL(
+				await runtime.runPromise(makeGithubInstallUrl("account")),
+			);
+			const state = url.searchParams.get("state") ?? "";
+			const result = await runtime.runPromise(
+				completeGithubInstallation(state, 123).pipe(Effect.result),
+			);
+			expect(result).toMatchObject({
+				_tag: "Failure",
+				failure: { code: "invalid_github_install_state" },
+			});
+		} finally {
+			await runtime.dispose();
+		}
+	});
 	afterEach(() => vi.unstubAllGlobals());
 	test.each([
 		404, 500,

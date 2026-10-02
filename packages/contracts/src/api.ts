@@ -28,6 +28,7 @@ import { EnvironmentId } from "./ids.ts";
 
 /** Paths, centralised so client + api never drift. */
 export const ApiPaths = {
+	authToken: "/v1/auth/token",
 	organizations: "/v1/organizations",
 	organizationAuthorize: "/v1/organizations/authorize",
 	organizationDetails: "/v1/organizations/details",
@@ -35,7 +36,6 @@ export const ApiPaths = {
 	organizationRevokeInvite: "/v1/organizations/revoke-invite",
 	organizationSetRole: "/v1/organizations/set-role",
 	organizationRemoveMember: "/v1/organizations/remove-member",
-	authToken: "/v1/auth/token",
 	linkChallenges: "/v1/client/environment-link-challenges",
 	links: "/v1/client/environment-links",
 	/** Unlink (WorkOS bearer): deprovisions the managed tunnel + removes the env. */
@@ -91,6 +91,7 @@ export const ApiPaths = {
 	cloudGithub: "/v1/cloud/github",
 	cloudGithubInstall: "/v1/cloud/github/install",
 	cloudGithubCallback: "/v1/cloud/github/callback",
+	cloudGithubWebhook: "/v1/cloud/github/webhook",
 	cloudGithubDisconnect: (installationId: number) =>
 		`/v1/cloud/github/installations/${installationId}`,
 	cloudProjects: "/v1/cloud/projects",
@@ -116,6 +117,10 @@ export const ApiPaths = {
 		`/v1/api/webhooks/${encodeURIComponent(webhookId)}`,
 	cloudWorkspaces: "/v1/cloud/workspaces",
 	cloudWorkspacesFork: "/v1/cloud/workspaces/fork",
+	cloudSharingDefaults: "/v1/cloud/sharing-defaults",
+	cloudSettings: "/v1/cloud/settings",
+	cloudWorkspaceSharing: (workspaceId: string) =>
+		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/sharing`,
 	cloudWorkspace: (workspaceId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}`,
 	cloudWorkspaceConnectionTicket: (workspaceId: string) =>
@@ -155,6 +160,8 @@ export const ApiPaths = {
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/providers/${encodeURIComponent(providerId)}/grant`,
 	cloudWorkspaceRuntimeCommands: (workspaceId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/commands`,
+	cloudWorkspaceRuntimeAccess: (workspaceId: string) =>
+		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/access`,
 	cloudWorkspaceRuntimeAsset: (workspaceId: string, assetId: string) =>
 		`/v1/cloud/workspaces/${encodeURIComponent(workspaceId)}/runtime/attachments/${encodeURIComponent(assetId)}`,
 	cloudWorkspaceRuntimeTurnEvents: (workspaceId: string) =>
@@ -264,6 +271,26 @@ export class ApiLinkResponse extends Schema.Class<ApiLinkResponse>(
 }) {}
 
 // --- discovery (mobile/desktop, WorkOS bearer) -------------------------------
+
+/** Host-published discovery hints; never a substitute for workspace RPC authorization. */
+export const EnvironmentSharingAudience = Schema.Array(
+	Schema.Struct({
+		organizationId: Schema.String.check(
+			Schema.isMinLength(1),
+			Schema.isMaxLength(128),
+		),
+		membershipId: Schema.String.check(
+			Schema.isMinLength(1),
+			Schema.isMaxLength(128),
+		),
+		subject: Schema.String.check(
+			Schema.isMinLength(1),
+			Schema.isMaxLength(128),
+		),
+		adminOnly: Schema.Boolean,
+	}),
+).check(Schema.isMaxLength(1000));
+export type EnvironmentSharingAudience = typeof EnvironmentSharingAudience.Type;
 
 export class ApiEnvironmentRecord extends Schema.Class<ApiEnvironmentRecord>(
 	"ApiEnvironmentRecord",

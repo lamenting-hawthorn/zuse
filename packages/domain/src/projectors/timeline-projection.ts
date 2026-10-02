@@ -1,12 +1,12 @@
 import {
 	AgentTurnId,
-	ComposerInput,
 	Message,
 	MessageContent,
 	MessageId,
 	MessageRole,
 	PermissionRequest,
 	QueuedMessage,
+	QueuedMessageInput,
 	type SessionId,
 	type SessionTimelineEvent,
 } from "@zuse/contracts";
@@ -23,7 +23,7 @@ const decodeContent = Schema.decodeUnknownResult(
 );
 const decodeRole = Schema.decodeUnknownResult(MessageRole);
 const decodeComposerInput = Schema.decodeUnknownResult(
-	Schema.fromJsonString(ComposerInput),
+	Schema.fromJsonString(QueuedMessageInput),
 );
 const decodePermissionRequest = Schema.decodeUnknownResult(
 	Schema.fromJsonString(PermissionRequest),
@@ -116,6 +116,7 @@ export const timelineEventFromDomain = (
 							id: event.queueId,
 							sessionId,
 							input: input.success,
+							actor: input.success.actor,
 							position: event.position,
 							createdAt: new Date(event.createdAt),
 							updatedAt: new Date(event.createdAt),

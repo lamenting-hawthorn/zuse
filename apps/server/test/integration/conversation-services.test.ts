@@ -45,6 +45,7 @@ import { WorktreeService } from "@zuse/git/worktree-service";
 import { layer as sqliteLayer } from "@zuse/sqlite";
 import {
 	Context,
+	Deferred,
 	Effect,
 	Fiber,
 	Layer,
@@ -68,6 +69,7 @@ import {
 	SessionService,
 	TranscriptService,
 } from "../../src/conversation/services/conversation-services.ts";
+import { WorkspaceExecutionPolicy } from "../../src/conversation/services/workspace-execution-policy.ts";
 import { Migration0001Initial } from "../../src/persistence/migrations/0001_initial.ts";
 import { Migration0002Permissions } from "../../src/persistence/migrations/0002_permissions.ts";
 import { Migration0003ResumeAndExport } from "../../src/persistence/migrations/0003_resume_and_export.ts";
@@ -692,6 +694,8 @@ const runAllMigrations = Effect.all(
 	{ discard: true },
 );
 
+let queueAuthorAllowed = true;
+let queueAuthorWait: Effect.Effect<void> = Effect.void;
 const makeRuntime = (dbPath: string, migrate = true) => {
 	const SqlLive = sqliteLayer({ filename: dbPath });
 	// Run migrations during layer build, and re-export SqlClient downstream.
@@ -710,6 +714,15 @@ const makeRuntime = (dbPath: string, migrate = true) => {
 		Layer.provide(Migrated),
 	);
 	const ConversationLayer = ConversationServicesLive.pipe(
+		Layer.provide(
+			Layer.succeed(WorkspaceExecutionPolicy, {
+				authorize: () =>
+					queueAuthorWait.pipe(
+						Effect.andThen(Effect.sync(() => queueAuthorAllowed)),
+					),
+				bind: () => Effect.void,
+			}),
+		),
 		Layer.provideMerge(ConversationState.layer),
 		Layer.provide(StubProviderLive),
 		Layer.provide(StubWorktreeLive),
@@ -798,6 +811,8 @@ const withRuntime = async <A>(
 const store = TestConversation;
 
 beforeEach(() => {
+	queueAuthorAllowed = true;
+	queueAuthorWait = Effect.void;
 	providerGoals.clear();
 	testCommandSequence = 0;
 	providerStartInputs = [];
@@ -3242,7 +3257,7 @@ describe("ConversationServices — chat & session lifecycle", () => {
 		});
 	});
 
-	it("sendMessageWithInput preserves causal message and turn identities", async () => {
+	it("sendMessageWithInput preserves causal identities and the authenticated author in events and projections", async () => {
 		await withRuntime(async (run) => {
 			const { initialSession } = await run(
 				Effect.flatMap(store, (s) =>
@@ -3255,12 +3270,17 @@ describe("ConversationServices — chat & session lifecycle", () => {
 			);
 			const messageId = MessageId.make("message-cloud-api-causal");
 			const turnId = AgentTurnId.make("turn-cloud-api-causal");
+			const actor = {
+				subject: "user-author",
+				membershipId: "membership-author",
+			};
 			await run(
 				Effect.flatMap(store, (messages) =>
 					messages.sendMessageWithInput({
 						commandId: "api:message-cloud-api-causal",
 						sessionId: initialSession.id,
 						text: "keep this command and turn paired",
+						actor,
 						messageId,
 						turnId,
 					}),
@@ -3281,8 +3301,23 @@ describe("ConversationServices — chat & session lifecycle", () => {
 			);
 			expect(persisted).toMatchObject({
 				_tag: "Some",
-				value: { event: { turnId } },
+				value: {
+					event: {
+						turnId,
+						contentJson: expect.stringContaining(
+							'"membershipId":"membership-author"',
+						),
+					},
+				},
 			});
+			const messages = await run(
+				Effect.flatMap(store, (service) =>
+					service.listMessages(initialSession.id),
+				),
+			);
+			expect(
+				messages.find((message) => message.id === messageId)?.content,
+			).toMatchObject({ actor });
 		});
 	});
 
@@ -5698,6 +5733,160 @@ describe("ConversationServices — chat & session lifecycle", () => {
 				_tag: "user",
 				text: "queued one",
 			});
+		});
+	});
+
+	it("uses an edit made while queue authorization was unavailable", async () => {
+		await withRuntime(async (run) => {
+			const { initialSession } = await run(
+				Effect.flatMap(store, (s) =>
+					s.createChat({
+						projectId: PROJECT_ID,
+						providerId: "claude",
+						model: "claude-opus-4-8",
+					}),
+				),
+			);
+			const input = new ComposerInput({
+				text: "stale",
+				attachments: [],
+				fileRefs: [],
+				skillRefs: [],
+			});
+			const item = await run(
+				Effect.flatMap(store, (s) =>
+					s.addQueuedMessage(
+						"slow-queue",
+						initialSession.id,
+						input,
+						"slow-item",
+						true,
+						false,
+					),
+				),
+			);
+			const entered = await Effect.runPromise(Deferred.make<void>());
+			const release = await Effect.runPromise(Deferred.make<void>());
+			queueAuthorWait = Deferred.succeed(entered, undefined).pipe(
+				Effect.andThen(Deferred.await(release)),
+			);
+			const pending = run(
+				Effect.flatMap(store, (s) =>
+					s.flushQueuedMessages("slow-flush", initialSession.id),
+				),
+			);
+			await Effect.runPromise(Deferred.await(entered));
+			await run(
+				Effect.flatMap(store, (s) =>
+					s.updateQueuedMessage(
+						"edit-during-outage",
+						initialSession.id,
+						item.id,
+						new ComposerInput({ ...input, text: "current" }),
+					),
+				),
+			);
+			await Effect.runPromise(Deferred.succeed(release, undefined));
+			await pending;
+			await run(
+				Effect.flatMap(store, (s) =>
+					s.flushQueuedMessages("after-outage", initialSession.id),
+				),
+			);
+			const messages = await run(
+				Effect.flatMap(store, (s) => s.listMessages(initialSession.id)),
+			);
+			expect(
+				messages.find((message) => message.id === `queued_${item.id}`)?.content,
+			).toMatchObject({ text: "current" });
+		});
+	});
+
+	it("queued prompts retain their original author across edits and execution", async () => {
+		await withRuntime(async (run) => {
+			const { initialSession } = await run(
+				Effect.flatMap(store, (s) =>
+					s.createChat({
+						projectId: PROJECT_ID,
+						providerId: "claude",
+						model: "claude-opus-4-8",
+					}),
+				),
+			);
+			const actor = {
+				subject: "queue-author",
+				membershipId: "original-membership",
+			};
+			const input = new ComposerInput({
+				text: "queued",
+				attachments: [],
+				fileRefs: [],
+				skillRefs: [],
+			});
+			const item = await run(
+				Effect.flatMap(store, (s) =>
+					s.addQueuedMessage(
+						"authored-queue",
+						initialSession.id,
+						input,
+						"authored-item",
+						false,
+						false,
+						actor,
+					),
+				),
+			);
+			expect(item.actor).toEqual(actor);
+			const stored = await run(
+				Effect.flatMap(store, (s) => s.listQueuedMessages(initialSession.id)),
+			);
+			expect(stored.items[0]?.actor).toEqual(actor);
+			queueAuthorAllowed = false;
+			const edited = await run(
+				Effect.flatMap(store, (s) =>
+					s.updateQueuedMessage(
+						"edit-authored-queue",
+						initialSession.id,
+						item.id,
+						new ComposerInput({ ...input, text: "edited queued prompt" }),
+					),
+				),
+			);
+			expect(edited.actor).toEqual(actor);
+			await run(
+				Effect.flatMap(store, (s) =>
+					s.flushQueuedMessages("flush-authored-queue", initialSession.id),
+				),
+			);
+			const messages = await run(
+				Effect.flatMap(store, (s) => s.listMessages(initialSession.id)),
+			);
+			expect(
+				messages.find((message) => message.id === `queued_${item.id}`),
+			).toBeUndefined();
+			const paused = await run(
+				Effect.flatMap(store, (s) => s.listQueuedMessages(initialSession.id)),
+			);
+			expect(paused).toMatchObject({
+				paused: true,
+				items: [expect.objectContaining({ actor })],
+			});
+			queueAuthorAllowed = true;
+			await run(
+				Effect.flatMap(store, (s) =>
+					s.runQueuedMessageNext(
+						"retry-authorized",
+						initialSession.id,
+						item.id,
+					),
+				),
+			);
+			const resumed = await run(
+				Effect.flatMap(store, (s) => s.listMessages(initialSession.id)),
+			);
+			expect(
+				resumed.find((message) => message.id === `queued_${item.id}`)?.content,
+			).toMatchObject({ text: "edited queued prompt", actor });
 		});
 	});
 

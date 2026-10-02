@@ -22,6 +22,7 @@ import { WorktreeService } from "@zuse/git/worktree-service";
 import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
 import { Effect, FileSystem, Layer, Option, Path, Queue, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
+import { WorkspaceFileAccess } from "../../collaboration/services/workspace-file-access.ts";
 import { WorkspaceService } from "../../workspace/services/workspace-service.ts";
 import { watchDirectoryTree } from "../directory-tree-watcher.ts";
 import { FsService } from "../services/fs-service.ts";
@@ -102,6 +103,82 @@ export const FsServiceLive = Layer.effect(
 		const fs = yield* FileSystem.FileSystem;
 		const pathSvc = yield* Path.Path;
 		const writeSerial = new KeyedEffectSerialWorker<string>();
+		const isInsideRoot = (root: string, target: string) => {
+			const relative = pathSvc.relative(root, target);
+			return (
+				relative !== ".." &&
+				!relative.startsWith(`..${pathSvc.sep}`) &&
+				!pathSvc.isAbsolute(relative)
+			);
+		};
+		const redactReadError = (error: FsReadError) =>
+			Effect.serviceOption(WorkspaceFileAccess).pipe(
+				Effect.flatMap((access) =>
+					Effect.fail(
+						Option.isNone(access)
+							? error
+							: new FsReadError({
+									folderId: error.folderId,
+									path: error.path,
+									reason: "File is unavailable",
+								}),
+					),
+				),
+			);
+		const readEntry = Effect.fn("FsService.readEntry")(function* (
+			root: string,
+			entry: string,
+			scoped: boolean,
+		) {
+			const resolved = scoped
+				? yield* fs.realPath(entry).pipe(Effect.option)
+				: Option.some(entry);
+			if (
+				Option.isNone(resolved) ||
+				(scoped && !isInsideRoot(root, resolved.value))
+			)
+				return null;
+			const stat = yield* fs.stat(resolved.value).pipe(Effect.option);
+			if (
+				Option.isNone(stat) ||
+				(scoped &&
+					stat.value.type !== "File" &&
+					stat.value.type !== "Directory")
+			)
+				return null;
+			return { abs: resolved.value, stat: stat.value };
+		});
+		const visibleWatchPath = Effect.fn("FsService.visibleWatchPath")(function* (
+			root: string,
+			rel: string,
+		) {
+			if (pathSvc.isAbsolute(rel)) return null;
+			let candidate = pathSvc.resolve(root, rel);
+			if (!isInsideRoot(root, candidate)) return null;
+			let changed = candidate;
+			while (true) {
+				const canonical = yield* fs.realPath(candidate).pipe(
+					Effect.map((value) => ({ kind: "found" as const, value })),
+					Effect.catch((error) =>
+						Effect.succeed({
+							kind:
+								error.reason._tag === "NotFound"
+									? ("missing" as const)
+									: ("denied" as const),
+						}),
+					),
+				);
+				if (canonical.kind === "found")
+					return isInsideRoot(root, canonical.value)
+						? toForwardSlash(pathSvc.relative(root, changed))
+						: null;
+				if (canonical.kind === "denied" || candidate === root) return null;
+				// Deleted paths no longer resolve. Invalidate only the first missing
+				// child of a verified parent, never names below an unresolved link.
+				changed = candidate;
+				candidate = pathSvc.dirname(candidate);
+			}
+		});
 
 		// Resolve a project-root-relative request path to an absolute path,
 		// failing with the appropriate wire error if the folder is unknown or
@@ -116,6 +193,13 @@ export const FsServiceLive = Layer.effect(
 			worktreeId?: WorktreeId | null,
 		) =>
 			Effect.gen(function* () {
+				const access = yield* Effect.serviceOption(WorkspaceFileAccess);
+				if (
+					Option.isSome(access) &&
+					(access.value.folderId !== folderId ||
+						access.value.worktreeId !== (worktreeId ?? null))
+				)
+					return yield* new FsPathOutsideError({ folderId, path: relPath });
 				const folder = yield* workspace.findById(folderId);
 				if (folder === null) {
 					return yield* Effect.fail(new FsFolderNotFoundError({ folderId }));
@@ -154,6 +238,25 @@ export const FsServiceLive = Layer.effect(
 						new FsPathOutsideError({ folderId, path: relPath }),
 					);
 				}
+				if (Option.isSome(access)) {
+					const canonical = yield* Effect.all({
+						root: fs.realPath(rootAbs),
+						requested: fs.realPath(requestedAbs),
+					}).pipe(
+						Effect.mapError(
+							() =>
+								new FsReadError({
+									folderId,
+									path: relPath,
+									reason: "File is unavailable",
+								}),
+						),
+					);
+					if (!isInsideRoot(canonical.root, canonical.requested))
+						return yield* new FsPathOutsideError({ folderId, path: relPath });
+					// Read the resolved path, not the symlink we just inspected.
+					return { rootAbs: canonical.root, requestedAbs: canonical.requested };
+				}
 				return { rootAbs, requestedAbs } as const;
 			});
 
@@ -171,7 +274,10 @@ export const FsServiceLive = Layer.effect(
 			worktreeId,
 		) =>
 			Effect.gen(function* () {
-				const { requestedAbs } = yield* resolveInsideFolder(
+				const scoped = Option.isSome(
+					yield* Effect.serviceOption(WorkspaceFileAccess),
+				);
+				const { rootAbs, requestedAbs } = yield* resolveInsideFolder(
 					folderId,
 					relPath,
 					worktreeId,
@@ -198,10 +304,10 @@ export const FsServiceLive = Layer.effect(
 					(name) =>
 						Effect.gen(function* () {
 							const entryAbs = pathSvc.join(requestedAbs, name);
-							const stat = yield* fs.stat(entryAbs).pipe(Effect.option);
-							if (stat._tag === "None") return null;
+							const entry = yield* readEntry(rootAbs, entryAbs, scoped);
+							if (entry === null) return null;
 							const kind =
-								stat.value.type === "Directory" ? "directory" : "file";
+								entry.stat.type === "Directory" ? "directory" : "file";
 							if (kind === "directory" && SKIP_DIRS.has(name)) return null;
 							const childRel = toForwardSlash(
 								relPath === "" ? name : `${relPath}/${name}`,
@@ -228,7 +334,7 @@ export const FsServiceLive = Layer.effect(
 					});
 				});
 				return entries;
-			});
+			}).pipe(Effect.catchTag("FsReadError", redactReadError));
 
 		const watchTree: FsService["Service"]["watchTree"] = (
 			folderId,
@@ -236,6 +342,9 @@ export const FsServiceLive = Layer.effect(
 		) =>
 			Stream.unwrap(
 				Effect.gen(function* () {
+					const scoped = Option.isSome(
+						yield* Effect.serviceOption(WorkspaceFileAccess),
+					);
 					const { rootAbs } = yield* resolveInsideFolder(
 						folderId,
 						"",
@@ -250,6 +359,22 @@ export const FsServiceLive = Layer.effect(
 					let timer: ReturnType<typeof setTimeout> | null = null;
 					const pending = new Set<string>();
 					let ignoredDirs = yield* ignoredDirectories(folderId, worktreeId);
+					let handle: Awaited<ReturnType<typeof watchDirectoryTree>> | null =
+						null;
+					// Register cleanup before acquiring native resources so failed
+					// attachment and request cancellation also release the queue.
+					yield* Effect.addFinalizer(() =>
+						Effect.andThen(
+							Effect.sync(() => {
+								if (timer !== null) {
+									clearTimeout(timer);
+									timer = null;
+								}
+								handle?.close();
+							}),
+							Queue.shutdown(queue),
+						),
+					);
 
 					const flush = () => {
 						timer = null;
@@ -319,7 +444,7 @@ export const FsServiceLive = Layer.effect(
 							}),
 						);
 					}
-					const handle = attached.success;
+					handle = attached.success;
 					Queue.offerUnsafe(
 						queue,
 						FsTreeWatchEvent.make({
@@ -329,21 +454,44 @@ export const FsServiceLive = Layer.effect(
 						}),
 					);
 
-					yield* Effect.addFinalizer(() =>
-						Effect.andThen(
-							Effect.sync(() => {
-								if (timer !== null) {
-									clearTimeout(timer);
-									timer = null;
-								}
-								handle.close();
-							}),
-							Queue.shutdown(queue),
+					const events = Stream.fromQueue(queue);
+					if (!scoped) return events;
+					let visibleSequence = 0;
+					return events.pipe(
+						Stream.mapEffect((event): Effect.Effect<FsTreeWatchEvent> => {
+							if (event._tag === "ready") return Effect.succeed(event);
+							if (event._tag === "gap")
+								return Effect.succeed({
+									...event,
+									reason: "File watcher continuity lost",
+								});
+							return Effect.forEach(
+								event.paths,
+								(rel) => visibleWatchPath(rootAbs, rel),
+								{ concurrency: 8 },
+							).pipe(
+								Effect.map((paths) => ({
+									...event,
+									paths: [
+										...new Set(
+											paths.filter((path): path is string => path !== null),
+										),
+									],
+								})),
+							);
+						}),
+						Stream.filter(
+							(event) => event._tag !== "changed" || event.paths.length > 0,
 						),
+						// Hidden activity must neither disclose paths nor cause a false
+						// continuity gap in the existing watcher consumer.
+						Stream.map((event) => ({
+							...event,
+							sequence:
+								event._tag === "ready" ? visibleSequence : ++visibleSequence,
+						})),
 					);
-
-					return Stream.fromQueue(queue);
-				}),
+				}).pipe(Effect.catchTag("FsReadError", redactReadError)),
 			);
 
 		// Full recursive path listing for the `@pierre/trees` file tree. DFS with
@@ -359,6 +507,9 @@ export const FsServiceLive = Layer.effect(
 			worktreeId,
 		) =>
 			Effect.gen(function* () {
+				const scoped = Option.isSome(
+					yield* Effect.serviceOption(WorkspaceFileAccess),
+				);
 				const { rootAbs } = yield* resolveInsideFolder(
 					folderId,
 					"",
@@ -369,6 +520,7 @@ export const FsServiceLive = Layer.effect(
 				const deferredDirectories: string[] = [];
 				let truncated = false;
 				let estimatedBytes = 0;
+				const ancestors = new Set<string>();
 
 				const walk = (
 					absDir: string,
@@ -376,6 +528,7 @@ export const FsServiceLive = Layer.effect(
 				): Effect.Effect<void, FsReadError> =>
 					Effect.gen(function* () {
 						if (truncated) return;
+						ancestors.add(absDir);
 						const names = yield* fs.readDirectory(absDir).pipe(
 							Effect.mapError(
 								(cause) =>
@@ -391,17 +544,17 @@ export const FsServiceLive = Layer.effect(
 							(name) =>
 								Effect.gen(function* () {
 									const entryAbs = pathSvc.join(absDir, name);
-									const stat = yield* fs.stat(entryAbs).pipe(Effect.option);
-									if (stat._tag === "None") return null;
+									const entry = yield* readEntry(rootAbs, entryAbs, scoped);
+									if (entry === null) return null;
 									const kind =
-										stat.value.type === "Directory" ? "directory" : "file";
+										entry.stat.type === "Directory" ? "directory" : "file";
 									if (kind === "directory" && SKIP_DIRS.has(name)) return null;
 									const rel = toForwardSlash(
 										relDir === "" ? name : `${relDir}/${name}`,
 									);
 									const deferred =
 										kind === "directory" && isDeferredPath(rel, ignoredDirs);
-									return { name, kind, abs: entryAbs, rel, deferred } as const;
+									return { name, kind, abs: entry.abs, rel, deferred } as const;
 								}),
 							{ concurrency: "unbounded" },
 						);
@@ -432,13 +585,20 @@ export const FsServiceLive = Layer.effect(
 								deferredDirectories.push(row.rel);
 							} else if (row.kind === "directory") {
 								out.push(renderedPath);
-								yield* walk(row.abs, row.rel);
+								if (!scoped || !ancestors.has(row.abs))
+									yield* walk(row.abs, row.rel);
 								if (truncated) return;
 							} else {
 								out.push(renderedPath);
 							}
 						}
-					});
+					}).pipe(
+						Effect.ensuring(
+							Effect.sync(() => {
+								ancestors.delete(absDir);
+							}),
+						),
+					);
 
 				yield* walk(rootAbs, "");
 				return {
@@ -446,7 +606,7 @@ export const FsServiceLive = Layer.effect(
 					deferredDirectories,
 					truncated,
 				};
-			});
+			}).pipe(Effect.catchTag("FsReadError", redactReadError));
 
 		// Rename/move for the file tree's inline rename + drag-and-drop. Both
 		// endpoints are containment-validated; refuses to clobber an existing dest.
@@ -484,6 +644,7 @@ export const FsServiceLive = Layer.effect(
 			worktreeId,
 		) =>
 			Effect.gen(function* () {
+				const access = yield* Effect.serviceOption(WorkspaceFileAccess);
 				const { requestedAbs } = yield* resolveInsideFolder(
 					folderId,
 					relPath,
@@ -500,6 +661,12 @@ export const FsServiceLive = Layer.effect(
 							}),
 					),
 				);
+				if (Option.isSome(access) && stat.type !== "File")
+					return yield* new FsReadError({
+						folderId,
+						path: relPath,
+						reason: "Not a regular file",
+					});
 				const size = Number(stat.size);
 				if (size > MAX_FILE_BYTES) {
 					return yield* Effect.fail(
@@ -538,7 +705,7 @@ export const FsServiceLive = Layer.effect(
 				} catch {
 					return { kind: "binary" as const, bytes, size };
 				}
-			});
+			}).pipe(Effect.catchTag("FsReadError", redactReadError));
 
 		const writeFile: FsService["Service"]["writeFile"] = (
 			commandId,

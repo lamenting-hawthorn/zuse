@@ -8,6 +8,7 @@ import {
 	Folder,
 	FolderId,
 	FsCommandReuseError,
+	type FsTreeWatchEvent,
 } from "@zuse/contracts";
 import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
@@ -15,7 +16,7 @@ import { layer as sqliteLayer } from "@zuse/sqlite";
 import { Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
+import { WorkspaceFileAccess } from "../../src/collaboration/services/workspace-file-access.ts";
 import { FsServiceLive } from "../../src/fs/layers/fs-service.ts";
 import { FsService } from "../../src/fs/services/fs-service.ts";
 import { Migration0048FsWriteReceipts } from "../../src/persistence/migrations/0048_fs_write_receipts.ts";
@@ -81,7 +82,7 @@ const makeRuntime = (
 	);
 };
 
-describe("filesystem write receipts", () => {
+describe("filesystem service", () => {
 	let root: string;
 	let runtime: ReturnType<typeof makeRuntime>;
 
@@ -94,6 +95,189 @@ describe("filesystem write receipts", () => {
 	afterEach(async () => {
 		await runtime.dispose();
 		await nodeFs.rm(root, { recursive: true, force: true });
+	});
+
+	it("contains teammate reads without changing local symlink behavior", async () => {
+		const project = nodePath.join(root, "project");
+		await nodeFs.mkdir(project);
+		await nodeFs.writeFile(nodePath.join(root, "private.txt"), "private");
+		await nodeFs.writeFile(nodePath.join(project, "shared.txt"), "shared");
+		await nodeFs.symlink(
+			"../private.txt",
+			nodePath.join(project, "escape.txt"),
+		);
+		await nodeFs.symlink("shared.txt", nodePath.join(project, "inside.txt"));
+		await nodeFs.symlink("..", nodePath.join(project, "outside"));
+		await nodeFs.symlink(".", nodePath.join(project, "cycle"));
+		await nodeFs.mkdir(nodePath.join(project, "nested"));
+		await nodeFs.writeFile(
+			nodePath.join(project, "nested", "child.txt"),
+			"child",
+		);
+		await nodeFs.symlink("nested", nodePath.join(project, "alias"));
+		const isolated = makeRuntime(project);
+		const read = (path: string, shared = true, requestedId = folderId) => {
+			const effect = Effect.flatMap(FsService, (service) =>
+				service.readFile(requestedId, path),
+			);
+			return isolated.runPromise(
+				shared
+					? effect.pipe(
+							Effect.provideService(WorkspaceFileAccess, {
+								folderId,
+								worktreeId: null,
+							}),
+						)
+					: effect,
+			);
+		};
+		try {
+			const browse = <A, E>(effect: Effect.Effect<A, E, FsService>) =>
+				isolated.runPromise(
+					effect.pipe(
+						Effect.provideService(WorkspaceFileAccess, {
+							folderId,
+							worktreeId: null,
+						}),
+					),
+				);
+			const entries = await browse(
+				Effect.flatMap(FsService, (service) => service.tree(folderId, "")),
+			);
+			expect(entries.map((entry) => entry.name)).toEqual([
+				"alias",
+				"cycle",
+				"nested",
+				"inside.txt",
+				"shared.txt",
+			]);
+			const paths = await browse(
+				Effect.flatMap(FsService, (service) => service.listPaths(folderId)),
+			);
+			expect(paths).toEqual({
+				deferredDirectories: [],
+				paths: [
+					"alias/",
+					"alias/child.txt",
+					"cycle/",
+					"nested/",
+					"nested/child.txt",
+					"inside.txt",
+					"shared.txt",
+				],
+				truncated: false,
+			});
+			await expect(
+				browse(
+					Effect.flatMap(FsService, (service) =>
+						service.tree(folderId, "outside"),
+					),
+				),
+			).rejects.toMatchObject({ _tag: "FsPathOutsideError" });
+			await expect(
+				browse(
+					Effect.flatMap(FsService, (service) =>
+						service.tree(folderId, "missing"),
+					),
+				),
+			).rejects.toMatchObject({
+				_tag: "FsReadError",
+				reason: "File is unavailable",
+			});
+			await expect(read("shared.txt")).resolves.toMatchObject({
+				kind: "text",
+				content: "shared",
+			});
+			await expect(read("inside.txt")).resolves.toMatchObject({
+				kind: "text",
+				content: "shared",
+			});
+			await expect(read("escape.txt", false)).resolves.toMatchObject({
+				kind: "text",
+				content: "private",
+			});
+			for (const path of [
+				"escape.txt",
+				"outside/private.txt",
+				"../private.txt",
+				nodePath.join(root, "private.txt"),
+			]) {
+				await expect(read(path)).rejects.toMatchObject({
+					_tag: "FsPathOutsideError",
+				});
+			}
+			await expect(
+				read("shared.txt", true, FolderId.make("other")),
+			).rejects.toMatchObject({ _tag: "FsPathOutsideError" });
+			for (const path of ["missing.txt", "."]) {
+				await expect(read(path)).rejects.toMatchObject({
+					_tag: "FsReadError",
+					reason: "File is unavailable",
+				});
+			}
+		} finally {
+			await isolated.dispose();
+		}
+	});
+
+	it("keeps shared watcher paths contained and reports deletions with contiguous cursors", async () => {
+		const project = nodePath.join(root, "project");
+		const outside = nodePath.join(root, "private");
+		await nodeFs.mkdir(project);
+		await nodeFs.mkdir(outside);
+		await nodeFs.writeFile(nodePath.join(project, "delete.txt"), "before");
+		await nodeFs.symlink(outside, nodePath.join(project, "outside"));
+		const isolated = makeRuntime(project);
+		const events: FsTreeWatchEvent[] = [];
+		const fiber = isolated.runFork(
+			Effect.gen(function* () {
+				const service = yield* FsService;
+				yield* Stream.runForEach(service.watchTree(folderId), (event) =>
+					Effect.sync(() => {
+						events.push(event);
+					}),
+				);
+			}).pipe(
+				Effect.provideService(WorkspaceFileAccess, {
+					folderId,
+					worktreeId: null,
+				}),
+			),
+		);
+		const changed = () =>
+			events.flatMap((event) => (event._tag === "changed" ? event.paths : []));
+		try {
+			await expect.poll(() => events[0]?._tag).toBe("ready");
+			await nodeFs.writeFile(nodePath.join(outside, "secret.txt"), "private");
+			await nodeFs.writeFile(nodePath.join(project, "shared.txt"), "shared");
+			await expect.poll(changed).toContain("shared.txt");
+			await nodeFs.unlink(nodePath.join(project, "delete.txt"));
+			await expect.poll(changed).toContain("delete.txt");
+			expect(changed().some((path) => path.includes("secret"))).toBe(false);
+			expect(events.map((event) => event.sequence)).toEqual(
+				events.map((_, index) => index),
+			);
+			expect(new Set(events.map((event) => event.epoch)).size).toBe(1);
+			await isolated.runPromise(Fiber.interrupt(fiber));
+			const restarted = await isolated.runPromise(
+				Effect.flatMap(FsService, (service) =>
+					Stream.runCollect(
+						service.watchTree(folderId).pipe(
+							Stream.take(1),
+							Stream.provideService(WorkspaceFileAccess, {
+								folderId,
+								worktreeId: null,
+							}),
+						),
+					),
+				),
+			);
+			expect(restarted[0]).toMatchObject({ _tag: "ready", sequence: 0 });
+			expect(restarted[0]?.epoch).not.toBe(events[0]?.epoch);
+		} finally {
+			await isolated.runPromise(Fiber.interrupt(fiber));
+			await isolated.dispose();
+		}
 	});
 
 	it("reports change batches before continuous editing stops", async () => {

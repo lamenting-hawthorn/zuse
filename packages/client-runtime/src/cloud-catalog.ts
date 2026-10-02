@@ -6,6 +6,7 @@ import {
 	type ProviderId,
 	Session,
 	type SessionId,
+	type WorkspaceScope,
 } from "@zuse/contracts";
 
 export const compareCloudChatSummaryVersion = (
@@ -21,6 +22,7 @@ export const compareCloudChatSummaryVersion = (
 				: left.updatedAt - right.updatedAt;
 
 export const summaryFromLaunch = (input: {
+	readonly workspaceScope: WorkspaceScope;
 	readonly workspace: CloudWorkspace;
 	readonly repositoryIdentity: string;
 	readonly repositoryDisplayName: string;
@@ -29,6 +31,7 @@ export const summaryFromLaunch = (input: {
 	readonly model: string;
 	readonly runtimeMode: CloudChatSummary["runtimeMode"];
 }): CloudChatSummary => ({
+	workspaceScope: input.workspaceScope,
 	workspaceId: input.workspace.workspaceId,
 	projectId: input.workspace.projectId,
 	repositoryIdentity: input.repositoryIdentity,

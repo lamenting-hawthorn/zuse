@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
+import { exportJWK, generateKeyPair, importJWK, SignJWT } from "jose";
 import { describe, expect, test } from "vitest";
 import {
 	signWorkspaceClientTicket,
@@ -30,6 +30,94 @@ const fixture = async () => {
 };
 
 describe("workspace client tickets", () => {
+	test("binds the human actor and permission independently of the organization owner", async () => {
+		const { input, publicJwk } = await fixture();
+		const organization = {
+			...input,
+			accountId: "organization:org_a",
+			actorId: "user_a",
+			permission: "view" as const,
+		};
+		const token = await Effect.runPromise(
+			signWorkspaceClientTicket(organization),
+		);
+		const verify = (expectedActorId: string) =>
+			Effect.runPromise(
+				verifyWorkspaceClientTicket({
+					token,
+					mintPublicJwk: publicJwk,
+					issuer: input.issuer,
+					expectedAccountId: organization.accountId,
+					expectedActorId,
+					expectedWorkspaceId: input.workspaceId,
+					expectedProtocol: input.protocol,
+					expectedGeneration: input.generation,
+					expectedGatewayEpoch: input.gatewayEpoch,
+					nowMs,
+				}),
+			);
+		await expect(verify("user_a")).resolves.toMatchObject({
+			accountId: "organization:org_a",
+			actorId: "user_a",
+			permission: "view",
+			expiresAt: nowMs + input.ttlMs,
+		});
+		await expect(verify("user_b")).rejects.toBeDefined();
+		await expect(
+			Effect.runPromise(
+				signWorkspaceClientTicket({
+					...input,
+					accountId: organization.accountId,
+				}),
+			),
+		).rejects.toMatchObject({ code: "workspace_ticket_actor_required" });
+	});
+
+	test.each([
+		"account-1",
+		"organization:org_a",
+	])("permits legacy identity claims only for Personal (%s)", async (accountId) => {
+		const { input, publicJwk } = await fixture();
+		const token = await new SignJWT({
+			workspaceId: input.workspaceId,
+			deviceId: input.deviceId,
+			scope: "workspace-client",
+			role: "client",
+			protocol: input.protocol,
+			generation: input.generation,
+			gatewayEpoch: input.gatewayEpoch,
+		})
+			.setProtectedHeader({ alg: "EdDSA", typ: "workspace-client+jwt" })
+			.setIssuer(input.issuer)
+			.setAudience(`zuse-workspace:${input.workspaceId}`)
+			.setSubject(accountId)
+			.setIssuedAt(nowMs / 1000)
+			.setExpirationTime((nowMs + input.ttlMs) / 1000)
+			.sign(await importJWK(input.mintPrivateJwk, "EdDSA"));
+		const verify = Effect.runPromise(
+			verifyWorkspaceClientTicket({
+				token,
+				mintPublicJwk: publicJwk,
+				issuer: input.issuer,
+				expectedAccountId: accountId,
+				expectedWorkspaceId: input.workspaceId,
+				expectedProtocol: input.protocol,
+				expectedGeneration: input.generation,
+				expectedGatewayEpoch: input.gatewayEpoch,
+				nowMs,
+			}),
+		);
+		if (accountId.startsWith("organization:"))
+			await expect(verify).rejects.toMatchObject({
+				code: "workspace_ticket_actor_required",
+			});
+		else
+			await expect(verify).resolves.toMatchObject({
+				actorId: accountId,
+				permission: "edit",
+			});
+	});
+
 	test("one ticket can authenticate repeated connections during its lifetime", async () => {
 		const { input, token, publicJwk } = await fixture();
 		const verify = (at: number) =>

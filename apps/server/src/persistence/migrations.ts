@@ -1,4 +1,5 @@
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
+import { SqlClient } from "effect/unstable/sql";
 import * as Migrator from "effect/unstable/sql/Migrator";
 import { Migration0001Initial } from "./migrations/0001_initial.ts";
 import { Migration0002Permissions } from "./migrations/0002_permissions.ts";
@@ -126,7 +127,7 @@ const MigrationDefinitionsThrough0045 = {
 	"0045_chat_catalog_revision": Migration0045ChatCatalogRevision,
 } as const;
 
-const MigrationDefinitions = {
+const MigrationDefinitionsThrough0054 = {
 	...MigrationDefinitionsThrough0045,
 	"0046_session_timeline_head": Migration0046SessionTimelineHead,
 	"0047_message_checkpoints": Migration0047MessageCheckpoints,
@@ -138,11 +139,19 @@ const MigrationDefinitions = {
 	"0052_api_config": Migration0052ApiConfig,
 	"0053_cloud_command_receipts": Migration0053CloudCommandReceipts,
 	"0054_provider_effect_outcomes": Migration0054ProviderEffectOutcomes,
+} as const;
+
+const MigrationDefinitionsThrough0059 = {
+	...MigrationDefinitionsThrough0054,
 	"0055_staging_api_origin": Migration0055StagingApiOrigin,
 	"0056_device_bridge": Migration0056DeviceBridge,
 	"0057_device_bridge_default_access": Migration0057DeviceBridgeDefaultAccess,
 	"0058_question_answer_deliveries": Migration0058QuestionAnswerDeliveries,
 	"0059_event_sequence_index": Migration0059EventSequenceIndex,
+} as const;
+
+const MigrationDefinitions = {
+	...MigrationDefinitionsThrough0059,
 	"0060_chat_user_message_time": Migration0060ChatUserMessageTime,
 	"0061_harness_executions": Migration0061HarnessExecutions,
 	"0062_model_connections": Migration0062ModelConnections,
@@ -155,8 +164,71 @@ export const MigrationsThrough0045Live = Layer.effectDiscard(
 	}),
 );
 
-export const MigrationsLive = Layer.effectDiscard(
+/** Pre-device-bridge schema boundary for upgrade compatibility tests. */
+export const MigrationsThrough0054Live = Layer.effectDiscard(
 	Migrator.make({})({
-		loader: Migrator.fromRecord(MigrationDefinitions),
+		loader: Migrator.fromRecord(MigrationDefinitionsThrough0054),
+	}),
+);
+
+export const MigrationsLive = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient;
+		const tables =
+			yield* sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'effect_sql_migrations'`;
+		if (tables.length > 0) {
+			// Earlier branch builds used 58, then 59, for collaboration.
+			// Apply the intervening main migrations before advancing the ledger.
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const legacy = yield* sql<{
+						migration_id: number;
+					}>`SELECT migration_id FROM effect_sql_migrations WHERE migration_id IN (58, 59) AND name = 'collaboration_foundation'`;
+					if (legacy.length === 0) return;
+					const masters =
+						yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id = 58 AND name = 'masters'`;
+					if (legacy[0]?.migration_id === 58 || masters.length > 0) {
+						// Some development builds used 58 for masters. Preserve those
+						// tables while applying main's missing question-receipt schema.
+						yield* Migration0058QuestionAnswerDeliveries;
+						yield* sql`UPDATE effect_sql_migrations SET name = 'question_answer_deliveries' WHERE migration_id = 58`;
+					}
+					if (legacy[0]?.migration_id === 58) {
+						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (59, 'event_sequence_index')`;
+					} else {
+						yield* sql`UPDATE effect_sql_migrations SET name = 'event_sequence_index' WHERE migration_id = 59`;
+					}
+					yield* Migration0059EventSequenceIndex;
+					const recency =
+						yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id = 60 AND name = 'chat_user_message_time'`;
+					if (recency.length === 0) {
+						yield* Migration0060ChatUserMessageTime;
+						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (60, 'chat_user_message_time')`;
+					}
+					yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (61, 'collaboration_foundation')`;
+				}),
+			);
+			// Slot 61 belonged to shared-host tables in organization previews.
+			// Keep those tables, but apply main's schema before repairing its ledger.
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const legacy =
+						yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id = 61 AND name = 'collaboration_foundation'`;
+					if (legacy.length === 0) return;
+					yield* Migration0061HarnessExecutions;
+					yield* sql`UPDATE effect_sql_migrations SET name = 'harness_executions' WHERE migration_id = 61`;
+				}),
+			);
+		}
+		yield* Migrator.make({})({
+			loader: Migrator.fromRecord(MigrationDefinitions),
+		});
+	}),
+);
+
+/** Main's pre-recency schema boundary for upgrade compatibility tests. */
+export const MigrationsThrough0059Live = Layer.effectDiscard(
+	Migrator.make({})({
+		loader: Migrator.fromRecord(MigrationDefinitionsThrough0059),
 	}),
 );

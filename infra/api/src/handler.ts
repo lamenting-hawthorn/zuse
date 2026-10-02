@@ -1,4 +1,9 @@
-import { ApiAuthTokenGrant } from "@zuse/contracts";
+import {
+	ApiAuthTokenGrant,
+	EnvironmentSharingAudience,
+	WORKSPACE_API_PREFIX,
+	WORKSPACE_SCOPE_HEADER,
+} from "@zuse/contracts";
 import { SandboxProviders } from "@zuse/sandbox-providers";
 import { Clock, Effect, Option, Redacted, Schema } from "effect";
 import { AccountIdentity } from "./account-identity.ts";
@@ -37,6 +42,7 @@ import {
 	type ApiError,
 	badRequest,
 	conflict,
+	forbidden,
 	gone,
 	notFound,
 	serviceUnavailable,
@@ -64,6 +70,10 @@ import {
 	type ProviderKind,
 } from "./store.ts";
 import { WorkosVerifier } from "./workos.ts";
+import {
+	requestWorkspaceScope,
+	workspaceAccessForPath,
+} from "./workspace-scope.ts";
 
 export type ApiContext =
 	| AccountIdentity
@@ -88,10 +98,13 @@ const withBrowserCors = (
 	const headers = new Headers(response.headers);
 	headers.set("access-control-allow-origin", origin);
 	headers.set("access-control-allow-credentials", "true");
-	headers.set("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+	headers.set(
+		"access-control-allow-methods",
+		"GET, POST, PUT, DELETE, OPTIONS",
+	);
 	headers.set(
 		"access-control-allow-headers",
-		"authorization, content-type, dpop, idempotency-key",
+		`authorization, content-type, dpop, idempotency-key, ${WORKSPACE_SCOPE_HEADER}`,
 	);
 	headers.set("vary", "Origin");
 	return new Response(response.body, {
@@ -278,8 +291,12 @@ const hasManagedPublicEndpoint = (environment: EnvironmentRecord): boolean => {
 	}
 };
 
-const endpointCandidates = (environment: EnvironmentRecord) => [
-	...(environment.privateHttpBaseUrl !== undefined &&
+const endpointCandidates = (
+	environment: EnvironmentRecord,
+	includePrivate = true,
+) => [
+	...(includePrivate &&
+	environment.privateHttpBaseUrl !== undefined &&
 	environment.privateWsBaseUrl !== undefined
 		? [
 				{
@@ -302,18 +319,39 @@ const route = (
 	request: Request,
 ): Effect.Effect<Response, ApiError, ApiContext> =>
 	Effect.gen(function* () {
+		const incomingUrl = new URL(request.url);
+		if (incomingUrl.pathname.startsWith(WORKSPACE_API_PREFIX)) {
+			const suffix = incomingUrl.pathname.slice(WORKSPACE_API_PREFIX.length);
+			const separator = suffix.indexOf("/");
+			const organizationId = suffix.slice(0, separator);
+			const scope = yield* requestWorkspaceScope(request);
+			if (
+				separator < 1 ||
+				scope.kind !== "organization" ||
+				scope.organizationId !== organizationId
+			)
+				return yield* badRequest("invalid_workspace_scope");
+			incomingUrl.pathname = suffix.slice(separator);
+			request = new Request(incomingUrl, request);
+		}
 		const url = new URL(request.url);
 		const method = request.method.toUpperCase();
 		const path = url.pathname;
+		const workspaceScope = yield* requestWorkspaceScope(request);
+		if (
+			workspaceScope.kind === "organization" &&
+			workspaceAccessForPath(path, method) === undefined
+		)
+			return yield* forbidden("workspace_scope_not_supported");
 		const config = yield* ApiConfiguration;
 		const store = yield* ApiStore;
 		const push = yield* PushDelivery;
 		const accountIdentity = yield* AccountIdentity;
 		const workos = yield* WorkosVerifier;
 		const nowMs = yield* Clock.currentTimeMillis;
-		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
 		const organizationResponse = yield* routeOrganizationRequest(request);
 		if (organizationResponse !== null) return organizationResponse;
+		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
 		if (modelConnectionResponse !== null) return modelConnectionResponse;
 		const machineResponse = yield* routeMachineRequest(request);
 		if (machineResponse !== null) return machineResponse;
@@ -866,7 +904,10 @@ const route = (
 			return json({
 				status: online ? "online" : "offline",
 				endpoint: publicEndpoint(environment),
-				endpointCandidates: endpointCandidates(environment),
+				endpointCandidates: endpointCandidates(
+					environment,
+					environment.accountId === principal.accountId,
+				),
 				checkedAt: nowMs,
 			});
 		}
@@ -917,6 +958,8 @@ const route = (
 						: undefined;
 				requireManaged = body.requireManaged === true;
 				if (body.localPairing !== undefined) {
+					if (environment.accountId !== principal.accountId)
+						return yield* Effect.fail(notFound());
 					const { serverNonce, devicePublicKey, transportCertificatePin } =
 						body.localPairing;
 					if (
@@ -969,7 +1012,10 @@ const route = (
 			});
 			return json({
 				endpoint: publicEndpoint(environment),
-				endpointCandidates: endpointCandidates(environment),
+				endpointCandidates: endpointCandidates(
+					environment,
+					environment.accountId === principal.accountId,
+				),
 				connectToken,
 				expiresAt: nowMs + config.connectTokenTtlMs,
 			});
@@ -1002,6 +1048,7 @@ const route = (
 					readonly capabilities?: unknown;
 					readonly serviceState?: unknown;
 					readonly credentialCleanupComplete?: unknown;
+					readonly sharingAudience?: unknown;
 				}>(request);
 				if (body.origin !== undefined && !isLoopbackOrigin(body.origin)) {
 					return yield* Effect.fail(badRequest("invalid_tunnel_origin"));
@@ -1029,6 +1076,11 @@ const route = (
 				) {
 					return yield* Effect.fail(notFound());
 				}
+				const sharingAudience = yield* Schema.decodeUnknownEffect(
+					EnvironmentSharingAudience,
+				)(body.sharingAudience ?? []).pipe(
+					Effect.mapError(() => badRequest("invalid_sharing_audience")),
+				);
 				if (body.origin !== undefined) {
 					const tunnel = yield* ManagedTunnelProvider;
 					if (!tunnel.enabled) {
@@ -1056,6 +1108,7 @@ const route = (
 					});
 				}
 				yield* store.touchEnvironment(environmentId, nowMs, {
+					sharingAudience,
 					runtimeVersion:
 						typeof body.runtimeVersion === "string"
 							? body.runtimeVersion
@@ -1090,8 +1143,9 @@ const route = (
 						);
 					}
 				}
+			} else {
+				yield* store.touchEnvironment(environmentId, nowMs);
 			}
-			yield* store.touchEnvironment(environmentId, nowMs);
 			const refreshed = yield* store.getEnvironment(environmentId);
 			const machines = yield* MachineStore;
 			const machine = yield* machines.findMachineByEnvironmentId(environmentId);

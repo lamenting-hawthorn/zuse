@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"exports": {
+		"./chat-sharing": "./src/chat-sharing.ts",
 		"./attachment-upload": "./src/attachment-upload.ts",
 		"./chat-recency": "./src/chat-recency.ts",
 		"./cloud-gateway-recovery": "./src/cloud-gateway-recovery.ts",
@@ -48,7 +49,9 @@
 		"./device-bridge-controller": "./src/device-bridge-controller.ts",
 		"./composer-feedback": "./src/composer-feedback.ts",
 		"./frame-subscription": "./src/frame-subscription.ts",
-		"./background-history": "./src/background-history.ts"
+		"./background-history": "./src/background-history.ts",
+		"./organization-control-client": "./src/organization-control-client.ts",
+		"./control-api-error": "./src/control-api-error.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

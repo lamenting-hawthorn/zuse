@@ -57,8 +57,11 @@ import {
 	MachineStore,
 } from "./machine-store.ts";
 import { ManagedTunnelProvider } from "./managed-tunnel.ts";
+import { getOrganizationName } from "./organizations.ts";
 import { ApiStore } from "./store.ts";
 import type { WorkosVerifier } from "./workos.ts";
+import { requireWorkspaceAccess } from "./workspace-authorization.ts";
+import { workspaceScopeForOwner } from "./workspace-scope.ts";
 
 export type MachineRouteContext =
 	| WorkosVerifier
@@ -149,6 +152,8 @@ const lookupCheckoutSummary = (input: {
 const checkoutComplete = (input: {
 	readonly offerId: string | null;
 	readonly summary: CheckoutSummary | null;
+	readonly workspaceName?: string;
+	readonly workspaceKind?: "personal" | "organization";
 }): Response => {
 	const offer = findMachineOffer(input.offerId ?? "");
 	const catalogAmount =
@@ -162,6 +167,12 @@ const checkoutComplete = (input: {
 			: orderReference(input.summary.checkoutId);
 	return new Response(
 		renderCheckoutCompletePage({
+			...(input.workspaceKind === undefined
+				? {}
+				: { workspaceKind: input.workspaceKind }),
+			...(input.workspaceName === undefined
+				? {}
+				: { workspaceName: input.workspaceName }),
 			...(input.summary?.amountCents === undefined
 				? catalogAmount === undefined
 					? {}
@@ -671,8 +682,14 @@ export const routeMachineRequest = (
 							checkoutId,
 						});
 			return checkoutComplete({
+				...(ticket === null
+					? {}
+					: { workspaceKind: workspaceScopeForOwner(ticket.accountId).kind }),
 				offerId: knownOfferId(ticket?.offerId ?? url.searchParams.get("offer")),
 				summary,
+				...(ticket?.workspaceName === undefined
+					? {}
+					: { workspaceName: ticket.workspaceName }),
 			});
 		}
 
@@ -994,8 +1011,8 @@ export const routeMachineRequest = (
 		}
 
 		if (method === "GET" && path === ApiPaths.billingEntitlements) {
-			const principal = yield* requireWorkos(request);
-			let entitlements = yield* store.listEntitlements(principal.accountId);
+			const workspace = yield* requireWorkspaceAccess(request, "billing");
+			let entitlements = yield* store.listEntitlements(workspace.ownerId);
 			if (
 				entitlements.some(
 					(item) =>
@@ -1007,23 +1024,24 @@ export const routeMachineRequest = (
 			) {
 				entitlements = [
 					...(yield* reconcileCheckoutEntitlements(
-						principal.accountId,
+						workspace.ownerId,
 						entitlements,
 						nowMs,
 					)),
 				];
 			}
 			if (
+				workspace.scope.kind === "personal" &&
 				!entitlements.some(
 					(entitlement) =>
 						entitlement.offerId === CLOUD_WORKSPACE_OFFER_ID &&
 						entitlement.status !== "ended",
 				)
 			) {
-				yield* claimCheckoutLinkSubscriptions(principal.accountId, nowMs);
-				entitlements = yield* store.listEntitlements(principal.accountId);
+				yield* claimCheckoutLinkSubscriptions(workspace.ownerId, nowMs);
+				entitlements = yield* store.listEntitlements(workspace.ownerId);
 			}
-			const machines = yield* store.listMachines(principal.accountId);
+			const machines = yield* store.listMachines(workspace.ownerId);
 			return json({
 				entitlements: entitlements.map((entitlement) => ({
 					...toPublicEntitlement(entitlement),
@@ -1037,10 +1055,12 @@ export const routeMachineRequest = (
 		}
 
 		if (method === "POST" && path === ApiPaths.billingCheckout) {
-			const principal = yield* requireHostedPrincipal(request);
+			const workspace = yield* requireWorkspaceAccess(request, "billing");
 			const body = yield* decodeBody(BillingCheckoutRequest, request);
 			const machineConfig = yield* MachineControlConfiguration;
 			const isCloudWorkspace = body.offerId === CLOUD_WORKSPACE_OFFER_ID;
+			if (workspace.scope.kind === "organization" && !isCloudWorkspace)
+				return yield* forbidden("workspace_scope_not_supported");
 			const offer = findMachineOffer(body.offerId);
 			if (
 				(!isCloudWorkspace && offer === undefined) ||
@@ -1057,11 +1077,11 @@ export const routeMachineRequest = (
 				);
 			}
 			const [storedEntitlements, machines] = yield* Effect.all([
-				store.listEntitlements(principal.accountId),
-				store.listMachines(principal.accountId),
+				store.listEntitlements(workspace.ownerId),
+				store.listMachines(workspace.ownerId),
 			]);
 			const entitlements = yield* reconcileCheckoutEntitlements(
-				principal.accountId,
+				workspace.ownerId,
 				storedEntitlements,
 				nowMs,
 			);
@@ -1099,7 +1119,11 @@ export const routeMachineRequest = (
 				),
 			);
 			const receiptTicket = yield* signCheckoutReceiptTicket({
-				accountId: principal.accountId,
+				accountId: workspace.ownerId,
+				workspaceName:
+					workspace.scope.kind === "personal"
+						? "Personal"
+						: yield* getOrganizationName(workspace.scope.organizationId),
 				issuer: apiConfig.apiIssuer,
 				mintPrivateJwk: yield* parseJwk(
 					Redacted.value(apiConfig.mintPrivateKey),
@@ -1110,7 +1134,7 @@ export const routeMachineRequest = (
 			});
 			const checkoutUrl = yield* billing
 				.checkout({
-					accountId: principal.accountId,
+					accountId: workspace.ownerId,
 					offerId: body.offerId,
 					successUrl: checkoutSuccessUrl(
 						apiConfig.apiIssuer,
@@ -1127,8 +1151,8 @@ export const routeMachineRequest = (
 		}
 
 		if (method === "POST" && path === ApiPaths.billingPortal) {
-			const principal = yield* requireWorkos(request);
-			const entitlements = yield* store.listEntitlements(principal.accountId);
+			const workspace = yield* requireWorkspaceAccess(request, "billing");
+			const entitlements = yield* store.listEntitlements(workspace.ownerId);
 			const portalProviderIds = [
 				...new Set(
 					entitlements
@@ -1152,7 +1176,7 @@ export const routeMachineRequest = (
 				),
 			);
 			const portalUrl = yield* billing
-				.customerPortal(principal.accountId)
+				.customerPortal(workspace.ownerId)
 				.pipe(
 					Effect.mapError(() =>
 						serviceUnavailable("billing_provider_unavailable"),

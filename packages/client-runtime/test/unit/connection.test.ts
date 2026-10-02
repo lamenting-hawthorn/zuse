@@ -1,7 +1,9 @@
+import { RpcAccessDeniedError } from "@zuse/contracts";
 import { Context, Effect, Layer } from "effect";
 import { describe, expect, test } from "vitest";
 
 import {
+	isRpcCredentialExpired,
 	makeManagedClientSession,
 	validateProtocolVersion,
 } from "../../src/connection.js";
@@ -9,6 +11,19 @@ import {
 class Value extends Context.Service<Value, number>()("test/Value") {}
 
 describe("managed client session", () => {
+	test("renews expired credentials but never retries a denied permission", () => {
+		expect(
+			isRpcCredentialExpired(
+				new RpcAccessDeniedError({ code: "credential-expired" }),
+			),
+		).toBe(true);
+		expect(
+			isRpcCredentialExpired(
+				new RpcAccessDeniedError({ code: "access-denied" }),
+			),
+		).toBe(false);
+		expect(isRpcCredentialExpired({ code: "credential-expired" })).toBe(false);
+	});
 	test("rejects a mismatched wire protocol version", async () => {
 		await expect(
 			Effect.runPromise(validateProtocolVersion(2, 1)),

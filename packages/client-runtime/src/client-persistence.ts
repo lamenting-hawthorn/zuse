@@ -19,15 +19,38 @@ export type PersistedResource<Data> = Readonly<{
 export interface ResourcePersistence {
 	readonly loadResource: <Data>(
 		key: ResourceKey<Data>,
+		namespace?: string,
 	) => Promise<PersistedResource<Data> | null>;
 	readonly saveResource: <Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	) => Promise<void>;
-	readonly removeResource: (key: ResourceKey<unknown>) => Promise<void>;
+	readonly removeResource: (
+		key: ResourceKey<unknown>,
+		namespace?: string,
+	) => Promise<void>;
 }
 
+/** Keep device-local keys stable; account namespaces never adopt legacy rows. */
+export const resourceCacheStorageKey = (
+	key: string,
+	namespace?: string,
+): string => (namespace === undefined ? key : JSON.stringify([namespace, key]));
+
 export type CommandRetryPolicy = "safe" | "never";
+
+/** Client-side ownership, never a substitute for server-verified actor identity. */
+export type ClientCommandOwner =
+	| Readonly<{ kind: "account"; subject: string }>
+	| Readonly<{ kind: "device" }>;
+
+export class CommandAuthorityLostError extends Error {
+	override readonly name = "CommandAuthorityLostError";
+	constructor() {
+		super("Command delivery paused because its authority changed.");
+	}
+}
 
 export type ClientCommand<Payload = unknown, Result = unknown> = Readonly<{
 	/** Stable renderer command kind understood by the platform executor. */
@@ -38,6 +61,8 @@ export type ClientCommand<Payload = unknown, Result = unknown> = Readonly<{
 	payload: Payload;
 	retry: CommandRetryPolicy;
 	createdAt: number;
+	/** Captured before dispatch. Missing means legacy/unowned, not the active account. */
+	owner?: ClientCommandOwner;
 	/**
 	 * Keep optimistic command state until the authoritative resource projection
 	 * contains the applied effect. This closes the receipt-before-stream gap for
@@ -173,14 +198,20 @@ export const canonicalClientCommandJson = (value: unknown): string => {
 export const commandFingerprint = (
 	command: ClientCommand,
 ): CommandFingerprint => {
-	const identity = canonicalClientCommandJson([
-		"zuse-client-command-v1",
+	const fields = [
 		command.kind,
 		command.environmentId,
 		command.resource === null ? null : resourceKeyId(command.resource),
 		command.retry,
 		command.payload,
-	]);
+	];
+	// Existing durable rows and server receipts must keep their original identity.
+	// Explicit ownership gets a new version so it cannot alias unowned history.
+	const identity = canonicalClientCommandJson(
+		command.owner === undefined
+			? ["zuse-client-command-v1", ...fields]
+			: ["zuse-client-command-v2", command.owner, ...fields],
+	);
 	return `sha256:${bytesToHex(sha256(identity))}`;
 };
 

@@ -1,6 +1,7 @@
 import { MemoizeRpcs } from "@zuse/contracts";
 import { Effect, Layer, Stream } from "effect";
 import { AnalyticsService } from "../analytics/services/analytics-service.ts";
+import { filterCatalog } from "../collaboration/services/catalog-visibility.ts";
 import { FileSearchService } from "./services/file-search.ts";
 import { FolderPicker } from "./services/folder-picker.ts";
 import { ProjectScaffold } from "./services/project-scaffold.ts";
@@ -19,7 +20,11 @@ const Add = MemoizeRpcs.toLayerHandler("workspace.add", ({ path }) =>
 );
 
 const List = MemoizeRpcs.toLayerHandler("workspace.list", () =>
-	Effect.flatMap(WorkspaceService, (ws) => ws.list()),
+	Effect.flatMap(WorkspaceService, (ws) => ws.list()).pipe(
+		Effect.flatMap((items) =>
+			filterCatalog(items, (scope, item) => scope.projects.has(item.id)),
+		),
+	),
 );
 
 const StreamChanges = MemoizeRpcs.toLayerHandler(
@@ -27,6 +32,10 @@ const StreamChanges = MemoizeRpcs.toLayerHandler(
 	() =>
 		Stream.unwrap(
 			Effect.map(WorkspaceService, (workspace) => workspace.streamChanges()),
+		).pipe(
+			Stream.mapEffect((items) =>
+				filterCatalog(items, (scope, item) => scope.projects.has(item.id)),
+			),
 		),
 );
 
