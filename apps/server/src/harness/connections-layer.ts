@@ -16,7 +16,11 @@ import {
 } from "./connections-service.ts";
 import { GrokOAuth, XAI_PUBLIC_CLIENT_ID } from "./grok-oauth.ts";
 import { modelConnectionVault } from "./vault.ts";
-export const modelConnectionsLayer = (available: boolean, cloud = false) =>
+export const modelConnectionsLayer = (
+	available: boolean,
+	cloud = false,
+	masterKey?: (create?: boolean) => Promise<Buffer>,
+) =>
 	Layer.effect(
 		ModelConnections,
 		Effect.gen(function* () {
@@ -29,7 +33,9 @@ export const modelConnectionsLayer = (available: boolean, cloud = false) =>
 				),
 			);
 			const legacy = yield* CredentialsService;
-			const credentials = yield* modelConnectionDatabase(legacy);
+			const credentials = masterKey
+				? yield* modelConnectionDatabase(legacy, masterKey)
+				: legacy;
 			const paths = yield* AppPaths;
 			const auth = new ChatGPTOAuth(
 				modelConnectionVault(credentials, paths.userData),

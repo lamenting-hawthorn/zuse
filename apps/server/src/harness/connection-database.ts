@@ -3,7 +3,6 @@ import { SqlClient } from "effect/unstable/sql";
 import { CredentialsError } from "../provider/errors.ts";
 import type { CredentialsServiceShape } from "../provider/services/credentials-service.ts";
 import { openStorage, sealStorage } from "../secure-storage-envelope.ts";
-import { secureStorageMasterKey } from "../secure-storage-master-key.ts";
 
 const namespaces = new Set([
 	"zuse-chatgpt-connections",
@@ -16,7 +15,7 @@ const context = (namespace: string, id: string) =>
 /** Adapt only harness records; all existing provider credentials retain their current storage. */
 export const modelConnectionDatabase = (
 	legacy: CredentialsServiceShape,
-	key: (create?: boolean) => Promise<Buffer> = secureStorageMasterKey,
+	key: (create?: boolean) => Promise<Buffer>,
 ) =>
 	Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient;

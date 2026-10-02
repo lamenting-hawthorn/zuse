@@ -134,6 +134,8 @@ export interface MainLayerDeps {
 	>;
 	readonly authShell: typeof AuthShell.Service;
 	readonly credentialsLayer: Layer.Layer<CredentialsService, never, AppPaths>;
+	/** Desktop keychain capability; headless runtimes must not import native keychain modules. */
+	readonly modelConnectionMasterKey?: (create?: boolean) => Promise<Buffer>;
 	readonly cloudEnrollment?: CloudEnrollmentConfig;
 	readonly cloudWorkspaceRuntime?: CloudWorkspaceRuntimeConfig;
 	readonly machineRuntimeRole?: "control-plane" | "cloud-environment";
@@ -464,6 +466,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 			process.platform !== "win32" &&
 			deps.machineRuntimeRole !== "cloud-environment",
 		deps.cloudWorkspaceRuntime !== undefined,
+		deps.modelConnectionMasterKey,
 	).pipe(
 		Layer.provide(CredentialsLayer),
 		Layer.provide(AppPathsLayer),
