@@ -75,7 +75,7 @@ it("keeps checkout scoped and discards its URL if the workspace changes", async 
 	expect(mocks.desktop).not.toHaveBeenCalled();
 });
 
-it("treats non-JSON access denials as authorization failures", async () => {
+it("treats non-JSON access denials as permission failures", async () => {
 	const client = await getCloudControlClient();
 	mocks.request.mockResolvedValueOnce(
 		new Response("Forbidden", { status: 403 }),
@@ -83,7 +83,7 @@ it("treats non-JSON access denials as authorization failures", async () => {
 	const request: Effect.Effect<unknown, unknown> =
 		client["machines.billingPortal"]();
 	expect(await Effect.runPromise(Effect.flip(request))).toMatchObject({
-		code: "not-allowed",
+		code: "access-denied",
 	});
 });
 
@@ -154,7 +154,7 @@ it("rejects malformed API responses and denies missing permissions", async () =>
 	mocks.request.mockResolvedValueOnce(Response.json({}, { status: 403 }));
 	expect(
 		await Effect.runPromise(client["cloud.chats.list"]({}).pipe(Effect.flip)),
-	).toMatchObject({ code: "not-allowed" });
+	).toMatchObject({ code: "access-denied" });
 });
 it("leaves desktop requests on the existing scoped RPC path", async () => {
 	mocks.hosted = false;

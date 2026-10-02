@@ -77,7 +77,7 @@ describe("machine control api URL", () => {
 
 	it("classifies rejected credentials as auth faults, not generic failures", () => {
 		expect(mapApiErrorCode(401, undefined).code).toBe("not-allowed");
-		expect(mapApiErrorCode(403, undefined).code).toBe("not-allowed");
+		expect(mapApiErrorCode(403, undefined).code).toBe("access-denied");
 		expect(mapApiErrorCode(400, undefined).code).toBe("invalid-request");
 	});
 

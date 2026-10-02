@@ -10,14 +10,16 @@ export const organizationControlError = (
 ): OrganizationError =>
 	new OrganizationError({
 		code:
-			code === "not-allowed" ||
-			code === "organization-limit-reached" ||
-			code === "organization-member-limit-reached" ||
-			code === "not-found" ||
-			code === "conflict" ||
-			code === "invalid-request"
-				? code
-				: "unavailable",
+			code === "access-denied"
+				? "not-allowed"
+				: code === "not-allowed" ||
+						code === "organization-limit-reached" ||
+						code === "organization-member-limit-reached" ||
+						code === "not-found" ||
+						code === "conflict" ||
+						code === "invalid-request"
+					? code
+					: "unavailable",
 	});
 
 export const controlApiErrorCode = (
