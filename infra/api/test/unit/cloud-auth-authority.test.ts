@@ -16,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	CloudAuthStatus,
 	CODEX_EXTERNAL_AUTH_TOOLCHAIN_VERSION,
 	GROK_EXTERNAL_AUTH_TOOLCHAIN_VERSION,
 } from "@zuse/contracts";
@@ -35,6 +36,7 @@ import {
 	cloudAuthAuthorityLabel,
 	cloudAuthStatus,
 	parseDeviceLoginOutput,
+	pollCloudAuthLogin,
 	provisionCloudAuth,
 	snapshotCloudAuthAuthority,
 	startCloudAuthLogin,
@@ -60,6 +62,116 @@ const grantAdditionalData = (sealed: Record<string, unknown>): Buffer =>
 	);
 
 describe("cloud auth setup reuse", () => {
+	test.each([
+		"e2b",
+		"boxd",
+	])("passive status never resumes a paused %s authority", async (providerId) => {
+		let resumes = 0;
+		let inspections = 0;
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const store = yield* CloudWorkspaceStore;
+				yield* store.claimCloudAuthAuthority({
+					accountId: "account",
+					provider: providerId,
+					candidateStorageIncarnationId: "incarnation",
+					toolchainVersion: "test",
+					leaseOwner: "worker",
+					nowMs: 100,
+					leaseExpiresAtMs: 200,
+				});
+				yield* store.completeCloudAuthAuthorityProvisioning({
+					accountId: "account",
+					providerSandboxId: "authority",
+					storageIncarnationId: "incarnation",
+					toolchainVersion: "test",
+					leaseOwner: "worker",
+					nowMs: 150,
+				});
+				const fake = yield* (yield* SandboxProviders).get("fake");
+				const registry = yield* makeSandboxProviders({
+					registrations: [
+						{
+							adapter: {
+								...fake,
+								providerId,
+								inspect: () => {
+									inspections++;
+									return Effect.succeed({
+										providerSandboxId: "authority",
+										providerLabel: "authority",
+										state: "paused" as const,
+									});
+								},
+								resume: () => {
+									resumes++;
+									return Effect.fail(
+										new SandboxProviderError({
+											code: "transient",
+										}),
+									);
+								},
+							},
+						},
+					],
+					defaultProviderId: providerId,
+				});
+				const uncached = yield* cloudAuthStatus("account").pipe(
+					Effect.provideService(SandboxProviders, registry),
+				);
+				expect(uncached.providers[0]?.errorCode).toBe(
+					"cloud_auth_status_refresh_required",
+				);
+				expect(resumes).toBe(0);
+				expect(inspections).toBe(0);
+				const expired = yield* pollCloudAuthLogin(
+					"account",
+					crypto.randomUUID(),
+				).pipe(
+					Effect.provideService(SandboxProviders, registry),
+					Effect.result,
+				);
+				expect(expired._tag).toBe("Failure");
+				if (expired._tag === "Failure")
+					expect(expired.failure.code).toBe("cloud_auth_operation_expired");
+				expect(resumes).toBe(0);
+				const locator = yield* store.getCloudAuthAuthority("account");
+				const status = new CloudAuthStatus({
+					authorityState: "ready",
+					providers: [{ providerId: "grok", state: "connected" }],
+					updatedAt: 150,
+				});
+				yield* store.saveCloudAuthStatus({
+					accountId: "account",
+					expectedRevision: locator?.revision ?? -1,
+					status,
+				});
+				// No registry at all: cached reads must not touch the provider.
+				expect(yield* cloudAuthStatus("account")).toEqual(status);
+				yield* store.saveCloudAuthStatus({
+					accountId: "account",
+					expectedRevision: locator?.revision ?? -1,
+					status: new CloudAuthStatus({ ...status, providers: [] }),
+				});
+				expect(yield* cloudAuthStatus("account")).toEqual(status);
+			}).pipe(
+				Effect.provide(
+					Layer.mergeAll(
+						CloudWorkspaceStoreMemory,
+						SandboxProvidersFake,
+						Config.layer({
+							apiIssuer: "https://api.test",
+							workosJwksUrl: "https://unused.test/jwks",
+							workosIssuer: "https://unused.test",
+							mintPrivateKey: Redacted.make("{}"),
+							mintPublicKey: "{}",
+							cloudAuthProviderId: "fake",
+						}),
+					),
+				),
+			),
+		);
+	});
 	test("initializes once across status, connect and device login, and repairs stale setup", async () => {
 		const home = "/home/zuse/.zuse/cloud-auth";
 		const files = new Map<string, string>();
@@ -97,6 +209,10 @@ describe("cloud auth setup reuse", () => {
 										providerLabel: "authority",
 										state: "running" as const,
 									}),
+								extendTimeout: (_id, seconds) =>
+									Effect.sync(() => {
+										expect(seconds).toBe(15 * 60);
+									}),
 								pathExists: (_id, path) => Effect.succeed(files.has(path)),
 								readTextFile: (_id, path) =>
 									Effect.succeed(files.get(path) ?? ""),
@@ -130,7 +246,7 @@ describe("cloud auth setup reuse", () => {
 					defaultProviderId: "fake",
 				});
 				yield* Effect.gen(function* () {
-					expect((yield* cloudAuthStatus("account")).authorityState).toBe(
+					expect((yield* provisionCloudAuth("account")).authorityState).toBe(
 						"ready",
 					);
 					yield* provisionCloudAuth("account");
@@ -140,17 +256,19 @@ describe("cloud auth setup reuse", () => {
 					expect(initializations).toBe(1);
 					files.set(`${home}/bootstrap-version`, "old-version");
 					yield* cloudAuthStatus("account");
+					expect(initializations).toBe(1);
+					yield* provisionCloudAuth("account");
 					expect(initializations).toBe(2);
 					files.delete(`${home}/key-id`);
-					yield* cloudAuthStatus("account");
+					yield* provisionCloudAuth("account");
 					expect(initializations).toBe(3);
 					files.delete(`${home}/private.pem`);
 					failGrok = true;
-					yield* cloudAuthStatus("account");
+					yield* provisionCloudAuth("account");
 					expect(initializations).toBe(4);
 					expect(files.get(`${home}/bootstrap-version`)).toBe("");
 					failGrok = false;
-					yield* cloudAuthStatus("account");
+					yield* provisionCloudAuth("account");
 					expect(initializations).toBe(5);
 					yield* cloudAuthStatus("account");
 					expect(initializations).toBe(5);

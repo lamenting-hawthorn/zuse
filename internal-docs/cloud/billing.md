@@ -138,6 +138,34 @@ export; reporting list-price usage does not reconcile plan discounts automatical
 
 ## Usage visibility independent of invoices
 
+### Authentication idle-cost guard
+
+Apply `0031_cloud_auth_status` before deploying the API. Public auth status is
+stored on the existing authority row, fenced by its revision; credentials and
+private keys stay on the authority disk. Settings/image reads return this status
+without contacting the provider, waking or extending sandbox compute. For an older authority,
+the explicit **Try again** action in Agent Authentication reads the saved setup;
+no new credentials or disk replacement are required. Never backfill by waking all
+accounts automatically.
+
+Real auth operations use a 15-minute pause timeout (previously one hour). Device
+login polling does not renew it, and a paused login operation expires rather than
+resuming compute. This policy uses the shared provider interface for E2B and Boxd.
+It does not establish that unrelated Boxd workspace charges have the same cause.
+
+`0032_classify_legacy_lifecycle_usage` relabels historical `runtime-seconds` rows
+as `lifecycle-elapsed-seconds`, preserving quantities, timestamps and event IDs.
+These counters can include time spent paused before reconciliation. They must not
+be summed as provider compute or used for invoice corrections. The migration does
+not touch confirmed settlement, Polar exports or balances. Actual historical cost
+corrections require provider execution/statement evidence; missing evidence must
+remain unknown, not zero.
+
+Retired pool cleanup must cross-check exact sandbox IDs against both staging and
+production workspace, build and authority references before deletion. Pool labels
+alone are insufficient: claimed machines can contain real chat data. Do not remove
+authentication authorities or paused user workspaces as pool cleanup.
+
 Apply `0027_cloud_usage` before deploying the Worker. Runtime observations and
 confirmed provider-cost exports share a durable `api_cloud_usage_outbox`.
 Confirmed cost is queued in the same database transaction as settlement,
