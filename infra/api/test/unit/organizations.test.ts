@@ -315,6 +315,8 @@ describe("organization access and lifecycle", () => {
 				new Response(JSON.stringify(value), { status });
 			if (path.startsWith("/organizations/external_id/"))
 				return organization ? json(organization) : json({}, 404);
+			if (path === "/organizations/new-org" && method === "GET")
+				return json(organization);
 			if (path === "/organizations" && method === "POST") {
 				creates++;
 				const body = JSON.parse(String(init?.body));
@@ -344,6 +346,10 @@ describe("organization access and lifecycle", () => {
 				enrollments++;
 				const entry = member("new-owner", "alice", "new-org", "admin");
 				members.push(entry);
+				// Another admin saves defaults while creation finishes enrolling its owner.
+				if (organization)
+					organization.metadata.zuse_chat_sharing =
+						'{"audience":"private","permission":"view"}';
 				return json(entry);
 			}
 			if (!fallback) throw new Error("Missing provider fixture");
@@ -387,6 +393,9 @@ describe("organization access and lifecycle", () => {
 		});
 		expect(creates).toBe(1);
 		expect(enrollments).toBe(1);
+		expect(organization?.metadata.zuse_chat_sharing).toBe(
+			'{"audience":"private","permission":"view"}',
+		);
 		members = members.filter((entry) => entry.id !== "new-owner");
 		await expect(call("", "alice", input)).rejects.toMatchObject({
 			status: 403,

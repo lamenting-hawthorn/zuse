@@ -1,4 +1,5 @@
 import type { EnvironmentSharingAudience } from "@zuse/contracts";
+import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
 import { Context, Effect, Layer, Ref, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 
@@ -199,11 +200,11 @@ export const ApiStoreMemory: Layer.Layer<ApiStore> = Layer.effect(
 		const revokedDpopThumbprints = yield* Ref.make(new Set<string>());
 		const dpop = yield* Ref.make(new Set<string>());
 		const activities = yield* Ref.make<ActivityRecord[]>([]);
-		const organizationLock = yield* Semaphore.make(1);
+		const organizationLock = new KeyedEffectSerialWorker<string>();
 
 		return ApiStore.of({
-			withOrganizationLock: (_organizationId, operation) =>
-				organizationLock.withPermits(1)(operation),
+			withOrganizationLock: (organizationId, operation) =>
+				organizationLock.run(organizationId, operation),
 			createChallenge: (challenge) =>
 				Ref.update(challenges, (map) =>
 					new Map(map).set(challenge.challengeId, challenge),

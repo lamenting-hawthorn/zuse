@@ -398,11 +398,18 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 							);
 						}
 						yield* requireOrganizationMember(userId, org.id, true);
-						yield* requestWorkos(
-							`/organizations/${encodeURIComponent(org.id)}`,
-							WorkosOrganization,
-							"PUT",
-							{ metadata: { ...org.metadata, zuse_setup: "complete" } },
+						const organizationId = org.id;
+						// Creation and sharing defaults must serialize metadata writes on
+						// the same organization key, using the latest provider snapshot.
+						yield* store.withOrganizationLock(
+							organizationId,
+							Effect.gen(function* () {
+								const path = `/organizations/${encodeURIComponent(organizationId)}`;
+								const current = yield* requestWorkos(path, WorkosOrganization);
+								yield* requestWorkos(path, WorkosOrganization, "PUT", {
+									metadata: { ...current.metadata, zuse_setup: "complete" },
+								});
+							}),
 						);
 					}
 					const member = yield* requireOrganizationMember(userId, org.id);
