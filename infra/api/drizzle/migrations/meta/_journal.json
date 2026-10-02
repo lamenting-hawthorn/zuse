@@ -222,15 +222,29 @@
 		{
 			"idx": 31,
 			"version": "7",
-			"when": 1790940000000,
-			"tag": "0031_cloud_auth_status",
+			"when": 1790800000000,
+			"tag": "0029_model_connections",
 			"breakpoints": true
 		},
 		{
 			"idx": 32,
 			"version": "7",
+			"when": 1790940000000,
+			"tag": "0031_cloud_auth_status",
+			"breakpoints": true
+		},
+		{
+			"idx": 33,
+			"version": "7",
 			"when": 1790940000001,
 			"tag": "0032_classify_legacy_lifecycle_usage",
+			"breakpoints": true
+		},
+		{
+			"idx": 34,
+			"version": "7",
+			"when": 1790940000002,
+			"tag": "0033_reconcile_workspace_and_model_schemas",
 			"breakpoints": true
 		}
 	]

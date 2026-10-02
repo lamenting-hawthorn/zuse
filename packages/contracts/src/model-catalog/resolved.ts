@@ -5,11 +5,13 @@ import { ModelPricing } from "./schema.ts";
 
 /**
  * Facts a live provider inventory reports about a model that the curated
- * catalog doesn't carry. Presentation-only except `reasoningEfforts` /
- * `fastTier`, which drivers treat as the authoritative per-model gate.
+ * catalog doesn't carry. Drivers use reasoning/tier capabilities and native harness context limits;
+ * other fields provide presentation metadata.
  */
 export const ModelLiveMeta = Schema.Struct({
 	contextWindowTokens: Schema.optional(Schema.Number),
+	autoCompactTokenLimit: Schema.optional(Schema.Number),
+	effectiveContextWindowPercent: Schema.optional(Schema.Number),
 	rateMultiplier: Schema.optional(Schema.Number),
 	/** OpenCode per-model variant names (rendered as the reasoning picker). */
 	variants: Schema.optional(Schema.Array(Schema.String)),

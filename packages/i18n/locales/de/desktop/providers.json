@@ -130,5 +130,15 @@
 	"pi_setup_hint": "Pi verwaltet die Authentifizierung und Werkzeugberechtigungen. Starten Sie <part0>pi</part0> in einem Terminal und melden Sie sich mit <part1>/login</part1> an.",
 	"pi_binary_path": "Pfad zur Pi-Programmdatei",
 	"pi_binary_placeholder": "pi in PATH suchen",
-	"pi_binary_help": "Geben Sie einen absoluten Pfad zur Programmdatei an oder lassen Sie das Feld leer, um PATH zu durchsuchen."
+	"pi_binary_help": "Geben Sie einen absoluten Pfad zur Programmdatei an oder lassen Sie das Feld leer, um PATH zu durchsuchen.",
+	"provider_row_configure": "{{label}} konfigurieren",
+	"updating": "Wird aktualisiert…",
+	"updated": "Aktualisiert",
+	"update_failed": "Fehlgeschlagen",
+	"cancel_update": "Update abbrechen",
+	"update_to_version": "{{name}} auf v{{version}} aktualisieren",
+	"update_to_latest": "{{name}} auf die neueste Version aktualisieren",
+	"sign_in_failed": "Anmeldung fehlgeschlagen.",
+	"sign_in_incomplete": "Die Anmeldung wurde vorzeitig beendet.",
+	"update_incomplete": "Das Update wurde vorzeitig beendet."
 }

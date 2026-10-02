@@ -1,18 +1,15 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import {
-	chmod,
-	mkdir,
-	readFile,
-	rename,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-
 import type { ProviderId } from "@zuse/contracts";
 import { Effect, Layer, Schema } from "effect";
-
 import { AppPaths } from "../../app-paths.ts";
+import { atomicWritePrivateJson } from "../../atomic-private-file.ts";
+import { withProcessLock } from "../../process/process-lock.ts";
+import {
+	openStorage,
+	type SecureStorageEnvelope,
+	sealStorage,
+} from "../../secure-storage-envelope.ts";
 import { secureStorageMasterKey } from "../../secure-storage-master-key.ts";
 import { CredentialsError } from "../errors.ts";
 import {
@@ -34,13 +31,6 @@ interface VaultContents {
 	readonly browserCredentials: Record<string, BrowserCredential>;
 	readonly integrations: Record<string, Record<string, string>>;
 	readonly mcpOauth: Record<string, string>;
-}
-
-interface VaultEnvelope {
-	readonly version: 1;
-	readonly iv: string;
-	readonly ciphertext: string;
-	readonly tag: string;
 }
 
 const emptyVault = (): VaultContents => ({
@@ -140,49 +130,13 @@ const parseVaultContents = (value: unknown): VaultContents => {
 	};
 };
 
-const decodeEnvelope = (raw: string): VaultEnvelope => {
-	const value = JSON.parse(raw) as Partial<VaultEnvelope>;
-	if (
-		value.version !== 1 ||
-		typeof value.iv !== "string" ||
-		typeof value.ciphertext !== "string" ||
-		typeof value.tag !== "string"
-	) {
-		throw new Error("Secure storage is corrupt.");
-	}
-	return value as VaultEnvelope;
-};
-
-const encryptVault = (contents: VaultContents, key: Buffer): VaultEnvelope => {
-	const iv = randomBytes(12);
-	const cipher = createCipheriv("aes-256-gcm", key, iv);
-	cipher.setAAD(VAULT_AAD);
-	const ciphertext = Buffer.concat([
-		cipher.update(JSON.stringify(contents), "utf8"),
-		cipher.final(),
-	]);
-	return {
-		version: 1,
-		iv: iv.toString("base64url"),
-		ciphertext: ciphertext.toString("base64url"),
-		tag: cipher.getAuthTag().toString("base64url"),
-	};
-};
-
-const decryptVault = (envelope: VaultEnvelope, key: Buffer): VaultContents => {
-	const decipher = createDecipheriv(
-		"aes-256-gcm",
-		key,
-		Buffer.from(envelope.iv, "base64url"),
-	);
-	decipher.setAAD(VAULT_AAD);
-	decipher.setAuthTag(Buffer.from(envelope.tag, "base64url"));
-	const plaintext = Buffer.concat([
-		decipher.update(Buffer.from(envelope.ciphertext, "base64url")),
-		decipher.final(),
-	]).toString("utf8");
-	return parseVaultContents(JSON.parse(plaintext) as unknown);
-};
+const encryptVault = (
+	contents: VaultContents,
+	key: Buffer,
+): SecureStorageEnvelope =>
+	sealStorage(JSON.stringify(contents), key, VAULT_AAD);
+const decryptVault = (envelope: unknown, key: Buffer): VaultContents =>
+	parseVaultContents(JSON.parse(openStorage(envelope, key, VAULT_AAD)));
 
 export const readBrowserCredentialFromVault = async (
 	userData: string,
@@ -201,7 +155,7 @@ export const readBrowserCredentialFromVault = async (
 		throw cause;
 	}
 	const contents = decryptVault(
-		decodeEnvelope(raw),
+		JSON.parse(raw),
 		await secureStorageMasterKey(false),
 	);
 	return contents.browserCredentials[normalizeOrigin(origin)] ?? null;
@@ -219,45 +173,41 @@ export const CredentialsServiceLive = Layer.effect(
 	Effect.gen(function* () {
 		const { userData } = yield* AppPaths;
 		const vaultPath = join(userData, VAULT_FILENAME);
-		let cachedVault: VaultContents | null = null;
 		let writeTail = Promise.resolve();
+		let cached: { stamp: string; contents: VaultContents } | undefined;
 
 		const load = async (): Promise<VaultContents> => {
-			if (cachedVault !== null) return cachedVault;
 			let raw: string;
 			try {
+				const metadata = await stat(vaultPath, { bigint: true });
+				const stamp = `${metadata.dev}:${metadata.ino}:${metadata.size}:${metadata.mtimeNs}:${metadata.ctimeNs}`;
+				if (cached?.stamp === stamp) return cached.contents;
 				raw = await readFile(vaultPath, "utf8");
+				const contents = decryptVault(
+					JSON.parse(raw),
+					await secureStorageMasterKey(false),
+				);
+				// Cache under the pre-read identity. An atomic replacement during the
+				// read will miss next time, never pin an old vault to a new identity.
+				cached = { stamp, contents };
+				return contents;
 			} catch (cause) {
 				if (
 					typeof cause === "object" &&
 					cause !== null &&
 					(cause as { code?: unknown }).code === "ENOENT"
 				) {
-					cachedVault = emptyVault();
-					return cachedVault;
+					cached = undefined;
+					return emptyVault();
 				}
 				throw cause;
 			}
-			const key = await secureStorageMasterKey(false);
-			cachedVault = decryptVault(decodeEnvelope(raw), key);
-			return cachedVault;
 		};
 
 		const persist = async (contents: VaultContents): Promise<void> => {
+			cached = undefined;
 			const key = await secureStorageMasterKey();
-			await mkdir(userData, { recursive: true, mode: 0o700 });
-			const tmp = `${vaultPath}.tmp.${process.pid}.${Date.now()}`;
-			try {
-				await writeFile(tmp, JSON.stringify(encryptVault(contents, key)), {
-					mode: 0o600,
-				});
-				await chmod(tmp, 0o600);
-				await rename(tmp, vaultPath);
-				await chmod(vaultPath, 0o600);
-				cachedVault = contents;
-			} finally {
-				await rm(tmp, { force: true }).catch(() => {});
-			}
+			await atomicWritePrivateJson(vaultPath, encryptVault(contents, key));
 		};
 
 		const read = <A>(
@@ -274,8 +224,9 @@ export const CredentialsServiceLive = Layer.effect(
 			Effect.tryPromise({
 				try: async () => {
 					const operation = writeTail.then(async () => {
-						const current = await load();
-						await persist(update(current));
+						await withProcessLock(`${vaultPath}.lock.sqlite`, async () => {
+							await persist(update(await load()));
+						});
 					});
 					writeTail = operation.catch(() => {});
 					await operation;

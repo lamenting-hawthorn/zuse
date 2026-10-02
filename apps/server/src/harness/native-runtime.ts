@@ -1,0 +1,72 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { digest } from "@zuse/agents/harness/cache";
+import { HarnessEngine } from "@zuse/agents/harness/engine";
+import type { HarnessHost } from "@zuse/agents/harness/types";
+import { Effect } from "effect";
+import { acquireProcessLock } from "../process/process-lock.ts";
+import { NativeHarnessTools, type NativeToolOptions } from "./native-tools.ts";
+
+export interface NativeRuntimeOptions {
+	readonly rootId: string;
+	readonly model: string;
+	readonly dataDirectory: string;
+	readonly host: Omit<
+		HarnessHost,
+		"tools" | "execute" | "close" | "interruptAgents"
+	>;
+	readonly tools: Omit<
+		NativeToolOptions,
+		"rootId" | "directory" | "lockDirectory" | "notify"
+	>;
+}
+/** Composition for server adapters. A root lease prevents two owners recovering the same processes. */
+export async function createNativeHarness(
+	options: NativeRuntimeOptions,
+): Promise<HarnessEngine> {
+	const rootKey = digest(options.rootId);
+	const directory = join(options.dataDirectory, "harness", rootKey);
+	await mkdir(directory, { recursive: true, mode: 0o700 });
+	const lease = await Effect.runPromise(
+		acquireProcessLock(join(directory, "owner.sqlite"), 1),
+	);
+	let engine: HarnessEngine;
+	const native = new NativeHarnessTools({
+		...options.tools,
+		rootId: options.rootId,
+		directory: join(directory, "artifacts"),
+		lockDirectory: join(options.dataDirectory, "harness", "file-locks"),
+		notify: (notice) =>
+			engine.enqueueNotification(
+				notice.id,
+				notice.agentId,
+				JSON.stringify(notice),
+			),
+	});
+	engine = new HarnessEngine(
+		{
+			...options.host,
+			tools: native.definitions,
+			execute: (name, input, context) => native.execute(name, input, context),
+			interruptAgents: (ids) => native.processes.interruptAgents(ids),
+			close: async () => {
+				try {
+					await native.close();
+				} finally {
+					lease.close();
+				}
+			},
+		},
+		options.rootId,
+		options.model,
+	);
+	try {
+		await engine.initialize();
+		await native.initialize();
+		return engine;
+	} catch (error) {
+		await native.close().catch(() => {});
+		lease.close();
+		throw error;
+	}
+}

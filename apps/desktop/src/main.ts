@@ -1,3 +1,4 @@
+import { secureStorageMasterKey } from "@zusehq/server/secure-storage-master-key";
 import { CloudSyncFileBridge } from "./sync/cloud-sync-file-bridge.ts";
 import { installTerminalShortcutRouting } from "./terminal-shortcuts.ts";
 import "@zuse/i18n/english/desktop";
@@ -3395,6 +3396,7 @@ async function createMainWindow() {
 					...(nearbyWsProtocol === null ? [] : [nearbyWsProtocol]),
 				],
 				authShell,
+				modelConnectionMasterKey: secureStorageMasterKey,
 				credentialsLayer: CredentialsServiceLive,
 				openHostSession: (sessionId, chatId) => {
 					focusMainWindow();

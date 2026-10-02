@@ -25,7 +25,9 @@
 		"./structural-tuple-key": "./src/structural-tuple-key.ts",
 		"./zuse-user-data": "./src/zuse-user-data.ts",
 		"./reaper": "./src/reaper.ts",
-		"./linux-memory": "./src/linux-memory.ts"
+		"./linux-memory": "./src/linux-memory.ts",
+		"./canonical-json": "./src/canonical-json.ts",
+		"./feature-access": "./src/feature-access.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",

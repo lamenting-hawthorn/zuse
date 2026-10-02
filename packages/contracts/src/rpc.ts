@@ -235,6 +235,14 @@ import {
 } from "./mcp.ts";
 import { ModelCatalogRpc, ModelCatalogStreamRpc } from "./model-catalog/rpc.ts";
 import {
+	ModelConnectionAcknowledgePlanRpc,
+	ModelConnectionDisconnectRpc,
+	ModelConnectionPreferredRpc,
+	ModelConnectionRenameRpc,
+	ModelConnectionsRpc,
+	ModelConnectRpc,
+} from "./model-connections.ts";
+import {
 	OrganizationsCreateRpc,
 	OrganizationsGetRpc,
 	OrganizationsInviteRpc,
@@ -396,6 +404,12 @@ export const MemoizeRpcs = RpcGroup.make(
 	OrganizationsRevokeInviteRpc,
 	OrganizationsSetRoleRpc,
 	OrganizationsRemoveMemberRpc,
+	ModelConnectionsRpc,
+	ModelConnectRpc,
+	ModelConnectionRenameRpc,
+	ModelConnectionPreferredRpc,
+	ModelConnectionDisconnectRpc,
+	ModelConnectionAcknowledgePlanRpc,
 	DeviceBridgeControlRpc,
 	CloudDeviceBridgeRpc,
 	PingRpc,

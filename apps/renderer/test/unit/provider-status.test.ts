@@ -1,6 +1,6 @@
 import type { AgentAvailability, ProviderId } from "@zuse/contracts";
-import { Effect } from "effect";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Effect, Stream } from "effect";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const rpc = vi.hoisted(() => ({
 	availability: vi.fn(),
@@ -8,6 +8,16 @@ const rpc = vi.hoisted(() => ({
 
 const toast = vi.hoisted(() => ({
 	add: vi.fn(),
+}));
+
+const update = vi.hoisted(() => ({
+	stream: vi.fn(),
+}));
+
+vi.mock("../../src/lib/runtime-operation-client.ts", () => ({
+	runtimeOperationClient: async () => ({
+		"provider.update": update.stream,
+	}),
 }));
 
 vi.mock("../../src/lib/rpc-client.ts", () => ({
@@ -36,6 +46,7 @@ import {
 } from "../../src/lib/provider-status.ts";
 import {
 	IDLE_PROVIDER_UPDATE_STATE,
+	providerUpdateKey,
 	useProvidersStore,
 } from "../../src/store/providers.ts";
 
@@ -64,31 +75,75 @@ const availabilityFor = (
 
 describe("provider update state", () => {
 	beforeEach(() => {
+		update.stream.mockReset();
+		rpc.availability.mockReset();
+		rpc.availability.mockReturnValue(Effect.succeed([]));
 		useProvidersStore.setState({
 			availability: [],
 			loading: false,
 			availabilityLoaded: false,
 			error: null,
-			updateStateByProvider: {},
+			availabilityByEnvironment: {},
+			updateStateByKey: {},
 		});
 	});
+	afterEach(() => {
+		useProvidersStore.setState({ availabilityByEnvironment: {} });
+	});
 
-	it("tracks one-click updates by provider", () => {
-		useProvidersStore.getState().setProviderUpdateState("claude", {
-			kind: "running",
-			line: "installing Claude",
-		});
+	it("keeps a running update in the store, independent of any mounted card", async () => {
+		update.stream.mockReturnValue(
+			Stream.concat(
+				Stream.make({ _tag: "log", text: "installing Claude" }),
+				Stream.never,
+			),
+		);
+		void useProvidersStore.getState().updateProvider("local", "claude");
 
+		await vi.waitFor(() =>
+			expect(
+				useProvidersStore.getState().updateStateByKey[
+					providerUpdateKey("local", "claude")
+				],
+			).toEqual({ kind: "running", line: "installing Claude" }),
+		);
 		const state = useProvidersStore.getState();
-		expect(state.updateStateByProvider.claude).toEqual({
-			kind: "running",
-			line: "installing Claude",
-		});
 		for (const providerId of providers.filter((p) => p !== "claude")) {
 			expect(
-				state.updateStateByProvider[providerId] ?? IDLE_PROVIDER_UPDATE_STATE,
+				state.updateStateByKey[providerUpdateKey("local", providerId)] ??
+					IDLE_PROVIDER_UPDATE_STATE,
 			).toEqual(IDLE_PROVIDER_UPDATE_STATE);
 		}
+		// A second request while running does not start another update.
+		await useProvidersStore.getState().updateProvider("local", "claude");
+		expect(update.stream).toHaveBeenCalledTimes(1);
+	});
+
+	it("re-probes availability before reporting success", async () => {
+		update.stream.mockReturnValue(Stream.make({ _tag: "done", ok: true }));
+		await useProvidersStore.getState().updateProvider("local", "codex");
+
+		await vi.waitFor(() =>
+			expect(
+				useProvidersStore.getState().updateStateByKey[
+					providerUpdateKey("local", "codex")
+				],
+			).toEqual({ kind: "success" }),
+		);
+		expect(rpc.availability).toHaveBeenCalledWith({ refresh: true });
+	});
+
+	it("reports failed updates", async () => {
+		update.stream.mockReturnValue(
+			Stream.make({ _tag: "done", ok: false, reason: "npm exited 1" }),
+		);
+		await useProvidersStore.getState().updateProvider("local", "gemini");
+
+		expect(
+			useProvidersStore.getState().updateStateByKey[
+				providerUpdateKey("local", "gemini")
+			],
+		).toEqual({ kind: "failed", reason: "npm exited 1" });
 	});
 });
 

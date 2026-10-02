@@ -63,5 +63,6 @@
 	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "⟦Thëë lôôcààl sëërvëër dïïd nôôt bëëcôômëë ààvààïïlààblëë. Yôôüür dààtàà ïïs stïïll ôôn dïïsk.⟧",
 	"startup_surface_try_again": "⟦Try ààgààïïn⟧",
 	"startup_surface_reload": "⟦Rëëlôôààd⟧",
-	"startup_surface_copy_details": "⟦Côôpy dëëtààïïls⟧"
+	"startup_surface_copy_details": "⟦Côôpy dëëtààïïls⟧",
+	"copy_failed": "⟦Côôpy fààïïlëëd⟧"
 }

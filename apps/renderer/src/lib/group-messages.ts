@@ -94,7 +94,7 @@ export function groupMessages(
 		}
 		if (
 			c._tag === "context_compaction" &&
-			(c.status ?? "completed") === "completed"
+			(c.status ?? "completed") !== "in_progress"
 		) {
 			completedCompactionItemIds.add(c.itemId);
 		}

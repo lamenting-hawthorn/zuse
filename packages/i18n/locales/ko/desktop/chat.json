@@ -688,6 +688,7 @@
 	"fork_menu_new_machine_description": "이 머신을 복제하고 별도의 채팅에서 대화를 계속합니다.",
 	"fork_menu_forking_in_new_machine": "새 머신으로 포크 중",
 	"workspace_sharing_button": "Share",
+	"message_row_compaction_failed": "컨텍스트 압축 중지됨",
 	"runtime_mode_ask_for_approval": "승인 요청",
 	"runtime_mode_approve_for_me": "대신 승인",
 	"runtime_mode_auto_description": "에이전트가 작업을 검토하고 필요한 경우 승인을 요청합니다.",

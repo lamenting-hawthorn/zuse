@@ -1,10 +1,22 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Option, Schema, type Scope } from "effect";
+import {
+	Deferred,
+	Effect,
+	Exit,
+	Fiber,
+	Option,
+	Schema,
+	type Scope,
+} from "effect";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeSwrCache, type SwrLoadResult } from "../../src/cache/swr-cache.ts";
+import {
+	makeKeyedSwrCache,
+	makeSwrCache,
+	type SwrLoadResult,
+} from "../../src/cache/swr-cache.ts";
 
 const Doc = Schema.Struct({ n: Schema.Number });
 type Doc = typeof Doc.Type;
@@ -254,6 +266,78 @@ describe("makeSwrCache", () => {
 				expect(entry.value).toEqual({ n: 3 });
 				expect(entry.storedAt).toBe(50);
 				expect(entry.etag).toBe("e");
+			}),
+		);
+	});
+});
+
+describe("cache ownership", () => {
+	it("does not publish an invalidated in-flight result", async () => {
+		await scoped(
+			Effect.gen(function* () {
+				const gate = yield* Deferred.make<void>();
+				let loads = 0;
+				const cache = yield* makeSwrCache({
+					name: "generation",
+					ttlMs: 1000,
+					load: () =>
+						Effect.gen(function* () {
+							const value = ++loads;
+							if (value === 1) yield* Deferred.await(gate);
+							return { _tag: "value" as const, value };
+						}),
+				});
+				const stale = yield* cache.refresh().pipe(Effect.forkChild);
+				yield* Effect.sleep("5 millis");
+				yield* cache.invalidate();
+				expect((yield* cache.refresh()).value).toBe(2);
+				yield* Deferred.succeed(gate, undefined);
+				yield* Fiber.join(stale);
+				expect((yield* cache.state()).entry?.value).toBe(2);
+			}),
+		);
+	});
+	it("one interrupted waiter does not cancel the shared load", async () => {
+		await scoped(
+			Effect.gen(function* () {
+				const gate = yield* Deferred.make<void>();
+				let loads = 0;
+				const cache = yield* makeSwrCache({
+					name: "cancel",
+					ttlMs: 1000,
+					load: () =>
+						Effect.gen(function* () {
+							loads++;
+							yield* Deferred.await(gate);
+							return { _tag: "value" as const, value: 7 };
+						}),
+				});
+				const first = yield* cache.refresh().pipe(Effect.forkChild);
+				const second = yield* cache.refresh().pipe(Effect.forkChild);
+				yield* Effect.sleep("5 millis");
+				yield* Fiber.interrupt(first);
+				yield* Deferred.succeed(gate, undefined);
+				expect((yield* Fiber.join(second)).value).toBe(7);
+				expect(loads).toBe(1);
+			}),
+		);
+	});
+	it("deduplicates construction and removes retained keys", async () => {
+		await scoped(
+			Effect.gen(function* () {
+				const cache = yield* makeKeyedSwrCache({
+					name: "keyed",
+					ttlMs: 1000,
+					load: () => Effect.succeed({ _tag: "value" as const, value: 7 }),
+				});
+				const [first, second] = yield* Effect.all(
+					[cache.forKey("one"), cache.forKey("one")],
+					{ concurrency: "unbounded" },
+				);
+				expect(first).toBe(second);
+				yield* cache.remove("one");
+				const next = yield* cache.forKey("one");
+				expect(next).not.toBe(first);
 			}),
 		);
 	});

@@ -5,6 +5,7 @@ import type { ImageSourcePropType } from "react-native";
 // the iOS asset catalog into JS assets so a standard RN <Image> can size and
 // align them predictably. Regenerate with the app icons if the marks change.
 export const PROVIDER_LOGOS: Record<ProviderId, ImageSourcePropType> = {
+	zuse: require("../../assets/icon.png"),
 	claude: require("../../assets/providers/claude.png"),
 	codex: require("../../assets/providers/codex.png"),
 	cursor: require("../../assets/providers/cursor.png"),
@@ -18,6 +19,7 @@ export const PROVIDER_LOGOS: Record<ProviderId, ImageSourcePropType> = {
 
 /** Matching image-set names bundled in the native iOS asset catalog. */
 export const PROVIDER_NATIVE_ASSET_NAMES: Record<ProviderId, string> = {
+	zuse: "AppIcon",
 	claude: "provider-claude",
 	codex: "provider-codex",
 	cursor: "provider-cursor",

@@ -71,3 +71,41 @@ describe("shared resource pool", () => {
 		);
 	});
 });
+
+test("removes a key without revoking an active lease and never closes its replacement", async () => {
+	const closed: number[] = [];
+	let next = 0;
+	let release!: () => void;
+	let started!: () => void;
+	const active = new Promise<void>((resolve) => {
+		started = resolve;
+	});
+	const pending = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	const pool = createSharedResourcePool({
+		idleTimeoutMs: 30_000,
+		create: async () => {
+			const id = ++next;
+			return {
+				id,
+				close: () => {
+					closed.push(id);
+				},
+			};
+		},
+	});
+	const first = pool.use("key", async (resource) => {
+		started();
+		await pending;
+		return resource.id;
+	});
+	await active;
+	await pool.remove("key");
+	expect(closed).toEqual([]);
+	expect(await pool.use("key", async (resource) => resource.id)).toBe(2);
+	release();
+	expect(await first).toBe(1);
+	await pool.dispose();
+	expect(closed.sort()).toEqual([1, 2]);
+});

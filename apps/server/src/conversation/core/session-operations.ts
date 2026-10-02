@@ -9,6 +9,7 @@ import {
 	type MessageContent,
 	MessageId,
 	type MessageOrigin,
+	PROVIDER_CAPABILITIES,
 	type ProviderId,
 	type ResumeStrategy,
 	Session,
@@ -239,7 +240,8 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 			// status out of `"booting"` from a daemon fiber.
 			const effectiveEnableSubagents =
 				input.enableSubagents ??
-				(input.agents !== undefined && Object.keys(input.agents).length > 0);
+				(PROVIDER_CAPABILITIES[input.providerId].nativeSubagentsByDefault ||
+					(input.agents !== undefined && Object.keys(input.agents).length > 0));
 			const initialPermissionMode =
 				input.permissionMode ?? DEFAULT_PERMISSION_MODE;
 			const initialToolSearch = input.toolSearch ?? false;

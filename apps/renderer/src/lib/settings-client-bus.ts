@@ -24,6 +24,7 @@ import {
 	GitMergeMethod,
 	type ModelEnabledByProvider,
 	OpencodeCustomProvider,
+	PROVIDER_CAPABILITIES,
 	PROVIDER_IDS,
 	ProviderId,
 	RuntimeMode,
@@ -182,10 +183,12 @@ const seedModels = (): Record<ProviderId, string> =>
 	) as Record<ProviderId, string>;
 
 const seedProviderEnabled = (): Record<ProviderId, boolean> =>
-	Object.fromEntries(PROVIDERS.map((provider) => [provider, true])) as Record<
-		ProviderId,
-		boolean
-	>;
+	Object.fromEntries(
+		PROVIDERS.map((provider) => [
+			provider,
+			PROVIDER_CAPABILITIES[provider].enabledByDefault,
+		]),
+	) as Record<ProviderId, boolean>;
 
 const copyCustomModelIds = (
 	input?: Partial<Record<ProviderId, ReadonlyArray<string>>>,

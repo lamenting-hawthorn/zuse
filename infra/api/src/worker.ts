@@ -40,6 +40,7 @@ import {
 import { resolveMachineProviderRuntime } from "./machine-provider-config.ts";
 import { MachineStorePg } from "./machine-store.ts";
 import { ManagedTunnelProviderLive } from "./managed-tunnel.ts";
+import { ModelConnectionStoreLive } from "./model-connection-store.ts";
 import { PushDeliveryLive } from "./push.ts";
 import { availableSandboxProviders } from "./sandbox-provider-availability.ts";
 import {
@@ -499,6 +500,9 @@ const build = (env: Env, directStartup = false): ReturnType<typeof makeApi> => {
 	};
 	const appLayer = Layer.mergeAll(
 		configLayer,
+		ModelConnectionStoreLive.pipe(
+			Layer.provide(Layer.merge(dbLayer, configLayer)),
+		),
 		SlackPersistenceLive.pipe(Layer.provide(Layer.merge(dbLayer, configLayer))),
 		WorkosVerifierLive.pipe(Layer.provide(configLayer)),
 		AccountIdentityLive.pipe(Layer.provide(configLayer)),

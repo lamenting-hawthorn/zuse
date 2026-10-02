@@ -63,5 +63,6 @@
 	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "本地服务器不可用。您的数据仍在磁盘上。",
 	"startup_surface_try_again": "再试一次",
 	"startup_surface_reload": "重新加载",
-	"startup_surface_copy_details": "复制详细信息"
+	"startup_surface_copy_details": "复制详细信息",
+	"copy_failed": "复制失败"
 }

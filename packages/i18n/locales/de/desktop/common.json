@@ -63,5 +63,6 @@
 	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "Der lokale Server war nicht verfügbar. Ihre Daten befinden sich noch auf der Festplatte.",
 	"startup_surface_try_again": "Versuchen Sie es erneut",
 	"startup_surface_reload": "Neu laden",
-	"startup_surface_copy_details": "Details kopieren"
+	"startup_surface_copy_details": "Details kopieren",
+	"copy_failed": "Kopieren fehlgeschlagen"
 }

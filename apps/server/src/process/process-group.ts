@@ -19,7 +19,8 @@ export const SUPERVISED_COMMAND_LEASE_MS = 15_000;
 // stdin pipe means the server died, so no command survives without its authority.
 const SUPERVISOR = `
 const { spawn } = require('node:child_process');
-const [shell, command, initialDeadline] = process.argv.slice(1);
+const [specJson, initialDeadline, hasInput] = process.argv.slice(1);
+const spec = JSON.parse(specJson);
 let deadline = Number(initialDeadline);
 let input = "";
 const stop = () => { try { process.kill(-process.pid, 'SIGKILL'); } catch { process.exit(1); } };
@@ -37,28 +38,57 @@ process.stdin.resume();
 process.stdin.once('end', stop);
 process.stdin.once('error', stop);
 if (!Number.isFinite(deadline) || Date.now() >= deadline) stop();
-const child = spawn(shell, ['-lc', command], { stdio: ['ignore', 'inherit', 'inherit'] });
+const child = spawn(spec.file, spec.args, { stdio: [hasInput === '1' ? 3 : 'ignore', 'inherit', 'inherit'] });
 child.once('error', error => { console.error(error.message); process.exit(127); });
 child.once('exit', (code, signal) => { clearInterval(watchdog); process.exitCode = code ?? 1; process.stdin.pause(); process.stdin.destroy(); });
 `;
-export const spawnSupervisedCommand = (
-	command: string,
+export interface SupervisedProcessOptions {
+	readonly stdin?: boolean;
+	/** Native harness commands own their descendants; legacy device commands retain their lifecycle. */
+	readonly killDescendantsOnExit?: boolean;
+	readonly env?: NodeJS.ProcessEnv;
+}
+/** fd 0 is a private lease pipe; fd 3 is command input, never interpreted as a lease. */
+export const spawnSupervisedProcess = (
+	file: string,
+	args: ReadonlyArray<string>,
 	cwd: string,
 	deadline = Date.now() + SUPERVISED_COMMAND_LEASE_MS,
-): ChildProcess =>
-	spawn(
+	options: SupervisedProcessOptions = {},
+): ChildProcess => {
+	const child = spawn(
 		process.execPath,
 		[
 			"-e",
 			SUPERVISOR,
-			process.env.SHELL || "/bin/sh",
-			command,
+			JSON.stringify({ file, args }),
 			String(deadline),
+			options.stdin ? "1" : "0",
 		],
 		{
 			cwd,
 			detached: true,
-			stdio: ["pipe", "pipe", "pipe"],
-			env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+			stdio: options.stdin
+				? ["pipe", "pipe", "pipe", "pipe"]
+				: ["pipe", "pipe", "pipe"],
+			env: { ...(options.env ?? process.env), ELECTRON_RUN_AS_NODE: "1" },
 		},
+	);
+	// The shell may exit with descendants still holding its output pipes open.
+	if (options.killDescendantsOnExit)
+		child.once("exit", () => signalProcessGroup(child, "SIGKILL"));
+	return child;
+};
+export const spawnSupervisedCommand = (
+	command: string,
+	cwd: string,
+	deadline = Date.now() + SUPERVISED_COMMAND_LEASE_MS,
+	options: SupervisedProcessOptions & { readonly shell?: string } = {},
+): ChildProcess =>
+	spawnSupervisedProcess(
+		options.shell || process.env.SHELL || "/bin/sh",
+		["-lc", command],
+		cwd,
+		deadline,
+		options,
 	);

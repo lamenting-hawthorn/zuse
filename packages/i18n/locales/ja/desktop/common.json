@@ -63,5 +63,6 @@
 	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "ローカルサーバーが利用可能になりませんでした。データはまだディスク上にあります。",
 	"startup_surface_try_again": "もう一度試してください",
 	"startup_surface_reload": "リロード",
-	"startup_surface_copy_details": "詳細をコピーする"
+	"startup_surface_copy_details": "詳細をコピーする",
+	"copy_failed": "コピーに失敗しました"
 }

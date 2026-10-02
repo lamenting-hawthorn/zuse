@@ -130,5 +130,15 @@
 	"pi_setup_hint": "Pi 管理身份验证和工具权限。在终端中运行 <part0>pi</part0>，然后使用 <part1>/login</part1> 登录。",
 	"pi_binary_path": "Pi 可执行文件路径",
 	"pi_binary_placeholder": "在 PATH 中查找 pi",
-	"pi_binary_help": "输入可执行文件的绝对路径，或留空以搜索 PATH。"
+	"pi_binary_help": "输入可执行文件的绝对路径，或留空以搜索 PATH。",
+	"provider_row_configure": "配置 {{label}}",
+	"updating": "正在更新…",
+	"updated": "已更新",
+	"update_failed": "失败",
+	"cancel_update": "取消更新",
+	"update_to_version": "将 {{name}} 更新至 v{{version}}",
+	"update_to_latest": "将 {{name}} 更新至最新版本",
+	"sign_in_failed": "登录失败。",
+	"sign_in_incomplete": "登录尚未完成便已结束。",
+	"update_incomplete": "更新尚未完成便已结束。"
 }
