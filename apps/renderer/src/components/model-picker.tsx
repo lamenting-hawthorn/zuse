@@ -1,3 +1,6 @@
+import { canUseExperimentalHarness } from "@zuse/utils/feature-access";
+import { PROVIDER_SHORT_LABEL } from "~/lib/provider-labels";
+import { useAuth } from "../hooks/use-auth.ts";
 import { loadCloudAuth } from "../lib/cloud-workspace-session-cache.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import "@zuse/i18n/english/providers";
@@ -50,17 +53,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const PROVIDER_LABEL = PROVIDER_LABELS;
 
-const PROVIDER_CHIP_LABEL: Record<ProviderId, string> = {
-	claude: "Claude",
-	codex: "Codex",
-	grok: "Grok",
-	cursor: "Cursor",
-	gemini: "Gemini",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro",
-	pi: "Pi",
-};
+const PROVIDER_CHIP_LABEL = PROVIDER_SHORT_LABEL;
 
 interface ModelPickerEntry {
 	providerId: ProviderId;
@@ -80,7 +73,7 @@ type Scope = ProviderId | "all";
 export const compactModelLabel = (label: string): string =>
 	label.replace(/^gpt[-\s]*/i, "").trim();
 
-type ModelPickerProps = { cloudProviderIds?: ReadonlyArray<ProviderId> } & (
+type ModelPickerProps =
 	| {
 			mode: "session";
 			environmentId: EnvironmentId;
@@ -100,10 +93,11 @@ type ModelPickerProps = { cloudProviderIds?: ReadonlyArray<ProviderId> } & (
 			composer?: boolean;
 			triggerClassName?: string;
 			onOpenChange?: (open: boolean) => void;
-	  }
-);
+	  };
 
 export function ModelPicker(props: ModelPickerProps) {
+	const { user } = useAuth();
+	const experimentalHarnessAllowed = canUseExperimentalHarness(user?.email);
 	const { message: uiMessage } = useUiMessages(["providers"]);
 
 	const isDefault = props.mode === "default";
@@ -176,11 +170,9 @@ export function ModelPicker(props: ModelPickerProps) {
 			? (environmentAvailability?.availability ?? [])
 			: defaultAvailability;
 	const availabilityLoaded =
-		props.cloudProviderIds !== undefined
-			? true
-			: props.mode === "session"
-				? (environmentAvailability?.availabilityLoaded ?? false)
-				: defaultAvailabilityLoaded;
+		props.mode === "session"
+			? (environmentAvailability?.availabilityLoaded ?? false)
+			: defaultAvailabilityLoaded;
 	const availabilityLoading =
 		props.mode === "session"
 			? (environmentAvailability?.loading ?? false)
@@ -226,9 +218,8 @@ export function ModelPicker(props: ModelPickerProps) {
 	}, [open, onOpenChange]);
 
 	useEffect(() => {
-		if (open && (isHostedProduct() || props.cloudProviderIds !== undefined))
-			void loadCloudAuth(true).catch(() => undefined);
-	}, [open, props.cloudProviderIds !== undefined]);
+		if (open && isHostedProduct()) void loadCloudAuth().catch(() => undefined);
+	}, [open]);
 
 	// Reset transient state every time the popover opens.
 	useEffect(() => {
@@ -309,18 +300,13 @@ export function ModelPicker(props: ModelPickerProps) {
 
 	const pickableProviders = useMemo<ReadonlyArray<ProviderId>>(() => {
 		return catalogProviderIds(catalog).filter((pid) => {
+			if (pid === "zuse" && !experimentalHarnessAllowed) return false;
 			// Settings must keep the selected provider's catalog editable even when
 			// its local runtime is signed out. Session pickers remain restricted to
 			// providers that can actually start a session.
-			if (
-				isDefault &&
-				pid === providerId &&
-				props.cloudProviderIds === undefined
-			)
-				return true;
+			if (isDefault && pid === providerId) return true;
 			return isModelPickerProviderVisible({
 				providerId: pid,
-				cloudProviderIds: props.cloudProviderIds,
 				availability: availabilityById.get(pid),
 				providerEnabled,
 				availabilityLoaded,
@@ -334,12 +320,9 @@ export function ModelPicker(props: ModelPickerProps) {
 		providerEnabled,
 		availabilityById,
 		availabilityLoaded,
+		experimentalHarnessAllowed,
 		uiMessage,
-		props.cloudProviderIds,
 	]);
-	useEffect(() => {
-		if (scope !== "all" && !pickableProviders.includes(scope)) setScope("all");
-	}, [scope, pickableProviders]);
 	const allModels = useMemo<ModelPickerEntry[]>(() => {
 		const out: ModelPickerEntry[] = [];
 		for (const pid of pickableProviders) {
@@ -427,7 +410,6 @@ export function ModelPicker(props: ModelPickerProps) {
 	}, [scope, allModels, pickableProviders, providerId, uiMessage]);
 
 	const handlePick = async (pid: ProviderId, modelId: string) => {
-		if (!pickableProviders.includes(pid)) return;
 		if (isDefault) {
 			setDefaultProviderAndModel(pid, modelId);
 			setOpen(false);

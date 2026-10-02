@@ -60,7 +60,6 @@ import { SessionActionsMenu } from "~/components/session-actions-menu";
 import { ThreadHeaderTitle } from "~/components/thread-header-title";
 import { GlassSurface } from "~/components/ui/glass-surface";
 import { WorkingIndicator } from "~/components/ui/working-indicator";
-import { withWorkspaceConnection } from "~/components/workspace-connection-screen";
 import { useTranscriptScrollCoordinator } from "~/hooks/use-transcript-scroll-coordinator";
 import { coordinateChatBottomState } from "~/lib/chat-bottom-state";
 import { isFreshChat, summarizeComposerActivity } from "~/lib/composer-state";
@@ -95,7 +94,6 @@ import {
 	sendMessage,
 } from "~/rpc/actions";
 import { cloudRuntimeReady } from "~/rpc/cloud-runtime";
-import { cloudSummary } from "~/store/cloud-catalog";
 import {
 	connectionSnapshotAtom,
 	retryConnection,
@@ -169,9 +167,7 @@ import {
 } from "~/store/sessions";
 import { colors, glass } from "~/theme";
 
-export default withWorkspaceConnection(ThreadScreenRoute);
-
-function ThreadScreenRoute() {
+export default function ThreadScreenRoute() {
 	const { conn, sessionId, openAtLatest } = useLocalSearchParams<{
 		conn: string;
 		sessionId: string;
@@ -1054,18 +1050,6 @@ function ThreadScreen() {
 					),
 					headerRight: () => (
 						<SessionActionsMenu
-							onShare={
-								mobileReleaseFeatures.organizationWorkspaces &&
-								options?.cloudWorkspaceId &&
-								cloudSummary(options.cloudWorkspaceId)?.workspaceScope?.kind ===
-									"organization"
-									? () =>
-											router.push({
-												pathname: "/chat-sharing",
-												params: { workspaceId: options.cloudWorkspaceId },
-											})
-									: undefined
-							}
 							isPinned={isPinned}
 							onNewChat={() => router.push("/new-chat")}
 							onPin={

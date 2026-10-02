@@ -48,17 +48,6 @@ import { cloudCommandTransport } from "./cloud-command-transport.ts";
 import { cloudFailurePresentation } from "./cloud-failure-presentation.ts";
 import { markCloudFetch } from "./cloud-fetch-timing.ts";
 import { isPlatformOnline } from "./network-status.ts";
-import { isHostedProduct } from "./platform-capabilities.ts";
-import {
-	type RendererAccountSnapshot,
-	rendererAccountSnapshot,
-	subscribeRendererAccount,
-} from "./renderer-account.ts";
-import { createRendererCommandAuthority } from "./renderer-command-authority.ts";
-import {
-	rendererWorkspaceSnapshot,
-	subscribeRendererWorkspace,
-} from "./renderer-workspace.ts";
 import {
 	acquireRendererRpcSession,
 	environmentRequiresNetwork,
@@ -68,7 +57,6 @@ import {
 	type MemoizeClient,
 	markCloudWorkspaceConnectionHealthy,
 	type RendererRpcSession,
-	rendererEnvironmentCommandAuthority,
 } from "./rpc-client.ts";
 import {
 	durableOptimisticSessionMessage,
@@ -139,11 +127,10 @@ const sessionRef = (key: ResourceKey<unknown>): SessionRef | null =>
 class RendererTimelinePersistence implements ResourcePersistence {
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
-		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		const ref = sessionRef(key);
 		if (ref === null || sessionTimelineCache === null) return null;
-		const cached = await sessionTimelineCache.load(ref, namespace);
+		const cached = await sessionTimelineCache.load(ref);
 		if (cached === null) return null;
 		return {
 			data: cached.projection as Data,
@@ -155,7 +142,6 @@ class RendererTimelinePersistence implements ResourcePersistence {
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
-		namespace?: string,
 	): Promise<void> {
 		const ref = sessionRef(key);
 		if (
@@ -172,17 +158,13 @@ class RendererTimelinePersistence implements ResourcePersistence {
 				projection: value.data as SessionTimelineProjection,
 				now: value.storedAt,
 			}),
-			namespace,
 		);
 		void sessionTimelineCache.prune().catch(() => undefined);
 	}
 
-	async removeResource(
-		key: ResourceKey<unknown>,
-		namespace?: string,
-	): Promise<void> {
+	async removeResource(key: ResourceKey<unknown>): Promise<void> {
 		const ref = sessionRef(key);
-		if (ref !== null) await sessionTimelineCache?.remove(ref, namespace);
+		if (ref !== null) await sessionTimelineCache?.remove(ref);
 	}
 }
 
@@ -218,18 +200,17 @@ export const registerRendererResourcePersistence = (
 };
 
 const rendererResourcePersistence: ResourcePersistence = {
-	loadResource: <Data>(key: ResourceKey<Data>, namespace?: string) =>
-		registeredPersistence.get(key.kind)?.loadResource(key, namespace) ??
+	loadResource: <Data>(key: ResourceKey<Data>) =>
+		registeredPersistence.get(key.kind)?.loadResource(key) ??
 		Promise.resolve(null),
 	saveResource: <Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
-		namespace?: string,
 	) =>
-		registeredPersistence.get(key.kind)?.saveResource(key, value, namespace) ??
+		registeredPersistence.get(key.kind)?.saveResource(key, value) ??
 		Promise.resolve(),
-	removeResource: (key, namespace) =>
-		registeredPersistence.get(key.kind)?.removeResource(key, namespace) ??
+	removeResource: (key) =>
+		registeredPersistence.get(key.kind)?.removeResource(key) ??
 		Promise.resolve(),
 };
 
@@ -1068,7 +1049,6 @@ let commandOutbox = createClientCommandOutbox();
 type EnvironmentActivation = Readonly<{
 	/** The catalog authority that registered this resolver. */
 	readonly environmentKind: "cloud-workspace" | "other";
-	readonly account?: RendererAccountSnapshot;
 	prepare: (activation: "connect" | "wake") => Promise<void>;
 	prepareClient?: (client: MemoizeClient) => Promise<void>;
 }>;
@@ -1096,14 +1076,7 @@ export const registerEnvironmentActivation = (
 	prepareClient?: EnvironmentActivation["prepareClient"],
 	environmentKind: EnvironmentActivation["environmentKind"] = "other",
 ): (() => void) => {
-	const registration = {
-		environmentKind,
-		prepare,
-		prepareClient,
-		...(environmentKind === "cloud-workspace"
-			? { account: rendererAccountSnapshot() }
-			: {}),
-	};
+	const registration = { environmentKind, prepare, prepareClient };
 	activationByEnvironment.set(environmentId, registration);
 	if (environmentKind === "cloud-workspace") {
 		// Catalog hydration can happen after ClientBus's initial outbox scan. Resume
@@ -1227,14 +1200,8 @@ const makeTimelineDriver = (
 		reportFailure,
 		backgroundHistory: (ref) => isCloudTimelineEnvironment(ref.environmentId),
 		onHead: (ref, frame) => {
-			const namespace = rendererResourceCacheNamespace(ref.environmentId);
-			if (frame.cursor && namespace !== null)
-				rememberCloudTimelineHead(
-					ref,
-					frame.projection,
-					frame.cursor,
-					namespace,
-				);
+			if (frame.cursor)
+				rememberCloudTimelineHead(ref, frame.projection, frame.cursor);
 		},
 	});
 
@@ -1263,41 +1230,14 @@ export const registerRendererResourceDriver = (
 	};
 };
 
-const authorityFor = (environmentId: EnvironmentId) =>
-	activationByEnvironment.get(environmentId)?.account ??
-	rendererEnvironmentCommandAuthority(environmentId);
-
-export const rendererResourceCacheNamespace = (
-	environmentId: EnvironmentId,
-): string | null | undefined => {
-	const authority = authorityFor(environmentId);
-	if (authority === "device") return undefined;
-	return authority === rendererAccountSnapshot() &&
-		typeof authority.subject === "string"
-		? JSON.stringify(
-				environmentId === "local" && isHostedProduct()
-					? [
-							"account",
-							authority.subject,
-							"workspace",
-							rendererWorkspaceSnapshot().key,
-						]
-					: ["account", authority.subject],
-			)
-		: null;
-};
-
 const createBus = (): ClientBus<MemoizeClient> => {
 	let bus: ClientBus<MemoizeClient>;
 	bus = new ClientBus<MemoizeClient>({
-		...createRendererCommandAuthority(authorityFor),
 		resolver: environmentResolver,
 		coalescePersistence: (key) =>
 			key.kind === "session-timeline" &&
 			isCloudTimelineEnvironment(key.ref.environmentId),
 		persistence: rendererResourcePersistence,
-		resourceCacheNamespaceFor: (key) =>
-			rendererResourceCacheNamespace(key.ref.environmentId),
 		outbox: commandOutbox,
 		commandExecutor: executeSessionCommand,
 		commandTransportFor: (environmentId, kind) =>
@@ -1350,14 +1290,6 @@ const createBus = (): ClientBus<MemoizeClient> => {
 };
 
 let rendererClientBus = createBus();
-const unsubscribeResourceAccount = subscribeRendererAccount(() =>
-	rendererClientBus.refreshResourceNamespaces(),
-);
-const unsubscribeResourceWorkspace = subscribeRendererWorkspace(() =>
-	rendererClientBus.refreshResourceNamespaces(),
-);
-if (import.meta.hot) import.meta.hot.dispose(unsubscribeResourceWorkspace);
-if (import.meta.hot) import.meta.hot.dispose(unsubscribeResourceAccount);
 const optimisticRestorationByResource = new Map<string, Promise<void>>();
 reportPassiveSessionFault = (environmentId, fault, expectedGeneration) =>
 	rendererClientBus.reportConnectionFault(
@@ -1375,12 +1307,11 @@ const olderSessionMessageLoads = makeSessionMessagePager({
 	allowLiveAdvance: (ref) => isCloudTimelineEnvironment(ref.environmentId),
 	readPage: async (ref, client, cursor, beforeSequence, signal) => {
 		const cloud = isCloudTimelineEnvironment(ref.environmentId);
-		const namespace = rendererResourceCacheNamespace(ref.environmentId);
 		// The synchronizer validates the authoritative head before history starts.
 		const cached =
-			cloud && cursor !== null && namespace !== null
+			cloud && cursor !== null
 				? await sessionTimelineCache
-						?.loadHistoryPage(ref, cursor, beforeSequence, namespace)
+						?.loadHistoryPage(ref, cursor, beforeSequence)
 						.catch(() => null)
 				: null;
 		if (cached) return cached;
@@ -1400,15 +1331,9 @@ const olderSessionMessageLoads = makeSessionMessagePager({
 					}),
 					{ signal },
 				));
-		if (
-			!signal?.aborted &&
-			cloud &&
-			cursor !== null &&
-			page &&
-			namespace !== null
-		)
+		if (!signal?.aborted && cloud && cursor !== null && page)
 			await sessionTimelineCache
-				?.saveHistoryPage(ref, cursor, beforeSequence, page, namespace)
+				?.saveHistoryPage(ref, cursor, beforeSequence, page)
 				.catch(() => undefined);
 		return page;
 	},

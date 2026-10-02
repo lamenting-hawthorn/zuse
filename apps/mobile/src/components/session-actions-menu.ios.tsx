@@ -21,7 +21,6 @@ export function SessionActionsMenu({
 	onFiles,
 	onTerminal,
 	onOpenOnDesktop,
-	onShare,
 	onArchive,
 }: {
 	isPinned: boolean;
@@ -35,7 +34,6 @@ export function SessionActionsMenu({
 	onFiles: () => void;
 	onTerminal?: () => void;
 	onOpenOnDesktop?: () => void;
-	onShare?: () => void;
 	onArchive: () => void;
 }) {
 	return (
@@ -70,13 +68,6 @@ export function SessionActionsMenu({
 					}
 					modifiers={[accessibilityLabel("Chat actions")]}
 				>
-					{onShare ? (
-						<NativeButton
-							label="Share chat"
-							systemImage={sf("square.and.arrow.up")}
-							onPress={onShare}
-						/>
-					) : null}
 					{onPin !== undefined ? (
 						<NativeButton
 							label={isPinned ? "Unpin" : "Pin"}

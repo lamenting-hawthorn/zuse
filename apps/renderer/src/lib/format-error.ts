@@ -22,9 +22,6 @@ const diagnosticErrorType = (value: unknown): string => {
 // fall through to a raw JSON dump like `{ "folderId": "…" }`. Map them to
 // human copy here so any surface that formats them stays readable.
 const TAG_MESSAGES: Record<string, string> = {
-	get RpcAccessDeniedError() {
-		return uiMessage("errors:format_error_access_denied");
-	},
 	get PermissionRequestExpiredError() {
 		return uiMessage(
 			"errors:format_error_the_agent_restarted_and_this_approval_expired_dismiss_it_and_send",

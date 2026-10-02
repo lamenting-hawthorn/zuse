@@ -42,6 +42,7 @@ type State = {
 	readonly ensureLoaded: () => Promise<void>;
 	/** Force the server to re-fetch the remote document and live listings. */
 	readonly refresh: () => Promise<void>;
+	readonly refreshFor: (environmentId: EnvironmentId) => Promise<void>;
 	/** Apply a catalog pushed by the server's `model.catalog.stream`. */
 	readonly receive: (
 		environmentId: EnvironmentId,
@@ -172,8 +173,11 @@ export const useModelCatalogStore = create<State>((set, get) => {
 		if (changed) writeStorage(next);
 	};
 
-	const load = async (refresh: boolean): Promise<void> => {
-		if (isHostedProduct() && activeEnvironmentId() === "local") {
+	const load = async (
+		refresh: boolean,
+		environmentId = activeEnvironmentId(),
+	): Promise<void> => {
+		if (isHostedProduct() && environmentId === "local") {
 			set({
 				loading: false,
 				loadedAt: Date.now(),
@@ -181,13 +185,13 @@ export const useModelCatalogStore = create<State>((set, get) => {
 			});
 			return;
 		}
-		const environmentId = activeEnvironmentId();
 		const pendingLoad = pendingLoads.get(environmentId);
 		if (pendingLoad !== undefined) {
 			await pendingLoad;
 			return;
 		}
-		set({ loading: true, error: null });
+		if (environmentId === activeEnvironmentId())
+			set({ loading: true, error: null });
 		const startedAtPush = pushSequence;
 		const run = (async () => {
 			try {
@@ -232,6 +236,7 @@ export const useModelCatalogStore = create<State>((set, get) => {
 			await load(false);
 		},
 		refresh: () => load(true),
+		refreshFor: (environmentId) => load(true, environmentId),
 		receive: (environmentId, catalog) => {
 			if (environmentId !== activeEnvironmentId()) return;
 			pushSequence += 1;

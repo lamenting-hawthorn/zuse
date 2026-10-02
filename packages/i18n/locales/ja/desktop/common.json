@@ -1,8 +1,4 @@
 {
-	"device_preferences_save_failed": "デバイス設定を保存できませんでした。以前の設定は変更されていません。",
-	"workspace_settings_load_failed": "ワークスペース設定を読み込めませんでした。もう一度お試しください。",
-	"workspace_settings_save_failed": "ワークスペース設定を保存できませんでした。更新してからもう一度お試しください。",
-	"workspace_settings_separate_configuration": "この設定はワークスペースごとに個別に構成してください。",
 	"projects_and_chats": "プロジェクトとチャット",
 	"collapse": "折りたたむ {{title}}",
 	"expand": "展開 {{title}}",
@@ -56,12 +52,5 @@
 	"recording_shortcut": "{{label}} のショートカットを記録中",
 	"recording_new_shortcut": "新しい操作のショートカットを記録中",
 	"provider_settings": "プロバイダー設定",
-	"startup_surface_loading_zuse": "Zuseを読み込み中",
-	"startup_surface_zuse": "Zuse",
-	"startup_surface_still_starting_zuse": "まだZuseを始めています…",
-	"startup_surface_zuse_couldn_t_start": "Zuse を起動できませんでした",
-	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "ローカルサーバーが利用可能になりませんでした。データはまだディスク上にあります。",
-	"startup_surface_try_again": "もう一度試してください",
-	"startup_surface_reload": "リロード",
-	"startup_surface_copy_details": "詳細をコピーする"
+	"copy_failed": "コピーに失敗しました"
 }

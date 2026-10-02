@@ -1,4 +1,5 @@
 import { cloudProviderAuthenticationMode } from "@zuse/client-runtime/cloud-provider-availability";
+import { PROVIDER_LABEL as PROVIDER_LABEL_FOR_ERROR } from "~/lib/provider-labels";
 import { useStreamingText } from "../hooks/use-streaming-text.ts";
 import { ContextPill, contextPillClass } from "./context-pill.tsx";
 import "@zuse/i18n/english/common";
@@ -36,19 +37,14 @@ import {
 	ChevronRight,
 	RefreshCw as RefreshIcon,
 } from "lucide-react";
-import { memo, type ReactNode, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { FileIcon } from "~/components/file-icon";
-import {
-	attachmentDataUrl,
-	downloadAttachment,
-	useAttachmentUrl,
-} from "~/lib/attachments";
+import { attachmentDataUrl, useAttachmentUrl } from "~/lib/attachments";
 import {
 	localProjectForCloudEnvironment,
 	useCloudChatCatalogStore,
 } from "~/lib/cloud-workspace-catalog.ts";
 import { useActiveEnvironmentEntities } from "~/lib/environment-entity-hooks.ts";
-import { formatError } from "~/lib/format-error";
 import { openNewChatLanding } from "~/lib/open-new-chat-landing.ts";
 import {
 	orchestrationToolName,
@@ -462,7 +458,7 @@ function CompactRow({
 	readonly afterTokens: number | null;
 	readonly startedAt: number;
 	readonly durationMs: number;
-	readonly status: "in_progress" | "completed";
+	readonly status: "in_progress" | "completed" | "failed";
 }) {
 	const { message: uiMessage } = useUiMessages(["chat", "common"]);
 
@@ -492,7 +488,9 @@ function CompactRow({
 			<span className="shrink-0 whitespace-nowrap text-sm font-medium text-foreground/90">
 				{inProgress
 					? uiMessage("chat:message_row_compacting")
-					: uiMessage("chat:message_row_chat_compacted")}
+					: status === "failed"
+						? uiMessage("chat:message_row_compaction_failed")
+						: uiMessage("chat:message_row_chat_compacted")}
 			</span>
 			<span
 				className="min-w-0 truncate text-[11px] tabular-nums text-muted-foreground/70"
@@ -831,18 +829,6 @@ const formatResetDetail = (info: RateLimitInfo): string => {
 	return "Try again later";
 };
 
-const PROVIDER_LABEL_FOR_ERROR: Record<ProviderId, string> = {
-	claude: "Claude Code",
-	codex: "Codex",
-	grok: "Grok",
-	gemini: "Gemini",
-	cursor: "Cursor",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro",
-	pi: "Pi",
-};
-
 /**
  * "Authentication required" card shown when a login-capable provider reports
  * an auth failure. Reuses the shared `useProviderLogin` flow
@@ -876,6 +862,7 @@ function ProviderAuthCard({
 	);
 	const reopenSession = useSessionsStore((s) => s.resume);
 	const { state, start, cancel } = useProviderLogin(providerId, {
+		environmentId,
 		onSuccess: () => {
 			// Re-probe first so the keychain write has landed and this card
 			// resolves (hides) before recovery. Reopen the provider with the fresh
@@ -1542,21 +1529,6 @@ function AttachmentChip({
 			</button>
 		);
 	}
-	if (sessionRef !== null) {
-		return (
-			<AttachmentDownloadButton
-				key={JSON.stringify([
-					sessionRef.environmentId,
-					sessionRef.sessionId,
-					a.id,
-				])}
-				refValue={sessionRef}
-				attachment={a}
-			>
-				{inner}
-			</AttachmentDownloadButton>
-		);
-	}
 	return (
 		<a
 			key={a.id}
@@ -1572,54 +1544,5 @@ function AttachmentChip({
 		>
 			{inner}
 		</a>
-	);
-}
-
-function AttachmentDownloadButton({
-	refValue,
-	attachment,
-	children,
-}: {
-	refValue: SessionRef;
-	attachment: AttachmentRef;
-	children: ReactNode;
-}) {
-	const { message } = useUiMessages(["common"]);
-	const request = useRef<AbortController | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	useEffect(() => () => request.current?.abort(), []);
-	return (
-		<button
-			type="button"
-			className={contextPillClass}
-			disabled={busy || attachment.id.startsWith("pending-")}
-			aria-busy={busy}
-			title={error ?? attachment.originalName}
-			onClick={() => {
-				if (request.current !== null) return;
-				const controller = new AbortController();
-				request.current = controller;
-				setBusy(true);
-				setError(null);
-				void downloadAttachment(refValue, attachment.id, controller.signal)
-					.catch((cause: unknown) => {
-						if (!controller.signal.aborted) setError(formatError(cause));
-					})
-					.finally(() => {
-						if (!controller.signal.aborted) {
-							request.current = null;
-							setBusy(false);
-						}
-					});
-			}}
-		>
-			{children}
-			{busy ? (
-				<span role="status">{message("common:loading")}</span>
-			) : error !== null ? (
-				<span role="alert">{message("common:retry")}</span>
-			) : null}
-		</button>
 	);
 }

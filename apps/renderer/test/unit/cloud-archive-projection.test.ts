@@ -12,7 +12,6 @@ import {
 	stageCloudChat,
 	useCloudChatsStore,
 } from "../../src/lib/cloud-workspaces.ts";
-import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 import {
 	setArchiveCommandForTest,
 	useArchivePreviewStore,
@@ -134,7 +133,6 @@ it("does not resurrect an archive from an older catalog revision", () => {
 });
 
 it("removes deleted cloud archives and their open previews from every project on refresh", async () => {
-	observeRendererAccount("archive-owner");
 	const otherProjectId = FolderId.make("archive-projection-other");
 	stageCloudChat(summary, projectId);
 	stageCloudChat(summary, otherProjectId);

@@ -4,56 +4,32 @@ import {
 	type ApiEnvironmentList,
 	type ApiEnvironmentStatus,
 	ApiPaths,
-	AuthUser,
+	type AuthUser,
+	HOSTED_APP_URL,
 	WIRE_PROTOCOL_VERSION,
 	WORKOS_PUBLIC_CLIENT_ID,
 	WORKOS_STAGING_PUBLIC_CLIENT_ID,
-	WORKSPACE_API_PREFIX,
-	WORKSPACE_SCOPE_HEADER,
-	WorkspaceScope,
 } from "@zuse/contracts";
-import { Schema } from "effect";
 
 import { rendererApiUrl } from "./api-url.ts";
-import {
-	decodeHostedJwtPayload,
-	type HostedSession,
-	hostedAccountId,
-	hostedAuthState,
-	jwtExpiry,
-	publishHostedAuth,
-	readSession,
-	SESSION_KEY,
-	writeSession,
-} from "./hosted-session.ts";
-import {
-	assertRendererAccountCurrent,
-	rendererAccountSnapshot,
-	subscribeRendererAccount,
-} from "./renderer-account.ts";
-
-export {
-	hostedAccountId,
-	hostedAuthState,
-	subscribeHostedAuth,
-} from "./hosted-session.ts";
-export { isHostedProduct } from "./platform-capabilities.ts";
-
-import { isHostedProduct } from "./platform-capabilities.ts";
-export const hostedAccountUser = (): AuthUser | null =>
-	readSession()?.user ?? null;
-export const hostedCacheDatabaseName = (base: string): string =>
-	isHostedProduct() ? `${base}:hosted:${hostedAccountId()}` : base;
 
 let sessionEpoch = 0;
 export const hostedSessionEpoch = (): number => sessionEpoch;
 
 const WORKOS_API = "https://api.workos.com";
+const SESSION_KEY = "zuse.hosted.session.v1";
 const PKCE_KEY = "zuse.hosted.pkce.v1";
 const DEVICE_ID_KEY = "zuse.hosted.device-id.v1";
 const DPOP_DATABASE = "zuse-hosted-device";
 const DPOP_STORE = "keys";
 const DPOP_KEY = "account";
+
+type HostedSession = {
+	readonly user?: AuthUser | null;
+	readonly accessToken: string;
+	readonly refreshToken: string;
+	readonly expiresAt: number;
+};
 
 type StoredDpopKey = {
 	readonly privateKey: CryptoKey;
@@ -64,64 +40,48 @@ let apiAccess: { readonly token: string; readonly expiresAt: number } | null =
 	null;
 
 export type HostedEndpointLease = {
-	readonly select: (
-		environmentId: string,
-		initial?: () => Promise<string>,
-	) => Promise<void>;
-	readonly next: () => Promise<string>;
+	readonly set: (environmentId: string, endpoint: string) => void;
+	readonly next: (
+		refresh: (environmentId: string) => Promise<void>,
+	) => Promise<string>;
 	readonly clear: () => void;
 };
 
-export const createHostedEndpointLease = (
-	refresh: (environmentId: string) => Promise<string>,
-): HostedEndpointLease => {
-	let selected: { environmentId: string; endpoint: string | null } | null =
-		null;
-	const load = async (selection: NonNullable<typeof selected>) => {
-		const endpoint = await refresh(selection.environmentId);
-		if (selection !== selected) throw new Error("hosted_environment_changed");
-		return endpoint;
-	};
+export const createHostedEndpointLease = (): HostedEndpointLease => {
+	let environmentId: string | null = null;
+	let endpoint: string | null = null;
 	return {
-		select: async (environmentId, initial) => {
-			const selection: NonNullable<typeof selected> = {
-				environmentId,
-				endpoint: null,
-			};
-			selected = selection;
-			const endpoint =
-				initial === undefined ? await load(selection) : await initial();
-			if (selection !== selected) throw new Error("hosted_environment_changed");
-			selection.endpoint = endpoint;
+		set: (nextEnvironmentId, nextEndpoint) => {
+			environmentId = nextEnvironmentId;
+			endpoint = nextEndpoint;
 		},
-		next: async () => {
-			if (selected === null) {
+		next: async (refresh) => {
+			if (environmentId === null) {
 				throw new Error("hosted_environment_not_selected");
 			}
-			const selection = selected;
-			const leased = selection.endpoint;
-			selection.endpoint = null;
-			if (leased === null) return load(selection);
+			if (endpoint === null) await refresh(environmentId);
+			if (endpoint === null) throw new Error("hosted_connect_grant_missing");
+			const leased = endpoint;
+			endpoint = null;
 			return leased;
 		},
 		clear: () => {
-			selected = null;
+			environmentId = null;
+			endpoint = null;
 		},
 	};
 };
 
-const rpcEndpointLease = createHostedEndpointLease((environmentId) =>
-	fetchHostedEndpoint(environmentId),
-);
-const unsubscribeAccount = subscribeRendererAccount(() => {
-	apiAccess = null;
-	rpcEndpointLease.clear();
-});
-if (import.meta.hot) import.meta.hot.dispose(unsubscribeAccount);
+const rpcEndpointLease = createHostedEndpointLease();
 
 const environment = (): Record<string, string | undefined> =>
 	(import.meta as { readonly env?: Record<string, string | undefined> }).env ??
 	{};
+
+export const isHostedProduct = (
+	locationOrigin = globalThis.window?.location?.origin ?? "",
+): boolean =>
+	environment().VITE_ZUSE_HOSTED === "1" || locationOrigin === HOSTED_APP_URL;
 
 export const resolveHostedWorkosClientId = (
 	configuredClientId: string | undefined,
@@ -157,6 +117,71 @@ const sha256 = async (value: string): Promise<string> =>
 		),
 	);
 
+export const decodeHostedJwtPayload = (
+	token: string,
+): { readonly exp?: unknown; readonly sub?: unknown } | null => {
+	try {
+		const encoded = token.split(".")[1];
+		if (encoded === undefined) return null;
+		const normalized = encoded.replaceAll("-", "+").replaceAll("_", "/");
+		return JSON.parse(atob(normalized)) as {
+			readonly exp?: unknown;
+			readonly sub?: unknown;
+		};
+	} catch {
+		return null;
+	}
+};
+
+const jwtExpiry = (token: string): number => {
+	const payload = decodeHostedJwtPayload(token);
+	return typeof payload?.exp === "number"
+		? payload.exp * 1_000
+		: Date.now() + 5 * 60_000;
+};
+
+const readSession = (): HostedSession | null => {
+	try {
+		let raw = localStorage.getItem(SESSION_KEY);
+		if (raw === null) {
+			raw = sessionStorage.getItem(SESSION_KEY);
+			if (raw !== null) {
+				localStorage.setItem(SESSION_KEY, raw);
+				sessionStorage.removeItem(SESSION_KEY);
+			}
+		}
+		if (raw === null) return null;
+		const value = JSON.parse(raw) as Partial<HostedSession>;
+		return value !== null &&
+			typeof value.accessToken === "string" &&
+			typeof value.refreshToken === "string" &&
+			typeof value.expiresAt === "number"
+			? (value as HostedSession)
+			: null;
+	} catch {
+		return null;
+	}
+};
+
+export const hostedAccountId = (): string | null => {
+	const token = readSession()?.accessToken;
+	if (token === undefined) return null;
+	const payload = decodeHostedJwtPayload(token);
+	return typeof payload?.sub === "string" ? payload.sub : null;
+};
+
+export const hostedAccountUser = (): AuthUser | null =>
+	readSession()?.user ?? null;
+
+export const hostedCacheDatabaseName = (base: string): string =>
+	isHostedProduct() ? `${base}:hosted:${hostedAccountId()}` : base;
+
+const writeSession = (session: HostedSession): HostedSession => {
+	localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+	sessionStorage.removeItem(SESSION_KEY);
+	return session;
+};
+
 export const hostedAuthTokenEndpoint = (baseUrl = rendererApiUrl()): string =>
 	`${baseUrl.replace(/\/$/u, "")}${ApiPaths.authToken}`;
 
@@ -173,7 +198,6 @@ const clearHostedSession = (): void => {
 	// A tombstone also prevents a still-open legacy tab from migrating old tokens.
 	localStorage.setItem(SESSION_KEY, "null");
 	sessionStorage.removeItem(SESSION_KEY);
-	publishHostedAuth();
 };
 
 /** Reload account-owned state when another tab signs out or changes account. */
@@ -222,8 +246,8 @@ const authenticate = async (
 	const value = (await response.json().catch(() => ({}))) as {
 		readonly access_token?: unknown;
 		readonly refresh_token?: unknown;
-		readonly user?: unknown;
 		readonly error?: unknown;
+		readonly user?: AuthUser;
 	};
 	if (
 		!response.ok ||
@@ -237,20 +261,14 @@ const authenticate = async (
 				: `workos_auth_${response.status}`,
 		);
 	}
-	let user: AuthUser;
-	try {
-		user = Schema.decodeUnknownSync(AuthUser)(value.user);
-	} catch {
-		throw new Error("hosted_auth_profile_missing");
-	}
 	if (
 		epoch !== sessionEpoch ||
 		(grant.grantType === "refresh_token" &&
 			readSession()?.refreshToken !== grant.refreshToken)
 	)
-		throw new Error("hosted_auth_changed");
+		throw new Error("hosted_signed_out");
 	return writeSession({
-		user,
+		user: value.user ?? null,
 		accessToken: value.access_token,
 		refreshToken: value.refresh_token,
 		expiresAt: jwtExpiry(value.access_token),
@@ -475,17 +493,14 @@ const apiFetch = async (
 		readonly body?: unknown;
 	},
 ): Promise<Response> => {
-	const account = rendererAccountSnapshot();
 	const target = `${rendererApiUrl()}${path}`;
 	const proof = await signDpopProof({ method: init.method, url: target });
-	assertRendererAccountCurrent(account);
 	const workosToken =
 		init.token === undefined ? await hostedAccessToken() : null;
-	assertRendererAccountCurrent(account);
 	if (init.token === undefined && workosToken === null) {
 		throw new Error("hosted_signed_out");
 	}
-	const response = await fetch(target, {
+	return fetch(target, {
 		signal: AbortSignal.timeout(15_000),
 		method: init.method,
 		headers: {
@@ -500,12 +515,9 @@ const apiFetch = async (
 		},
 		body: init.body === undefined ? undefined : JSON.stringify(init.body),
 	});
-	assertRendererAccountCurrent(account);
-	return response;
 };
 
 const ensureApiAccess = async (): Promise<string> => {
-	const account = rendererAccountSnapshot();
 	if (apiAccess !== null && apiAccess.expiresAt - Date.now() > 60_000) {
 		return apiAccess.token;
 	}
@@ -515,7 +527,6 @@ const ensureApiAccess = async (): Promise<string> => {
 		readonly expiresIn?: unknown;
 		readonly error?: unknown;
 	};
-	assertRendererAccountCurrent(account);
 	if (!response.ok || typeof body.accessToken !== "string") {
 		throw new Error(
 			typeof body.error === "string"
@@ -532,64 +543,18 @@ const ensureApiAccess = async (): Promise<string> => {
 	return apiAccess.token;
 };
 
-export const hostedSignedIn = async (): Promise<boolean> => {
-	const signedIn = (await hostedAccessToken()) !== null;
-	publishHostedAuth();
-	return signedIn && hostedAuthState()._tag === "SignedIn";
-};
-
-export const hostedAccountRequest = async (
-	path: string,
-	body?: unknown,
-	options?: {
-		readonly method?: string;
-		readonly workspace?: WorkspaceScope;
-		readonly signal?: AbortSignal;
-	},
-): Promise<Response> => {
-	const account = rendererAccountSnapshot();
-	const scope =
-		options?.workspace === undefined
-			? undefined
-			: Schema.decodeUnknownSync(WorkspaceScope)(options.workspace);
-	const scopedPath =
-		scope?.kind === "organization"
-			? `${WORKSPACE_API_PREFIX}${scope.organizationId}${path}`
-			: path;
-	const token = await hostedAccessToken();
-	assertRendererAccountCurrent(account);
-	if (token === null) throw new Error("hosted_signed_out");
-	const response = await fetch(`${rendererApiUrl()}${scopedPath}`, {
-		method: options?.method ?? (body === undefined ? "GET" : "POST"),
-		headers: {
-			...(scope === undefined
-				? {}
-				: {
-						[WORKSPACE_SCOPE_HEADER]:
-							scope.kind === "personal"
-								? "personal"
-								: `organization:${scope.organizationId}`,
-					}),
-			authorization: `Bearer ${token}`,
-			...(body === undefined ? {} : { "content-type": "application/json" }),
-		},
-		body: body === undefined ? undefined : JSON.stringify(body),
-		signal:
-			options?.signal === undefined
-				? AbortSignal.timeout(30_000)
-				: AbortSignal.any([options.signal, AbortSignal.timeout(30_000)]),
-	});
-	assertRendererAccountCurrent(account);
-	return response;
-};
+export const hostedSignedIn = async (): Promise<boolean> =>
+	(await hostedAccessToken()) !== null && hostedAccountId() !== null;
 
 export const listHostedEnvironments = async (): Promise<ApiEnvironmentList> => {
-	const account = rendererAccountSnapshot();
-	const response = await hostedAccountRequest(ApiPaths.environments);
+	const token = await hostedAccessToken();
+	if (token === null) throw new Error("hosted_signed_out");
+	const response = await fetch(`${rendererApiUrl()}${ApiPaths.environments}`, {
+		signal: AbortSignal.timeout(15_000),
+		headers: { authorization: `Bearer ${token}` },
+	});
 	if (!response.ok) throw new Error(`api_environments_${response.status}`);
-	const environments = (await response.json()) as ApiEnvironmentList;
-	assertRendererAccountCurrent(account);
-	return environments;
+	return (await response.json()) as ApiEnvironmentList;
 };
 
 /** Presence checks do not connect to or wake the runtime. */
@@ -624,24 +589,27 @@ export const removeHostedComputer = async (
 };
 
 export const registerHostedClient = async (): Promise<void> => {
-	const account = rendererAccountSnapshot();
 	const token = await ensureApiAccess();
-	assertRendererAccountCurrent(account);
 	const key = await dpopKey();
-	assertRendererAccountCurrent(account);
 	let deviceId = localStorage.getItem(DEVICE_ID_KEY);
 	if (deviceId === null) {
 		deviceId = crypto.randomUUID();
 		localStorage.setItem(DEVICE_ID_KEY, deviceId);
 	}
-	const response = await apiFetch(ApiPaths.devices, {
+	const target = `${rendererApiUrl()}${ApiPaths.devices}`;
+	const response = await fetch(target, {
+		signal: AbortSignal.timeout(15_000),
 		method: "POST",
-		token,
-		body: {
+		headers: {
+			authorization: `DPoP ${token}`,
+			dpop: await signDpopProof({ method: "POST", url: target }),
+			"content-type": "application/json",
+		},
+		body: JSON.stringify({
 			deviceId,
 			platform: "web",
 			dpopJwk: key.publicJwk,
-		},
+		}),
 	});
 	if (!response.ok) throw new Error(`api_device_${response.status}`);
 };
@@ -653,12 +621,11 @@ export const hostedConnectGrantEndpoint = (grant: ApiConnectGrant): string => {
 	return url.toString();
 };
 
-const fetchHostedGrant = async (
+export const connectHostedEnvironment = async (
 	environmentId: string,
+	options: { lease?: boolean } = {},
 ): Promise<ApiConnectGrant> => {
-	const account = rendererAccountSnapshot();
 	const token = await ensureApiAccess();
-	assertRendererAccountCurrent(account);
 	const response = await apiFetch(ApiPaths.connect(environmentId), {
 		method: "POST",
 		token,
@@ -670,7 +637,6 @@ const fetchHostedGrant = async (
 	const body = (await response.json().catch(() => ({}))) as
 		| ApiConnectGrant
 		| { readonly error?: unknown };
-	assertRendererAccountCurrent(account);
 	if (!response.ok || !("connectToken" in body)) {
 		throw new Error(
 			"error" in body && typeof body.error === "string"
@@ -678,26 +644,15 @@ const fetchHostedGrant = async (
 				: `api_connect_${response.status}`,
 		);
 	}
+	if (options.lease !== false)
+		rpcEndpointLease.set(environmentId, hostedConnectGrantEndpoint(body));
 	return body;
 };
 
-const fetchHostedEndpoint = async (environmentId: string): Promise<string> =>
-	hostedConnectGrantEndpoint(await fetchHostedGrant(environmentId));
-
-export const connectHostedEnvironment = async (
-	environmentId: string,
-	options: { lease?: boolean } = {},
-): Promise<ApiConnectGrant> => {
-	if (options.lease === false) return fetchHostedGrant(environmentId);
-	const grant = fetchHostedGrant(environmentId);
-	await rpcEndpointLease.select(environmentId, async () =>
-		hostedConnectGrantEndpoint(await grant),
-	);
-	return grant;
-};
-
 export const nextHostedRpcEndpoint = (): Promise<string> =>
-	rpcEndpointLease.next();
+	rpcEndpointLease.next(async (environmentId) => {
+		await connectHostedEnvironment(environmentId);
+	});
 
 export const signOutHostedProduct = async (): Promise<void> => {
 	const accountId = hostedAccountId();
@@ -717,8 +672,6 @@ export const signOutHostedProduct = async (): Promise<void> => {
 	}
 
 	const deviceId = localStorage.getItem(DEVICE_ID_KEY);
-	sessionStorage.removeItem(SESSION_KEY);
-	publishHostedAuth();
 	if (token !== null && deviceId !== null) {
 		await fetch(`${rendererApiUrl()}${ApiPaths.client(deviceId)}`, {
 			method: "DELETE",
@@ -726,6 +679,7 @@ export const signOutHostedProduct = async (): Promise<void> => {
 			headers: { authorization: `Bearer ${token}` },
 		}).catch(() => undefined);
 	}
+	sessionStorage.removeItem(SESSION_KEY);
 	sessionStorage.removeItem(PKCE_KEY);
 	localStorage.removeItem(DEVICE_ID_KEY);
 	apiAccess = null;

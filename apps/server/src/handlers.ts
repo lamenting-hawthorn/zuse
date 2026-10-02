@@ -11,6 +11,7 @@ import { DiagnosticsHandlersLayer } from "./diagnostics/handlers.ts";
 import { ExternalThreadHandlersLayer } from "./external-thread/handlers.ts";
 import { FsHandlersLayer } from "./fs/handlers.ts";
 import { GitHandlersLayer } from "./git/handlers.ts";
+import { ModelConnectionsHandlersLayer } from "./harness/handlers.ts";
 import { HostHandlersLayer } from "./host/handlers.ts";
 import { LanAuthHandlersLayer } from "./lan-auth/handlers.ts";
 import { LinearHandlersLayer } from "./linear/handlers.ts";
@@ -36,6 +37,7 @@ import { WorktreeHandlersLayer } from "./worktree/handlers.ts";
  * sneaking into the handler boundary.
  */
 export const HandlersLayer = Layer.mergeAll(
+	ModelConnectionsHandlersLayer,
 	DeviceBridgeHandlersLayer,
 	PingHandlersLayer,
 	PreviewsHandlersLayer,

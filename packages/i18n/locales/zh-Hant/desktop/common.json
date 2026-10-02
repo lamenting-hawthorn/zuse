@@ -1,8 +1,4 @@
 {
-	"device_preferences_save_failed": "無法儲存裝置偏好設定。原有偏好設定維持不變。",
-	"workspace_settings_load_failed": "無法載入工作區設定。請重試。",
-	"workspace_settings_save_failed": "無法儲存工作區設定。請重新整理後重試。",
-	"workspace_settings_separate_configuration": "請單獨為此工作區配置此設定。",
 	"projects_and_chats": "專案與聊天",
 	"collapse": "收合 {{title}}",
 	"expand": "展開 {{title}}",
@@ -56,12 +52,5 @@
 	"recording_shortcut": "正在錄製 {{label}} 的快捷鍵",
 	"recording_new_shortcut": "正在錄製新操作的快捷鍵",
 	"provider_settings": "供應商設定",
-	"startup_surface_loading_zuse": "正在加載Zuse",
-	"startup_surface_zuse": "Zuse",
-	"startup_surface_still_starting_zuse": "仍在開始 Zuse...",
-	"startup_surface_zuse_couldn_t_start": "Zuse無法啟動",
-	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "本地伺服器不可用。您的資料仍在磁碟上。",
-	"startup_surface_try_again": "再試一次",
-	"startup_surface_reload": "重新載入",
-	"startup_surface_copy_details": "複製詳細信息"
+	"copy_failed": "複製失敗"
 }

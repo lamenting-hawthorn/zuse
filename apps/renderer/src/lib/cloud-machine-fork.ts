@@ -35,8 +35,7 @@ export const forkCloudMachine = async (input: {
 	const sourceTimeline =
 		bus.snapshot(sessionTimelineResourceKey(sourceRef)).data ??
 		(await sessionTimelineCache?.load(sourceRef).catch(() => null))?.projection;
-	const scope = cloud.workspaceScope ?? { kind: "personal" as const };
-	const control = await getControlPlaneRpcClient(scope);
+	const control = await getControlPlaneRpcClient();
 	const launch = await Effect.runPromise(
 		control["cloud.workspaces.fork"]({
 			projectId: cloud.projectId,
@@ -54,7 +53,7 @@ export const forkCloudMachine = async (input: {
 		}),
 	);
 	const summary = summaryFromLaunch({
-		workspaceScope: scope,
+		workspaceScope: { kind: "personal" },
 		workspace: launch.workspace,
 		repositoryIdentity: cloud.repositoryIdentity,
 		repositoryDisplayName: cloud.repositoryDisplayName,

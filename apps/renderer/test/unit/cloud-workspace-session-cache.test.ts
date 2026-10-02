@@ -10,68 +10,14 @@ const { getControlPlaneRpcClient } = await import(
 const { clearControlPlaneSessionCache } = await import(
 	"../../src/lib/control-plane-client.ts"
 );
-const {
-	loadCloudWorkspacePlacement,
-	loadCloudImage,
-	loadCloudEntitlements,
-	loadCloudGithub,
-} = await import("../../src/lib/cloud-workspace-session-cache.ts");
+const { loadCloudWorkspacePlacement, loadCloudImage, loadCloudEntitlements } =
+	await import("../../src/lib/cloud-workspace-session-cache.ts");
 
 beforeEach(() => {
 	clearControlPlaneSessionCache();
 	vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
-
-it("loads funded organization placement without requesting private billing records", async () => {
-	const entitlements = vi.fn(() => Effect.fail({ code: "not-allowed" }));
-	vi.mocked(getControlPlaneRpcClient).mockResolvedValue({
-		"cloud.providers": () => Effect.succeed({ providers: [], entitled: true }),
-		"cloud.projects.list": () => Effect.succeed({ projects: [] }),
-		"machines.entitlements": entitlements,
-	} as unknown as Awaited<ReturnType<typeof getControlPlaneRpcClient>>);
-	await expect(loadCloudWorkspacePlacement()).resolves.toMatchObject({
-		subscribed: true,
-	});
-	expect(entitlements).not.toHaveBeenCalled();
-});
-
-it("refreshes GitHub connection state after webhook changes instead of caching it indefinitely", async () => {
-	let configured = false;
-	const status = vi.fn(() =>
-		Effect.succeed({ configured, installations: [], repositories: [] }),
-	);
-	vi.mocked(getControlPlaneRpcClient).mockResolvedValue({
-		"cloud.github.status": status,
-	} as unknown as Awaited<ReturnType<typeof getControlPlaneRpcClient>>);
-	expect((await loadCloudGithub()).configured).toBe(false);
-	configured = true;
-	await loadCloudGithub();
-	expect(status).toHaveBeenCalledTimes(1);
-	await vi.advanceTimersByTimeAsync(30_001);
-	await loadCloudGithub();
-	await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(2));
-	expect((await loadCloudGithub()).configured).toBe(true);
-});
-
-it("rechecks a previously unsubscribed workspace after checkout instead of caching it for the app session", async () => {
-	let paid = false;
-	const entitlements = vi.fn(() =>
-		Effect.succeed({
-			entitlements: paid ? [{ kind: "cloud-workspace", status: "active" }] : [],
-		}),
-	);
-	vi.mocked(getControlPlaneRpcClient).mockResolvedValue({
-		"machines.entitlements": entitlements,
-	} as unknown as Awaited<ReturnType<typeof getControlPlaneRpcClient>>);
-	expect((await loadCloudEntitlements()).entitlements).toEqual([]);
-	paid = true;
-	await vi.advanceTimersByTimeAsync(30_001);
-	expect((await loadCloudEntitlements()).entitlements[0]?.status).toBe(
-		"active",
-	);
-	expect(entitlements).toHaveBeenCalledTimes(2);
-});
 
 it("keeps placement visible while refreshing stale display data in the background", async () => {
 	let slow = false;
@@ -84,9 +30,11 @@ it("keeps placement visible while refreshing stale display data in the backgroun
 		slow ? Effect.promise(() => pendingImage) : Effect.succeed(image),
 	);
 	const entitlements = vi.fn(() =>
-		Effect.succeed({
-			entitlements: [{ kind: "cloud-workspace", status: "active" }],
-		}),
+		slow
+			? Effect.promise(() => new Promise(() => {}))
+			: Effect.succeed({
+					entitlements: [{ kind: "cloud-workspace", status: "active" }],
+				}),
 	);
 	vi.mocked(getControlPlaneRpcClient).mockResolvedValue({
 		"cloud.providers": () =>
@@ -102,13 +50,13 @@ it("keeps placement visible while refreshing stale display data in the backgroun
 	const placement = await loadCloudWorkspacePlacement();
 	expect(placement.subscribed).toBe(true);
 	expect(placement.images).toEqual([image]);
-	// Display data stays visible; subscription eligibility is revalidated.
+	// Display data revalidates without blocking; entitlement decisions remain session-scoped.
 	expect(await loadCloudImage("box")).toEqual(image);
 	expect((await loadCloudEntitlements()).entitlements[0]?.status).toBe(
 		"active",
 	);
-	await vi.waitFor(() => expect(imageStatus).toHaveBeenCalledTimes(2));
-	expect(entitlements).toHaveBeenCalledTimes(2);
+	expect(imageStatus).toHaveBeenCalledTimes(2);
+	expect(entitlements).toHaveBeenCalledTimes(1);
 	const refreshed = loadCloudImage("box", true);
 	expect(await loadCloudImage("box")).toEqual(image);
 	resolveImage({ ...image, state: "outdated" });

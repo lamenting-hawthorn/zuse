@@ -1,18 +1,8 @@
 import { cloudSessionPlaceholder } from "@zuse/client-runtime/cloud-catalog";
-import {
-	Chat,
-	ChatId,
-	CloudChatSummary,
-	Folder,
-	FolderId,
-	SessionId,
-} from "@zuse/contracts";
+import { ChatId, CloudChatSummary, FolderId, SessionId } from "@zuse/contracts";
 import { describe, expect, it } from "vitest";
 import { selectChatSurface } from "../../src/lib/chat-surface-selection.ts";
-import {
-	cloudRuntimeProjectId,
-	resolveCloudSession,
-} from "../../src/lib/cloud-session-selection.ts";
+import { resolveCloudSession } from "../../src/lib/cloud-session-selection.ts";
 import { cloudSummaryActiveSessionId } from "../../src/lib/cloud-workspace-catalog.ts";
 import type { EnvironmentShellData } from "../../src/lib/environment-shell-client-bus.ts";
 
@@ -55,46 +45,6 @@ const shellWith = (
 });
 
 describe("cloud chat session recovery", () => {
-	it("binds only the selected chat's real runtime checkout, never the API repository id or first folder", () => {
-		const cloud = summary("box");
-		const folder = Folder.make({
-			id: folderId,
-			name: "runtime",
-			path: "/workspace/repo",
-			addedAt: new Date(0),
-		});
-		const chat = Chat.make({
-			id: cloud.chatId,
-			projectId: folderId,
-			title: cloud.title,
-			titleProvenance: "manual",
-			worktreeId: null,
-			activeSessionId: null,
-			originSessionId: null,
-			archivedAt: null,
-			lastMessageAt: null,
-			lastReadAt: null,
-			createdAt: new Date(0),
-			updatedAt: new Date(0),
-		});
-		const shell = {
-			...shellWith([]),
-			folders: [folder],
-			chatsByProject: { [folderId]: [chat] },
-		};
-		expect(cloudRuntimeProjectId(cloud, shell)).toBe(folderId);
-		expect(cloudRuntimeProjectId(cloud, { ...shell, folders: [] })).toBeNull();
-		expect(
-			cloudRuntimeProjectId(cloud, { ...shell, chatsByProject: {} }),
-		).toBeNull();
-		expect(
-			cloudRuntimeProjectId(
-				{ ...cloud, chatId: ChatId.make("other-chat") },
-				shell,
-			),
-		).toBeNull();
-		expect(cloudRuntimeProjectId(cloud, null)).toBeNull();
-	});
 	it.each([
 		"box",
 		"e2b",

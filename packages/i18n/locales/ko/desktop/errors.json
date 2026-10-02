@@ -1,5 +1,4 @@
 {
-	"format_error_access_denied": "Access denied. Sign in again or ask the workspace owner.",
 	"format_error_the_agent_restarted_and_this_approval_expired_dismiss_it_and_send": "에이전트가 다시 시작되었으며 이 승인이 만료되었습니다. 계속하려면 해당 항목을 닫고 메시지를 보내세요.",
 	"format_error_this_approval_is_no_longer_pending_it_may_have_been_resolved_on_a": "이 승인은 더 이상 보류되지 않습니다. 다른 기기에서 해결되었을 수도 있습니다.",
 	"format_error_this_folder_isn_t_a_git_repository": "이 폴더는 Git 저장소가 아닙니다.",

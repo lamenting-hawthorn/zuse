@@ -6,7 +6,6 @@ import {
 	MessageId,
 	SessionId,
 	SessionTimelineProjection,
-	type WorkspaceScope,
 } from "@zuse/contracts";
 import { emptyTimelineProjection } from "@zuse/domain/projectors/timeline-reducer";
 import { Effect } from "effect";
@@ -19,7 +18,6 @@ const mocks = vi.hoisted(() => ({
 	load: vi.fn(),
 	open: vi.fn(),
 	create: vi.fn(),
-	clientScope: vi.fn(),
 }));
 vi.mock("../../src/lib/session-timeline-client-bus.ts", () => ({
 	getRendererClientBus: () => ({
@@ -33,30 +31,18 @@ vi.mock("../../src/lib/session-timeline-cache.ts", () => ({
 }));
 vi.mock("../../src/lib/cloud-workspaces.ts", () => ({
 	openCloudChat: mocks.open,
-	summaryFromLaunch: ({
-		workspace,
-		workspaceScope,
-	}: {
-		workspace: object;
-		workspaceScope: WorkspaceScope;
-	}) => ({ ...workspace, workspaceScope }),
+	summaryFromLaunch: ({ workspace }: { workspace: unknown }) => workspace,
 }));
 vi.mock("../../src/lib/rpc-client.ts", () => ({
-	getControlPlaneRpcClient: async (scope: WorkspaceScope) => {
-		mocks.clientScope(scope);
-		return {
-			"cloud.workspaces.fork": mocks.create,
-		};
-	},
+	getControlPlaneRpcClient: async () => ({
+		"cloud.workspaces.fork": mocks.create,
+	}),
 }));
 
 import { forkCloudMachine } from "../../src/lib/cloud-machine-fork.ts";
 
 beforeEach(() => vi.resetAllMocks());
-test.each<WorkspaceScope>([
-	{ kind: "personal" },
-	{ kind: "organization", organizationId: "org_a" },
-])("preserves ownership and history before selecting a fork: %j", async (workspaceScope) => {
+test("stages and persists the child's local history before selecting the new machine", async () => {
 	const source = SessionTimelineProjection.make({
 		...emptyTimelineProjection(),
 		messages: [
@@ -100,7 +86,6 @@ test.each<WorkspaceScope>([
 	});
 	await forkCloudMachine({
 		cloud: {
-			workspaceScope,
 			providerId: "boxd",
 			workspaceId: "parent-vm",
 			projectId: "project",
@@ -115,6 +100,4 @@ test.each<WorkspaceScope>([
 		fromMessageId: MessageId.make("point"),
 	});
 	expect(mocks.open).toHaveBeenCalledOnce();
-	expect(mocks.clientScope).toHaveBeenCalledWith(workspaceScope);
-	expect(mocks.open.mock.calls[0]?.[0]).toMatchObject({ workspaceScope });
 });

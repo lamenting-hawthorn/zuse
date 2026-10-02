@@ -126,7 +126,7 @@ const requestWorkos = <A, I>(
 		if (apiKey === undefined)
 			return yield* serviceUnavailable("organizations_not_configured");
 		const response = yield* Effect.tryPromise({
-			try: () =>
+			try: (signal) =>
 				fetch(`https://api.workos.com${path}`, {
 					method,
 					headers: {
@@ -134,7 +134,7 @@ const requestWorkos = <A, I>(
 						"content-type": "application/json",
 					},
 					body: body === undefined ? undefined : JSON.stringify(body),
-					signal: AbortSignal.timeout(15_000),
+					signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
 				}),
 			catch: () => serviceUnavailable("organizations_unavailable"),
 		});
@@ -418,11 +418,18 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 							);
 						}
 						yield* requireOrganizationMember(userId, org.id, true);
-						yield* requestWorkos(
-							`/organizations/${encodeURIComponent(org.id)}`,
-							WorkosOrganization,
-							"PUT",
-							{ metadata: { ...org.metadata, zuse_setup: "complete" } },
+						const organizationId = org.id;
+						// Creation and sharing defaults must serialize metadata writes on
+						// the same organization key, using the latest provider snapshot.
+						yield* store.withOrganizationLock(
+							organizationId,
+							Effect.gen(function* () {
+								const path = `/organizations/${encodeURIComponent(organizationId)}`;
+								const current = yield* requestWorkos(path, WorkosOrganization);
+								yield* requestWorkos(path, WorkosOrganization, "PUT", {
+									metadata: { ...current.metadata, zuse_setup: "complete" },
+								});
+							}),
 						);
 					}
 					const member = yield* requireOrganizationMember(userId, org.id);

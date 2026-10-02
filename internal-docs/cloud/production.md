@@ -54,9 +54,9 @@ Before deploying this flow:
 
 - Set `GITHUB_APP_CLIENT_SECRET` alongside the existing client ID/private key in
   each API deployment. Never expose the client secret to the renderer.
-- Register both user authorization callback URLs in the shared GitHub App:
-  `https://api.zuse.sh/v1/cloud/github/callback` and
-  `https://api-staging.zuse.sh/v1/cloud/github/callback`.
+- Register each environment's authorization callback in its own GitHub App:
+  production `zusehq` uses `https://api.zuse.sh/v1/cloud/github/callback`;
+  staging `zuse-staging` uses `https://api-staging.zuse.sh/v1/cloud/github/callback`.
 - Grant the app **Organization permissions → Members: read-only**. Existing
   installations must approve this permission before their GitHub organization
   owner can connect them. Repository collaborators cannot grant an entire

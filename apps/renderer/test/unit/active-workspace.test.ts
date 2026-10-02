@@ -2,14 +2,11 @@ import { FolderId } from "@zuse/contracts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
-import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 
 const state = vi.hoisted(() => ({
-	cloud: false,
 	workspace: {
 		loading: false,
-		selectedFolderId: "project" as string | null,
+		selectedFolderId: "project",
 		folders: [{ id: "project", path: "/main" }],
 	},
 	sessions: {
@@ -75,18 +72,10 @@ vi.mock("../../src/store/environment-catalog.ts", () => ({
 	) => select({ activeEnvironmentId: "local" }),
 }));
 vi.mock("../../src/lib/cloud-workspaces.ts", () => ({
-	useCloudChatSummaryForSelection: (selection: { chatId: string | null }) =>
-		state.cloud && selection.chatId === "chat"
-			? { workspaceId: "local" }
-			: null,
+	useCloudChatSummaryForSelection: () => null,
 }));
 vi.mock("../../src/lib/environment-shell-client-bus.ts", () => ({
-	useEnvironmentShellResource: (environmentId: string | null) => ({
-		data:
-			state.cloud && environmentId === "local"
-				? { folders: [{ id: "cloud-folder", path: "/home/repos/zuse" }] }
-				: null,
-	}),
+	useEnvironmentShellResource: () => ({ data: null }),
 }));
 vi.mock("../../src/lib/environment-entity-hooks.ts", () => ({
 	useActiveEnvironmentEntities: () => state.entities,
@@ -114,10 +103,6 @@ const readRoot = () => {
 };
 
 beforeEach(() => {
-	state.cloud = false;
-	state.workspace.loading = false;
-	observeRendererAccount("alice");
-	selectRendererWorkspace({ kind: "personal" });
 	state.workspace.selectedFolderId = "project";
 	state.chats.selectedChatId = "chat";
 	state.sessions.selectedSessionId = "session";
@@ -132,29 +117,6 @@ beforeEach(() => {
 	state.worktrees.byProject.project = [{ id: "worktree", path: "/worktree" }];
 });
 describe("active workspace during attached chat startup", () => {
-	it.each([
-		false,
-		true,
-	])("resolves the connected cloud root without a local project selection (local loading: %s)", (loading) => {
-		state.cloud = true;
-		state.workspace.loading = loading;
-		state.workspace.selectedFolderId = null;
-		expect(readContext()).toMatchObject({
-			status: "ready",
-			folderId: "cloud-folder",
-			rootPath: "/home/repos/zuse",
-			sessionId: "session",
-		});
-	});
-	it("does not expose a Personal execution root from a stale selection in an organization", () => {
-		selectRendererWorkspace({ kind: "organization", organizationId: "org-a" });
-		expect(readContext()).toEqual({ status: "empty" });
-		selectRendererWorkspace({ kind: "personal" });
-		expect(readContext()).toMatchObject({
-			status: "ready",
-			rootPath: "/worktree",
-		});
-	});
 	it("follows the chat binding when the session summary has not caught up", () => {
 		expect(readContext()).toMatchObject({
 			status: "ready",

@@ -118,6 +118,7 @@ import {
 	cloudComposerSubmissionBlocked,
 	commitAcceptedComposerDelivery,
 	handoffComposerDraft,
+	isWaitingCloudSend,
 	shouldQueueComposerMessage,
 	withComposerContext,
 } from "../lib/composer-delivery.ts";
@@ -146,6 +147,7 @@ import {
 	setSessionGoal,
 	useSessionGoalResource,
 } from "../lib/session-goal-client-bus.ts";
+import { hasPendingTurnStart } from "../lib/session-runtime-state.ts";
 import { useRendererSessionTimeline } from "../lib/session-timeline-hooks.ts";
 import { useActiveWorkspaceRoot } from "../store/active-workspace.ts";
 import {
@@ -233,7 +235,6 @@ export function ChatComposer({
 	constrain = true,
 	directoryUnavailable = false,
 	submitDisabled = false,
-	cloudProviderIds,
 	environmentId,
 }: {
 	session: Session;
@@ -243,7 +244,6 @@ export function ChatComposer({
 	directoryUnavailable?: boolean;
 	/** Disable sending while keeping the editor interactive and mounted. */
 	submitDisabled?: boolean;
-	cloudProviderIds?: ReadonlyArray<ProviderId>;
 	/**
 	 * Optional content rendered as a header row inside the composer frame, above
 	 * the editor. Used by the new-chat landing to host the "Create from…" picker
@@ -347,6 +347,11 @@ export function ChatComposer({
 					runtime: runtimeState,
 					timeline: timeline.view,
 				});
+	const turnStartPending = hasPendingTurnStart(
+		timeline.view.pendingCommands.filter(
+			(command) => !isCloudSession || !isWaitingCloudSend(command),
+		),
+	);
 	const durableCloudSendPending =
 		isCloudSession &&
 		cloudComposerSubmissionBlocked(timeline.view.pendingCommands);
@@ -357,7 +362,7 @@ export function ChatComposer({
 	const inFlight =
 		cloudActivity === null
 			? timeline.presentation.turnInFlight
-			: cloudChatShowsWorking(cloudActivity, timeline.view.pendingCommands);
+			: cloudChatShowsWorking(cloudActivity) || turnStartPending;
 	// Hold messages only while the provider is unavailable or an earlier message
 	// is already queued. Worktree setup is independent background work and must
 	// not delay an agent that has finished booting.
@@ -1698,7 +1703,6 @@ export function ChatComposer({
 								</div>
 								<div className="flex shrink-0 items-center gap-2">
 									<ComposerModelPicker
-										cloudProviderIds={cloudProviderIds}
 										environmentId={qualifiedEnvironmentId}
 										session={session}
 										runtimeMode={appliedRuntimeMode}
@@ -2293,7 +2297,6 @@ function GoalEditorDialog({
  * opencode driver in turn translates into the prompt body's `model.variant`.
  */
 function ComposerModelPicker({
-	cloudProviderIds,
 	environmentId,
 	session,
 	runtimeMode,
@@ -2301,7 +2304,6 @@ function ComposerModelPicker({
 	onLevelChange,
 	onOpenChange,
 }: {
-	cloudProviderIds?: ReadonlyArray<ProviderId>;
 	environmentId: EnvironmentId;
 	session: Session;
 	runtimeMode: RuntimeMode;
@@ -2378,7 +2380,6 @@ function ComposerModelPicker({
 	}, [defaultId, level, onLevelChange, resolved, storageKey]);
 
 	const modelPickerProps = {
-		cloudProviderIds,
 		composer: true,
 		environmentId,
 		mode: "session" as const,
@@ -2614,7 +2615,8 @@ function ContextStatusPopover({
 		> | null = null;
 		let latestCompactIndex = -1;
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const content = messages[i]!.content;
+			const content = messages[i]?.content;
+			if (!content) continue;
 			if (
 				content._tag === "context_usage" &&
 				content.providerId === session.providerId
@@ -2625,7 +2627,8 @@ function ContextStatusPopover({
 			}
 		}
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const content = messages[i]!.content;
+			const content = messages[i]?.content;
+			if (!content) continue;
 			if (
 				content._tag === "context_compaction" &&
 				content.providerId === session.providerId &&
@@ -2643,7 +2646,10 @@ function ContextStatusPopover({
 				providerId: latestCompact.providerId,
 				usedTokens: latestCompact.afterTokens,
 				windowTokens: latestUsage?.windowTokens ?? null,
-				precision: "exact" as const,
+				precision:
+					latestCompact.providerId === "zuse"
+						? ("estimated" as const)
+						: ("exact" as const),
 				source: "Context compaction",
 			};
 		}
@@ -2656,7 +2662,8 @@ function ContextStatusPopover({
 			Extract<Message["content"], { _tag: "usage_limit" }>
 		>();
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const content = messages[i]!.content;
+			const content = messages[i]?.content;
+			if (!content) continue;
 			if (
 				content._tag === "usage_limit" &&
 				content.providerId === session.providerId
@@ -2672,6 +2679,30 @@ function ContextStatusPopover({
 		}
 		return [...latestByKey.values()].reverse();
 	}, [messages, session.providerId, uiMessage]);
+
+	const latestCompaction = useMemo(
+		() =>
+			messages.findLast(
+				(message) =>
+					message.content._tag === "context_compaction" &&
+					message.content.providerId === session.providerId,
+			)?.content,
+		[messages, session.providerId],
+	);
+	if (
+		latestCompaction?._tag === "context_compaction" &&
+		latestCompaction.status === "in_progress"
+	) {
+		return (
+			<span
+				role="status"
+				className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground"
+			>
+				<Spinner className="size-3" />
+				{uiMessage("chat:message_row_compacting")}
+			</span>
+		);
+	}
 
 	const usedTokens = latestContext?.usedTokens ?? null;
 	const reportedWindowTokens = latestContext?.windowTokens ?? null;
@@ -2705,7 +2736,7 @@ function ContextStatusPopover({
 			? `${formatTokens(usedTokens)} / ${formatTokens(windowTokens)}`
 			: windowTokens !== null
 				? formatTokens(windowTokens)
-				: formatTokens(usedTokens!);
+				: formatTokens(usedTokens ?? 0);
 
 	return (
 		<Tooltip>

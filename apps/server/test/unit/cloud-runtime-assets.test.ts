@@ -199,9 +199,6 @@ describe("cloud runtime assets", () => {
 		expect(dockerfile).toContain(
 			"RUN /tmp/zuse-provision/provision.sh runtime layout",
 		);
-		expect(boxInstall).toContain(
-			'"$provision_dir/provision.sh" packages runtime-tools runtime layout',
-		);
 		expect(boxInstall).not.toContain("zuse-host-ports.service");
 		expect(provision).toContain("install-grok.sh 1.0.13");
 		expect(provision).toContain("GROK_BIN_DIR=/usr/local/bin");
@@ -553,9 +550,6 @@ printf '%s\n' '{"token":"lazy-installation-token","expiresAtMs":4102444800000}'
 		expect(reconciler).toContain("ZUSE_RUNTIME_SKIP_TOOLCHAIN=1");
 		expect(reconciler).toContain("WORKSPACE_BOOTSTRAP_SOURCE");
 		expect(reconciler).toContain('command: "/bin/bash"');
-		expect(reconciler).toContain(
-			`ensure_workspace_runtime\nexec /bin/bash \${WORKSPACE_BOOTSTRAP_FILE}`,
-		);
 		expect(reconciler).toContain("replacingFailedSandbox");
 		expect(reconciler).toContain(
 			"yield* provider.kill(workspace.providerSandboxId)",

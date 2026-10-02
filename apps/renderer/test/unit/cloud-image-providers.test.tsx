@@ -25,7 +25,6 @@ it("shows compact status buttons without expanding build history into settings",
 	expect(markup).toContain("Ready");
 	expect(markup).toContain("E2B");
 	expect(markup).toContain("Checking");
-	expect(markup.match(/>Logs<\/span>/g)).toHaveLength(2);
 	expect(markup.match(/aria-haspopup="dialog"/g)).toHaveLength(2);
 	expect(markup).not.toContain("Latest build");
 	expect(markup).not.toContain("Previous builds");

@@ -231,36 +231,6 @@ describe("environment catalog", () => {
 		overlay.mockRestore();
 	});
 
-	it("keeps a cloud-only project selected across local shell updates without adding a local folder", () => {
-		const selected = FolderId.make("cloud-project:repo-a");
-		const previous = useWorkspaceStore.getState().selectedFolderId;
-		try {
-			useWorkspaceStore.setState({ selectedFolderId: selected });
-			projectEnvironmentShell({
-				folders: [],
-				originsByFolder: {},
-				chatsByProject: {},
-				sessionsByProject: {},
-				creationOperationsByProject: {},
-			});
-			expect(useWorkspaceStore.getState().selectedFolderId).toBe(selected);
-			expect(useWorkspaceStore.getState().folders).toEqual([]);
-			projectEnvironmentShell(
-				{
-					folders: [],
-					originsByFolder: {},
-					chatsByProject: {},
-					sessionsByProject: {},
-					creationOperationsByProject: {},
-				},
-				{ resetOptimisticState: true },
-			);
-			expect(useWorkspaceStore.getState().selectedFolderId).toBeNull();
-		} finally {
-			useWorkspaceStore.setState({ selectedFolderId: previous });
-		}
-	});
-
 	it("does not clear the landing composer draft on a shell update", () => {
 		const sessions = useSessionsStore.getState();
 		sessions.beginDraft({

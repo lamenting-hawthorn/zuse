@@ -40,11 +40,7 @@ import {
 import { cloudSummaryForChat } from "../lib/cloud-workspace-catalog.ts";
 import { ensureCloudWorkspaceAttached } from "../lib/cloud-workspaces.ts";
 import { makeCommittedAuthority } from "../lib/committed-authority.ts";
-import {
-	useActiveSessionById,
-	useEnvironmentChat,
-} from "../lib/environment-entity-hooks.ts";
-import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
+import { useActiveSessionById } from "../lib/environment-entity-hooks.ts";
 import {
 	useGitPrDetailsResource,
 	useGitWorkspaceResource,
@@ -111,15 +107,15 @@ const BrowserPaneHost = lazy(() =>
 /**
  * The right pane has two folder identities for a cloud chat: the logical
  * desktop project used to render project UI, and the sandbox checkout used by
- * live RPCs. Cloud-only chats can have no local project; use their connected
- * environment's project without inventing a local folder.
+ * live RPCs. Resolve project presence exclusively from the logical selection.
  */
 export const logicalRightPaneProject = (
 	folders: ReadonlyArray<Folder>,
 	selectedFolderId: FolderId | null,
-	executionFolder: Folder | null = null,
 ): Folder | null =>
-	folders.find((folder) => folder.id === selectedFolderId) ?? executionFolder;
+	selectedFolderId === null
+		? null
+		: (folders.find((folder) => folder.id === selectedFolderId) ?? null);
 
 /**
  * Metadata for each addable panel kind: launcher/tab label, icon, and the
@@ -177,9 +173,6 @@ const PANEL_META: Record<
 		icon: MagicWand01Icon,
 	},
 };
-
-export const canUseChatPanel = (kind: PanelKind, readOnly: boolean): boolean =>
-	!readOnly || kind === "files" || kind === "plan";
 
 const LIVE_PANEL_KINDS = new Set<PanelKind>([
 	"files",
@@ -314,15 +307,7 @@ export function RightPane({
 					},
 		[ctx, uiMessage],
 	);
-	const shell = useEnvironmentShellResource(
-		executionRef?.environmentId ?? null,
-	);
-	const selected = logicalRightPaneProject(
-		folders,
-		logicalSelectedFolderId,
-		shell.data?.folders.find((folder) => folder.id === executionFolderId) ??
-			null,
-	);
+	const selected = logicalRightPaneProject(folders, logicalSelectedFolderId);
 	const workspaceView = useGitWorkspaceResource(executionRef, "connect");
 	const prDetailsView = useGitPrDetailsResource(executionRef, "cache-only");
 	const status = workspaceView.data?.status ?? null;
@@ -400,7 +385,6 @@ export function RightPane({
 		terminalCatalogChatId,
 		terminalCatalogEnvironmentId,
 	]);
-	const readOnly = useEnvironmentChat(chatRef)?.readOnly === true;
 	const cloudSummary =
 		cloudSummaryCandidate?.workspaceId === chatRef?.environmentId
 			? cloudSummaryCandidate
@@ -570,7 +554,6 @@ export function RightPane({
 		});
 	};
 	const handleAddPanel = (kind: PanelKind) => {
-		if (!canUseChatPanel(kind, readOnly)) return;
 		if (kind === "terminal") {
 			handleAddProjectTerminal();
 			return;
@@ -686,7 +669,6 @@ export function RightPane({
 			(kind) =>
 				kind !== "browser" || rendererPlatformCapabilities().integratedBrowser,
 		)
-		.filter((kind) => canUseChatPanel(kind, readOnly))
 		.filter(
 			(kind) =>
 				!directoryUnavailable ||
@@ -706,7 +688,6 @@ export function RightPane({
 	// session in the same chat has no proposed plan.
 	const visiblePanels = panels.filter(
 		(panel) =>
-			canUseChatPanel(panel.kind, readOnly) &&
 			(!isHostedProduct() ||
 				panel.kind !== "terminal" ||
 				termList[panel.slot]?.environmentId !== localTerminalEnvironmentId) &&
@@ -765,8 +746,7 @@ export function RightPane({
 	const activePanel =
 		visiblePanels.find((p) => p.id === effectiveActiveId) ?? null;
 	const browserActive = activePanel?.kind === "browser";
-	const browserAvailable =
-		!readOnly && rendererPlatformCapabilities().integratedBrowser;
+	const browserAvailable = rendererPlatformCapabilities().integratedBrowser;
 	const cloudTerminalActions =
 		cloudSummary === null
 			? null

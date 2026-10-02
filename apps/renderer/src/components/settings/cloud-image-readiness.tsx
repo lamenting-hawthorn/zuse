@@ -63,8 +63,7 @@ export function CloudImageReadiness({
 	const { message: uiMessage } = useUiMessages(["settings"]);
 
 	const state = image?.state ?? "not-built";
-	const starting = busy === "image:update" || busy === "image:rebuild";
-	const building = state === "building" || starting;
+	const building = state === "building";
 	const disabled =
 		busy !== null ||
 		image === null ||
@@ -85,7 +84,7 @@ export function CloudImageReadiness({
 			/>
 		);
 
-	if (state === "ready" && !starting) {
+	if (state === "ready") {
 		return (
 			<CloudSettingsRow
 				title={uiMessage("settings:cloud_image_readiness_cloud_image_ready")}
@@ -119,32 +118,25 @@ export function CloudImageReadiness({
 
 	if (building) {
 		return (
-			<div
-				role="status"
-				className="flex items-center gap-2.5 bg-muted/30 px-3 py-2"
-			>
+			<div className="flex items-center gap-2 bg-muted/30 px-3 py-2">
 				<LoaderCircle
-					className="size-3 shrink-0 animate-spin text-muted-foreground"
+					className="size-4 shrink-0 animate-spin text-muted-foreground"
 					aria-hidden
 				/>
 				<div className="min-w-0 flex-1">
 					<p className="text-xs font-medium">
-						{starting && state !== "building"
-							? "Starting build…"
-							: uiMessage(
-									"settings:cloud_image_readiness_building_cloud_image",
-								)}
+						{uiMessage("settings:cloud_image_readiness_building_cloud_image")}
 					</p>
 					<p className="mt-0.5 text-[11px] text-muted-foreground">
-						{image.progressPhase === "queued"
-							? "Waiting for a build worker…"
-							: image.progressPhase === "sanitizing"
-								? "Preparing the snapshot…"
-								: uiMessage(
-										"settings:cloud_image_readiness_preparing_repositories_and_agents",
-									)}
+						{image?.progressPhase ??
+							uiMessage(
+								"settings:cloud_image_readiness_preparing_repositories_and_agents",
+							)}
 					</p>
 				</div>
+				<Badge variant="warning">
+					{uiMessage("settings:cloud_image_readiness_in_progress")}
+				</Badge>
 			</div>
 		);
 	}

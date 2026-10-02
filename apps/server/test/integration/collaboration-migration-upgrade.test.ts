@@ -6,8 +6,9 @@ import { Migration0055StagingApiOrigin } from "../../src/persistence/migrations/
 import { Migration0056DeviceBridge } from "../../src/persistence/migrations/0056_device_bridge.ts";
 import { Migration0057DeviceBridgeDefaultAccess } from "../../src/persistence/migrations/0057_device_bridge_default_access.ts";
 import { Migration0058QuestionAnswerDeliveries } from "../../src/persistence/migrations/0058_question_answer_deliveries.ts";
+import { Migration0059EventSequenceIndex } from "../../src/persistence/migrations/0059_event_sequence_index.ts";
 import { Migration0060ChatUserMessageTime } from "../../src/persistence/migrations/0060_chat_user_message_time.ts";
-import { Migration0062SharedHostAccess } from "../../src/persistence/migrations/0062_shared_host_access.ts";
+import { Migration0063SharedHostAccess } from "../../src/persistence/migrations/0063_shared_host_access.ts";
 import {
 	MigrationsLive,
 	MigrationsThrough0054Live,
@@ -18,6 +19,7 @@ it.each([
 	{ legacyId: 59, recency: false, masters: false },
 	{ legacyId: 59, recency: true, masters: false },
 	{ legacyId: 59, recency: true, masters: true },
+	{ legacyId: 61, recency: true, masters: false },
 ])("preserves branch migration $legacyId with recency=$recency masters=$masters across restart", async ({
 	legacyId,
 	recency,
@@ -35,7 +37,7 @@ it.each([
 				yield* Migration0056DeviceBridge;
 				yield* Migration0057DeviceBridgeDefaultAccess;
 				yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (55, 'staging_api_origin'), (56, 'device_bridge'), (57, 'device_bridge_default_access')`;
-				if (legacyId === 59) {
+				if (legacyId >= 59) {
 					if (masters) {
 						yield* sql`CREATE TABLE masters (id TEXT PRIMARY KEY)`;
 						yield* sql`INSERT INTO masters VALUES ('preserved')`;
@@ -45,7 +47,13 @@ it.each([
 						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (58, 'question_answer_deliveries')`;
 					}
 				}
-				yield* Migration0062SharedHostAccess;
+				if (legacyId === 61) {
+					yield* Migration0059EventSequenceIndex;
+					yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (59, 'event_sequence_index')`;
+				}
+				// Existing installations keep their historical tables; new installs
+				// only reserve the migration slot while shared-host work is deferred.
+				yield* Migration0063SharedHostAccess;
 				yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${legacyId}, 'collaboration_foundation')`;
 				yield* sql`INSERT INTO collaboration_teams (id, name, created_at, updated_at) VALUES ('team', 'Preserved', '2026-09-01', '2026-09-01')`;
 				if (recency) {
@@ -67,6 +75,9 @@ it.each([
 					questionDeliveries:
 						yield* sql`SELECT name FROM sqlite_master WHERE name = 'question_answer_deliveries'`,
 					teams: yield* sql`SELECT id, name FROM collaboration_teams`,
+					harness: yield* sql`SELECT root_id FROM harness_executions`,
+					connections:
+						yield* sql`SELECT connection_id FROM model_connection_secrets`,
 					ledger:
 						yield* sql`SELECT migration_id, name FROM effect_sql_migrations WHERE migration_id >= 58 ORDER BY migration_id`,
 					indexes:
@@ -82,9 +93,12 @@ it.each([
 			{ migration_id: 58, name: "question_answer_deliveries" },
 			{ migration_id: 59, name: "event_sequence_index" },
 			{ migration_id: 60, name: "chat_user_message_time" },
-			{ migration_id: 61, name: "collaboration_foundation" },
-			{ migration_id: 62, name: "shared_host_access" },
+			{ migration_id: 61, name: "harness_executions" },
+			{ migration_id: 62, name: "model_connections" },
+			{ migration_id: 63, name: "shared_host_access" },
 		]);
+		expect(state.harness).toEqual([]);
+		expect(state.connections).toEqual([]);
 		expect(state.indexes).toHaveLength(1);
 		expect(
 			state.columns.some((column) => column.name === "last_user_message_at"),

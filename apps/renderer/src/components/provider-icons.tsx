@@ -1,3 +1,4 @@
+import zuseMark from "@repo/ui/zuse-mark";
 import type { ProviderId } from "@zuse/contracts";
 import type { SVGProps } from "react";
 
@@ -63,6 +64,18 @@ export function ProviderIcon({
 }: ProviderIconProps) {
 	const sized = cn("size-3.5 shrink-0", className);
 	switch (providerId) {
+		case "zuse":
+			return (
+				<svg
+					viewBox={zuseMark.viewBox}
+					className={sized}
+					fill="currentColor"
+					aria-hidden="true"
+					{...props}
+				>
+					<path d={zuseMark.path} transform={zuseMark.transform} />
+				</svg>
+			);
 		case "pi":
 			return (
 				<svg

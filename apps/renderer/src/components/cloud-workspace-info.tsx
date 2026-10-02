@@ -643,9 +643,9 @@ export function CloudWorkspaceInfo({
 					)}
 					{sample === null && running ? (
 						<div className="px-2 py-1 text-[10px] leading-4 text-muted-foreground/70">
-							{resources.sync === "failed"
-								? "Live usage is unavailable."
-								: "Loading live usage…"}
+							{uiMessage(
+								"connections:cloud_workspace_info_live_usage_needs_the_updated_workspace_runtime",
+							)}
 						</div>
 					) : null}
 					<MenuSeparator />

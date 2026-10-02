@@ -35,6 +35,7 @@ import { SessionDomain } from "@zuse/domain/engine/session-domain";
 import { SqlSessionQueries } from "@zuse/domain/queries/sql-session-queries";
 import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
+import { canonicalJson } from "@zuse/utils/canonical-json";
 import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
 import { Effect, Layer, Result, Schedule, Stream } from "effect";
 import type { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
@@ -591,15 +592,6 @@ const getChatCreationOperation = (operationId: string) =>
 		),
 	);
 
-const canonicalJson = (value: unknown): string => {
-	if (value === null || typeof value !== "object") return JSON.stringify(value);
-	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-	return `{${Object.entries(value as Readonly<Record<string, unknown>>)
-		.sort(([left], [right]) => left.localeCompare(right))
-		.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
-		.join(",")}}`;
-};
-
 const sha256 = (value: string): Effect.Effect<string> =>
 	Effect.promise(async () => {
 		const bytes = await crypto.subtle.digest(
@@ -686,23 +678,26 @@ const ChatCreate = MemoizeRpcs.toLayerHandler(
 							input.operationId === undefined
 								? null
 								: yield* sha256(
-										canonicalJson({
-											version: 1,
-											operationId: input.operationId,
-											chatId: input.chatId ?? null,
-											initialSessionId: input.initialSessionId ?? null,
-											projectId: input.projectId,
-											providerId: input.providerId,
-											model: input.model,
-											title: input.title ?? null,
-											runtimeMode: input.runtimeMode ?? "approval-required",
-											permissionMode: input.permissionMode ?? "default",
-											toolSearch: input.toolSearch === true,
-											workspacePolicy: input.workspacePolicy ?? null,
-											worktreeId: input.worktreeId ?? null,
-											initialPrompt: input.initialPrompt ?? null,
-											startupInput: input.startupInput ?? null,
-										}),
+										canonicalJson(
+											{
+												version: 1,
+												operationId: input.operationId,
+												chatId: input.chatId ?? null,
+												initialSessionId: input.initialSessionId ?? null,
+												projectId: input.projectId,
+												providerId: input.providerId,
+												model: input.model,
+												title: input.title ?? null,
+												runtimeMode: input.runtimeMode ?? "approval-required",
+												permissionMode: input.permissionMode ?? "default",
+												toolSearch: input.toolSearch === true,
+												workspacePolicy: input.workspacePolicy ?? null,
+												worktreeId: input.worktreeId ?? null,
+												initialPrompt: input.initialPrompt ?? null,
+												startupInput: input.startupInput ?? null,
+											},
+											{ legacyFingerprintV1: true },
+										),
 									);
 						if (
 							input.operationId !== undefined &&

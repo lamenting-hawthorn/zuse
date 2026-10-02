@@ -5,7 +5,6 @@ import { useChatsStore } from "../store/chats.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useUiStore } from "../store/ui.ts";
 import { useWorkspaceStore } from "../store/workspace.ts";
-import { rendererWorkspaceSnapshot } from "./renderer-workspace.ts";
 import { getActiveEnvironment } from "./rpc-client.ts";
 
 /**
@@ -39,13 +38,11 @@ export function openNewChatLanding(projectId: FolderId): void {
 
 /** Async launches may open their result only while their landing is still selected. */
 export function captureNewChatLanding(): () => boolean {
-	const workspace = rendererWorkspaceSnapshot();
 	const environmentId = getActiveEnvironment();
 	const projectId = useWorkspaceStore.getState().selectedFolderId;
 	const revision = useChatsStore.getState().landingRevision;
 	const draftRevision = useSessionsStore.getState().draftRevision;
 	return () =>
-		rendererWorkspaceSnapshot() === workspace &&
 		getActiveEnvironment() === environmentId &&
 		useWorkspaceStore.getState().selectedFolderId === projectId &&
 		useChatsStore.getState().landingRevision === revision &&

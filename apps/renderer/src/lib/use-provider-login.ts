@@ -1,9 +1,17 @@
-import { Effect, Fiber, Stream } from "effect";
-import { useEffect, useRef, useState } from "react";
+import "@zuse/i18n/english/providers";
+import type { ProviderId } from "@zuse/contracts";
+import { message } from "@zuse/i18n";
+import { useEffect, useRef } from "react";
 
-import type { LoginEvent, ProviderId } from "@zuse/contracts";
+import { createAtomStore } from "../state/atom-store.ts";
+import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
+import { formatError } from "./format-error.ts";
+import { openExternal } from "./platform-capabilities.ts";
+import { refreshProviderMetadata } from "./refresh-provider-metadata.ts";
+import { runtimeOperationClient } from "./runtime-operation-client.ts";
+import { StreamOperationOwner } from "./stream-operation.ts";
 
-import { getRpcClient } from "./rpc-client";
+export { openExternal } from "./platform-capabilities.ts";
 
 export type ProviderLoginState =
 	| { readonly kind: "idle" }
@@ -17,19 +25,78 @@ const PROVIDERS_WITH_INLINE_LOGIN: ReadonlySet<ProviderId> =
 export const supportsProviderLogin = (providerId: ProviderId): boolean =>
 	PROVIDERS_WITH_INLINE_LOGIN.has(providerId);
 
-/**
- * Open a URL in the user's OS browser via the preload bridge (Electron's
- * `shell.openExternal`). Falls back to `window.open` for web/dev contexts.
- * We intentionally avoid an in-app webview here: an OAuth flow needs the
- * user's real browser session, password manager, and cookies.
- */
-export const openExternal = (url: string): void => {
-	const bridge = window.zuse?.app;
-	if (bridge !== undefined) {
-		bridge.openExternal(url);
-		return;
-	}
-	window.open(url, "_blank", "noopener,noreferrer");
+const IDLE_LOGIN: ProviderLoginState = { kind: "idle" };
+const loginStore = createAtomStore<{
+	stateByKey: Record<string, ProviderLoginState>;
+}>(() => ({ stateByKey: {} }));
+const owners = new Map<string, StreamOperationOwner>();
+const keyFor = (environmentId: string, providerId: ProviderId) =>
+	JSON.stringify([environmentId, providerId]);
+const setState = (key: string, state: ProviderLoginState) =>
+	loginStore.setState((current) => {
+		const stateByKey = { ...current.stateByKey };
+		if (state.kind === "idle") delete stateByKey[key];
+		else stateByKey[key] = state;
+		return { stateByKey };
+	});
+const cancelProviderLogin = (key: string) => {
+	owners.get(key)?.cancel();
+	owners.delete(key);
+	setState(key, IDLE_LOGIN);
+};
+const startProviderLogin = async (
+	environmentId: string,
+	providerId: ProviderId,
+) => {
+	const key = keyFor(environmentId, providerId);
+	if (loginStore.getState().stateByKey[key]?.kind === "waiting") return;
+	cancelProviderLogin(key);
+	const owner = new StreamOperationOwner();
+	owners.set(key, owner);
+	setState(key, { kind: "waiting", url: null });
+	let completed = false;
+	await owner.run(
+		async () =>
+			(await runtimeOperationClient(environmentId))["provider.startLogin"]({
+				providerId,
+			}),
+		async (event) => {
+			if (event._tag === "url") {
+				if (providerId !== "grok") void openExternal(event.url);
+				setState(key, { kind: "waiting", url: event.url });
+			} else if (event._tag === "done") {
+				completed = true;
+				if (!event.ok) {
+					setState(key, {
+						kind: "failed",
+						reason: event.reason ?? message("providers:sign_in_failed"),
+					});
+					return;
+				}
+				await refreshProviderMetadata(environmentId);
+				if (owners.get(key) !== owner) return;
+				setState(key, { kind: "success" });
+				owner.resetAfter(() => {
+					owners.delete(key);
+					setState(key, IDLE_LOGIN);
+				});
+			}
+		},
+		(error) => {
+			completed = true;
+			setState(key, { kind: "failed", reason: formatError(error) });
+		},
+	);
+	if (!completed && owners.get(key) === owner)
+		setState(key, {
+			kind: "failed",
+			reason: message("providers:sign_in_incomplete"),
+		});
+	if (
+		owners.get(key) === owner &&
+		loginStore.getState().stateByKey[key]?.kind === "failed"
+	)
+		owners.delete(key);
 };
 
 /**
@@ -38,83 +105,40 @@ export const openExternal = (url: string): void => {
  * server-side and streams progress. The first `url` event opens the OAuth page
  * when the provider CLI does not own browser launch; the terminal `done` event
  * resolves to success/failure.
- * Cancel (or unmount) interrupts the stream, which closes the server-side
+ *
+ * The attempt is owned per computer and provider, not per component: switching settings
+ * rows or leaving the page keeps the sign-in running and its status visible.
+ * Only an explicit cancel interrupts the stream, which closes the server-side
  * scope and SIGTERMs the child process.
  *
  * Used by both the provider settings card and the inline auth ErrorBubble so
- * the flow (and its copy) stays identical wherever a user signs in.
+ * the flow (and its copy) stays identical wherever a user signs in. Each
+ * mounted caller's `onSuccess` fires when it observes the attempt succeed.
  */
 export function useProviderLogin(
 	providerId: ProviderId,
-	opts?: { readonly onSuccess?: () => void },
+	opts?: { readonly onSuccess?: () => void; readonly environmentId?: string },
 ): {
 	readonly state: ProviderLoginState;
 	readonly start: () => Promise<void>;
 	readonly cancel: () => void;
 } {
-	const [state, setState] = useState<ProviderLoginState>({ kind: "idle" });
-	const fiberRef = useRef<Fiber.Fiber<unknown, unknown> | null>(null);
+	const active = useEnvironmentCatalogStore((s) => s.activeEnvironmentId);
+	const environmentId = opts?.environmentId ?? active;
+	const key = keyFor(environmentId, providerId);
+	const state = loginStore((current) => current.stateByKey[key] ?? IDLE_LOGIN);
 	const onSuccessRef = useRef(opts?.onSuccess);
 	onSuccessRef.current = opts?.onSuccess;
+	const previousKind = useRef(state.kind);
+	useEffect(() => {
+		if (state.kind === "success" && previousKind.current !== "success")
+			onSuccessRef.current?.();
+		previousKind.current = state.kind;
+	}, [state.kind]);
 
-	useEffect(
-		() => () => {
-			const fiber = fiberRef.current;
-			if (fiber !== null) void Effect.runPromise(Fiber.interrupt(fiber));
-		},
-		[],
-	);
-
-	const cancel = (): void => {
-		const fiber = fiberRef.current;
-		if (fiber !== null) {
-			void Effect.runPromise(Fiber.interrupt(fiber));
-			fiberRef.current = null;
-		}
-		setState({ kind: "idle" });
+	return {
+		state,
+		start: () => startProviderLogin(environmentId, providerId),
+		cancel: () => cancelProviderLogin(key),
 	};
-
-	const start = async (): Promise<void> => {
-		setState({ kind: "waiting", url: null });
-		const client = await getRpcClient();
-		const fiber = Effect.runFork(
-			Stream.runForEach(
-				client["provider.startLogin"]({ providerId }),
-				(event: LoginEvent) =>
-					Effect.sync(() => {
-						if (event._tag === "url") {
-							// Grok's official login command opens its own browser. Keep the
-							// URL for explicit recovery without opening a duplicate tab.
-							if (providerId !== "grok") openExternal(event.url);
-							setState({ kind: "waiting", url: event.url });
-						} else if (event._tag === "done") {
-							fiberRef.current = null;
-							if (event.ok) {
-								setState({ kind: "success" });
-								onSuccessRef.current?.();
-							} else {
-								setState({
-									kind: "failed",
-									reason: event.reason ?? "Sign-in failed.",
-								});
-							}
-						}
-						// "log" events are diagnostic-only; ignored in the UI.
-					}),
-			).pipe(
-				Effect.catch((err) =>
-					Effect.sync(() => {
-						fiberRef.current = null;
-						setState({
-							kind: "failed",
-							reason: err instanceof Error ? err.message : String(err),
-						});
-					}),
-				),
-			),
-		);
-		fiberRef.current = fiber;
-	};
-
-	return { state, start, cancel };
 }

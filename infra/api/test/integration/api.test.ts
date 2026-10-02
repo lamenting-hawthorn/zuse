@@ -906,7 +906,9 @@ describe("@zuse/api", () => {
 
 		expect(response.status).toBe(400);
 		expect(response.headers.get("content-type")).toContain("text/html");
-		expect(await response.text()).toContain("Installation not linked");
+		expect(await response.text()).toContain(
+			"GitHub authorization is not configured on this deployment.",
+		);
 
 		const invalidState = await api.fetch(
 			new Request(

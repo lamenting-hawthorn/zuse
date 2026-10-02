@@ -1,25 +1,88 @@
-import { CloudWorkspaceOpError } from "@zuse/contracts";
+import { CloudWorkspaceOpError, type MachineErrorCode } from "@zuse/contracts";
 import { Effect, Schema } from "effect";
 import type { CloudControlRequest } from "./cloud-control-client.ts";
+import { cloudControlError, controlApiErrorCode } from "./control-api-error.ts";
+
+export type AccountControlRequest<E> = <A>(
+	path: string,
+	schema: Schema.Codec<A, unknown>,
+	method?: string,
+	body?: unknown,
+) => Effect.Effect<A, E>;
+
+/** One response decoder and account fence for hosted and native account HTTP. */
+export const makeAccountControlRequest =
+	<E>(options: {
+		readonly send: (
+			path: string,
+			method: string,
+			body: unknown,
+			signal: AbortSignal,
+		) => Promise<Response>;
+		readonly toError: (code: MachineErrorCode) => E;
+		readonly isCurrent: () => boolean;
+	}): AccountControlRequest<E> =>
+	(path, schema, method = "GET", body) =>
+		Effect.gen(function* () {
+			if (!options.isCurrent())
+				return yield* Effect.fail(options.toError("not-allowed"));
+			const response = yield* Effect.tryPromise({
+				try: (signal) => options.send(path, method, body, signal),
+				catch: () =>
+					options.toError(
+						options.isCurrent() ? "provider-unavailable" : "not-allowed",
+					),
+			});
+			if (!options.isCurrent())
+				return yield* Effect.fail(options.toError("not-allowed"));
+			const payload: unknown = yield* Effect.tryPromise({
+				try: () =>
+					response.json().catch((cause) => {
+						if (response.ok) throw cause;
+						return null;
+					}),
+				catch: () =>
+					options.toError(
+						options.isCurrent() ? "provider-unavailable" : "not-allowed",
+					),
+			});
+			if (!options.isCurrent())
+				return yield* Effect.fail(options.toError("not-allowed"));
+			if (!response.ok) {
+				const code =
+					typeof payload === "object" && payload !== null
+						? (Reflect.get(payload, "error") ?? Reflect.get(payload, "code"))
+						: undefined;
+				return yield* Effect.fail(
+					options.toError(controlApiErrorCode(response.status, code, path)),
+				);
+			}
+			return yield* Schema.decodeUnknownEffect(schema)(payload).pipe(
+				Effect.mapError(() => options.toError("invalid-request")),
+			);
+		});
+
 export const makeCloudControlRequest =
 	(options: {
 		token: () => Promise<string | null>;
 		url: (path: string) => string;
 		epoch?: () => unknown;
 	}): CloudControlRequest =>
-	(path, schema, method = "GET", body) =>
+	(path, schema, method, body) =>
 		Effect.gen(function* () {
 			const epoch = options.epoch?.();
 			const token = yield* Effect.tryPromise({
 				try: options.token,
 				catch: () => new CloudWorkspaceOpError({ code: "not-allowed" }),
 			});
-			if (token === null || epoch !== options.epoch?.())
+			if (token === null)
 				return yield* Effect.fail(
 					new CloudWorkspaceOpError({ code: "not-allowed" }),
 				);
-			const response = yield* Effect.tryPromise({
-				try: (signal) =>
+			return yield* makeAccountControlRequest({
+				isCurrent: () => epoch === options.epoch?.(),
+				toError: cloudControlError,
+				send: (path, method, body, signal) =>
 					fetch(options.url(path), {
 						method,
 						signal,
@@ -31,61 +94,5 @@ export const makeCloudControlRequest =
 						},
 						body: body === undefined ? undefined : JSON.stringify(body),
 					}),
-				catch: () =>
-					new CloudWorkspaceOpError({ code: "provider-unavailable" }),
-			});
-			if (token === null || epoch !== options.epoch?.())
-				return yield* Effect.fail(
-					new CloudWorkspaceOpError({ code: "not-allowed" }),
-				);
-			const payload: unknown = yield* Effect.tryPromise({
-				try: () => response.json(),
-				catch: () =>
-					new CloudWorkspaceOpError({ code: "provider-unavailable" }),
-			}).pipe(
-				Effect.catch((cause) =>
-					response.ok ? Effect.fail(cause) : Effect.succeed(null),
-				),
-			);
-			if (!response.ok) {
-				const error =
-					typeof payload === "object" && payload !== null
-						? (Reflect.get(payload, "error") ?? Reflect.get(payload, "code"))
-						: null;
-				const codes: Record<string, CloudWorkspaceOpError["code"]> = {
-					cloud_beta_access_required: "beta-access-required",
-					cloud_beta_access_unavailable: "beta-access-unavailable",
-					cloud_entitlement_required: "entitlement-required",
-					cloud_credential_connection_required: "credential-required",
-					cloud_project_not_ready: "project-not-ready",
-					cloud_image_rebuild_required: "project-not-ready",
-					billing_hold: "billing-hold",
-					entitlement_required: "entitlement-required",
-					billing_approval_pending: "billing-hold",
-				};
-				return yield* Effect.fail(
-					new CloudWorkspaceOpError({
-						code:
-							(typeof error === "string" ? codes[error] : undefined) ??
-							(typeof error === "string" &&
-							error.startsWith("cloud_branch_in_use:")
-								? "branch-in-use"
-								: undefined) ??
-							(response.status === 401 || response.status === 403
-								? "not-allowed"
-								: response.status === 404
-									? "not-found"
-									: response.status === 409
-										? "conflict"
-										: response.status >= 500 || response.status === 429
-											? "provider-unavailable"
-											: "invalid-request"),
-					}),
-				);
-			}
-			return yield* Schema.decodeUnknownEffect(schema)(payload).pipe(
-				Effect.mapError(
-					() => new CloudWorkspaceOpError({ code: "invalid-request" }),
-				),
-			);
+			})(path, schema, method, body);
 		});

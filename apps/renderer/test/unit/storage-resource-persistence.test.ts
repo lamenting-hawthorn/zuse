@@ -45,25 +45,6 @@ const makePersistence = (storage: MemoryStorage) =>
 	});
 
 describe("local-storage resource persistence", () => {
-	it("isolates account namespaces from each other and legacy device rows", async () => {
-		const persistence = makePersistence(new MemoryStorage());
-		const key = keyFor("remote");
-		const value = {
-			data: { onboardingCompleted: true },
-			cursor: null,
-			storedAt: 1,
-		};
-		await persistence.saveResource(key, value);
-		expect(await persistence.loadResource(key, "first")).toBeNull();
-		await persistence.saveResource(key, value, "first");
-		expect(await persistence.loadResource(key, "first")).toEqual(value);
-		expect(await persistence.loadResource(key, "second")).toBeNull();
-		await persistence.removeResource(key, "second");
-		expect(await persistence.loadResource(key, "first")).toEqual(value);
-		await persistence.removeResource(key, "first");
-		expect(await persistence.loadResource(key, "first")).toBeNull();
-		expect(await persistence.loadResource(key)).toEqual(value);
-	});
 	it("round-trips versioned resources and isolates environments", async () => {
 		const storage = new MemoryStorage();
 		const persistence = makePersistence(storage);

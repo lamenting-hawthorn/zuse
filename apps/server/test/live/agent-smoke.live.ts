@@ -21,6 +21,7 @@ import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import {
 	type AgentEvent,
 	type AgentSessionId,
+	AgentSessionStartError,
 	DEFAULT_RUNTIME_MODE,
 	type FolderId,
 	type PermissionDecision,
@@ -152,6 +153,14 @@ const startProvider = async (
 	sessionId: AgentSessionId,
 ) => {
 	switch (provider.providerId) {
+		case "zuse":
+			return Effect.fail(
+				new AgentSessionStartError({
+					providerId: "zuse",
+					reason:
+						"Native harness tested through the application provider path.",
+				}),
+			);
 		case "claude":
 			return startClaudeSession(
 				input,

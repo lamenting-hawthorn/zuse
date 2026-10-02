@@ -22,11 +22,7 @@ describe("CloudWorkspaceGithub", () => {
 		);
 
 		expect(markup).toContain("Install GitHub App");
-		expect(markup).not.toContain("Already installed?");
-		expect(markup).not.toContain("Connect existing account");
-		expect(markup).not.toContain(
-			"Configure the Zuse GitHub App for your personal",
-		);
+		expect(markup).toContain("signed and linked to this Zuse account");
 		expect(markup).not.toContain("gh auth login");
 		expect(markup).toContain("h-7");
 		expect(markup).not.toContain("h-11");

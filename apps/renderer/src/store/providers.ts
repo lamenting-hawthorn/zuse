@@ -1,3 +1,4 @@
+import "@zuse/i18n/english/providers";
 import type {
 	AgentAvailability,
 	CloudAuthStatus,
@@ -5,6 +6,7 @@ import type {
 	ProviderId,
 } from "@zuse/contracts";
 import { CommandId, EnvironmentId } from "@zuse/contracts";
+import { message } from "@zuse/i18n";
 import { toastManager } from "../components/ui/toast.tsx";
 import { applyCloudProviderAuthentication } from "../lib/cloud-provider-availability.ts";
 import { cloudSummaryForEnvironment } from "../lib/cloud-workspace-catalog.ts";
@@ -17,6 +19,8 @@ import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client
 import { formatError } from "../lib/format-error.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import { getProviderStatusNotice } from "../lib/provider-status.ts";
+import { runtimeOperationClient } from "../lib/runtime-operation-client.ts";
+import { StreamOperationOwner } from "../lib/stream-operation.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
 import { useEnvironmentCatalogStore } from "./environment-catalog.ts";
 import { useModelCatalogStore } from "./model-catalog.ts";
@@ -35,6 +39,16 @@ export type ProviderUpdateState =
 export const IDLE_PROVIDER_UPDATE_STATE: ProviderUpdateState = {
 	kind: "idle",
 };
+
+/** Update runs are owned per computer and provider, not by the card that started them. */
+export const providerUpdateKey = (
+	environmentId: string,
+	providerId: ProviderId,
+): string => `${environmentId}:${providerId}`;
+
+// Live update streams outlive the settings UI: navigating away (or collapsing
+// a provider row) must not cancel the install or lose its status.
+const providerUpdateOwners = new Map<string, StreamOperationOwner>();
 
 const pendingAvailabilityLoads = new Map<string, Promise<void>>();
 let activeProviderStatusNotice: string | null = null;
@@ -105,9 +119,7 @@ type ProvidersState = {
 	readonly availabilityByEnvironment: Readonly<
 		Record<string, ProviderAvailabilitySnapshot>
 	>;
-	readonly updateStateByProvider: Partial<
-		Record<ProviderId, ProviderUpdateState>
-	>;
+	readonly updateStateByKey: Readonly<Record<string, ProviderUpdateState>>;
 	readonly load: () => Promise<void>;
 	readonly loadFor: (environmentId: EnvironmentId) => Promise<void>;
 	readonly refresh: (force?: boolean) => Promise<void>;
@@ -115,10 +127,15 @@ type ProvidersState = {
 		environmentId: EnvironmentId,
 		force?: boolean,
 	) => Promise<void>;
-	readonly setProviderUpdateState: (
+	/** Run the provider's update command; a second call while running is a no-op. */
+	readonly cancelUpdate: (
+		environmentId: string,
 		providerId: ProviderId,
-		state: ProviderUpdateState,
 	) => void;
+	readonly updateProvider: (
+		environmentId: string,
+		providerId: ProviderId,
+	) => Promise<void>;
 	/**
 	 * Version-gated features the installed CLI supports for `providerId` (the
 	 * `capabilities` list from the availability probe). `[]` when the provider
@@ -171,7 +188,7 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
 	availabilityByEnvironment: Object.fromEntries(
 		cachedAuth === undefined ? [] : [["local", initialAvailability]],
 	),
-	updateStateByProvider: {},
+	updateStateByKey: {},
 	load: async () => {
 		await get().loadFor(activeEnvironmentId());
 	},
@@ -283,13 +300,75 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
 			}));
 		}
 	},
-	setProviderUpdateState: (providerId, state) =>
-		set((current) => ({
-			updateStateByProvider: {
-				...current.updateStateByProvider,
-				[providerId]: state,
+	updateProvider: async (environmentId, providerId) => {
+		const key = providerUpdateKey(environmentId, providerId);
+		if (get().updateStateByKey[key]?.kind === "running") return;
+		const setUpdate = (state: ProviderUpdateState) =>
+			set((current) => {
+				const updateStateByKey = { ...current.updateStateByKey };
+				if (state.kind === "idle") delete updateStateByKey[key];
+				else updateStateByKey[key] = state;
+				return { updateStateByKey };
+			});
+		const owner = new StreamOperationOwner();
+		providerUpdateOwners.get(key)?.cancel();
+		providerUpdateOwners.set(key, owner);
+		setUpdate({ kind: "running", line: null });
+		let completed = false;
+		await owner.run(
+			async () =>
+				(await runtimeOperationClient(environmentId))["provider.update"]({
+					providerId,
+				}),
+			async (event) => {
+				if (event._tag === "log") {
+					setUpdate({ kind: "running", line: event.text });
+					return;
+				}
+				if (event._tag !== "done") return;
+				completed = true;
+				if (!event.ok) {
+					setUpdate({
+						kind: "failed",
+						reason: event.reason ?? message("providers:update_failed"),
+					});
+					return;
+				}
+				await get().refreshFor(EnvironmentId.make(environmentId));
+				if (providerUpdateOwners.get(key) !== owner) return;
+				setUpdate({ kind: "success" });
+				owner.resetAfter(() => {
+					providerUpdateOwners.delete(key);
+					setUpdate(IDLE_PROVIDER_UPDATE_STATE);
+				});
 			},
-		})),
+			(error) => {
+				completed = true;
+				setUpdate({ kind: "failed", reason: formatError(error) });
+			},
+		);
+		if (!completed && providerUpdateOwners.get(key) === owner)
+			setUpdate({
+				kind: "failed",
+				reason: message("providers:update_incomplete"),
+			});
+		if (
+			providerUpdateOwners.get(key) === owner &&
+			get().updateStateByKey[key]?.kind === "failed"
+		)
+			providerUpdateOwners.delete(key);
+	},
+	cancelUpdate: (environmentId, providerId) => {
+		const key = providerUpdateKey(environmentId, providerId);
+		providerUpdateOwners.get(key)?.cancel();
+		providerUpdateOwners.delete(key);
+		set((current) => ({
+			updateStateByKey: {
+				...current.updateStateByKey,
+				[key]: IDLE_PROVIDER_UPDATE_STATE,
+			},
+		}));
+	},
 	capabilitiesFor: (providerId, environmentId) => {
 		const availability =
 			environmentId === undefined

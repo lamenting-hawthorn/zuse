@@ -17,8 +17,8 @@ import {
 	ChildProcess as Command,
 	ChildProcessSpawner as CommandExecutor,
 } from "effect/unstable/process";
-
 import { AppPaths } from "../app-paths.ts";
+import { atomicWritePrivateJson } from "../atomic-private-file.ts";
 import { TelemetryStore } from "../observability/telemetry-store.ts";
 import { appendApiDiagnostic } from "./api-diagnostics.ts";
 import { ensurePinnedCloudflared } from "./cloudflared-install.ts";
@@ -96,26 +96,6 @@ export const writeManagedTunnelToken = async (
 		});
 		await fs.promises.rename(temporaryPath, tokenPath);
 		await fs.promises.chmod(tokenPath, 0o600);
-	} finally {
-		await fs.promises.rm(temporaryPath, { force: true });
-	}
-};
-
-const atomicWritePrivateJson = async (
-	path: string,
-	value: unknown,
-): Promise<void> => {
-	const directory = dirname(path);
-	await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
-	await fs.promises.chmod(directory, 0o700);
-	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-	try {
-		await fs.promises.writeFile(temporaryPath, JSON.stringify(value), {
-			flag: "wx",
-			mode: 0o600,
-		});
-		await fs.promises.rename(temporaryPath, path);
-		await fs.promises.chmod(path, 0o600);
 	} finally {
 		await fs.promises.rm(temporaryPath, { force: true });
 	}

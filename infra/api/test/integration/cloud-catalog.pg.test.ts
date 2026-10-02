@@ -143,7 +143,7 @@ test.skipIf(!url).each(["a", "organization:org_a"])(
 			const sharingUpdate = {
 				workspaceId: "w",
 				accountId: ownerId,
-				expectedRevision: beforeSharing.revision,
+				expectedRevision: 0,
 				sharing: {
 					audience: "private" as const,
 					permission: "view" as const,
@@ -174,7 +174,7 @@ test.skipIf(!url).each(["a", "organization:org_a"])(
 			expect(
 				(await runtime.runPromise(store.getWorkspace("w")))?.requestConfig
 					.sharingPolicy,
-			).toEqual({ ...policy, ...sharingUpdate.sharing });
+			).toEqual({ ...policy, ...sharingUpdate.sharing, revision: 1 });
 			await pool.query(
 				"DELETE FROM api_cloud_workspaces WHERE workspace_id='w'",
 			);

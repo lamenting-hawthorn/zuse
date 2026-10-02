@@ -9,7 +9,6 @@ import {
 	FolderId,
 	FsEntry,
 	type FsTreeWatchEvent,
-	RpcAccessDeniedError,
 } from "@zuse/contracts";
 import { Effect, Queue, Stream } from "effect";
 import { describe, expect, it } from "vitest";
@@ -86,55 +85,6 @@ const makeHarness = (input: {
 };
 
 describe("file-tree ClientBus resource", () => {
-	it.each([
-		"access-denied",
-		"credential-expired",
-	] as const)("handles %s without confusing revocation with a disconnect", async (code) => {
-		const failures: unknown[] = [];
-		const client = {
-			"fs.watchTree": () =>
-				Stream.concat(
-					Stream.succeed({
-						_tag: "ready" as const,
-						epoch: "watch",
-						sequence: 0,
-					}),
-					Stream.fail(new RpcAccessDeniedError({ code })),
-				),
-			"fs.listPaths": () =>
-				Effect.succeed({ paths: ["private.txt"], truncated: false }),
-			"fs.tree": () => Effect.succeed([]),
-		} as FileTreeDriverClient;
-		const bus = new ClientBus({
-			resolver: {
-				resolve: () =>
-					Effect.succeed({ client, dispose: async () => undefined }),
-			},
-			driverFor: () =>
-				makeFileTreeResourceDriver({
-					reportConnectionFailure: (_environmentId, _generation, cause) => {
-						failures.push(cause);
-					},
-				}) as never,
-		});
-		const lease = bus.retain(key, { activation: "connect" });
-		try {
-			await waitUntil(() =>
-				code === "access-denied"
-					? bus.snapshot(key).sync === "failed"
-					: failures.length === 1,
-			);
-			expect(bus.snapshot(key).data).toEqual(
-				code === "access-denied"
-					? null
-					: { paths: ["private.txt"], truncated: false },
-			);
-			expect(failures.length).toBe(code === "access-denied" ? 0 : 1);
-		} finally {
-			lease.release();
-			await bus.dispose();
-		}
-	});
 	it("shares one qualified stream across consumers", async () => {
 		const watch = Effect.runSync(Queue.unbounded<FsTreeWatchEvent>());
 		let resolves = 0;

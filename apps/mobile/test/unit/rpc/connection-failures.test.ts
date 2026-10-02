@@ -1,4 +1,3 @@
-import { RpcAccessDeniedError } from "@zuse/contracts";
 import { describe, expect, test } from "vitest";
 import {
 	isIntentionalConnectionInterruption,
@@ -7,18 +6,6 @@ import {
 import { ConnectionFailed } from "../../../src/rpc/errors";
 
 describe("connection failure classification", () => {
-	test("reconnects for expired credentials without looping on revoked access", () => {
-		expect(
-			isRetryableClientError(
-				new RpcAccessDeniedError({ code: "credential-expired" }),
-			),
-		).toBe(true);
-		expect(
-			isRetryableClientError(
-				new RpcAccessDeniedError({ code: "access-denied" }),
-			),
-		).toBe(false);
-	});
 	test("ignores Effect interruption from replacing an owned RPC subscription", () => {
 		expect(
 			isIntentionalConnectionInterruption(

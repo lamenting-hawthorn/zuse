@@ -36,7 +36,6 @@ import {
 	useMemo,
 	useRef,
 	useState,
-	useSyncExternalStore,
 } from "react";
 import { usePrefersReducedMotion } from "../hooks/use-media-query.ts";
 import { deriveChatAttentionState } from "../lib/chat-attention-state.ts";
@@ -64,10 +63,6 @@ import { useEnvironmentPermissions } from "../lib/environment-permissions-client
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
 import { markRendererInteraction } from "../lib/performance-marks.ts";
 import {
-	rendererAccountSnapshot,
-	subscribeRendererAccount,
-} from "../lib/renderer-account.ts";
-import {
 	clearSessionCommandError,
 	isRecoveredPreAckSessionError,
 	pendingSessionCommandError,
@@ -76,10 +71,7 @@ import {
 } from "../lib/session-actions.ts";
 import type { SessionRuntimeState } from "../lib/session-runtime-state.ts";
 import { timelineReadingPositionStore } from "../lib/session-timeline-cache.ts";
-import {
-	rendererResourceCacheNamespace,
-	restartProvisionalSessionTimeline,
-} from "../lib/session-timeline-client-bus.ts";
+import { restartProvisionalSessionTimeline } from "../lib/session-timeline-client-bus.ts";
 import { useRendererSessionTimeline } from "../lib/session-timeline-hooks.ts";
 import { workspaceCreationProgressIsActive } from "../lib/setup-card-visibility.ts";
 import {
@@ -234,15 +226,6 @@ export function ChatView({
 			),
 		[sessionId, timeline.presentation.interactions, questionAttachments.data],
 	);
-	const account = useSyncExternalStore(
-		subscribeRendererAccount,
-		rendererAccountSnapshot,
-		rendererAccountSnapshot,
-	);
-	const readingNamespace = rendererResourceCacheNamespace(
-		sessionRef.environmentId,
-	);
-	const readingAccount = readingNamespace === undefined ? null : account;
 	useEffect(() => {
 		if (cloudSummary !== null) return;
 		restartProvisionalSessionTimeline(sessionRef, timeline.view);
@@ -279,8 +262,7 @@ export function ChatView({
 	const inFlight =
 		cloudActivity === null
 			? timeline.presentation.busy
-			: waitingMessages.length === 0 &&
-				cloudChatShowsWorking(cloudActivity, timeline.view.pendingCommands);
+			: waitingMessages.length === 0 && cloudChatShowsWorking(cloudActivity);
 	const permissionRequests =
 		useEnvironmentPermissions(environmentId).data?.requestsById ?? {};
 	const durableQuestionCount = timeline.presentation.interactions.filter(
@@ -474,12 +456,12 @@ export function ChatView({
 
 	const persistReadingPosition = useCallback(() => {
 		const position = captureReadingPosition();
-		if (position !== null && readingNamespace !== null) {
+		if (position !== null) {
 			void timelineReadingPositionStore
-				?.save(sessionRef, position, readingNamespace)
+				?.save(sessionRef, position)
 				.catch(() => {});
 		}
-	}, [captureReadingPosition, sessionRef, readingNamespace]);
+	}, [captureReadingPosition, sessionRef]);
 	const persistReadingPositionRef = useRef(persistReadingPosition);
 	persistReadingPositionRef.current = persistReadingPosition;
 
@@ -527,22 +509,15 @@ export function ChatView({
 		currentReadingPositionRef.current = null;
 		void (async () => {
 			const position =
-				readingNamespace === null
-					? null
-					: ((await timelineReadingPositionStore
-							?.load(sessionRef, readingNamespace)
-							.catch(() => null)) ?? null);
-			if (
-				!cancelled &&
-				(readingAccount === null ||
-					rendererAccountSnapshot() === readingAccount)
-			)
-				setReadingState({ sessionId, position });
+				(await timelineReadingPositionStore
+					?.load(sessionRef)
+					.catch(() => null)) ?? null;
+			if (!cancelled) setReadingState({ sessionId, position });
 		})();
 		return () => {
 			cancelled = true;
 		};
-	}, [sessionId, sessionRef, readingNamespace, readingAccount]);
+	}, [sessionId, sessionRef]);
 
 	useEffect(() => {
 		coordinator.attach({
@@ -590,21 +565,15 @@ export function ChatView({
 			if (scrollFrameRef.current !== null) {
 				cancelAnimationFrame(scrollFrameRef.current);
 			}
-			coordinator.dispose();
-		},
-		[coordinator],
-	);
-
-	useEffect(
-		() => () => {
 			const position = currentReadingPositionRef.current;
-			if (position?.sessionId === sessionId && readingNamespace !== null) {
+			if (position?.sessionId === sessionId) {
 				void timelineReadingPositionStore
-					?.save(sessionRef, position, readingNamespace)
+					?.save(sessionRef, position)
 					.catch(() => {});
 			}
+			coordinator.dispose();
 		},
-		[sessionId, sessionRef, readingNamespace],
+		[coordinator, sessionId, sessionRef],
 	);
 
 	useEffect(() => {
@@ -915,10 +884,8 @@ export function ChatView({
 							data-pane="chat"
 							tabIndex={-1}
 							ref={scrollElementRef}
-							className="flex h-full min-h-0 w-full flex-1 flex-col outline-none"
-						>
-							<ChatLoadingFallback />
-						</div>
+							className="h-full min-h-0 w-full flex-1 outline-none"
+						/>
 					) : (
 						<ChatLookupsProvider value={chatLookups}>
 							{cloudSummary !== null && historyStatus !== "idle" && (
