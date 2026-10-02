@@ -10,7 +10,6 @@ import {
 	PackageIcon,
 	PlugSocketIcon,
 	PuzzleIcon,
-	ServerStack01Icon,
 	Settings01Icon,
 	SmartPhone01Icon,
 	TaskDone01Icon,
@@ -85,14 +84,6 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		section: { kind: "organizations" },
 	},
 	{
-		id: "self-hosted",
-		get label() {
-			return uiMessage("settings:self_hosted_servers");
-		},
-		Icon: ServerStack01Icon,
-		section: { kind: "self-hosted" },
-	},
-	{
 		id: "machines",
 		get label() {
 			return uiMessage("settings:settings_navigation_cloud_workspaces_beta");
@@ -152,17 +143,12 @@ export function settingsNavigationFor(
 	desktop: boolean,
 	scope?: WorkspaceScope,
 ) {
-	if (scope?.kind === "organization")
-		return ORGANIZATION_NAVIGATION.filter(
-			(item) => desktop || item.id !== "self-hosted",
-		);
+	if (scope?.kind === "organization") return ORGANIZATION_NAVIGATION;
 	return SETTINGS_NAVIGATION.filter(
 		(item) =>
 			(item.section.kind === "organizations") ===
 				(section.kind === "organizations") &&
-			(desktop ||
-				(item.section.kind !== "machines" &&
-					item.section.kind !== "self-hosted")),
+			(desktop || item.section.kind !== "machines"),
 	);
 }
 
@@ -210,7 +196,7 @@ export const ORGANIZATION_NAVIGATION: ReadonlyArray<SettingsNavigationItem> = [
 		section: { kind: "cloud", page: "billing" },
 	},
 	...TOP_RAIL.filter((item) =>
-		["browser", "shortcuts", "self-hosted", "diagnostics"].includes(item.id),
+		["browser", "shortcuts", "diagnostics"].includes(item.id),
 	),
 ];
 

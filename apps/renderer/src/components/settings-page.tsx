@@ -70,7 +70,6 @@ import { useOrganizationWorkspaces } from "../lib/organization-workspaces.ts";
 import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
 import {
 	rendererWorkspaceSnapshot,
-	selectRendererWorkspace,
 	subscribeRendererWorkspace,
 } from "../lib/renderer-workspace.ts";
 import { useSettingsStore } from "../lib/settings-client-bus.ts";
@@ -96,7 +95,6 @@ import { McpServersPane } from "./settings/mcp-servers-pane.tsx";
 import { OrganizationSharingPane } from "./settings/organization-sharing-pane.tsx";
 import { OrganizationsPane } from "./settings/organizations-pane.tsx";
 import { PokedexPane } from "./settings/pokedex-pane.tsx";
-import { SelfHostedServersPane } from "./settings/self-hosted-servers-pane.tsx";
 import { UpdateChannelSettings } from "./settings/update-channel-settings.tsx";
 import { RepositorySettings } from "./settings-repository.tsx";
 import {
@@ -472,11 +470,7 @@ function SectionTitle({
 				),
 				subtitle: uiMessage("settings:organizations_manage_team"),
 			};
-		if (section.kind === "self-hosted")
-			return {
-				title: uiMessage("settings:self_hosted_servers"),
-				subtitle: uiMessage("settings:self_hosted_description"),
-			};
+
 		const f = folders.find((x) => x.id === section.projectId);
 		return {
 			title: f?.name ?? "Repository",
@@ -525,31 +519,6 @@ function Pane({ section }: { section: SettingsSection }) {
 						: undefined
 				}
 			/>
-		);
-	if (section.kind === "self-hosted")
-		return workspace.scope.kind === "personal" ? (
-			<SelfHostedServersPane />
-		) : (
-			<SettingsGroup title={uiMessage("settings:self_hosted_servers")}>
-				<SettingsRow
-					title={uiMessage("settings:settings_scope_personal")}
-					description={uiMessage("settings:self_hosted_personal_only")}
-					action={
-						<Button
-							className="h-7"
-							size="xs"
-							onClick={() => {
-								selectRendererWorkspace({ kind: "personal" });
-								useUiStore
-									.getState()
-									.setSettingsSection({ kind: "self-hosted" });
-							}}
-						>
-							{uiMessage("settings:settings_scope_personal")}
-						</Button>
-					}
-				/>
-			</SettingsGroup>
 		);
 	if (section.kind === "general")
 		return (

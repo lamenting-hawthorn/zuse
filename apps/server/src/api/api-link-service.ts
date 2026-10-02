@@ -585,7 +585,7 @@ export const ApiLinkServiceLive: Layer.Layer<
 							proof,
 							environmentId: keys.envId,
 							environmentPublicKey: keys.publicJwk,
-							providerKind: config.providerKind ?? "desktop",
+							providerKind: "desktop",
 							endpoint: computeEndpoint(config),
 							label,
 							...apiRuntimeMetadata(),

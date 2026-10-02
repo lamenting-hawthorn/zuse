@@ -280,18 +280,6 @@ import {
 } from "./repository-settings.ts";
 import { RpcAuthorization } from "./rpc-authorization.ts";
 import {
-	SelfHostedDiagnosticsRpc,
-	SelfHostedGithubLoginCancelRpc,
-	SelfHostedGithubLoginPollRpc,
-	SelfHostedGithubLoginStartRpc,
-	SelfHostedGithubLogoutRpc,
-	SelfHostedGithubStatusRpc,
-	SelfHostedHostDetachRpc,
-	SelfHostedHostStatusRpc,
-	SelfHostedRuntimeRestartRpc,
-	SelfHostedRuntimeUpdateRpc,
-} from "./self-hosted.ts";
-import {
 	ChatArchiveJobsRpc,
 	ChatArchivePreviewRpc,
 	ChatArchiveRpc,
@@ -442,16 +430,6 @@ export const MemoizeRpcs = RpcGroup.make(
 	ApiStatusRpc,
 	ApiUnlinkRpc,
 	EnvironmentsListRpc,
-	SelfHostedHostStatusRpc,
-	SelfHostedHostDetachRpc,
-	SelfHostedDiagnosticsRpc,
-	SelfHostedRuntimeRestartRpc,
-	SelfHostedRuntimeUpdateRpc,
-	SelfHostedGithubStatusRpc,
-	SelfHostedGithubLoginStartRpc,
-	SelfHostedGithubLoginPollRpc,
-	SelfHostedGithubLoginCancelRpc,
-	SelfHostedGithubLogoutRpc,
 	EnvironmentConnectRpc,
 	CloudBillingSummaryRpc,
 	CloudBillingUsageRpc,

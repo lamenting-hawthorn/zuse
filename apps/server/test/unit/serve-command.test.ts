@@ -8,7 +8,6 @@ const defaults = {
 	force: false,
 	dataDir: undefined,
 	sshManaged: false,
-	selfHosted: false,
 	tailscale: false,
 	noAccount: false,
 	lan: false,
@@ -84,20 +83,6 @@ describe("zuse serve management commands", () => {
 		});
 	});
 
-	it("parses structured self-hosted setup mode", () => {
-		expect(
-			parseServeCommand(["serve", "start", "--self-hosted", "--json"]),
-		).toEqual({
-			...defaults,
-			action: "start",
-			selfHosted: true,
-			json: true,
-		});
-		expect(() =>
-			parseServeCommand(["serve", "start", "--self-hosted", "--ssh-managed"]),
-		).toThrow(/cannot be used together/u);
-	});
-
 	it("parses Tailnet sharing mode", () => {
 		expect(parseServeCommand(["serve", "start", "--tailscale"])).toEqual({
 			...defaults,
@@ -164,7 +149,7 @@ describe("zuse serve management commands", () => {
 			/--data-dir requires a value/u,
 		);
 		expect(() => parseServeCommand(["serve", "help", "--json"])).toThrow(
-			/--json is valid with status or self-hosted start/u,
+			/--json is only valid with status/u,
 		);
 		expect(() =>
 			parseServeCommand(["serve", "status", "--ssh-managed"]),

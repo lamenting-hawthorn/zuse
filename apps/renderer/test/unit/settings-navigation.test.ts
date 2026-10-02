@@ -24,7 +24,6 @@ describe("settings contexts", () => {
 				"defaults",
 				"browser",
 				"shortcuts",
-				"self-hosted",
 				"organizations",
 				"billing",
 			]),

@@ -16,9 +16,6 @@ import type {
 	PowerRecordingDurationMinutes,
 	PowerWorkloadState,
 	RemoteEnvironmentProfile,
-	SelfHostedSetupEvent,
-	SelfHostedSetupOperation,
-	SelfHostedSetupRequest,
 	SshEnvironmentConnection,
 	TailnetEnvironmentConnection,
 	TailnetEnvironmentProfile,
@@ -412,13 +409,6 @@ export interface SshBridge {
 	readonly ensureEnvironment: (
 		input: EnsureSshEnvironmentInput,
 	) => Promise<SshEnvironmentConnection>;
-	readonly startSelfHostedSetup: (
-		input: SelfHostedSetupRequest,
-	) => Promise<SelfHostedSetupOperation>;
-	readonly cancelSelfHostedSetup: (operationId: string) => Promise<void>;
-	readonly onSelfHostedSetupEvent: (
-		handler: (event: SelfHostedSetupEvent) => void,
-	) => () => void;
 	readonly disconnectEnvironment: (profileId: string) => Promise<void>;
 	readonly removeProfile: (profileId: string) => Promise<void>;
 	readonly updateProfileLabel: (

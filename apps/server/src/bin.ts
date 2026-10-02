@@ -281,13 +281,7 @@ export const runHeadlessServer = (
 			process.env.ZUSE_MACHINE_RUNTIME_ROLE === "cloud-environment"
 				? "cloud-environment"
 				: "control-plane",
-		lanAuth: {
-			policy,
-			advertisedHost,
-			port,
-			pairingBootstrap,
-			providerKind: process.env.ZUSE_SELF_HOSTED === "1" ? "ssh" : "desktop",
-		},
+		lanAuth: { policy, advertisedHost, port, pairingBootstrap },
 		...(port === 0
 			? {}
 			: {

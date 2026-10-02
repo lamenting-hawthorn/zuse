@@ -16,7 +16,6 @@ export interface ServeCommand {
 	readonly foreground: boolean;
 	readonly force: boolean;
 	readonly sshManaged: boolean;
-	readonly selfHosted: boolean;
 	readonly tailscale: boolean;
 	readonly noAccount: boolean;
 	readonly lan: boolean;
@@ -87,7 +86,6 @@ export const parseServeCommand = (
 				"--foreground",
 				"--force",
 				"--ssh-managed",
-				"--self-hosted",
 				"--tailscale",
 				"--no-account",
 				"--lan",
@@ -99,26 +97,14 @@ export const parseServeCommand = (
 	if (flags.has("--force") && action !== "update") {
 		throw new Error("--force is only valid with update.");
 	}
-	if (
-		flags.has("--json") &&
-		!(action === "status" || (action === "start" && flags.has("--self-hosted")))
-	) {
-		throw new Error("--json is valid with status or self-hosted start.");
+	if (flags.has("--json") && action !== "status") {
+		throw new Error("--json is only valid with status.");
 	}
 	if (flags.has("--foreground") && action !== "start") {
 		throw new Error("--foreground is only valid when starting Zuse Serve.");
 	}
 	if (flags.has("--ssh-managed") && action !== "start") {
 		throw new Error("--ssh-managed is only valid when starting Zuse Serve.");
-	}
-	if (flags.has("--self-hosted") && action !== "start") {
-		throw new Error("--self-hosted is only valid when starting Zuse Serve.");
-	}
-	if (flags.has("--self-hosted") && flags.has("--ssh-managed")) {
-		throw new Error("--self-hosted and --ssh-managed cannot be used together.");
-	}
-	if (flags.has("--self-hosted") && flags.has("--no-account")) {
-		throw new Error("--self-hosted requires account linking.");
 	}
 	if (flags.has("--tailscale") && action !== "start") {
 		throw new Error("--tailscale is only valid when starting Zuse Serve.");
@@ -152,7 +138,6 @@ export const parseServeCommand = (
 		foreground: flags.has("--foreground"),
 		force: flags.has("--force"),
 		sshManaged: flags.has("--ssh-managed"),
-		selfHosted: flags.has("--self-hosted"),
 		tailscale: flags.has("--tailscale"),
 		noAccount: flags.has("--no-account"),
 		lan: flags.has("--lan"),

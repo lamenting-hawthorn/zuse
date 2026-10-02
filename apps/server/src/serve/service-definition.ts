@@ -5,7 +5,6 @@ export interface ServeServiceDefinitionInput {
 	readonly logDir?: string;
 	readonly apiUrl?: string;
 	readonly sshManaged?: boolean;
-	readonly selfHosted?: boolean;
 	readonly tailscale?: boolean;
 	readonly noAccount?: boolean;
 	readonly lan?: boolean;
@@ -18,7 +17,6 @@ const serveStartFlags = (
 	input: ServeServiceDefinitionInput,
 ): ReadonlyArray<string> => [
 	...(input.sshManaged === true ? ["--ssh-managed"] : []),
-	...(input.selfHosted === true ? ["--self-hosted"] : []),
 	...(input.tailscale === true ? ["--tailscale"] : []),
 	...(input.noAccount === true ? ["--no-account"] : []),
 	...(input.lan === true
