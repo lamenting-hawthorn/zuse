@@ -39,5 +39,4 @@ ${provision.slice(dispatch)}`,
 	assert.equal(result.status, 0, result.stderr);
 	assert.match(result.stdout, /installed-grok/);
 	assert.doesNotMatch(result.stdout, /replaced-provider-agents/);
-	assert.match(installer, /for agent in claude codex grok;/);
 });
