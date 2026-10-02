@@ -130,5 +130,15 @@
 	"pi_setup_hint": "Pi manages authentication and tool permissions. Run <part0>pi</part0> in a terminal and use <part1>/login</part1> to sign in.",
 	"pi_binary_path": "Pi binary path",
 	"pi_binary_placeholder": "Find pi on PATH",
-	"pi_binary_help": "Use an absolute executable path, or leave empty to search PATH."
+	"pi_binary_help": "Use an absolute executable path, or leave empty to search PATH.",
+	"provider_row_configure": "Configure {{label}}",
+	"updating": "Updating…",
+	"updated": "Updated",
+	"update_failed": "Failed",
+	"cancel_update": "Cancel update",
+	"update_to_version": "Update {{name}} to v{{version}}",
+	"update_to_latest": "Update {{name}} to the latest version",
+	"sign_in_failed": "Sign-in failed.",
+	"sign_in_incomplete": "Sign-in ended before completion.",
+	"update_incomplete": "Update ended before completion."
 }

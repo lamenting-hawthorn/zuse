@@ -67,6 +67,7 @@ if (generatedModules.length !== 1 || generatedModules[0] !== "bin.mjs") {
 const bundlePath = join(outputRoot, "bin.mjs");
 const bundleSource = await readFile(bundlePath, "utf8");
 if (
+	/["'][^"'\n]*keytar[^"'\n]*\.node["']/u.test(bundleSource) ||
 	/\b(?:from|import\s*\(|require\s*\()\s*["']keytar["']/u.test(bundleSource)
 ) {
 	throw new Error("Cloud runtime unexpectedly imports keytar");

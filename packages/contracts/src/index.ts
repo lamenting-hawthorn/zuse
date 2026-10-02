@@ -35,6 +35,7 @@ export type {
 export * from "./machines.ts";
 export * from "./mcp.ts";
 export * from "./model-catalog/index.ts";
+export * from "./model-connections.ts";
 export * from "./naming.ts";
 export * from "./network-access.ts";
 export * from "./pairing.ts";
@@ -43,6 +44,7 @@ export * from "./ping.ts";
 export * from "./pokemon.ts";
 export * from "./power.ts";
 export * from "./previews.ts";
+export * from "./provider-capabilities.ts";
 export * from "./pty.ts";
 export * from "./repository-settings.ts";
 export * from "./rpc.ts";

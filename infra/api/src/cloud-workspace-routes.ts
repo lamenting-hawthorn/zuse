@@ -1224,16 +1224,14 @@ const authenticateRuntime = Effect.fn("authenticateCloudWorkspaceRuntime")(
 		return workspace;
 	},
 );
-const requireRuntime = Effect.fn("requireCloudWorkspaceRuntime")(function* (
-	request: Request,
-	workspaceId: string,
-	nowMs: number,
-) {
-	const workspace = yield* authenticateRuntime(request, workspaceId, nowMs);
-	if (workspaceDeletionRequested(workspace))
-		return yield* Effect.fail(unauthorized("workspace_runtime_rejected"));
-	return workspace;
-});
+export const requireRuntime = Effect.fn("requireCloudWorkspaceRuntime")(
+	function* (request: Request, workspaceId: string, nowMs: number) {
+		const workspace = yield* authenticateRuntime(request, workspaceId, nowMs);
+		if (workspaceDeletionRequested(workspace))
+			return yield* Effect.fail(unauthorized("workspace_runtime_rejected"));
+		return workspace;
+	},
+);
 
 export interface CloudWorkspaceCreateOutcome {
 	readonly workspace: CloudWorkspaceRecord;

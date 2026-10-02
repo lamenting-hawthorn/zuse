@@ -51,5 +51,6 @@
 	"cloud_workspace_settings": "클라우드 워크스페이스 설정",
 	"recording_shortcut": "{{label}} 단축키 기록 중",
 	"recording_new_shortcut": "새 동작의 단축키 기록 중",
-	"provider_settings": "제공업체 설정"
+	"provider_settings": "제공업체 설정",
+	"copy_failed": "복사 실패"
 }

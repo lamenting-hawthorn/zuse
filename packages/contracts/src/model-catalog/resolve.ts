@@ -6,6 +6,7 @@ import type {
 	SelectOptionDescriptor,
 } from "../agent.ts";
 import { PROVIDER_IDS } from "../agent.ts";
+import { PROVIDER_CAPABILITIES } from "../provider-capabilities.ts";
 import {
 	booleanDescriptor,
 	CLAUDE_FULL_EFFORT_OPTIONS,
@@ -285,7 +286,7 @@ const resolveProvider = (
 			label: live.label ?? humanizeModelId(live.id),
 			...(badgeLabel !== undefined ? { badgeLabel } : {}),
 			...(descriptors.length > 0 ? { optionDescriptors: descriptors } : {}),
-			supportsPlanMode: providerId !== "pi",
+			supportsPlanMode: PROVIDER_CAPABILITIES[providerId].planMode,
 			...(webSearch !== undefined ? { supportsWebSearch: webSearch } : {}),
 			origin: "live",
 			available: true,

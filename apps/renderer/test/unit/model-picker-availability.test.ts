@@ -185,3 +185,34 @@ it("allows installed Pi with native, unverified authentication", () => {
 		}),
 	).toBe(false);
 });
+
+it("shows Zuse with a connected subscription and no installed CLI, only when enabled", () => {
+	const availability = availabilityFor("zuse", {
+		runtimeKind: "bundledSdk",
+		runtimeAvailable: true,
+		cliInstalled: false,
+		cliLoggedIn: false,
+		hasApiKey: false,
+	});
+	expect(
+		isModelPickerProviderVisible({
+			providerId: "zuse",
+			availability,
+			providerEnabled: { zuse: true },
+		}),
+	).toBe(true);
+	expect(
+		isModelPickerProviderVisible({
+			providerId: "zuse",
+			availability,
+			providerEnabled: { zuse: false },
+		}),
+	).toBe(false);
+	expect(
+		isModelPickerProviderVisible({
+			providerId: "zuse",
+			availability: { ...availability, authStatus: "unauthenticated" },
+			providerEnabled: { zuse: true },
+		}),
+	).toBe(false);
+});
