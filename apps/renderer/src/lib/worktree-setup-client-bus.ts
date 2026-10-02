@@ -17,7 +17,7 @@ import {
 } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
-import type { MemoizeClient } from "./rpc-client.ts";
+import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -81,6 +81,7 @@ const makeDriver = (): ResourceDriver<MemoizeClient, WorktreeSetupData> => {
 					Effect.sync(() => {
 						if (!active || Cause.hasInterruptsOnly(cause)) return;
 						context.emit({ sync: "failed" });
+						if (!isRpcClientTransportError(Cause.squash(cause))) return;
 						getRendererClientBus().reportConnectionFault(
 							ref.environmentId,
 							{ phase: "failed", message: messageOf(Cause.squash(cause)) },

@@ -1,13 +1,12 @@
 import { CloudBuildMonitor } from "./components/cloud-build-monitor.tsx";
 import { Spinner } from "./components/ui/spinner.tsx";
 import { useCloudOnboarding } from "./hooks/use-cloud-onboarding.ts";
-import { isHostedProduct } from "./lib/hosted-connect.ts";
 import { SurfaceFallback } from "./shell/surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
 
 import { Effect } from "effect";
 
-import { lazy, Suspense, useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useSyncExternalStore } from "react";
 
 import { TooltipProvider } from "./components/ui/tooltip-provider.tsx";
 import { useAuth } from "./hooks/use-auth.ts";
@@ -15,8 +14,6 @@ import { useKeybindingDispatch } from "./hooks/use-keybinding-dispatch.ts";
 
 import { useMenuShortcuts } from "./hooks/use-menu-shortcuts.ts";
 import { useModelCatalogUpdates } from "./hooks/use-model-catalog-updates.ts";
-
-import { useReportRuntimeActivity } from "./hooks/use-report-runtime-activity.ts";
 
 import {
 	startDesktopAnalytics,
@@ -32,9 +29,14 @@ import {
 	setControlPlaneCacheAccount,
 } from "./lib/control-plane-client.ts";
 
+import { useOrganizationWorkspaces } from "./lib/organization-workspaces.ts";
 import { markRendererStartupMilestone } from "./lib/performance-marks.ts";
-
+import { isHostedProduct } from "./lib/platform-capabilities.ts";
 import { installQueueOnlineRecovery } from "./lib/queue-recovery.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "./lib/renderer-workspace.ts";
 
 import { getRpcClient } from "./lib/rpc-client.ts";
 
@@ -51,6 +53,12 @@ import { useWorkspaceStore } from "./store/workspace.ts";
 const PrWatchController = lazy(() =>
 	import("./components/pr-watch-controller.tsx").then((module) => ({
 		default: module.PrWatchController,
+	})),
+);
+
+const RuntimeActivityReporter = lazy(() =>
+	import("./hooks/use-report-runtime-activity.ts").then((module) => ({
+		default: module.RuntimeActivityReporter,
 	})),
 );
 
@@ -102,6 +110,7 @@ function AmbientSurfaces() {
 	const chatSwitcherOpen = useUiStore((state) => state.chatSwitcherOpen);
 	return (
 		<Suspense fallback={null}>
+			<RuntimeActivityReporter />
 			{chatSwitcherOpen ? <ChatSwitcher /> : null}
 			<NotchTrayBridge />
 			<PrWatchController />
@@ -118,21 +127,44 @@ function AmbientSurfaces() {
  */
 export function App({ onReady }: { readonly onReady?: () => void }) {
 	const { isSignedIn, user } = useAuth();
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
+	const organizationId =
+		workspace.scope.kind === "organization"
+			? workspace.scope.organizationId
+			: null;
+	const organization = useOrganizationWorkspaces((state) =>
+		organizationId !== null
+			? state.organizations.find((org) => org.id === organizationId)
+			: undefined,
+	);
+	const canConfigureCloud =
+		workspace.scope.kind === "personal" || organization?.role === "admin";
+	const onboardingOwner =
+		user === null || user === undefined
+			? null
+			: workspace.scope.kind === "personal"
+				? user.id
+				: JSON.stringify([user.id, workspace.key]);
 	const onboardingCompleted = useSettingsStore(
 		(state) => state.onboardingCompleted,
 	);
 	const cloudOnboarding = useCloudOnboarding(
-		isSignedIn ? (user?.id ?? null) : null,
-		onboardingCompleted,
+		isSignedIn ? onboardingOwner : null,
+		onboardingCompleted && canConfigureCloud,
 	);
 	return (
 		<>
 			<ReadyApp
-				onboardingCompleted={onboardingCompleted}
+				onboardingCompleted={isHostedProduct() || onboardingCompleted}
 				onReady={onReady}
 				cloudOnboarding={cloudOnboarding}
 			/>
-			{onboardingCompleted ? <CloudBuildMonitor /> : null}
+			{onboardingCompleted && canConfigureCloud ? (
+				<CloudBuildMonitor key={workspace.key} />
+			) : null}
 		</>
 	);
 }
@@ -183,10 +215,6 @@ function ReadyApp({
 	// and editor commands are handled by CodeMirror keymaps, so this hook
 	// ignores them.
 	useKeybindingDispatch();
-
-	// Mirror privacy-safe agent, terminal, browser, recording, and indexing
-	// counts to desktop services. The agent count also powers quit deferrals.
-	useReportRuntimeActivity();
 
 	// Warm the analytics surface after the shell settles so opening Usage never
 	// pauses on parsing the chart renderer. The data request still starts only

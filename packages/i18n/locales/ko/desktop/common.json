@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "기기 환경설정을 저장하지 못했습니다. 기존 환경설정은 변경되지 않았습니다.",
+	"workspace_settings_load_failed": "워크스페이스 설정을 불러오지 못했습니다. 다시 시도하세요.",
+	"workspace_settings_save_failed": "워크스페이스 설정을 저장하지 못했습니다. 새로고침한 후 다시 시도하세요.",
+	"workspace_settings_separate_configuration": "이 설정은 워크스페이스에 대해 별도로 구성하세요.",
 	"projects_and_chats": "프로젝트 및 채팅",
 	"collapse": "접기 {{title}}",
 	"expand": "펼치기 {{title}}",
@@ -52,5 +56,13 @@
 	"recording_shortcut": "{{label}} 단축키 기록 중",
 	"recording_new_shortcut": "새 동작의 단축키 기록 중",
 	"provider_settings": "제공업체 설정",
+	"startup_surface_loading_zuse": "Zuse 로드 중",
+	"startup_surface_zuse": "Zuse",
+	"startup_surface_still_starting_zuse": "아직 Zuse를 시작하고 있습니다…",
+	"startup_surface_zuse_couldn_t_start": "Zuse를 시작할 수 없습니다",
+	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "로컬 서버를 사용할 수 없습니다. 귀하의 데이터는 여전히 디스크에 있습니다.",
+	"startup_surface_try_again": "다시 시도하세요",
+	"startup_surface_reload": "새로고침",
+	"startup_surface_copy_details": "세부정보 복사",
 	"copy_failed": "복사 실패"
 }

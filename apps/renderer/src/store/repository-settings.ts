@@ -6,6 +6,12 @@ import type {
 } from "@zuse/contracts";
 import { CommandId } from "@zuse/contracts";
 import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client-bus.ts";
+import { formatError } from "../lib/format-error.ts";
+import { rendererAccountSnapshot } from "../lib/renderer-account.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "../lib/renderer-workspace.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
 
 export const repositorySettingsKey = (
@@ -27,70 +33,58 @@ type RepoSettingsState = {
 	) => Promise<RepositorySettings | null>;
 };
 
-const formatError = (err: unknown): string => {
-	if (err instanceof Error) return err.message;
-	if (typeof err === "object" && err !== null && "_tag" in err) {
-		return String((err as { _tag: unknown })._tag);
-	}
-	return String(err);
-};
-
-export const useRepositorySettingsStore = create<RepoSettingsState>((set) => ({
-	byProject: {},
-	error: null,
-	refresh: async (environmentId, projectId) => {
-		try {
-			const { result: settings } = await dispatchEnvironmentShellCommand<
-				{ readonly projectId: FolderId },
-				RepositorySettings
-			>({
-				environmentId,
-				kind: "repositorySettings.get",
-				commandId: CommandId.make(
-					`repository-settings-get:${crypto.randomUUID()}`,
-				),
-				payload: { projectId },
-			});
-			set((s) => ({
-				byProject: {
-					...s.byProject,
-					[repositorySettingsKey(environmentId, projectId)]: settings,
-				},
-				error: null,
-			}));
-			return settings;
-		} catch (err) {
-			set({ error: formatError(err) });
-			return null;
-		}
-	},
-	update: async (environmentId, projectId, patch) => {
+export const useRepositorySettingsStore = create<RepoSettingsState>((set) => {
+	const request = async (
+		environmentId: EnvironmentId,
+		projectId: FolderId,
+		patch?: RepositorySettingsPatch,
+	): Promise<RepositorySettings | null> => {
+		const account = rendererAccountSnapshot();
+		const workspace = rendererWorkspaceSnapshot();
+		const isCurrent = () =>
+			account === rendererAccountSnapshot() &&
+			workspace === rendererWorkspaceSnapshot();
+		const action = patch === undefined ? "get" : "update";
 		try {
 			const { result: settings } = await dispatchEnvironmentShellCommand<
 				{
 					readonly projectId: FolderId;
-					readonly patch: RepositorySettingsPatch;
+					readonly patch?: RepositorySettingsPatch;
 				},
 				RepositorySettings
 			>({
 				environmentId,
-				kind: "repositorySettings.update",
+				kind: `repositorySettings.${action}`,
 				commandId: CommandId.make(
-					`repository-settings-update:${crypto.randomUUID()}`,
+					`repository-settings-${action}:${crypto.randomUUID()}`,
 				),
-				payload: { projectId, patch },
+				payload: patch === undefined ? { projectId } : { projectId, patch },
 			});
-			set((s) => ({
+			if (!isCurrent()) return null;
+			set((state) => ({
 				byProject: {
-					...s.byProject,
+					...state.byProject,
 					[repositorySettingsKey(environmentId, projectId)]: settings,
 				},
 				error: null,
 			}));
 			return settings;
-		} catch (err) {
-			set({ error: formatError(err) });
+		} catch (error) {
+			if (isCurrent()) set({ error: formatError(error) });
 			return null;
 		}
-	},
-}));
+	};
+	return {
+		byProject: {},
+		error: null,
+		refresh: (environmentId, projectId) => request(environmentId, projectId),
+		update: request,
+	};
+});
+
+// Account changes reset the workspace epoch too. Never retain repository scripts
+// or environment variables from a previously selected ownership scope.
+const unsubscribeWorkspace = subscribeRendererWorkspace(() => {
+	useRepositorySettingsStore.setState({ byProject: {}, error: null });
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribeWorkspace);

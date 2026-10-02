@@ -1,5 +1,6 @@
 import "@zuse/i18n/english/connections";
 import "@zuse/i18n/english/chat";
+import "@zuse/i18n/english/settings";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { CloudChatSummary } from "@zuse/contracts";
 import { formatDate, message as uiMessage } from "@zuse/i18n";
@@ -517,7 +518,11 @@ export function CloudWorkspaceInfo({
 }: {
 	readonly workspaceId: string;
 }) {
-	const { message: uiMessage } = useUiMessages(["common", "connections"]);
+	const { message: uiMessage } = useUiMessages([
+		"common",
+		"connections",
+		"settings",
+	]);
 
 	const summary = useCloudSummary(workspaceId);
 	const running = summary?.state === "ready";
@@ -643,9 +648,11 @@ export function CloudWorkspaceInfo({
 					)}
 					{sample === null && running ? (
 						<div className="px-2 py-1 text-[10px] leading-4 text-muted-foreground/70">
-							{uiMessage(
-								"connections:cloud_workspace_info_live_usage_needs_the_updated_workspace_runtime",
-							)}
+							{resources.sync === "failed"
+								? uiMessage(
+										"settings:cloud_workspace_pool_usage_details_are_temporarily_unavailable",
+									)
+								: uiMessage("common:loading")}
 						</div>
 					) : null}
 					<MenuSeparator />

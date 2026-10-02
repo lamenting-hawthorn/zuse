@@ -1,12 +1,15 @@
 import type {
 	ConnectionPhase,
+	PendingCommand,
 	ResourceView,
 } from "@zuse/client-runtime/resource-state";
 import type {
 	CloudChatSummary,
 	SessionTimelineProjection,
 } from "@zuse/contracts";
+import { isWaitingCloudSend } from "./composer-delivery.ts";
 import {
+	hasPendingTurnStart,
 	runtimeStateFromTimeline,
 	type SessionRuntimeState,
 } from "./session-runtime-state.ts";
@@ -35,13 +38,20 @@ export const cloudWorkspaceIsStarting = (summary: CloudChatSummary): boolean =>
 	summary.startupPhase === "authenticating-runtime" ||
 	summary.startupPhase === "syncing-repository";
 
-/** True only after a live runtime owns the turn. Resume, attachment, and
- * durable queueing have their own connection notice and must not render the
- * transcript working row or Stop controls from stale cached session state. */
-export const cloudChatShowsWorking = (activity: CloudChatActivity): boolean =>
+/** A runtime claim bridges the gap before its live turn arrives. Unclaimed
+ * mailbox sends remain in the queue; stale cached turns never imply work. */
+export const cloudChatShowsWorking = (
+	activity: CloudChatActivity,
+	pendingCommands: readonly PendingCommand[] = [],
+): boolean =>
 	activity === "starting-agent" ||
 	activity === "running" ||
-	activity === "stopping";
+	activity === "stopping" ||
+	(activity !== "failed" &&
+		activity !== "paused" &&
+		hasPendingTurnStart(
+			pendingCommands.filter((command) => !isWaitingCloudSend(command)),
+		));
 
 /**
  * The only cloud-chat activity projection used by renderer surfaces.

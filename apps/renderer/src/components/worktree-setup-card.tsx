@@ -11,7 +11,7 @@ import {
 	refreshCloudChatCatalog,
 	useCloudChatCatalogStore,
 } from "../lib/cloud-workspace-catalog.ts";
-import { runControlPlane } from "../lib/control-plane-client.ts";
+import { runCloudControl } from "../lib/control-plane-client.ts";
 import { useActiveEnvironmentEntities } from "../lib/environment-entity-hooks.ts";
 import { formatError } from "../lib/format-error.ts";
 import { shouldShowSetupCard } from "../lib/setup-card-visibility.ts";
@@ -231,13 +231,13 @@ export function CloudWorkspaceSetupCard({
 		setBusy(action === "resume" ? "retry" : "delete");
 		try {
 			if (action === "resume")
-				await runControlPlane((control) =>
+				await runCloudControl((control) =>
 					control["cloud.workspaces.resume"]({
 						workspaceId: summary.workspaceId,
 					}),
 				);
 			else
-				await runControlPlane((control) =>
+				await runCloudControl((control) =>
 					control["cloud.workspaces.delete"]({
 						workspaceId: summary.workspaceId,
 						commandId: crypto.randomUUID(),

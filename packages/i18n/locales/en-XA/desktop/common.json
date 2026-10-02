@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "⟦Côôüüld nôôt sààvëë dëëvïïcëë prëëfëërëëncëës. Yôôüür prëëvïïôôüüs prëëfëërëëncëës ààrëë üünchààngëëd.⟧",
+	"workspace_settings_load_failed": "⟦Côôüüld nôôt lôôààd wôôrkspààcëë sëëttïïngs. Try ààgààïïn.⟧",
+	"workspace_settings_save_failed": "⟦Côôüüld nôôt sààvëë wôôrkspààcëë sëëttïïngs. Rëëfrëësh bëëfôôrëë tryïïng ààgààïïn.⟧",
+	"workspace_settings_separate_configuration": "⟦Côônfïïgüürëë thïïs sëëttïïng sëëpààrààtëëly fôôr thëë wôôrkspààcëë.⟧",
 	"projects_and_chats": "⟦Prôôjëëcts àànd chààts⟧",
 	"collapse": "⟦Côôllààpsëë {{title}}⟧",
 	"expand": "⟦ËËxpàànd {{title}}⟧",
@@ -52,5 +56,13 @@
 	"recording_shortcut": "⟦Rëëcôôrdïïng shôôrtcüüt fôôr {{label}}⟧",
 	"recording_new_shortcut": "⟦Rëëcôôrdïïng shôôrtcüüt fôôr nëëw bïïndïïng⟧",
 	"provider_settings": "⟦Prôôvïïdëër sëëttïïngs⟧",
+	"startup_surface_loading_zuse": "⟦Lôôààdïïng Züüsëë⟧",
+	"startup_surface_zuse": "⟦Züüsëë⟧",
+	"startup_surface_still_starting_zuse": "⟦Stïïll stààrtïïng Züüsëë…⟧",
+	"startup_surface_zuse_couldn_t_start": "⟦Züüsëë côôüüldn’t stààrt⟧",
+	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "⟦Thëë lôôcààl sëërvëër dïïd nôôt bëëcôômëë ààvààïïlààblëë. Yôôüür dààtàà ïïs stïïll ôôn dïïsk.⟧",
+	"startup_surface_try_again": "⟦Try ààgààïïn⟧",
+	"startup_surface_reload": "⟦Rëëlôôààd⟧",
+	"startup_surface_copy_details": "⟦Côôpy dëëtààïïls⟧",
 	"copy_failed": "⟦Côôpy fààïïlëëd⟧"
 }

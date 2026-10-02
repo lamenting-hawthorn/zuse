@@ -1,4 +1,8 @@
 {
+	"device_preferences_save_failed": "Die Geräteeinstellungen konnten nicht gespeichert werden. Deine bisherigen Einstellungen bleiben unverändert.",
+	"workspace_settings_load_failed": "Die Arbeitsbereichseinstellungen konnten nicht geladen werden. Versuche es erneut.",
+	"workspace_settings_save_failed": "Die Arbeitsbereichseinstellungen konnten nicht gespeichert werden. Aktualisiere sie, bevor du es erneut versuchst.",
+	"workspace_settings_separate_configuration": "Konfiguriere diese Einstellung separat für den Arbeitsbereich.",
 	"projects_and_chats": "Projekte und Chats",
 	"collapse": "Einklappen {{title}}",
 	"expand": "Ausklappen {{title}}",
@@ -52,5 +56,13 @@
 	"recording_shortcut": "Tastenkürzel für {{label}} wird aufgezeichnet",
 	"recording_new_shortcut": "Tastenkürzel für neue Zuordnung wird aufgezeichnet",
 	"provider_settings": "Anbietereinstellungen",
+	"startup_surface_loading_zuse": "Laden von Zuse",
+	"startup_surface_zuse": "Zuse",
+	"startup_surface_still_starting_zuse": "Startet immer noch Zuse…",
+	"startup_surface_zuse_couldn_t_start": "Zuse konnte nicht gestartet werden",
+	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "Der lokale Server war nicht verfügbar. Ihre Daten befinden sich noch auf der Festplatte.",
+	"startup_surface_try_again": "Versuchen Sie es erneut",
+	"startup_surface_reload": "Neu laden",
+	"startup_surface_copy_details": "Details kopieren",
 	"copy_failed": "Kopieren fehlgeschlagen"
 }
