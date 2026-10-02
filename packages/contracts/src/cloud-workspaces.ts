@@ -168,6 +168,8 @@ export class CloudProviderList extends Schema.Class<CloudProviderList>(
 	"CloudProviderList",
 )({
 	providers: Schema.Array(CloudProviderOption),
+	/** Eligibility only: safe for content members, unlike financial records. */
+	entitled: Schema.optional(Schema.Boolean),
 }) {}
 
 export class CloudProjectBuildStatus extends Schema.Class<CloudProjectBuildStatus>(
@@ -641,6 +643,7 @@ export class CloudWorkspaceOpError extends Schema.TaggedErrorClass<CloudWorkspac
 		code: Schema.Literals([
 			"not-found",
 			"not-allowed",
+			"access-denied",
 			"beta-access-required",
 			"beta-access-unavailable",
 			"invalid-request",

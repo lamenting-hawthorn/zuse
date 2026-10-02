@@ -230,6 +230,7 @@ export class BillingPortal extends Schema.Class<BillingPortal>("BillingPortal")(
 export const MachineErrorCode = Schema.Literals([
 	"not-found",
 	"not-allowed",
+	"access-denied",
 	"beta-access-required",
 	"beta-access-unavailable",
 	"invalid-offer",

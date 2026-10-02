@@ -38,17 +38,19 @@ const member = (
 	status: "active",
 	role: { slug: role },
 });
-const config = configurationLayer({
-	apiIssuer: "https://api.test",
-	workosIssuer: "https://auth.test",
-	workosJwksUrl: "https://auth.test/jwks",
-	mintPrivateKey: Redacted.make("unused"),
-	mintPublicKey: "unused",
-	workosApiKey: Redacted.make("secret-workos-key"),
-});
+const config = (organizationWorkspacesEnabled = true) =>
+	configurationLayer({
+		apiIssuer: "https://api.test",
+		workosIssuer: "https://auth.test",
+		workosJwksUrl: "https://auth.test/jwks",
+		mintPrivateKey: Redacted.make("unused"),
+		mintPublicKey: "unused",
+		workosApiKey: Redacted.make("secret-workos-key"),
+		organizationWorkspacesEnabled,
+	});
 const makeRuntime = () =>
 	ManagedRuntime.make(
-		Layer.mergeAll(config, ApiStoreMemory, WorkosVerifierTest),
+		Layer.mergeAll(config(), ApiStoreMemory, WorkosVerifierTest),
 	);
 
 describe("organization access and lifecycle", () => {
@@ -634,5 +636,30 @@ describe("organization access and lifecycle", () => {
 			),
 		).toBeNull();
 		expect(provider).not.toHaveBeenCalled();
+	});
+	it.each([
+		"",
+		"/create",
+		"/invite",
+		"/authorize",
+	])("rejects disabled organization route %s before contacting WorkOS", async (path) => {
+		const disabled = ManagedRuntime.make(
+			Layer.mergeAll(ApiStoreMemory, WorkosVerifierTest, config(false)),
+		);
+		try {
+			await expect(
+				disabled.runPromise(
+					routeOrganizationRequest(
+						new Request(`https://api.test/v1/organizations${path}`, {
+							method: "POST",
+							headers: { authorization: "Bearer test-token:alice" },
+						}),
+					),
+				),
+			).rejects.toMatchObject({ code: "organization_workspaces_disabled" });
+			expect(provider).not.toHaveBeenCalled();
+		} finally {
+			await disabled.dispose();
+		}
 	});
 });

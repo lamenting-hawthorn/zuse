@@ -276,6 +276,8 @@ export const routeOrganizationRequest = Effect.fn("routeOrganizationRequest")(
 			!path.startsWith(`${ApiPaths.organizations}/`)
 		)
 			return null;
+		if (!(yield* ApiConfiguration).organizationWorkspacesEnabled)
+			return yield* forbidden("organization_workspaces_disabled");
 		const principal = yield* requireWorkos(request);
 		const userId = principal.accountId;
 		const method = request.method;

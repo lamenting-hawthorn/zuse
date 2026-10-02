@@ -81,7 +81,8 @@ export const controlApiErrorCode = (
 	// An expired or rejected credential must surface as an auth fault, not a
 	// generic failure — clients stop retrying and prompt for sign-in instead
 	// of looping a reconnect that can never succeed.
-	if (status === 401 || status === 403) {
+	if (status === 403) return "access-denied";
+	if (status === 401) {
 		return "not-allowed";
 	}
 	if (status === 409) return "conflict";

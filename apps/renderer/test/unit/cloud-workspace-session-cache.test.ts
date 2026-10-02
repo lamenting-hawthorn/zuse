@@ -23,6 +23,19 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
+it("loads funded organization placement without requesting private billing records", async () => {
+	const entitlements = vi.fn(() => Effect.fail({ code: "not-allowed" }));
+	vi.mocked(getControlPlaneRpcClient).mockResolvedValue({
+		"cloud.providers": () => Effect.succeed({ providers: [], entitled: true }),
+		"cloud.projects.list": () => Effect.succeed({ projects: [] }),
+		"machines.entitlements": entitlements,
+	} as unknown as Awaited<ReturnType<typeof getControlPlaneRpcClient>>);
+	await expect(loadCloudWorkspacePlacement()).resolves.toMatchObject({
+		subscribed: true,
+	});
+	expect(entitlements).not.toHaveBeenCalled();
+});
+
 it("refreshes GitHub connection state after webhook changes instead of caching it indefinitely", async () => {
 	let configured = false;
 	const status = vi.fn(() =>

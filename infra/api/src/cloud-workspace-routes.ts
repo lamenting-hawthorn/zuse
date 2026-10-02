@@ -2748,13 +2748,17 @@ export const routeCloudWorkspaceRequest = (
 							),
 						),
 					);
+			let livePermission: "view" | "edit" | undefined;
 			if (
 				client &&
 				workspaceScopeForOwner(workspace.accountId).kind === "organization"
 			) {
 				if (!workspaceRuntimeSupportsScope(workspace))
 					return yield* conflict("workspace_runtime_update_required");
-				yield* cloudWorkspaceActorPermission(workspace, client.actorId);
+				livePermission = (yield* cloudWorkspaceActorPermission(
+					workspace,
+					client.actorId,
+				)).permission;
 			}
 			if (!runtime && !client) {
 				console.warn("[cloud-workspace] gateway upgrade rejected", {
@@ -2789,7 +2793,12 @@ export const routeCloudWorkspaceRequest = (
 				workspaceScopeForOwner(workspace.accountId).kind === "organization"
 			) {
 				response.headers.set("x-zuse-gateway-actor", client.actorId);
-				response.headers.set("x-zuse-gateway-permission", client.permission);
+				response.headers.set(
+					"x-zuse-gateway-permission",
+					client.permission === "edit" && livePermission === "edit"
+						? "edit"
+						: "view",
+				);
 			}
 			response.headers.set(
 				"x-zuse-gateway-generation",
@@ -2869,18 +2878,18 @@ export const routeCloudWorkspaceRequest = (
 				access,
 				workspace,
 			);
-			if (method === "GET")
+			if (method === "GET") {
+				const policy = yield* Schema.decodeUnknownEffect(ChatSharingPolicy)(
+					workspace.requestConfig.sharingPolicy,
+				).pipe(
+					Effect.mapError(() => forbidden("workspace_sharing_policy_invalid")),
+				);
 				return json({
-					policy: yield* Schema.decodeUnknownEffect(ChatSharingPolicy)(
-						workspace.requestConfig.sharingPolicy,
-					).pipe(
-						Effect.mapError(() =>
-							forbidden("workspace_sharing_policy_invalid"),
-						),
-					),
-					revision: workspace.revision,
+					policy,
+					revision: policy.revision ?? 0,
 					canManageSharing,
 				});
+			}
 			if (!canManageSharing) return yield* forbidden("workspace_access_denied");
 			const body = yield* decodeBody(ChatSharingUpdate, request);
 			yield* validateOrganizationChatGrants(
@@ -2901,7 +2910,7 @@ export const routeCloudWorkspaceRequest = (
 			if (updated === null) return yield* conflict("workspace_sharing_changed");
 			return json({
 				policy: updated.requestConfig.sharingPolicy,
-				revision: updated.revision,
+				revision: body.expectedRevision + 1,
 				canManageSharing,
 			});
 		}
@@ -3335,6 +3344,7 @@ export const routeCloudWorkspaceRequest = (
 					config.availableSandboxProviderIds?.has(provider.providerId) ?? true,
 			);
 			return json({
+				entitled: yield* hasEntitlement(ownerId, nowMs),
 				providers: available.map((provider) => ({
 					providerId: provider.providerId,
 					displayName: provider.displayName,

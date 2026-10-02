@@ -23,6 +23,8 @@ export const cloudWorkspacePermission = Effect.fn("cloudWorkspacePermission")(
 		if (access.membership === null)
 			return { permission: "edit" as const, canManageSharing: true };
 		const member = access.membership;
+		if (member.role.slug === "admin")
+			return { permission: "edit" as const, canManageSharing: true };
 		if (member.role.slug !== "admin" && member.role.slug !== "member")
 			return yield* forbidden("workspace_access_denied");
 		const policy = yield* Schema.decodeUnknownEffect(ChatSharingPolicy)(
@@ -31,9 +33,8 @@ export const cloudWorkspacePermission = Effect.fn("cloudWorkspacePermission")(
 			Effect.mapError(() => forbidden("workspace_sharing_policy_invalid")),
 		);
 		if (
-			member.role.slug === "admin" ||
-			(member.id === policy.creatorMembershipId &&
-				access.actor.accountId === policy.creatorSubject)
+			member.id === policy.creatorMembershipId &&
+			access.actor.accountId === policy.creatorSubject
 		)
 			return { permission: "edit" as const, canManageSharing: true };
 		const permissions: ChatAccessPermission[] = policy.grants

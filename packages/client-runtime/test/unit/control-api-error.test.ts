@@ -17,3 +17,18 @@ it("surfaces runtime incompatibility as an update requirement", () => {
 it("preserves ordinary conflicts", () => {
 	expect(controlApiErrorCode(409, "conflict")).toBe("conflict");
 });
+
+it("does not mistake a permission denial for an expired login", () => {
+	expect(
+		cloudFailurePresentation({
+			cause: cloudControlError(controlApiErrorCode(401, "unauthorized")),
+		})?.kind,
+	).toBe("sign-in-required");
+	expect(
+		cloudFailurePresentation({
+			cause: cloudControlError(
+				controlApiErrorCode(403, "workspace_access_denied"),
+			),
+		})?.kind,
+	).toBe("cloud-access-required");
+});

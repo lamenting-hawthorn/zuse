@@ -313,10 +313,14 @@ describe("cloud workspace store", () => {
 			await runtime.runPromise(
 				store.createWorkspace(workspace, startCommand(workspace.workspaceId)),
 			);
+			// Activity can advance the lifecycle revision while the sharing menu is open.
+			await runtime.runPromise(
+				store.saveWorkspace({ ...workspace, revision: 20 }),
+			);
 			const input = {
 				workspaceId: workspace.workspaceId,
 				accountId: workspace.accountId,
-				expectedRevision: workspace.revision,
+				expectedRevision: 0,
 				sharing: {
 					audience: "private" as const,
 					permission: "view" as const,
@@ -343,7 +347,7 @@ describe("cloud workspace store", () => {
 			expect(
 				(await runtime.runPromise(store.getWorkspace(workspace.workspaceId)))
 					?.requestConfig.sharingPolicy,
-			).toEqual({ ...policy, ...input.sharing });
+			).toEqual({ ...policy, ...input.sharing, revision: 1 });
 		} finally {
 			await runtime.dispose();
 		}

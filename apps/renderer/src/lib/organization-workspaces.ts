@@ -7,7 +7,7 @@ import {
 } from "./renderer-account.ts";
 
 export const organizationWorkspacesAvailable = (): boolean =>
-	import.meta.env.VITE_ORGANIZATION_WORKSPACES !== "false";
+	import.meta.env.VITE_ORGANIZATION_WORKSPACES === "true";
 
 export const useOrganizationWorkspaces = createAtomStore<{
 	organizations: ReadonlyArray<Organization>;

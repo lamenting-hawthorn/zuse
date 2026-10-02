@@ -267,6 +267,7 @@ describe("workspace authorization", () => {
 	});
 
 	it("fails closed for missing policies and cross-owner IDs without changing legacy Personal access", async () => {
+		role = "member";
 		await expect(
 			runtime.runPromise(
 				requireCloudWorkspaceAccess(
@@ -290,6 +291,21 @@ describe("workspace authorization", () => {
 				requireCloudWorkspaceAccess(
 					request("personal"),
 					{ accountId: "user_alice", requestConfig: {} },
+					"edit",
+				),
+			),
+		).resolves.toMatchObject({ permission: "edit", canManageSharing: true });
+	});
+
+	it.each([
+		undefined,
+		{ audience: "invalid" },
+	])("allows admins to recover chats with invalid policy %j", async (sharingPolicy) => {
+		await expect(
+			runtime.runPromise(
+				requireCloudWorkspaceAccess(
+					request("organization:org_a"),
+					{ accountId: "organization:org_a", requestConfig: { sharingPolicy } },
 					"edit",
 				),
 			),

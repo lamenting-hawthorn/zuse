@@ -1397,9 +1397,10 @@ const prepareWorkspaceSharingUpdate = (
 	if (
 		workspace === undefined ||
 		workspace.accountId !== input.accountId ||
-		workspace.revision !== input.expectedRevision ||
 		workspaceDeletionRequested(workspace) ||
-		!Schema.is(ChatSharingPolicy)(workspace.requestConfig.sharingPolicy)
+		!Schema.is(ChatSharingPolicy)(workspace.requestConfig.sharingPolicy) ||
+		(workspace.requestConfig.sharingPolicy.revision ?? 0) !==
+			input.expectedRevision
 	)
 		return null;
 	return {
@@ -1408,6 +1409,7 @@ const prepareWorkspaceSharingUpdate = (
 			...workspace.requestConfig,
 			sharingPolicy: {
 				...workspace.requestConfig.sharingPolicy,
+				revision: input.expectedRevision + 1,
 				audience: input.sharing.audience,
 				permission: input.sharing.permission,
 				grants: input.sharing.grants,
@@ -4659,7 +4661,7 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 			updateWorkspaceSharing: (input) =>
 				Effect.gen(function* () {
 					const rows =
-						yield* sql`SELECT * FROM api_cloud_workspaces WHERE workspace_id=${input.workspaceId} AND account_id=${input.accountId} AND revision=${input.expectedRevision} FOR UPDATE`;
+						yield* sql`SELECT * FROM api_cloud_workspaces WHERE workspace_id=${input.workspaceId} AND account_id=${input.accountId} FOR UPDATE`;
 					if (rows[0] === undefined) return null;
 					const updated = prepareWorkspaceSharingUpdate(
 						workspaceFromRow(rows[0] as Row),

@@ -341,6 +341,29 @@ describe("cloud workspace runtime bootstrap", () => {
 						}),
 					),
 				);
+			const providerResponse = await runtime.runPromise(
+				handleRequest(
+					new Request(`${ISSUER}${ApiPaths.cloudProviders}`, {
+						headers: {
+							authorization: `Bearer test-token:${subject}`,
+							"x-zuse-workspace": "organization:org_a",
+						},
+					}),
+				),
+			);
+			expect(providerResponse.status).toBe(200);
+			expect(await providerResponse.json()).toMatchObject({ entitled: true });
+			const billingResponse = await runtime.runPromise(
+				handleRequest(
+					new Request(`${ISSUER}${ApiPaths.billingEntitlements}`, {
+						headers: {
+							authorization: `Bearer test-token:${subject}`,
+							"x-zuse-workspace": "organization:org_a",
+						},
+					}),
+				),
+			);
+			expect(billingResponse.status).toBe(403);
 			const memberImage = await imageStatus();
 			expect(memberImage.status).toBe(200);
 			const memberImageBody = await memberImage.json();
@@ -603,7 +626,7 @@ describe("cloud workspace runtime bootstrap", () => {
 						issuer: ISSUER,
 						accountId: workspace.accountId,
 						actorId: "member",
-						permission: "view",
+						permission: "edit",
 						deviceId: "device",
 						workspaceId,
 						protocol: "zuse-workspace-v2",
@@ -743,7 +766,7 @@ describe("cloud workspace runtime bootstrap", () => {
 				store.updateWorkspaceSharing({
 					workspaceId,
 					accountId: workspace.accountId,
-					expectedRevision: current.revision,
+					expectedRevision: 0,
 					sharing: { audience: "private", permission: "edit", grants: [] },
 					nowMs: now + 2,
 				}),

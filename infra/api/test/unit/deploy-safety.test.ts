@@ -55,7 +55,7 @@ interface WranglerTarget {
 }
 
 describe("api deployment safety", () => {
-	test("wires the organization rollout gate without enabling either deployment", async () => {
+	test("enables organizations only on staging", async () => {
 		const worker = await readFile(
 			new URL("../../src/worker.ts", import.meta.url),
 			"utf8",
@@ -63,10 +63,14 @@ describe("api deployment safety", () => {
 		expect(worker).toMatch(
 			/organizationWorkspacesEnabled:\s*env\.ORGANIZATION_WORKSPACES_ENABLED === "true"/,
 		);
-		for (const url of [wranglerConfigUrl, productionWranglerConfigUrl]) {
-			const config = parse(await readFile(url, "utf8")) as WranglerTarget;
-			expect(config.vars.ORGANIZATION_WORKSPACES_ENABLED).not.toBe("true");
-		}
+		const staging = parse(
+			await readFile(wranglerConfigUrl, "utf8"),
+		) as WranglerTarget;
+		const production = parse(
+			await readFile(productionWranglerConfigUrl, "utf8"),
+		) as WranglerTarget;
+		expect(staging.vars.ORGANIZATION_WORKSPACES_ENABLED).toBe("true");
+		expect(production.vars.ORGANIZATION_WORKSPACES_ENABLED).not.toBe("true");
 	});
 
 	test.each([
