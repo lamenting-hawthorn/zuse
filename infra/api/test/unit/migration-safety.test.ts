@@ -110,6 +110,9 @@ describe("relay migration reconciliation", () => {
 			{ idx: 26, tag: "0026_remove_workspace_pool" },
 			{ idx: 27, tag: "0027_cloud_usage" },
 			{ idx: 28, tag: "0028_chat_user_message_time" },
+			{ idx: 29, tag: "0029_model_connections" },
+			{ idx: 30, tag: "0031_cloud_auth_status" },
+			{ idx: 31, tag: "0032_classify_legacy_lifecycle_usage" },
 		]);
 	});
 
