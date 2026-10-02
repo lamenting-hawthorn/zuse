@@ -83,6 +83,9 @@ test.each([
 			const store = yield* CloudWorkspaceStore;
 			const build = yield* store.getBuild(workspace.buildId);
 			if (build === null) throw new Error("Missing build");
+			const project = yield* store.getProject(build.projectId);
+			if (project === null) throw new Error("Missing project");
+			yield* store.saveProject({ ...project, state: "preparing" });
 			yield* store.saveBuild({
 				...build,
 				state: "sanitizing",
@@ -109,6 +112,13 @@ test.each([
 			expect(result?.logText).toContain("Setup complete");
 			expect(result?.logText).toContain(`Snapshot publication: ${code}`);
 			expect(result?.nextActionAtMs).toBeGreaterThan(Date.now());
+			if (code === "rejected") {
+				expect(result?.providerSandboxId).toBeUndefined();
+				expect(yield* provider.inspect("source-snapshot-error")).toBeNull();
+				expect((yield* store.getProject(build.projectId))?.state).toBe(
+					"failed",
+				);
+			}
 		}).pipe(Effect.provide(testLayer)),
 	);
 });
@@ -139,6 +149,60 @@ test("resumes a persisted snapshot stage after the original worker exits", async
 			expect(resumed?.state).toBe("ready");
 			expect(resumed?.snapshotId).toBeDefined();
 			expect(resumed?.logText).toContain("Repositories prepared");
+		}).pipe(Effect.provide(testLayer)),
+	);
+});
+
+test("recovers snapshot promotion after the worker exits during sandbox cleanup", async () => {
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const workspace = yield* seedWorkspace({
+				workspaceId: "snapshot-cleanup",
+				requestConfig: {},
+				state: "ready",
+				desiredState: "ready",
+				statusCode: "ready",
+			});
+			const store = yield* CloudWorkspaceStore;
+			const build = yield* store.getBuild(workspace.buildId);
+			if (build === null) throw new Error("Missing build");
+			yield* store.saveBuild({
+				...build,
+				state: "sanitizing",
+				snapshotId: undefined,
+				providerSandboxId: workspace.providerSandboxId,
+				nextActionAtMs: 0,
+			});
+			const providers = yield* SandboxProviders;
+			const provider = yield* providers.get(build.provider);
+			const snapshot = vi.fn(provider.snapshot);
+			yield* reconcileCloudBuild(build.buildId).pipe(
+				Effect.provideService(SandboxProviders, {
+					...providers,
+					get: () =>
+						Effect.succeed({
+							...provider,
+							snapshot,
+							kill: (id) =>
+								provider
+									.kill(id)
+									.pipe(Effect.andThen(Effect.die("worker exited"))),
+						}),
+				}),
+				Effect.exit,
+			);
+			expect((yield* store.getBuild(build.buildId))?.snapshotId).toBeDefined();
+			yield* reconcileCloudBuild(build.buildId).pipe(
+				Effect.provideService(SandboxProviders, {
+					...providers,
+					get: () => Effect.succeed({ ...provider, snapshot }),
+				}),
+			);
+			expect(snapshot).toHaveBeenCalledTimes(1);
+			expect((yield* store.getBuild(build.buildId))?.state).toBe("ready");
+			expect(
+				(yield* store.getBuild(build.buildId))?.providerSandboxId,
+			).toBeUndefined();
 		}).pipe(Effect.provide(testLayer)),
 	);
 });

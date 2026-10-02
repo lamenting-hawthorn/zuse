@@ -524,7 +524,7 @@ const issueWorkspaceRuntimeBoot = Effect.fn("issueWorkspaceRuntimeBoot")(
 const saveAccountProjectState = Effect.fn("saveAccountProjectState")(function* (
 	accountId: string,
 	state: "ready" | "failed",
-	lastErrorCode: string,
+	lastErrorCode: string | undefined,
 	nowMs: number,
 ) {
 	const store = yield* CloudWorkspaceStore;
@@ -587,6 +587,7 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 		}
 		if (
 			(build.state === "building" || build.state === "sanitizing") &&
+			build.snapshotId === undefined &&
 			(build.providerSandboxId === undefined ||
 				(yield* provider
 					.inspect(build.providerSandboxId)
@@ -1063,37 +1064,76 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 		// Snapshot creation is idempotent by build name. A worker can exit after
 		// saving this stage; retries must resume the same snapshot, not re-run setup.
 		if (build.state === "sanitizing" && build.providerSandboxId !== undefined) {
-			const snapshotId = yield* provider
-				.snapshot(
-					build.providerSandboxId,
-					`${project.projectId}-${build.buildId}`,
-				)
-				.pipe(
-					Effect.catchTag("SandboxProviderError", (error) =>
-						Effect.gen(function* () {
-							const retry =
-								error.code === "transient" &&
-								Date.now() - build.createdAtMs < PROJECT_BUILD_TIMEOUT_MS;
-							const diagnostic = `Snapshot publication: ${error.code}. ${retry ? "Retrying automatically." : "Check the sandbox provider configuration and permissions before retrying."}`;
-							yield* store.saveBuild({
-								...build,
-								state: retry ? "sanitizing" : "failed",
-								lastErrorCode: `snapshot-${error.code}`,
-								logText: build.logText?.includes(diagnostic)
-									? build.logText
-									: [build.logText, diagnostic].filter(Boolean).join("\n"),
-								nextActionAtMs: retry
-									? Date.now() + RETRY_MS
-									: Number.MAX_SAFE_INTEGER,
-								updatedAtMs: Date.now(),
-								revision: build.revision + 1,
-							});
-							return undefined;
-						}),
-					),
-				);
+			const providerSandboxId = build.providerSandboxId;
+			const snapshotId =
+				build.snapshotId ??
+				(yield* provider
+					.snapshot(
+						build.providerSandboxId,
+						`${project.projectId}-${build.buildId}`,
+					)
+					.pipe(
+						Effect.catchTag("SandboxProviderError", (error) =>
+							Effect.gen(function* () {
+								const retry =
+									error.code === "transient" &&
+									Date.now() - build.createdAtMs < PROJECT_BUILD_TIMEOUT_MS;
+								const diagnostic = `Snapshot publication: ${error.code}. ${retry ? "Retrying automatically." : "Check the sandbox provider configuration and permissions before retrying."}`;
+								if (!retry) {
+									// Keep the pending build until cleanup succeeds, so failures retry.
+									yield* provider.kill(providerSandboxId).pipe(Effect.orDie);
+									const previous = yield* store.getActiveAccountBuild(
+										build.accountId,
+										build.provider,
+									);
+									yield* saveAccountProjectState(
+										build.accountId,
+										previous === null ? "failed" : "ready",
+										`snapshot-${error.code}`,
+										Date.now(),
+									);
+								}
+								yield* store.saveBuild({
+									...build,
+									providerSandboxId: retry
+										? build.providerSandboxId
+										: undefined,
+									state: retry ? "sanitizing" : "failed",
+									lastErrorCode: `snapshot-${error.code}`,
+									logText: build.logText?.includes(diagnostic)
+										? build.logText
+										: [build.logText, diagnostic].filter(Boolean).join("\n"),
+									nextActionAtMs: retry
+										? Date.now() + RETRY_MS
+										: Number.MAX_SAFE_INTEGER,
+									updatedAtMs: Date.now(),
+									revision: build.revision + 1,
+								});
+								return undefined;
+							}),
+						),
+					));
 			if (snapshotId === undefined) return;
-			yield* provider.kill(build.providerSandboxId).pipe(Effect.ignore);
+			// Persist the recoverable snapshot before deleting its source sandbox.
+			if (build.snapshotId === undefined) {
+				build = {
+					...build,
+					snapshotId,
+					revision: build.revision + 1,
+					updatedAtMs: nowMs,
+				};
+				yield* store.saveBuild(build);
+			}
+			if (
+				(yield* provider.inspect(providerSandboxId).pipe(Effect.orDie)) !== null
+			)
+				yield* provider.kill(providerSandboxId).pipe(Effect.orDie);
+			yield* saveAccountProjectState(
+				build.accountId,
+				"ready",
+				undefined,
+				nowMs,
+			);
 			const promoted = {
 				...build,
 				lastErrorCode: undefined,
@@ -1105,13 +1145,6 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 				updatedAtMs: nowMs,
 			} as const;
 			yield* store.saveBuild(promoted);
-			for (const accountProject of yield* store.listProjects(build.accountId))
-				yield* store.saveProject({
-					...accountProject,
-					state: "ready",
-					lastErrorCode: undefined,
-					updatedAtMs: nowMs,
-				});
 			const superseded = (yield* store.listAccountBuilds(
 				build.accountId,
 				build.provider,
