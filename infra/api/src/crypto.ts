@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
 	calculateJwkThumbprint,
 	EmbeddedJWK,
@@ -258,6 +258,9 @@ export interface MintedTokenClaims {
 
 export interface WorkspaceClientTicketClaims {
 	readonly accountId: string;
+	readonly actorId: string;
+	readonly permission: "view" | "edit";
+	readonly expiresAt: number;
 	readonly deviceId: string;
 	readonly workspaceId: string;
 	readonly scope: "workspace-client";
@@ -362,6 +365,8 @@ export const signWorkspaceClientTicket = (input: {
 	readonly issuer: string;
 	readonly accountId: string;
 	readonly deviceId: string;
+	readonly actorId?: string;
+	readonly permission?: "view" | "edit";
 	readonly workspaceId: string;
 	readonly protocol: string;
 	readonly generation: number;
@@ -370,12 +375,19 @@ export const signWorkspaceClientTicket = (input: {
 	readonly nowMs: number;
 }): Effect.Effect<string, ApiError> =>
 	Effect.gen(function* () {
+		if (
+			input.accountId.startsWith("organization:") &&
+			(!input.actorId || input.permission === undefined)
+		)
+			return yield* badRequest("workspace_ticket_actor_required");
 		const key = yield* importEd25519(input.mintPrivateJwk, "sign");
 		return yield* Effect.tryPromise({
 			try: () =>
 				new SignJWT({
 					workspaceId: input.workspaceId,
 					deviceId: input.deviceId,
+					actorId: input.actorId ?? input.accountId,
+					permission: input.permission ?? "edit",
 					scope: "workspace-client",
 					role: "client",
 					protocol: input.protocol,
@@ -403,6 +415,7 @@ export const verifyWorkspaceClientTicket = (input: {
 	readonly issuer: string;
 	readonly expectedAccountId: string;
 	readonly expectedDeviceId?: string;
+	readonly expectedActorId?: string;
 	readonly expectedWorkspaceId: string;
 	readonly expectedProtocol: string;
 	readonly expectedGeneration: number;
@@ -421,25 +434,37 @@ export const verifyWorkspaceClientTicket = (input: {
 				}),
 			catch: () => unauthorized("invalid_workspace_ticket"),
 		});
-		const payload = verified.payload as {
-			readonly sub?: unknown;
-			readonly workspaceId?: unknown;
-			readonly deviceId?: unknown;
-			readonly scope?: unknown;
-			readonly role?: unknown;
-			readonly protocol?: unknown;
-			readonly generation?: unknown;
-			readonly gatewayEpoch?: unknown;
-		};
+		const payload = yield* Schema.decodeUnknownEffect(
+			Schema.Struct({
+				sub: Schema.String,
+				workspaceId: Schema.String,
+				deviceId: Schema.String.check(Schema.isMinLength(1)),
+				scope: Schema.Literal("workspace-client"),
+				role: Schema.Literal("client"),
+				protocol: Schema.String,
+				generation: Schema.Number,
+				gatewayEpoch: Schema.Number,
+				exp: Schema.Number,
+				actorId: Schema.optional(Schema.String.check(Schema.isMinLength(1))),
+				permission: Schema.optional(Schema.Literals(["view", "edit"])),
+			}),
+		)(verified.payload).pipe(
+			Effect.mapError(() => unauthorized("workspace_ticket_binding_mismatch")),
+		);
+		// Only legacy Personal tickets may omit actor/permission claims.
+		if (
+			input.expectedAccountId.startsWith("organization:") &&
+			(payload.actorId === undefined || payload.permission === undefined)
+		)
+			return yield* unauthorized("workspace_ticket_actor_required");
+		const actorId = payload.actorId ?? payload.sub;
 		if (
 			payload.sub !== input.expectedAccountId ||
-			typeof payload.deviceId !== "string" ||
-			payload.deviceId.length === 0 ||
+			(input.expectedActorId !== undefined &&
+				actorId !== input.expectedActorId) ||
 			(input.expectedDeviceId !== undefined &&
 				payload.deviceId !== input.expectedDeviceId) ||
 			payload.workspaceId !== input.expectedWorkspaceId ||
-			payload.scope !== "workspace-client" ||
-			payload.role !== "client" ||
 			payload.protocol !== input.expectedProtocol ||
 			payload.generation !== input.expectedGeneration ||
 			payload.gatewayEpoch !== input.expectedGatewayEpoch
@@ -449,6 +474,9 @@ export const verifyWorkspaceClientTicket = (input: {
 			);
 		return {
 			accountId: input.expectedAccountId,
+			actorId,
+			permission: payload.permission ?? "edit",
+			expiresAt: payload.exp * 1000,
 			deviceId: payload.deviceId,
 			workspaceId: input.expectedWorkspaceId,
 			scope: "workspace-client",
@@ -587,6 +615,7 @@ export const verifyAccessToken = (input: {
 export interface CheckoutReceiptTicketClaims {
 	readonly accountId: string;
 	readonly offerId: string;
+	readonly workspaceName?: string;
 }
 
 /**
@@ -599,6 +628,7 @@ export const signCheckoutReceiptTicket = (input: {
 	readonly issuer: string;
 	readonly accountId: string;
 	readonly offerId: string;
+	readonly workspaceName?: string;
 	readonly ttlMs: number;
 	readonly nowMs: number;
 }): Effect.Effect<string, ApiError> =>
@@ -606,7 +636,10 @@ export const signCheckoutReceiptTicket = (input: {
 		const key = yield* importEd25519(input.mintPrivateJwk, "sign");
 		return yield* Effect.tryPromise({
 			try: () =>
-				new SignJWT({ offerId: input.offerId })
+				new SignJWT({
+					offerId: input.offerId,
+					workspaceName: input.workspaceName,
+				})
 					.setProtectedHeader({ alg: "EdDSA", typ: "checkout-receipt+jwt" })
 					.setIssuer(input.issuer)
 					.setAudience(CHECKOUT_RECEIPT_AUDIENCE)
@@ -639,19 +672,24 @@ export const verifyCheckoutReceiptTicket = (input: {
 				}),
 			catch: () => unauthorized("invalid_checkout_ticket"),
 		});
-		const payload = verified.payload as {
-			readonly sub?: unknown;
-			readonly offerId?: unknown;
+		const payload = yield* Schema.decodeUnknownEffect(
+			Schema.Struct({
+				sub: Schema.String.check(Schema.isMinLength(1)),
+				offerId: Schema.String.check(Schema.isMinLength(1)),
+				workspaceName: Schema.optional(
+					Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+				),
+			}),
+		)(verified.payload).pipe(
+			Effect.mapError(() => unauthorized("checkout_ticket_malformed")),
+		);
+		return {
+			accountId: payload.sub,
+			offerId: payload.offerId,
+			...(payload.workspaceName === undefined
+				? {}
+				: { workspaceName: payload.workspaceName }),
 		};
-		if (
-			typeof payload.sub !== "string" ||
-			payload.sub.length === 0 ||
-			typeof payload.offerId !== "string" ||
-			payload.offerId.length === 0
-		) {
-			return yield* Effect.fail(unauthorized("checkout_ticket_malformed"));
-		}
-		return { accountId: payload.sub, offerId: payload.offerId };
 	});
 
 export const parseJwk = (value: string): Effect.Effect<JWK, ApiError> =>

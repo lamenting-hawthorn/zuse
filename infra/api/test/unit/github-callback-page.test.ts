@@ -6,21 +6,18 @@ import {
 } from "../../src/github-callback-page.ts";
 
 describe("GitHub callback page", () => {
-	test("renders the successful installation as a self-contained integration stamp", () => {
-		const page = renderGithubConnectedPage(
-			'acme<script>alert("x")</script>',
-			Date.parse("2026-08-20T23:54:00.000Z"),
-		);
+	test("renders a flat, self-contained connection page", () => {
+		const page = renderGithubConnectedPage('acme<script>alert("x")</script>');
 
 		expect(page).toContain("GitHub connected · Zuse");
-		expect(page).toContain("Zuse · Integration");
-		expect(page).toContain("Connected<br>2026.08.20");
-		expect(page).toContain("ZS-20260820-2354");
+		expect(page).toContain("<h1>GitHub connected</h1>");
+		expect(page).toContain('class="dither"');
+		expect(page).not.toContain("stamp-shell");
 		expect(page).not.toContain("<script>alert");
 		expect(page).toContain("&lt;script&gt;");
 		expect(page).not.toMatch(/(?:src|href)="https?:/u);
 		expect(page).toContain("prefers-color-scheme:dark");
-		expect(page).toContain("prefers-reduced-motion:reduce");
+		expect(page).not.toContain("animation:");
 	});
 
 	test("keeps the callback uncacheable and strips referrers", () => {

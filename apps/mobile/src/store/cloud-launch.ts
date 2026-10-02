@@ -82,6 +82,7 @@ export const launchMobileCloudChat = async (input: {
 	);
 	assertAccount();
 	const summary = summaryFromLaunch({
+		workspaceScope: { kind: "personal" },
 		workspace: launch.workspace,
 		repositoryIdentity: input.project.repositoryIdentity,
 		repositoryDisplayName: input.project.displayName,

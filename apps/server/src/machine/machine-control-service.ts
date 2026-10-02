@@ -2,6 +2,10 @@ import {
 	streamCloudCatalogChanges,
 	streamCloudWorkspaceLifecycle,
 } from "@zuse/client-runtime/cloud-control-client";
+import { controlApiErrorCode } from "@zuse/client-runtime/control-api-error";
+
+export { streamCloudWorkspaceLifecycle } from "@zuse/client-runtime/cloud-control-client";
+
 import {
 	ApiAccessToken,
 	ApiConnectGrant,
@@ -10,6 +14,9 @@ import {
 	BillingCheckout,
 	type BillingCheckoutRequest,
 	BillingPortal,
+	ChatSharingDefaults,
+	ChatSharingState,
+	type ChatSharingUpdate,
 	CloudAccountImage,
 	type CloudAccountImageBuildRequest,
 	CloudApiKey,
@@ -56,16 +63,51 @@ import {
 	MachineList,
 	MachineOfferList,
 	MachineRecord,
+	Organization,
+	type OrganizationCreateInput,
+	OrganizationDetails,
+	OrganizationInvitation,
+	type OrganizationInviteInput,
+	type OrganizationMemberInput,
+	type OrganizationRevokeInviteInput,
+	type OrganizationRoleInput,
 	PRODUCTION_API_URL,
 	WIRE_PROTOCOL_VERSION,
+	WORKSPACE_API_PREFIX,
+	WORKSPACE_SCOPE_HEADER,
+	WorkspaceSettings,
+	type WorkspaceSettingsUpdate,
 } from "@zuse/contracts";
 import { Context, Effect, Layer, Schema, type Stream } from "effect";
 import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 
 import { AuthService } from "../auth/services/auth-service.ts";
 import { MachineRuntimeRole } from "./machine-runtime-role.ts";
+import { RequestWorkspace } from "./request-workspace.ts";
 
 export interface MachineControlServiceShape {
+	readonly listOrganizations: () => Effect.Effect<
+		ReadonlyArray<Organization>,
+		MachineControlError
+	>;
+	readonly createOrganization: (
+		input: typeof OrganizationCreateInput.Type,
+	) => Effect.Effect<Organization, MachineControlError>;
+	readonly getOrganization: (
+		organizationId: string,
+	) => Effect.Effect<OrganizationDetails, MachineControlError>;
+	readonly inviteOrganizationMember: (
+		input: typeof OrganizationInviteInput.Type,
+	) => Effect.Effect<OrganizationInvitation, MachineControlError>;
+	readonly revokeOrganizationInvite: (
+		input: typeof OrganizationRevokeInviteInput.Type,
+	) => Effect.Effect<void, MachineControlError>;
+	readonly setOrganizationRole: (
+		input: typeof OrganizationRoleInput.Type,
+	) => Effect.Effect<void, MachineControlError>;
+	readonly removeOrganizationMember: (
+		input: typeof OrganizationMemberInput.Type,
+	) => Effect.Effect<void, MachineControlError>;
 	readonly cloudAccountImage: (
 		providerId?: string,
 	) => Effect.Effect<CloudAccountImage, MachineControlError>;
@@ -183,6 +225,27 @@ export interface MachineControlServiceShape {
 	readonly createCloudWorkspace: (
 		input: CloudWorkspaceCreateRequest,
 	) => Effect.Effect<CloudWorkspaceLaunch, MachineControlError>;
+	readonly cloudSharing: (
+		workspaceId: string,
+	) => Effect.Effect<ChatSharingState, MachineControlError>;
+	readonly updateCloudSharing: (
+		workspaceId: string,
+		input: ChatSharingUpdate,
+	) => Effect.Effect<ChatSharingState, MachineControlError>;
+	readonly cloudSharingDefaults: () => Effect.Effect<
+		ChatSharingDefaults,
+		MachineControlError
+	>;
+	readonly cloudSettings: () => Effect.Effect<
+		WorkspaceSettings,
+		MachineControlError
+	>;
+	readonly updateCloudSettings: (
+		input: WorkspaceSettingsUpdate,
+	) => Effect.Effect<WorkspaceSettings, MachineControlError>;
+	readonly updateCloudSharingDefaults: (
+		input: ChatSharingDefaults,
+	) => Effect.Effect<ChatSharingDefaults, MachineControlError>;
 	readonly connectCloudWorkspace: (
 		workspaceId: string,
 	) => Effect.Effect<CloudWorkspaceConnection, MachineControlError>;
@@ -269,13 +332,6 @@ export class MachineControlService extends Context.Service<
 	MachineControlServiceShape
 >()("zuse/MachineControlService") {}
 
-/**
- * Adapt API's REST workspace resource into a revision-ordered control-plane
- * stream. Polling and retry live here once per RPC subscription, never in UI
- * components or stores.
- */
-export { streamCloudWorkspaceLifecycle } from "@zuse/client-runtime/cloud-control-client";
-
 export const resolveMachineApiUrl = (
 	env: Readonly<Record<string, string | undefined>> = process.env,
 ): string => (env.ZUSE_API_URL ?? PRODUCTION_API_URL).replace(/\/+$/u, "");
@@ -283,60 +339,9 @@ export const resolveMachineApiUrl = (
 export const mapApiErrorCode = (
 	status: number,
 	code: unknown,
-): MachineControlError => {
-	if (code === "machine_alpha_not_allowed") {
-		return new MachineControlError("not-allowed");
-	}
-	if (code === "cloud_beta_access_required") {
-		return new MachineControlError("beta-access-required");
-	}
-	if (code === "cloud_beta_access_unavailable") {
-		return new MachineControlError("beta-access-unavailable");
-	}
-	if (code === "invalid_machine_offer") {
-		return new MachineControlError("invalid-offer");
-	}
-	if (code === "entitlement_required") {
-		return new MachineControlError("entitlement-required");
-	}
-	if (code === "cloud_entitlement_required")
-		return new MachineControlError("entitlement-required");
-	if (
-		code === "cloud_project_not_ready" ||
-		code === "cloud_image_rebuild_required"
-	)
-		return new MachineControlError("invalid-state");
-	if (code === "cloud_workspace_unavailable")
-		return new MachineControlError("invalid-state");
-	if (code === "cloud_credential_connection_required")
-		return new MachineControlError("credential-required");
-	if (typeof code === "string" && code.startsWith("cloud_branch_in_use:"))
-		return new MachineControlError("branch-in-use");
-	if (code === "machine_limit_reached") {
-		return new MachineControlError("machine-limit-reached");
-	}
-	if (code === "tunnel_unavailable") {
-		return new MachineControlError("tunnel-unavailable");
-	}
-	if (code === "billing_approval_pending") {
-		return new MachineControlError("billing-unavailable");
-	}
-	if (code === "machine_not_found" || status === 404) {
-		return new MachineControlError("not-found");
-	}
-	if (code === "invalid_machine_state" || code === "machine_not_recoverable") {
-		return new MachineControlError("invalid-state");
-	}
-	// An expired or rejected credential must surface as an auth fault, not a
-	// generic failure — clients stop retrying and prompt for sign-in instead
-	// of looping a reconnect that can never succeed.
-	if (status === 401 || status === 403) {
-		return new MachineControlError("not-allowed");
-	}
-	if (status === 409) return new MachineControlError("conflict");
-	if (status >= 500) return new MachineControlError("provider-unavailable");
-	return new MachineControlError("invalid-request");
-};
+	path?: string,
+): MachineControlError =>
+	new MachineControlError(controlApiErrorCode(status, code, path));
 
 export const MachineControlServiceLive: Layer.Layer<
 	MachineControlService,
@@ -369,6 +374,11 @@ export const MachineControlServiceLive: Layer.Layer<
 			body?: unknown,
 		): Effect.Effect<A, MachineControlError> =>
 			Effect.gen(function* () {
+				const workspaceScope = yield* RequestWorkspace;
+				const scopedPath =
+					workspaceScope === "personal"
+						? path
+						: `${WORKSPACE_API_PREFIX}${workspaceScope.slice(13)}${path}`;
 				if (runtimeRole !== "control-plane") {
 					return yield* Effect.fail(new MachineControlError("not-allowed"));
 				}
@@ -377,9 +387,10 @@ export const MachineControlServiceLive: Layer.Layer<
 					.pipe(Effect.mapError(() => new MachineControlError("not-allowed")));
 				const response = yield* Effect.tryPromise({
 					try: () =>
-						fetch(`${apiUrl}${path}`, {
+						fetch(`${apiUrl}${scopedPath}`, {
 							method,
 							headers: {
+								[WORKSPACE_SCOPE_HEADER]: workspaceScope,
 								authorization: `Bearer ${token}`,
 								...(body === undefined
 									? {}
@@ -398,7 +409,11 @@ export const MachineControlServiceLive: Layer.Layer<
 							}>,
 					);
 					return yield* Effect.fail(
-						mapApiErrorCode(response.status, payload.error ?? payload.code),
+						mapApiErrorCode(
+							response.status,
+							payload.error ?? payload.code,
+							path,
+						),
 					);
 				}
 				const payload = yield* Effect.tryPromise({
@@ -413,6 +428,42 @@ export const MachineControlServiceLive: Layer.Layer<
 			});
 
 		return MachineControlService.of({
+			listOrganizations: () =>
+				request(ApiPaths.organizations, Schema.Array(Organization)),
+			createOrganization: (input) =>
+				request(ApiPaths.organizations, Organization, "POST", input),
+			getOrganization: (organizationId) =>
+				request(ApiPaths.organizationDetails, OrganizationDetails, "POST", {
+					organizationId,
+				}),
+			inviteOrganizationMember: (input) =>
+				request(
+					ApiPaths.organizationInvite,
+					OrganizationInvitation,
+					"POST",
+					input,
+				),
+			revokeOrganizationInvite: (input) =>
+				request(
+					ApiPaths.organizationRevokeInvite,
+					Schema.Struct({ ok: Schema.Boolean }),
+					"POST",
+					input,
+				).pipe(Effect.asVoid),
+			setOrganizationRole: (input) =>
+				request(
+					ApiPaths.organizationSetRole,
+					Schema.Struct({ ok: Schema.Boolean }),
+					"POST",
+					input,
+				).pipe(Effect.asVoid),
+			removeOrganizationMember: (input) =>
+				request(
+					ApiPaths.organizationRemoveMember,
+					Schema.Struct({ ok: Schema.Boolean }),
+					"POST",
+					input,
+				).pipe(Effect.asVoid),
 			cloudAccountImage: (providerId) =>
 				request(
 					providerId === undefined
@@ -578,6 +629,27 @@ export const MachineControlServiceLive: Layer.Layer<
 						: ApiPaths.cloudWorkspacesFork,
 					CloudWorkspaceLaunch,
 					"POST",
+					input,
+				),
+			cloudSharing: (workspaceId) =>
+				request(ApiPaths.cloudWorkspaceSharing(workspaceId), ChatSharingState),
+			updateCloudSharing: (workspaceId, input) =>
+				request(
+					ApiPaths.cloudWorkspaceSharing(workspaceId),
+					ChatSharingState,
+					"PUT",
+					input,
+				),
+			cloudSharingDefaults: () =>
+				request(ApiPaths.cloudSharingDefaults, ChatSharingDefaults),
+			cloudSettings: () => request(ApiPaths.cloudSettings, WorkspaceSettings),
+			updateCloudSettings: (input) =>
+				request(ApiPaths.cloudSettings, WorkspaceSettings, "PUT", input),
+			updateCloudSharingDefaults: (input) =>
+				request(
+					ApiPaths.cloudSharingDefaults,
+					ChatSharingDefaults,
+					"PUT",
 					input,
 				),
 			connectCloudWorkspace: (workspaceId) =>

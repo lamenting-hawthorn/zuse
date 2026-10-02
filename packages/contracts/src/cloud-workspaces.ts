@@ -7,12 +7,22 @@ import {
 	CommandChangePage,
 	CommandStatus,
 } from "./cloud-commands.ts";
+import {
+	ChatSharingDefaults,
+	ChatSharingState,
+	ChatSharingUpdate,
+} from "./collaboration.ts";
 import { AgentSessionId, ChatId } from "./ids.ts";
 import {
+	Chat,
 	Message,
+	Session,
 	SessionStreamCursor,
 	SessionTimelineProjection,
 } from "./session.ts";
+import { WorkspaceSettings, WorkspaceSettingsUpdate } from "./settings.ts";
+import { Folder } from "./workspace.ts";
+import { WorkspaceScope } from "./workspace-scope.ts";
 
 export const CLOUD_WORKSPACE_OFFER_ID = "cloud-workspace-standard-v1" as const;
 export const CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY = "machine-fork-v1";
@@ -158,6 +168,8 @@ export class CloudProviderList extends Schema.Class<CloudProviderList>(
 	"CloudProviderList",
 )({
 	providers: Schema.Array(CloudProviderOption),
+	/** Eligibility only: safe for content members, unlike financial records. */
+	entitled: Schema.optional(Schema.Boolean),
 }) {}
 
 export class CloudProjectBuildStatus extends Schema.Class<CloudProjectBuildStatus>(
@@ -349,6 +361,7 @@ export class CloudWorkspaceLaunch extends Schema.Class<CloudWorkspaceLaunch>(
 export class CloudWorkspaceConnection extends Schema.Class<CloudWorkspaceConnection>(
 	"CloudWorkspaceConnection",
 )({
+	workspaceScope: Schema.optional(WorkspaceScope),
 	workspaceId: Schema.String,
 	wsUrl: Schema.String,
 	protocol: Schema.String,
@@ -379,6 +392,7 @@ export class CloudWorkspaceRuntimeSummary extends Schema.Class<CloudWorkspaceRun
 export class CloudChatSummary extends Schema.Class<CloudChatSummary>(
 	"CloudChatSummary",
 )({
+	workspaceScope: Schema.optional(WorkspaceScope),
 	workspaceId: Schema.String,
 	projectId: Schema.String,
 	repositoryIdentity: Schema.String,
@@ -454,6 +468,10 @@ export class CloudTranscriptCheckpointPayload extends Schema.Class<CloudTranscri
 	sessionId: AgentSessionId,
 	cursor: SessionStreamCursor,
 	projection: SessionTimelineProjection,
+	/** Encrypted cold-read context; absent in checkpoints from older runtimes. */
+	context: Schema.optional(
+		Schema.Struct({ chat: Chat, session: Session, folder: Folder }),
+	),
 }) {}
 
 export class CloudTranscriptCheckpointMetadata extends Schema.Class<CloudTranscriptCheckpointMetadata>(
@@ -625,6 +643,7 @@ export class CloudWorkspaceOpError extends Schema.TaggedErrorClass<CloudWorkspac
 		code: Schema.Literals([
 			"not-found",
 			"not-allowed",
+			"access-denied",
 			"beta-access-required",
 			"beta-access-unavailable",
 			"invalid-request",
@@ -689,6 +708,45 @@ export const CloudWorkspacesGetRpc = Rpc.make("cloud.workspaces.get", {
 	success: CloudWorkspace,
 	error: CloudWorkspaceOpError,
 });
+export const CloudSharingGetRpc = Rpc.make("cloud.sharing.get", {
+	payload: Schema.Struct({ workspaceId: Schema.String }),
+	success: ChatSharingState,
+	error: CloudWorkspaceOpError,
+});
+export const CloudSharingUpdateRpc = Rpc.make("cloud.sharing.update", {
+	payload: Schema.Struct({
+		workspaceId: Schema.String,
+		...ChatSharingUpdate.fields,
+	}),
+	success: ChatSharingState,
+	error: CloudWorkspaceOpError,
+});
+export const CloudSharingDefaultsGetRpc = Rpc.make(
+	"cloud.sharing.defaults.get",
+	{
+		payload: Schema.Void,
+		success: ChatSharingDefaults,
+		error: CloudWorkspaceOpError,
+	},
+);
+export const CloudSettingsGetRpc = Rpc.make("cloud.settings.get", {
+	payload: Schema.Void,
+	success: WorkspaceSettings,
+	error: CloudWorkspaceOpError,
+});
+export const CloudSettingsUpdateRpc = Rpc.make("cloud.settings.update", {
+	payload: WorkspaceSettingsUpdate,
+	success: WorkspaceSettings,
+	error: CloudWorkspaceOpError,
+});
+export const CloudSharingDefaultsUpdateRpc = Rpc.make(
+	"cloud.sharing.defaults.update",
+	{
+		payload: ChatSharingDefaults,
+		success: ChatSharingDefaults,
+		error: CloudWorkspaceOpError,
+	},
+);
 /**
  * One monotonic lifecycle control stream for a workspace. The server adapts
  * API's current REST surface; clients never own lifecycle polling loops.

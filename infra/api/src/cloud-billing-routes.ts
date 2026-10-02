@@ -5,7 +5,6 @@ import {
 } from "@zuse/contracts";
 import type { SandboxProviders } from "@zuse/sandbox-providers";
 import { Clock, Effect, Schema } from "effect";
-import { requireWorkos } from "./auth.ts";
 import { ensureAccountCloudBillingPeriod } from "./cloud-billing-period.ts";
 import { CloudBillingStore } from "./cloud-billing-store.ts";
 import { findBillingUsageSourceModule } from "./cloud-billing-usage-source-config.ts";
@@ -15,6 +14,7 @@ import { type ApiError, badRequest, conflict } from "./errors.ts";
 import { decodeBody, json } from "./http.ts";
 import type { MachineStore } from "./machine-store.ts";
 import type { WorkosVerifier } from "./workos.ts";
+import { requireWorkspaceAccess } from "./workspace-authorization.ts";
 
 export { verifyE2bSignature } from "./cloud-billing-usage-sources/e2b.ts";
 
@@ -53,9 +53,9 @@ export const routeCloudBillingRequest = (
 			url.pathname !== ApiPaths.cloudBillingCap
 		)
 			return null;
-		const principal = yield* requireWorkos(request);
+		const workspace = yield* requireWorkspaceAccess(request, "billing");
 		const period = yield* ensureAccountCloudBillingPeriod(
-			principal.accountId,
+			workspace.ownerId,
 			nowMs,
 		).pipe(Effect.provideService(CloudBillingStore, billingStore));
 		if (period === null)

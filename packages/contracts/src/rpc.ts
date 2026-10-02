@@ -82,6 +82,12 @@ import {
 	CloudProjectsPrepareRpc,
 	CloudProjectsRemoveRpc,
 	CloudProvidersRpc,
+	CloudSettingsGetRpc,
+	CloudSettingsUpdateRpc,
+	CloudSharingDefaultsGetRpc,
+	CloudSharingDefaultsUpdateRpc,
+	CloudSharingGetRpc,
+	CloudSharingUpdateRpc,
 	CloudTranscriptCheckpointGetRpc,
 	CloudTranscriptMessagePageGetRpc,
 	CloudWorkspaceDataKeyRpc,
@@ -237,6 +243,15 @@ import {
 	ModelConnectRpc,
 } from "./model-connections.ts";
 import {
+	OrganizationsCreateRpc,
+	OrganizationsGetRpc,
+	OrganizationsInviteRpc,
+	OrganizationsListRpc,
+	OrganizationsRemoveMemberRpc,
+	OrganizationsRevokeInviteRpc,
+	OrganizationsSetRoleRpc,
+} from "./organizations.ts";
+import {
 	PairingListNearbyRequestsRpc,
 	PairingListTokensRpc,
 	PairingResolveNearbyRequestRpc,
@@ -268,6 +283,7 @@ import {
 	RepositorySettingsGetRpc,
 	RepositorySettingsUpdateRpc,
 } from "./repository-settings.ts";
+import { RpcAuthorization } from "./rpc-authorization.ts";
 import {
 	ChatArchiveJobsRpc,
 	ChatArchivePreviewRpc,
@@ -381,6 +397,13 @@ import {
  * Add new RPCs by importing them here and including them in the group.
  */
 export const MemoizeRpcs = RpcGroup.make(
+	OrganizationsListRpc,
+	OrganizationsCreateRpc,
+	OrganizationsGetRpc,
+	OrganizationsInviteRpc,
+	OrganizationsRevokeInviteRpc,
+	OrganizationsSetRoleRpc,
+	OrganizationsRemoveMemberRpc,
 	ModelConnectionsRpc,
 	ModelConnectRpc,
 	ModelConnectionRenameRpc,
@@ -438,6 +461,12 @@ export const MemoizeRpcs = RpcGroup.make(
 	CloudProjectsPrepareRpc,
 	CloudWorkspacesListRpc,
 	CloudWorkspacesGetRpc,
+	CloudSharingGetRpc,
+	CloudSharingUpdateRpc,
+	CloudSharingDefaultsGetRpc,
+	CloudSharingDefaultsUpdateRpc,
+	CloudSettingsGetRpc,
+	CloudSettingsUpdateRpc,
 	CloudWorkspacesWatchRpc,
 	CloudWorkspacesCreateRpc,
 	CloudWorkspacesForkRpc,
@@ -697,7 +726,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	KeybindingsReplaceRpc,
 	KeybindingsStreamRpc,
 	SessionSetWorktreeRpc,
-);
+).middleware(RpcAuthorization);
 export type MemoizeRpcs = typeof MemoizeRpcs;
 
 /**

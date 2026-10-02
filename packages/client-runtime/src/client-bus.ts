@@ -9,6 +9,7 @@ import { clientCommandTargetId } from "./client-command-target";
 import type {
 	ClientCommand,
 	ClientCommandExecutor,
+	ClientCommandOwner,
 	CloudCommandTransport,
 	CommandDispatchHandle,
 	CommandFingerprint,
@@ -22,6 +23,7 @@ import {
 	assertCommandFingerprint,
 	CloudCommandTerminalError,
 	CloudCommandTransportUnavailableError,
+	CommandAuthorityLostError,
 	commandFingerprint,
 	terminalCommandReceipt,
 	terminalErrorFromReceipt,
@@ -67,6 +69,8 @@ const pendingCommandWithDeliveryStatus = (
 });
 
 export type ResourceDriverUpdate<Data> = Readonly<{
+	/** Discard this resource and its cache after a confirmed authorization denial. */
+	accessDenied?: true;
 	data?: Data;
 	cursor?: ResourceCursor;
 	sync?: SyncPhase;
@@ -81,6 +85,9 @@ export type ResourceDataUpdate<Data> = Readonly<{
 	expectedGeneration: number;
 	/** Durable cursor observed before the side request started. */
 	expectedCursor: ResourceCursor | null;
+	/** Authenticated side requests may initialize an otherwise empty resource. */
+	initialData?: Data;
+	origin?: "runtime" | "checkpoint";
 	/** Returning undefined rejects the update without notifying subscribers. */
 	update: (data: Data) => Data | undefined;
 	persist?: boolean;
@@ -140,8 +147,18 @@ export type ClientBusOptions<Client> = Readonly<{
 	resolver: EnvironmentResolver<Client>;
 	persistence?: ResourcePersistence;
 	coalescePersistence?: (key: ResourceKey<unknown>) => boolean;
+	/** Undefined preserves device-local keys; null disables unowned cache access. */
+	resourceCacheNamespaceFor?: (
+		key: ResourceKey<unknown>,
+	) => string | null | undefined;
 	outbox?: CommandOutbox;
 	commandExecutor?: ClientCommandExecutor<Client>;
+	/** Applied only to newly submitted commands, never to persisted replay rows. */
+	commandOwnerFor?: (command: ClientCommand) => ClientCommandOwner;
+	/** Capture an authority scope before cache lookup, queueing, or replay. */
+	commandScopeFor?: (command: ClientCommand) => () => boolean;
+	/** Wake pending delivery waits when the captured authority may have changed. */
+	subscribeCommandAuthority?: (listener: () => void) => () => void;
 	/** Stable control-plane transport for eligible cloud environments. */
 	commandTransportFor?: (
 		environmentId: EnvironmentId,
@@ -163,6 +180,8 @@ export type ClientBusOptions<Client> = Readonly<{
 }>;
 
 type ResourceEntry = {
+	cacheNamespace: string | null | undefined;
+	deniedGeneration: number | null;
 	readonly id: string;
 	readonly key: ResourceKey<unknown>;
 	view: ResourceView<unknown>;
@@ -479,12 +498,18 @@ export class ClientBus<Client> {
 	/**
 	 * Drops an inactive resource cell so a future surface performs a fresh replay.
 	 * Active leases fence this operation; callers must release and unsubscribe first.
+	 * Revoked cells retain their denial marker until an authorized runtime retry.
 	 */
 	forget(key: ResourceKey<unknown>): boolean {
 		if (this.disposed) return false;
 		const id = resourceKeyId(key);
 		const entry = this.entries.get(id);
-		if (entry === undefined || entry.activations.size > 0) return false;
+		if (
+			entry === undefined ||
+			entry.activations.size > 0 ||
+			entry.deniedGeneration !== null
+		)
+			return false;
 		this.stopDriver(entry);
 		entry.synchronizationEpoch += 1;
 		this.entries.delete(id);
@@ -506,19 +531,21 @@ export class ClientBus<Client> {
 		const entry = this.entries.get(resourceKeyId(key));
 		if (
 			entry === undefined ||
-			entry.view.data === null ||
+			entry.deniedGeneration !== null ||
 			entry.view.generation !== options.expectedGeneration ||
 			!cursorEquals(entry.view.cursor, options.expectedCursor)
 		) {
 			return false;
 		}
-		const data = options.update(entry.view.data as ResourceData<Key>);
+		const current = entry.view.data ?? options.initialData;
+		if (current === undefined) return false;
+		const data = options.update(current as ResourceData<Key>);
 		if (data === undefined) return false;
 		entry.runtimeUpdates += 1;
 		const next: ResourceView<unknown> = {
 			...entry.view,
 			data,
-			origin: "runtime",
+			origin: options.origin ?? "runtime",
 		};
 		this.setView(entry, next);
 		if (options.persist === true) this.persist(entry, next);
@@ -537,7 +564,7 @@ export class ClientBus<Client> {
 	): boolean {
 		if (this.disposed) return false;
 		const entry = this.entries.get(resourceKeyId(key));
-		if (entry === undefined) return false;
+		if (entry === undefined || entry.deniedGeneration !== null) return false;
 		const current = entry.view.data ?? options.initialData;
 		if (current === undefined) return false;
 		const data = options.update(current as ResourceData<Key>);
@@ -592,7 +619,7 @@ export class ClientBus<Client> {
 	/**
 	 * Restarts one retained resource driver without reconnecting its environment.
 	 * This is used when a provisional resource becomes durable after an earlier
-	 * subscription was rejected by the server.
+	 * subscription was rejected by the server, or to explicitly retry denied access.
 	 */
 	restart<Key extends ResourceKey<unknown>>(key: Key): boolean {
 		if (this.disposed) return false;
@@ -608,7 +635,7 @@ export class ClientBus<Client> {
 			return false;
 		}
 		this.stopDriver(entry);
-		this.startDriver(entry, binding);
+		this.startDriver(entry, binding, true);
 		return true;
 	}
 
@@ -631,7 +658,42 @@ export class ClientBus<Client> {
 	dispatch<Result>(
 		command: ClientCommand<unknown, Result>,
 	): Promise<CommandReceipt<Result>> {
+		try {
+			return this.dispatchCommand(this.withCommandOwner(command));
+		} catch (cause) {
+			return Promise.reject(cause);
+		}
+	}
+
+	private withCommandOwner<Result>(
+		command: ClientCommand<unknown, Result>,
+	): ClientCommand<unknown, Result> {
+		if (
+			command.owner !== undefined ||
+			this.options.commandOwnerFor === undefined
+		)
+			return command;
+		return { ...command, owner: this.options.commandOwnerFor(command) };
+	}
+
+	private commandAuthority(command: ClientCommand): () => void {
+		const current = this.options.commandScopeFor?.(command);
+		return () => {
+			if (current?.() === false) throw new CommandAuthorityLostError();
+		};
+	}
+
+	private dispatchCommand<Result>(
+		command: ClientCommand<unknown, Result>,
+	): Promise<CommandReceipt<Result>> {
 		this.assertActive();
+		let assertAuthority: () => void;
+		try {
+			assertAuthority = this.commandAuthority(command);
+			assertAuthority();
+		} catch (cause) {
+			return Promise.reject(cause);
+		}
 		const effectiveCommand = this.withResourceReflectionFence(command);
 		if (
 			effectiveCommand.resource !== null &&
@@ -687,9 +749,10 @@ export class ClientBus<Client> {
 			? this.dispatchWithPersistedReceipt(
 					effectiveCommand,
 					fingerprint,
+					assertAuthority,
 					liveFallbackReservation?.waitForTurn,
 				)
-			: this.enqueueCommand(effectiveCommand, fingerprint);
+			: this.enqueueCommand(effectiveCommand, fingerprint, assertAuthority);
 		const pending = this.untilDisposed(execution);
 		if (liveFallbackReservation !== undefined) {
 			void pending.then(
@@ -717,6 +780,8 @@ export class ClientBus<Client> {
 		command: ClientCommand<unknown, Result>,
 	): CommandDispatchHandle<Result> {
 		this.assertActive();
+		command = this.withCommandOwner(command);
+		const assertAuthority = this.commandAuthority(command);
 		const fingerprint = commandFingerprint(command);
 		let acceptance = this.commandAcceptances.get(command.commandId);
 		if (acceptance === undefined) {
@@ -751,11 +816,12 @@ export class ClientBus<Client> {
 		return {
 			accepted: acceptance.accepted,
 			result,
-			cancel: () => {
+			cancel: async () => {
+				assertAuthority();
 				const cancel = this.commandCancels.get(command.commandId);
 				return cancel === undefined
 					? Promise.reject(new Error("This command can no longer be cancelled"))
-					: cancel();
+					: this.untilDisposed(cancel(), assertAuthority);
 			},
 		};
 	}
@@ -814,10 +880,11 @@ export class ClientBus<Client> {
 	private enqueueCommand<Result>(
 		command: ClientCommand<unknown, Result>,
 		fingerprint: CommandFingerprint,
+		assertAuthority: () => void,
 	): Promise<CommandReceipt<Result>> {
 		const reservation = this.reserveCommandLane(command);
 		const pending = reservation.waitForTurn.then(() =>
-			this.dispatchWithPersistedReceipt(command, fingerprint),
+			this.dispatchWithPersistedReceipt(command, fingerprint, assertAuthority),
 		);
 		void pending.then(reservation.release, reservation.release);
 		return pending;
@@ -853,15 +920,18 @@ export class ClientBus<Client> {
 	private async dispatchWithPersistedReceipt<Result>(
 		command: ClientCommand<unknown, Result>,
 		fingerprint: CommandFingerprint,
+		assertAuthority: () => void,
 		liveFallbackTurn?: Promise<void>,
 	): Promise<CommandReceipt<Result>> {
 		for (;;) {
 			this.assertActive();
+			assertAuthority();
 			const persisted =
 				command.retry === "safe"
 					? await this.commandOutbox()?.findReceipt(command.commandId)
 					: null;
 			this.assertActive();
+			assertAuthority();
 			if (persisted !== null && persisted !== undefined) {
 				assertCommandFingerprint(
 					command.commandId,
@@ -877,42 +947,63 @@ export class ClientBus<Client> {
 				return await this.prepareAndExecute(
 					command,
 					fingerprint,
+					assertAuthority,
 					liveFallbackTurn,
 				);
 			} catch (cause) {
 				if (!(cause instanceof DurableCommandRetrySignal)) throw cause;
-				await this.waitForDurableRetry(2_000);
+				await this.waitForDurableRetry(2_000, assertAuthority);
 			}
 		}
 	}
 
-	private untilDisposed<Value>(promise: Promise<Value>): Promise<Value> {
+	private untilDisposed<Value>(
+		promise: Promise<Value>,
+		assertAuthority?: () => void,
+	): Promise<Value> {
 		if (this.disposed) return Promise.reject(new Error("ClientBus disposed"));
+		let unsubscribe: (() => void) | undefined;
 		return new Promise<Value>((resolve, reject) => {
-			const onDisposed = (cause: Error) => {
+			const onDisposed = (cause: unknown) => {
 				this.disposalListeners.delete(onDisposed);
 				reject(cause);
 			};
 			this.disposalListeners.add(onDisposed);
+			const checkAuthority = () => {
+				try {
+					assertAuthority?.();
+				} catch (cause) {
+					onDisposed(cause);
+				}
+			};
+			if (assertAuthority !== undefined) {
+				unsubscribe = this.options.subscribeCommandAuthority?.(checkAuthority);
+				checkAuthority();
+			}
 			void promise.then(
 				(value) => {
+					checkAuthority();
 					if (!this.disposalListeners.delete(onDisposed)) return;
 					resolve(value);
 				},
 				(cause) => {
+					checkAuthority();
 					if (!this.disposalListeners.delete(onDisposed)) return;
 					reject(cause);
 				},
 			);
-		});
+		}).finally(() => unsubscribe?.());
 	}
 
-	private waitForDurableRetry(delayMs: number): Promise<void> {
+	private waitForDurableRetry(
+		delayMs: number,
+		assertAuthority: () => void,
+	): Promise<void> {
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		const delay = new Promise<void>((resolve) => {
 			timeout = setTimeout(resolve, delayMs);
 		});
-		return this.untilDisposed(delay).finally(() => {
+		return this.untilDisposed(delay, assertAuthority).finally(() => {
 			if (timeout !== undefined) clearTimeout(timeout);
 		});
 	}
@@ -933,7 +1024,7 @@ export class ClientBus<Client> {
 		const entries = await outbox.listOutbox(environmentId);
 		await Promise.all(
 			entries.map((entry) =>
-				this.dispatch(entry.command).then(
+				this.dispatchCommand(entry.command).then(
 					() => undefined,
 					() => undefined,
 				),
@@ -970,7 +1061,7 @@ export class ClientBus<Client> {
 		);
 		if (eligible.length === 0) return;
 		await Promise.allSettled(
-			eligible.map((entry) => this.dispatch(entry.command)),
+			eligible.map((entry) => this.dispatchCommand(entry.command)),
 		);
 	}
 
@@ -1014,6 +1105,8 @@ export class ClientBus<Client> {
 		let entry = this.entries.get(id);
 		if (entry === undefined) {
 			entry = {
+				cacheNamespace: this.options.resourceCacheNamespaceFor?.(key),
+				deniedGeneration: null,
 				id,
 				key,
 				view: emptyResourceView(),
@@ -1034,7 +1127,35 @@ export class ClientBus<Client> {
 			};
 			this.entries.set(id, entry);
 		}
+		this.refreshResourceNamespace(entry);
 		return entry;
+	}
+
+	/** Clear old projections in place so existing subscribers remain attached. */
+	refreshResourceNamespaces(): void {
+		if (this.disposed) return;
+		for (const entry of this.entries.values())
+			this.refreshResourceNamespace(entry);
+	}
+
+	private refreshResourceNamespace(entry: ResourceEntry): void {
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		if (namespace === entry.cacheNamespace) return;
+		entry.cacheNamespace = namespace;
+		entry.runtimeUpdates++;
+		entry.synchronizationEpoch++;
+		entry.synchronization = null;
+		entry.hydration = null;
+		entry.hydrated = this.options.persistence === undefined;
+		// A new cache owner must not reuse the previous owner's live client.
+		entry.deniedGeneration = entry.view.generation;
+		this.stopDriver(entry);
+		this.setView(entry, {
+			...emptyResourceView(),
+			connection: entry.view.connection,
+			generation: entry.view.generation,
+		});
+		if (entry.activations.size > 0) this.hydrate(entry);
 	}
 
 	private withResourceReflectionFence<Result>(
@@ -1054,7 +1175,11 @@ export class ClientBus<Client> {
 		};
 	}
 
-	private waitForResourceReflection(command: ClientCommand): Promise<void> {
+	private waitForResourceReflection(
+		command: ClientCommand,
+		assertAuthority: () => void,
+	): Promise<void> {
+		assertAuthority();
 		if (
 			command.awaitResourceReflection !== true ||
 			command.resource === null ||
@@ -1091,7 +1216,13 @@ export class ClientBus<Client> {
 					: pending,
 			),
 		}));
-		return promise;
+		return this.untilDisposed(promise, assertAuthority).finally(() => {
+			if (
+				this.commandReflectionWaiters.get(command.commandId)?.promise ===
+				promise
+			)
+				this.commandReflectionWaiters.delete(command.commandId);
+		});
 	}
 
 	private commandIsReflected(
@@ -1134,6 +1265,7 @@ export class ClientBus<Client> {
 		for (const id of binding.resourceIds) {
 			const entry = this.entries.get(id);
 			if (entry === undefined) continue;
+			this.refreshResourceNamespace(entry);
 			this.setView(entry, {
 				...entry.view,
 				connection: connection.phase,
@@ -1164,6 +1296,11 @@ export class ClientBus<Client> {
 
 	private hydrate(entry: ResourceEntry): void {
 		const persistence = this.options.persistence;
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		if (namespace === null) {
+			entry.hydrated = true;
+			return;
+		}
 		if (
 			persistence === undefined ||
 			entry.hydrated ||
@@ -1178,9 +1315,11 @@ export class ClientBus<Client> {
 			this.setView(entry, { ...initialView, sync: "hydrating-cache" });
 		}
 		const hydration = persistence
-			.loadResource(entry.key)
+			.loadResource(entry.key, namespace)
 			.then((cached) => {
+				if (entry.hydration !== hydration) return;
 				if (
+					this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace ||
 					cached === null ||
 					entry.runtimeUpdates !== initialRuntimeUpdates ||
 					entry.view.origin === "runtime" ||
@@ -1202,11 +1341,13 @@ export class ClientBus<Client> {
 				restartDriverFromCache = entry.driverGeneration !== 0;
 			})
 			.catch(() => {
+				if (entry.hydration !== hydration) return;
 				if (entry.view.sync === "hydrating-cache") {
 					this.setView(entry, { ...entry.view, sync: "empty" });
 				}
 			})
 			.then(() => {
+				if (entry.hydration !== hydration) return;
 				entry.hydrated = true;
 				entry.hydration = null;
 				if (entry.activations.size === 0) return;
@@ -1234,11 +1375,13 @@ export class ClientBus<Client> {
 		const synchronizer = this.options.synchronizer;
 		if (
 			synchronizer === undefined ||
+			entry.deniedGeneration !== null ||
 			entry.synchronization !== null ||
 			!requestsSynchronization(entry)
 		)
 			return;
 		const epoch = ++entry.synchronizationEpoch;
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
 		const runtimeUpdates = entry.runtimeUpdates;
 		const initial = entry.view;
 		if (initial.data === null || initial.sync === "cached") {
@@ -1247,6 +1390,8 @@ export class ClientBus<Client> {
 		const pending = synchronizer
 			.synchronize(entry.key, entry.view)
 			.then(async (result) => {
+				if (this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace)
+					return;
 				if (result === null) {
 					if (
 						epoch === entry.synchronizationEpoch &&
@@ -1290,22 +1435,21 @@ export class ClientBus<Client> {
 					cursor: result.cursor,
 					sync: requestsRuntime(entry) ? "synchronizing" : "cached",
 				};
-				if (this.options.persistence !== undefined) {
-					await this.options.persistence.saveResource(entry.key, {
-						data: next.data,
-						cursor: next.cursor,
-						storedAt: Date.now(),
-					});
-				}
+				await this.persist(entry, next);
 				if (
 					epoch === entry.synchronizationEpoch &&
+					this.options.resourceCacheNamespaceFor?.(entry.key) === namespace &&
 					entry.runtimeUpdates === runtimeUpdates
 				) {
 					this.setView(entry, next);
 				}
 			})
 			.catch(() => {
-				if (epoch !== entry.synchronizationEpoch) return;
+				if (
+					epoch !== entry.synchronizationEpoch ||
+					this.options.resourceCacheNamespaceFor?.(entry.key) !== namespace
+				)
+					return;
 				this.setView(entry, {
 					...entry.view,
 					sync: entry.view.data === null ? "failed" : "stale",
@@ -1320,7 +1464,13 @@ export class ClientBus<Client> {
 	private startDriver(
 		entry: ResourceEntry,
 		binding: EnvironmentBinding<Client>,
+		retryDenied = false,
 	): void {
+		if (
+			!retryDenied &&
+			entry.deniedGeneration === binding.runtime.snapshot().generation
+		)
+			return;
 		if (
 			entry.activations.size === 0 ||
 			!entry.hydrated ||
@@ -1335,6 +1485,12 @@ export class ClientBus<Client> {
 		this.stopDriver(entry);
 		const driverEpoch = ++entry.driverEpoch;
 		const generation = binding.runtime.snapshot().generation;
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		const isCurrent = () =>
+			driverEpoch === entry.driverEpoch &&
+			generation === entry.driverGeneration &&
+			generation === entry.view.generation &&
+			namespace === this.options.resourceCacheNamespaceFor?.(entry.key);
 		entry.driverGeneration = generation;
 		this.setView(entry, {
 			...entry.view,
@@ -1350,25 +1506,16 @@ export class ClientBus<Client> {
 				data: entry.view.data,
 				cursor: entry.view.cursor,
 				snapshot: () =>
-					driverEpoch === entry.driverEpoch &&
-					generation === entry.driverGeneration &&
-					generation === entry.view.generation
-						? (entry.view as ResourceView<unknown>)
-						: null,
-				isCurrent: () =>
-					driverEpoch === entry.driverEpoch &&
-					generation === entry.driverGeneration &&
-					generation === entry.view.generation,
+					isCurrent() ? (entry.view as ResourceView<unknown>) : null,
+				isCurrent,
 				emit: (update) =>
+					isCurrent() &&
 					this.acceptDriverUpdate(entry, generation, driverEpoch, update),
 			}),
 		).then(
 			() => undefined,
 			(cause) => {
-				if (
-					driverEpoch === entry.driverEpoch &&
-					generation === entry.driverGeneration
-				) {
+				if (isCurrent()) {
 					this.setView(entry, { ...entry.view, sync: "failed" });
 					binding.runtime.reportFault(
 						{ phase: "failed", message: messageOf(cause) },
@@ -1410,6 +1557,32 @@ export class ClientBus<Client> {
 			return false;
 		}
 		entry.runtimeUpdates += 1;
+		if (update.accessDenied === true) {
+			const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+			entry.deniedGeneration = generation;
+			entry.synchronizationEpoch += 1;
+			// Fence cleanup checkpoints and late callbacks before stopping the driver.
+			entry.driverEpoch += 1;
+			this.stopDriver(entry);
+			this.setView(entry, {
+				...entry.view,
+				data: null,
+				cursor: null,
+				origin: "none",
+				sync: "failed",
+			});
+			// Delete after any queued writes, so an older checkpoint cannot restore it.
+			entry.persistenceTail = entry.persistenceTail
+				.then(() =>
+					namespace === null
+						? undefined
+						: this.options.persistence?.removeResource(entry.key, namespace),
+				)
+				.then(() => undefined)
+				.catch(() => undefined);
+			return true;
+		}
+		if (update.data !== undefined) entry.deniedGeneration = null;
 		const next: ResourceView<unknown> = {
 			...entry.view,
 			data: update.data === undefined ? entry.view.data : update.data,
@@ -1425,12 +1598,20 @@ export class ClientBus<Client> {
 		return true;
 	}
 
-	private persist(entry: ResourceEntry, view: ResourceView<unknown>): void {
-		if (view.data === null) return;
-		if (this.options.coalescePersistence?.(entry.key)) {
+	private persist(
+		entry: ResourceEntry,
+		view: ResourceView<unknown>,
+	): Promise<void> {
+		if (view.data === null) return Promise.resolve();
+		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
+		if (namespace === null) return Promise.resolve();
+		if (
+			namespace === undefined &&
+			this.options.coalescePersistence?.(entry.key)
+		) {
 			const pending = entry.pendingPersistence !== null;
 			entry.pendingPersistence = view;
-			if (pending) return;
+			if (pending) return entry.persistenceTail;
 			entry.persistenceTail = entry.persistenceTail
 				.then(async () => {
 					const latest = entry.pendingPersistence;
@@ -1443,25 +1624,32 @@ export class ClientBus<Client> {
 						});
 				})
 				.catch(() => undefined);
-			return;
+			return entry.persistenceTail;
 		}
-		entry.persistenceTail = entry.persistenceTail
+		const pending = entry.persistenceTail
 			.then(() =>
-				this.options.persistence?.saveResource(entry.key, {
-					data: view.data,
-					cursor: view.cursor,
-					storedAt: Date.now(),
-				}),
+				this.options.persistence?.saveResource(
+					entry.key,
+					{
+						data: view.data,
+						cursor: view.cursor,
+						storedAt: Date.now(),
+					},
+					namespace,
+				),
 			)
-			.then(() => undefined)
-			.catch(() => undefined);
+			.then(() => undefined);
+		entry.persistenceTail = pending.catch(() => undefined);
+		return pending;
 	}
 
 	private prepareAndExecute<Result>(
 		command: ClientCommand<unknown, Result>,
 		fingerprint: CommandFingerprint,
+		assertAuthority: () => void,
 		liveFallbackTurn?: Promise<void>,
 	): Promise<CommandReceipt<Result>> {
+		assertAuthority();
 		const executor = this.options.commandExecutor;
 		if (executor === undefined) {
 			return Promise.reject(new Error("ClientBus has no command executor"));
@@ -1524,6 +1712,7 @@ export class ClientBus<Client> {
 					retainForRetry = true;
 				}
 				mailboxEnvelopePersisted = previous?.encryptedEnvelope !== undefined;
+				assertAuthority();
 				const hasPersistedMailboxIdentity =
 					mailboxEnvelopePersisted || previous?.acceptance !== undefined;
 				const durableTransport = hasPersistedMailboxIdentity
@@ -1597,8 +1786,12 @@ export class ClientBus<Client> {
 						// Fresh commands cannot leave the client until their opaque envelope is
 						// durable. Resumed commands use the same gate but never enqueue again.
 						this.assertActive();
+						assertAuthority();
 						handle.start();
-						acceptance = await handle.accepted;
+						acceptance = await this.untilDisposed(
+							handle.accepted,
+							assertAuthority,
+						);
 					} catch (cause) {
 						if (cause instanceof CloudCommandTerminalError) {
 							retainForRetry = false;
@@ -1648,11 +1841,19 @@ export class ClientBus<Client> {
 						}
 						// The UI may clear its draft only after both sides have recorded the
 						// durable acceptance.
+						assertAuthority();
 						this.commandAcceptances
 							.get(command.commandId)
 							?.resolveAccepted(acceptance);
-						if (!this.disposed)
-							this.commandCancels.set(command.commandId, handle.cancel);
+						if (!this.disposed) {
+							const cancel = handle.cancel;
+							this.commandCancels.set(command.commandId, async () => {
+								assertAuthority();
+								const status = await cancel();
+								assertAuthority();
+								return status;
+							});
+						}
 						this.updateCommandResource(command, (view) => ({
 							...view,
 							pendingCommands: view.pendingCommands.map((item) =>
@@ -1664,6 +1865,11 @@ export class ClientBus<Client> {
 						let statusPersistence = Promise.resolve();
 						const unsubscribeStatus = handle.subscribeStatus?.((status) => {
 							if (this.disposed) return;
+							try {
+								assertAuthority();
+							} catch {
+								return;
+							}
 							if (status.everLeased)
 								this.commandCancels.delete(command.commandId);
 							this.updateCommandResource(command, (view) => ({
@@ -1694,7 +1900,10 @@ export class ClientBus<Client> {
 						});
 						let receipt: CommandReceipt<Result>;
 						try {
-							receipt = await handle.result;
+							receipt = await this.untilDisposed(
+								handle.result,
+								assertAuthority,
+							);
 						} catch (cause) {
 							if (cause instanceof CloudCommandTerminalError)
 								retainForRetry = false;
@@ -1707,8 +1916,9 @@ export class ClientBus<Client> {
 							// resurrect a command that is already terminal.
 							await statusPersistence;
 						}
-						await this.waitForResourceReflection(command);
+						await this.waitForResourceReflection(command, assertAuthority);
 						await outbox?.completeOutbox(receipt);
+						assertAuthority();
 						this.updateCommandResource(command, (view) => ({
 							...view,
 							pendingCommands: view.pendingCommands.filter(
@@ -1718,7 +1928,9 @@ export class ClientBus<Client> {
 						return receipt;
 					}
 				}
-				if (serializeLiveFallback) await liveFallbackTurn;
+				if (serializeLiveFallback && liveFallbackTurn !== undefined)
+					await this.untilDisposed(liveFallbackTurn, assertAuthority);
+				assertAuthority();
 				this.assertActive();
 				const binding = this.environment(command.environmentId);
 				const commandLease = binding.runtime.retain("wake");
@@ -1726,8 +1938,12 @@ export class ClientBus<Client> {
 					ReturnType<ClientCommandExecutor<Client>["execute"]>
 				>;
 				try {
-					const client = await commandLease.activate("wake");
+					const client = await this.untilDisposed(
+						commandLease.activate("wake"),
+						assertAuthority,
+					);
 					if (client === null) throw new Error("environment did not connect");
+					assertAuthority();
 					this.assertActive();
 					const generation = binding.runtime.snapshot().generation;
 					assertCommandFingerprint(
@@ -1736,8 +1952,13 @@ export class ClientBus<Client> {
 						commandFingerprint(command),
 					);
 					try {
-						executionReceipt = await executor.execute(client, command);
+						executionReceipt = await this.untilDisposed(
+							executor.execute(client, command),
+							assertAuthority,
+						);
 					} catch (cause) {
+						assertAuthority();
+						this.assertActive();
 						const fault =
 							this.options.commandFaultFor?.(cause, command.environmentId) ??
 							null;
@@ -1762,10 +1983,11 @@ export class ClientBus<Client> {
 					receivedAt: executionReceipt.receivedAt,
 					result: executionReceipt.result as Result,
 				};
-				await this.waitForResourceReflection(command);
+				await this.waitForResourceReflection(command, assertAuthority);
 				if (command.retry === "safe") {
 					await outbox?.completeOutbox(receipt);
 				}
+				assertAuthority();
 				this.updateCommandResource(command, (view) => ({
 					...view,
 					pendingCommands: view.pendingCommands.filter(
@@ -1774,6 +1996,15 @@ export class ClientBus<Client> {
 				}));
 				return receipt;
 			} catch (cause) {
+				if (this.disposed || cause instanceof CommandAuthorityLostError) {
+					this.updateCommandResource(command, (view) => ({
+						...view,
+						pendingCommands: view.pendingCommands.filter(
+							(item) => item.commandId !== command.commandId,
+						),
+					}));
+					throw cause;
+				}
 				let terminalPersisted = false;
 				if (
 					cause instanceof CloudCommandTerminalError &&

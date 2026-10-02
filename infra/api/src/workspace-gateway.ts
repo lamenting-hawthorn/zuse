@@ -32,6 +32,8 @@ type GatewaySocketAttachment =
 	| ({
 			readonly role: "client";
 			readonly connectionId: string;
+			readonly actorId?: string;
+			readonly permission?: "view" | "edit";
 			readonly protocol: WorkspaceGatewayProtocol;
 	  } & GatewayFence);
 
@@ -161,6 +163,12 @@ const attachment = (
 		return {
 			role: "client",
 			connectionId: candidate.connectionId,
+			...(candidate.permission === "view" || candidate.permission === "edit"
+				? { permission: candidate.permission }
+				: {}),
+			...(typeof candidate.actorId === "string"
+				? { actorId: candidate.actorId }
+				: {}),
 			protocol: negotiatedProtocol,
 			...fence,
 		};
@@ -320,6 +328,12 @@ export class WorkspaceGateway {
 						encodeGatewayMessage({
 							type: "client.open",
 							connectionId: metadata.connectionId,
+							...(metadata.permission === undefined
+								? {}
+								: { permission: metadata.permission }),
+							...(metadata.actorId === undefined
+								? {}
+								: { actorId: metadata.actorId }),
 						}),
 					)
 				) {
@@ -334,11 +348,21 @@ export class WorkspaceGateway {
 		}
 
 		const connectionId = request.headers.get("x-zuse-gateway-connection");
+		const actorId = request.headers.get("x-zuse-gateway-actor") ?? undefined;
+		const rawPermission = request.headers.get("x-zuse-gateway-permission");
+		const permission =
+			rawPermission === "view" || rawPermission === "edit"
+				? rawPermission
+				: undefined;
+		if (actorId !== undefined && permission === undefined)
+			return new Response("missing actor authority", { status: 401 });
 		if (connectionId === null)
 			return new Response("missing connection identity", { status: 400 });
 		server.serializeAttachment({
 			role: "client",
 			connectionId,
+			...(permission === undefined ? {} : { permission }),
+			...(actorId === undefined ? {} : { actorId }),
 			protocol,
 			...fence,
 		} satisfies GatewaySocketAttachment);
@@ -367,7 +391,12 @@ export class WorkspaceGateway {
 		if (
 			!send(
 				currentRuntime,
-				encodeGatewayMessage({ type: "client.open", connectionId }),
+				encodeGatewayMessage({
+					type: "client.open",
+					connectionId,
+					...(permission === undefined ? {} : { permission }),
+					...(actorId === undefined ? {} : { actorId }),
+				}),
 			)
 		)
 			closeSocket(

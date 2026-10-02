@@ -7,14 +7,23 @@ import { NodeSocket } from "@effect/platform-node";
 import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import { makeRpcClientSession } from "@zuse/client-runtime/connection";
 import { wsClientProtocolLayer } from "@zuse/client-runtime/ws-protocol";
-import { PingResult, PingRpc, WIRE_PROTOCOL_VERSION } from "@zuse/contracts";
+import {
+	AuthState,
+	ChatId,
+	FolderId,
+	PingResult,
+	PingRpc,
+	WIRE_PROTOCOL_VERSION,
+} from "@zuse/contracts";
 import { layer as sqliteLayer } from "@zuse/sqlite";
-import { Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { Effect, Layer, ManagedRuntime, Schema, Stream } from "effect";
 import { Rpc, RpcGroup, RpcServer } from "effect/unstable/rpc";
 import { describe, expect, it, vi } from "vitest";
+import { AuthService } from "../../src/auth/services/auth-service.ts";
 
 import { LanAuthServiceLive } from "../../src/lan-auth/layers/lan-auth-service.ts";
 import type { LanAuthPolicy } from "../../src/lan-auth/policy.ts";
+import { ConnectionIdentity } from "../../src/lan-auth/services/connection-identity.ts";
 import {
 	LanAuthConfig,
 	LanAuthService,
@@ -26,13 +35,33 @@ import { Migration0028RelayMintPublicKey } from "../../src/persistence/migration
 import { Migration0039AuthTokenDevices } from "../../src/persistence/migrations/0039_auth_token_devices.ts";
 import { Migration0040BlockedNearbyDevices } from "../../src/persistence/migrations/0040_blocked_nearby_devices.ts";
 import { Migration0052ApiConfig } from "../../src/persistence/migrations/0052_api_config.ts";
+import { browserCookieName } from "../../src/transports/browser-http.ts";
 import { wsServerProtocolLayer } from "../../src/transports/ws.ts";
 
 const LargePayloadRpc = Rpc.make("test.largePayload", {
 	payload: Schema.Struct({}),
 	success: Schema.String,
 });
-const TestRpcs = RpcGroup.make(PingRpc, LargePayloadRpc);
+const IdentityRpc = Rpc.make("test.identity", {
+	payload: Schema.Struct({}),
+	success: Schema.Unknown,
+});
+const TestRpcs = RpcGroup.make(PingRpc, LargePayloadRpc, IdentityRpc);
+const IdentityHandler = TestRpcs.toLayerHandler("test.identity", () =>
+	Effect.serviceOption(ConnectionIdentity).pipe(
+		Effect.map((identity) =>
+			identity._tag === "Some"
+				? identity.value.kind === "workspace"
+					? {
+							kind: identity.value.kind,
+							subject: identity.value.subject,
+							workspaceId: identity.value.workspaceId,
+						}
+					: identity.value
+				: null,
+		),
+	),
+);
 const LARGE_PAYLOAD = "large-session-payload\n".repeat(256 * 1024);
 
 const PingHandler = TestRpcs.toLayerHandler("ping.ping", () =>
@@ -65,6 +94,7 @@ const makeRuntime = (opts: {
 	readonly maxPayloadBytes?: number;
 	readonly staticDir?: string;
 	readonly trustProxy?: boolean;
+	readonly hostSession?: () => AuthState;
 	readonly attachment?: {
 		readonly id: string;
 		readonly bytes: Uint8Array;
@@ -136,9 +166,26 @@ const makeRuntime = (opts: {
 		maxPayloadBytes: opts.maxPayloadBytes,
 		onDiagnostic: opts.onDiagnostic,
 		onAuthenticatedConnection: opts.onAuthenticatedConnection,
-	}).pipe(Layer.provide(Layer.merge(LanAuthLayer, AttachmentLayer)));
+	}).pipe(
+		Layer.provide(
+			Layer.mergeAll(
+				LanAuthLayer,
+				AttachmentLayer,
+				Layer.succeed(AuthService, {
+					getSession: () =>
+						Effect.sync(() => opts.hostSession?.() ?? { _tag: "SignedOut" }),
+					signIn: () => Effect.die("unused"),
+					signOut: () => Effect.void,
+					sessionChanges: () => Stream.empty,
+					getAccessToken: () => Effect.die("unused"),
+				}),
+			),
+		),
+	);
 	const ServerLayer = RpcServer.layer(TestRpcs).pipe(
-		Layer.provide(Layer.merge(PingHandler, LargePayloadHandler)),
+		Layer.provide(
+			Layer.mergeAll(PingHandler, LargePayloadHandler, IdentityHandler),
+		),
 		Layer.provide(ProtocolLayer),
 	);
 	return ManagedRuntime.make(Layer.mergeAll(LanAuthLayer, ServerLayer));
@@ -219,6 +266,131 @@ const upgradeStatus = (
 	upgradeResponse(port, path, headers).then((response) => response.status);
 
 describe("WS LAN auth", () => {
+	it("retains scoped authority on loopback instead of upgrading a supplied credential to local", async () => {
+		const port = await freePort();
+		const runtime = makeRuntime({ policy: "local", port });
+		try {
+			const minted = await runtime.runPromise(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					return yield* auth.mintToken("gateway", undefined, {
+						kind: "workspace",
+						subject: "member",
+						membershipId: "membership-member",
+						workspaceId: "workspace",
+						chatId: ChatId.make("chat"),
+						projectId: FolderId.make("project"),
+						expiresAt: Date.now() + 60_000,
+						authorize: Effect.succeed("view"),
+					});
+				}),
+			);
+			const client = await makeRpcClientSession(
+				wsClientProtocolLayer({ host: "127.0.0.1", port, token: minted.token }),
+				TestRpcs,
+			);
+			try {
+				expect(
+					await Effect.runPromise(client.client["test.identity"]({})),
+				).toEqual({
+					kind: "workspace",
+					subject: "member",
+					workspaceId: "workspace",
+				});
+			} finally {
+				await client.dispose();
+			}
+			const origin = `http://127.0.0.1:${port}`;
+			const environmentId = await runtime.runPromise(
+				Effect.flatMap(LanAuthService, (auth) => auth.environmentId()),
+			);
+			const response = await fetch(`${origin}/auth/websocket-ticket`, {
+				method: "POST",
+				headers: {
+					origin,
+					cookie: `${browserCookieName(environmentId)}=${minted.token}`,
+				},
+			});
+			expect(response.status).toBe(200);
+			const { ticket } = Schema.decodeUnknownSync(
+				Schema.Struct({ ticket: Schema.String }),
+			)(await response.json());
+			await runtime.runPromise(
+				Effect.flatMap(LanAuthService, (auth) => auth.revokeToken(minted.id)),
+			);
+			expect(
+				await upgradeStatus(
+					port,
+					`/?ticket=${encodeURIComponent(ticket)}&wireVersion=${WIRE_PROTOCOL_VERSION}`,
+				),
+			).toBe(401);
+			expect(
+				await upgradeStatus(
+					port,
+					`/?ticket=invalid&wireVersion=${WIRE_PROTOCOL_VERSION}`,
+				),
+			).toBe(401);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("isolates verified connection identity and ignores forged RPC identity headers", async () => {
+		const port = await freePort();
+		const runtime = makeRuntime({ policy: "protected", port });
+		try {
+			const [first, second] = await runtime.runPromise(
+				Effect.gen(function* () {
+					const auth = yield* LanAuthService;
+					return [
+						yield* auth.mintToken("First"),
+						yield* auth.mintToken("Second"),
+					] as const;
+				}),
+			);
+			const connect = (token: string) =>
+				makeRpcClientSession(
+					wsClientProtocolLayer({ host: "127.0.0.1", port, token }),
+					TestRpcs,
+				);
+			const firstClient = await connect(first.token);
+			const secondClient = await connect(second.token);
+			try {
+				const [firstIdentity, secondIdentity] = await Promise.all([
+					Effect.runPromise(
+						firstClient.client["test.identity"](
+							{},
+							{
+								headers: {
+									authorization: `Bearer ${second.token}`,
+									"x-zuse-actor": "owner",
+									"x-zuse-connection-identity": '{"kind":"local"}',
+								},
+							},
+						),
+					),
+					Effect.runPromise(secondClient.client["test.identity"]({})),
+				]);
+				expect(firstIdentity).toMatchObject({
+					kind: "paired",
+					tokenId: first.id,
+				});
+				expect(secondIdentity).toMatchObject({
+					kind: "paired",
+					tokenId: second.id,
+				});
+				expect(JSON.stringify([firstIdentity, secondIdentity])).not.toContain(
+					first.token,
+				);
+			} finally {
+				await firstClient.dispose();
+				await secondClient.dispose();
+			}
+		} finally {
+			await disposeRuntime(runtime);
+		}
+	});
+
 	it("serves favicon images through the authenticated asset route", async () => {
 		const port = await freePort();
 		const runtime = makeRuntime({ policy: "protected", port });
@@ -390,6 +562,90 @@ describe("WS LAN auth", () => {
 
 			const traversal = await fetch(`http://127.0.0.1:${port}/%2e%2e%2fsecret`);
 			expect(traversal.status).toBe(400);
+		} finally {
+			await disposeRuntime(runtime);
+		}
+	});
+
+	it("keeps unscoped attachment URLs host-only even with a verified account credential", async () => {
+		const port = await freePort();
+		const origin = `http://127.0.0.1:${port}`;
+		let signedIn = true;
+		const runtime = makeRuntime({
+			policy: "protected",
+			port,
+			pairingBootstrap: true,
+			hostSession: () =>
+				signedIn
+					? Schema.decodeUnknownSync(AuthState)({
+							_tag: "SignedIn",
+							session: {
+								user: {
+									id: "owner",
+									email: "owner@example.com",
+									firstName: null,
+									lastName: null,
+									profilePictureUrl: null,
+								},
+								organizationId: null,
+								expiresAt: Date.now() + 60_000,
+							},
+						})
+					: { _tag: "SignedOut" },
+			attachment: {
+				id: "attachment_1",
+				bytes: new TextEncoder().encode("private attachment"),
+				mimeType: "text/plain",
+			},
+		});
+		try {
+			const auth = await runtime.runPromise(LanAuthService);
+			const pairing = await runtime.runPromise(auth.createPairingCode());
+			const paired = await fetch(`${origin}/auth/browser-session`, {
+				method: "POST",
+				headers: { origin, "content-type": "application/json" },
+				body: JSON.stringify({ credential: pairing.code }),
+			});
+			expect(paired.status).toBe(200);
+			const cookie = paired.headers.get("set-cookie")?.split(";")[0] ?? "";
+			const authenticate = vi.spyOn(auth, "authenticateToken");
+			const download = () =>
+				fetch(`${origin}/assets/attachments/attachment_1`, {
+					headers: { cookie },
+				});
+			authenticate.mockReturnValue(
+				Effect.succeed({
+					kind: "account",
+					subject: "guest",
+					expiresAt: Date.now() + 60_000,
+				}),
+			);
+			expect((await download()).status).toBe(403);
+			authenticate.mockReturnValue(
+				Effect.succeed({
+					kind: "account",
+					subject: "owner",
+					expiresAt: Date.now() + 60_000,
+				}),
+			);
+			const allowed = await download();
+			expect(allowed.status).toBe(200);
+			expect(allowed.headers.get("cache-control")).toBe("private, no-store");
+			expect(await allowed.text()).toBe("private attachment");
+			signedIn = false;
+			expect((await download()).status).toBe(403);
+			signedIn = true;
+			authenticate.mockReturnValue(
+				Effect.succeed({
+					kind: "account",
+					subject: "owner",
+					expiresAt: Date.now() - 1,
+				}),
+			);
+			expect((await download()).status).toBe(403);
+			authenticate.mockReturnValue(Effect.succeed(null));
+			expect((await download()).status).toBe(401);
+			authenticate.mockRestore();
 		} finally {
 			await disposeRuntime(runtime);
 		}
@@ -575,6 +831,9 @@ describe("WS LAN auth", () => {
 					clientSession.client["test.largePayload"]({}),
 				);
 				expect(received).toBe(LARGE_PAYLOAD);
+				expect(
+					await Effect.runPromise(clientSession.client["test.identity"]({})),
+				).toEqual({ kind: "local" });
 			} finally {
 				await clientSession.dispose();
 			}

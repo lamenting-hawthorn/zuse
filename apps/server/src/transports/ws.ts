@@ -4,7 +4,6 @@ import * as https from "node:https";
 import { NodeHttpServer } from "@effect/platform-node";
 import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import {
-	buildBrowserPairUrl,
 	formatPairingCodeForDisplay,
 	MemoizeRpcs,
 	WIRE_PROTOCOL_VERSION,
@@ -14,7 +13,7 @@ import {
 	makeRpcPayloadReporter,
 } from "@zuse/utils/rpc-payload-metrics";
 import { fetchSiteFavicon } from "@zuse/utils/site-favicon";
-import { Effect, FileSystem, Layer, Schema } from "effect";
+import { Effect, FileSystem, Layer, Option, Schema } from "effect";
 import {
 	HttpIncomingMessage,
 	HttpRouter,
@@ -24,7 +23,9 @@ import {
 } from "effect/unstable/http";
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 import { CompactSign, importJWK } from "jose";
+import { AuthService } from "../auth/services/auth-service.ts";
 import { DeviceBridgeService } from "../device-bridge/service.ts";
+import { ConnectionIdentity } from "../lan-auth/services/connection-identity.ts";
 import {
 	LanAuthService,
 	type LanAuthServiceShape,
@@ -432,7 +433,9 @@ const websocketTicketApp = (
 		if (!hasValidRequestOrigin(request.headers, security)) {
 			return yield* json({ error: "invalid_origin" }, 403);
 		}
+		const credential = sessionCredential(request, cookieName);
 		if (
+			credential === null &&
 			!requestRequiresAuthentication(
 				auth.policy,
 				request.headers,
@@ -441,7 +444,6 @@ const websocketTicketApp = (
 		) {
 			return yield* json(tickets.issue("local"), 200);
 		}
-		const credential = sessionCredential(request, cookieName);
 		const authenticated =
 			credential !== null &&
 			(yield* auth
@@ -514,6 +516,7 @@ export const wsServerProtocolLayer = (
 		RpcServer.Protocol,
 		Effect.gen(function* () {
 			const bridge = yield* Effect.serviceOption(DeviceBridgeService);
+			const hostAuth = yield* Effect.serviceOption(AuthService);
 			const auth = yield* LanAuthService;
 			const attachments = yield* AttachmentService;
 			const log = opts.onDiagnostic ?? (() => {});
@@ -561,10 +564,13 @@ export const wsServerProtocolLayer = (
 				const ticket = requestUrl.searchParams.get("ticket");
 				const ticketCredential =
 					ticket === null ? null : tickets.consume(ticket);
+				if (ticket !== null && ticketCredential === null)
+					return yield* json({ error: "unauthorized" }, 401);
 				const token =
 					ticketCredential === "local"
 						? null
 						: (ticketCredential ?? bearerFromRequest(request));
+				let identity: ConnectionIdentity["Service"] = { kind: "local" };
 				yield* Effect.sync(() =>
 					log("ws.request", {
 						path: requestUrl.pathname,
@@ -579,17 +585,20 @@ export const wsServerProtocolLayer = (
 					}),
 				);
 				if (
+					token !== null ||
 					requestRequiresAuthentication(
 						auth.policy,
 						request.headers,
 						browserSecurity.trustProxy,
 					)
 				) {
-					const ok =
-						token !== null &&
-						(yield* auth
-							.verifyToken(token)
-							.pipe(Effect.orElseSucceed(() => false)));
+					const authenticated =
+						token === null
+							? null
+							: yield* auth
+									.authenticateToken(token)
+									.pipe(Effect.orElseSucceed(() => null));
+					const ok = authenticated !== null;
 					yield* Effect.sync(() =>
 						log(ok ? "ws.auth.ok" : "ws.auth.fail", {
 							path: requestUrl.pathname,
@@ -597,7 +606,9 @@ export const wsServerProtocolLayer = (
 							hasToken: token !== null,
 						}),
 					);
-					if (!ok) return yield* json({ error: "unauthorized" }, 401);
+					if (authenticated === null)
+						return yield* json({ error: "unauthorized" }, 401);
+					identity = authenticated;
 				}
 				if (!supportsWireProtocol(receivedVersion)) {
 					log("ws.protocol.reject", {
@@ -627,6 +638,7 @@ export const wsServerProtocolLayer = (
 				});
 				const release = opts.onAuthenticatedConnection?.();
 				return yield* httpEffect.pipe(
+					Effect.provideService(ConnectionIdentity, identity),
 					Effect.provideService(
 						HttpServerRequest.HttpServerRequest,
 						upgradedRequest,
@@ -760,13 +772,31 @@ export const wsServerProtocolLayer = (
 							browserSecurity.trustProxy,
 						)
 					) {
-						const authenticated =
-							credential !== null &&
-							(yield* auth
-								.verifyToken(credential)
-								.pipe(Effect.orElseSucceed(() => false)));
-						if (!authenticated) {
+						const identity =
+							credential === null
+								? null
+								: yield* auth
+										.authenticateToken(credential)
+										.pipe(Effect.orElseSucceed(() => null));
+						if (identity === null) {
 							return yield* json({ error: "unauthorized" }, 401);
+						}
+						// This legacy URL has no session scope. A teammate must use
+						// attachments.read, which verifies both workspace access and
+						// the attachment's session, rather than an unscoped ID lookup.
+						if (identity.kind === "workspace")
+							return yield* json({ error: "forbidden" }, 403);
+						if (identity.kind === "account") {
+							const session = Option.isSome(hostAuth)
+								? yield* hostAuth.value.getSession()
+								: null;
+							if (
+								identity.expiresAt <= Date.now() ||
+								session?._tag !== "SignedIn" ||
+								session.session.user.id !== identity.subject
+							) {
+								return yield* json({ error: "forbidden" }, 403);
+							}
 						}
 					}
 					const pathname = new URL(request.url, "http://localhost").pathname;
@@ -785,7 +815,7 @@ export const wsServerProtocolLayer = (
 					if (asset === null) return yield* json({ error: "not_found" }, 404);
 					return HttpServerResponse.uint8Array(asset.bytes, {
 						contentType: asset.mimeType,
-						headers: { "cache-control": "private, max-age=3600" },
+						headers: { "cache-control": "private, no-store" },
 					});
 				}),
 			);
@@ -825,7 +855,6 @@ export const wsServerProtocolLayer = (
 				(auth.policy === "protected" || api?.tunnelHostname !== undefined) &&
 				auth.pairingBootstrap
 			) {
-				const pairing = yield* auth.createPairingCode();
 				// One reachable origin drives every printed link: explicit public
 				// origin > managed tunnel > actual listener (ephemeral port) >
 				// the server-issued LAN pairing. Browser URL, deep link, and the
@@ -836,17 +865,14 @@ export const wsServerProtocolLayer = (
 					(api?.tunnelHostname !== undefined
 						? `https://${api.tunnelHostname}`
 						: opts.port === 0 && listeningAddress !== null
-							? `${opts.tls === undefined ? "http" : "https"}://${listeningAddress.host}:${listeningAddress.port}`
+							? `${opts.tls === undefined ? "http" : "https"}://${listeningAddress.host === "0.0.0.0" || listeningAddress.host === "::" ? "localhost" : listeningAddress.host.includes(":") ? `[${listeningAddress.host}]` : listeningAddress.host}:${listeningAddress.port}`
 							: null);
-				const browserUrl =
-					httpBaseUrl !== null
-						? buildBrowserPairUrl({ httpBaseUrl, code: pairing.code })
-						: pairing.browserUrl;
+				const pairing = yield* auth.createPairingCode(
+					httpBaseUrl === null ? undefined : { httpBaseUrl },
+				);
+				const browserUrl = pairing.browserUrl;
 				const qrText = browserUrl;
-				const redeemBaseUrl =
-					httpBaseUrl ?? pairing.pairingUrl.replace(/^ws:/u, "http:");
-				const baseUrl =
-					httpBaseUrl ?? pairing.browserUrl.replace(/\/#pair=.*$/u, "");
+				const baseUrl = browserUrl.replace(/\/#pair=.*$/u, "");
 				yield* Effect.sync(() => {
 					console.log("Zuse browser pairing enabled");
 					console.log(`Browser: ${browserUrl}`);
@@ -858,7 +884,7 @@ export const wsServerProtocolLayer = (
 						`Remote access: ${api?.tunnelHostname === undefined ? "inactive" : "active"}`,
 					);
 					console.log(
-						`Redeem with: POST ${redeemBaseUrl}/pair {"code":"${pairing.code}"}`,
+						`Redeem with: POST ${baseUrl}/pair {"code":"${pairing.code}"}`,
 					);
 					opts.onPairing?.({
 						browserUrl,

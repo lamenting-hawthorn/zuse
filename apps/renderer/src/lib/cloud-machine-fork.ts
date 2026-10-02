@@ -53,6 +53,7 @@ export const forkCloudMachine = async (input: {
 		}),
 	);
 	const summary = summaryFromLaunch({
+		workspaceScope: { kind: "personal" },
 		workspace: launch.workspace,
 		repositoryIdentity: cloud.repositoryIdentity,
 		repositoryDisplayName: cloud.repositoryDisplayName,

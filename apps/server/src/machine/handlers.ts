@@ -1,5 +1,6 @@
+import { cloudControlError } from "@zuse/client-runtime/control-api-error";
 import {
-	CloudWorkspaceOpError,
+	type CloudWorkspaceOpError,
 	ConnectAuthError,
 	DeviceBridgeError,
 	MachineOpError,
@@ -18,19 +19,7 @@ const toError = (error: MachineControlError): MachineOpError =>
 	new MachineOpError({ code: error.code });
 
 const toCloudError = (error: MachineControlError): CloudWorkspaceOpError =>
-	new CloudWorkspaceOpError({
-		code:
-			error.code === "invalid-state"
-				? "project-not-ready"
-				: error.code === "machine-limit-reached" ||
-						error.code === "invalid-offer" ||
-						error.code === "billing-unavailable" ||
-						error.code === "enrollment-expired" ||
-						error.code === "enrollment-rejected" ||
-						error.code === "tunnel-unavailable"
-					? "invalid-request"
-					: error.code,
-	});
+	cloudControlError(error.code);
 
 const withControl = <A>(
 	run: (
@@ -234,6 +223,34 @@ const CreateCloudWorkspace = MemoizeRpcs.toLayerHandler(
 const ForkCloudWorkspace = MemoizeRpcs.toLayerHandler(
 	"cloud.workspaces.fork",
 	(input) => withCloudControl((service) => service.createCloudWorkspace(input)),
+);
+const CloudSharing = MemoizeRpcs.toLayerHandler(
+	"cloud.sharing.get",
+	({ workspaceId }) =>
+		withCloudControl((service) => service.cloudSharing(workspaceId)),
+);
+const UpdateCloudSharing = MemoizeRpcs.toLayerHandler(
+	"cloud.sharing.update",
+	({ workspaceId, ...input }) =>
+		withCloudControl((service) =>
+			service.updateCloudSharing(workspaceId, input),
+		),
+);
+const CloudSharingDefaults = MemoizeRpcs.toLayerHandler(
+	"cloud.sharing.defaults.get",
+	() => withCloudControl((service) => service.cloudSharingDefaults()),
+);
+const CloudSettings = MemoizeRpcs.toLayerHandler("cloud.settings.get", () =>
+	withCloudControl((service) => service.cloudSettings()),
+);
+const UpdateCloudSettings = MemoizeRpcs.toLayerHandler(
+	"cloud.settings.update",
+	(input) => withCloudControl((service) => service.updateCloudSettings(input)),
+);
+const UpdateCloudSharingDefaults = MemoizeRpcs.toLayerHandler(
+	"cloud.sharing.defaults.update",
+	(input) =>
+		withCloudControl((service) => service.updateCloudSharingDefaults(input)),
 );
 const CloudApiKeysList = MemoizeRpcs.toLayerHandler("cloud.apiKeys.list", () =>
 	withCloudControl((service) => service.listCloudApiKeys()),
@@ -469,6 +486,12 @@ export const MachineHandlersLayer = Layer.mergeAll(
 	WatchCloudWorkspace,
 	CreateCloudWorkspace,
 	ForkCloudWorkspace,
+	CloudSharing,
+	UpdateCloudSharing,
+	CloudSharingDefaults,
+	UpdateCloudSharingDefaults,
+	CloudSettings,
+	UpdateCloudSettings,
 	CloudApiKeysList,
 	CloudApiKeysCreate,
 	CloudApiKeysRevoke,

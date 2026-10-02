@@ -28,9 +28,13 @@ export const CloudGithubStatusRpc = Rpc.make("cloud.github.status", {
 	error: CloudWorkspaceOpError,
 });
 
+export const CloudGithubInstallResult = Schema.Struct({
+	url: Schema.String,
+});
+
 export const CloudGithubInstallRpc = Rpc.make("cloud.github.install", {
 	payload: Schema.Void,
-	success: Schema.Struct({ url: Schema.String }),
+	success: CloudGithubInstallResult,
 	error: CloudWorkspaceOpError,
 });
 

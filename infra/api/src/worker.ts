@@ -54,6 +54,7 @@ import {
 import { SlackPersistenceLive } from "./slack/persistence.ts";
 import { ApiStorePg } from "./store.ts";
 import { WorkosVerifierLive } from "./workos.ts";
+import { gatewayForwardHeaders } from "./workspace-gateway-protocol.ts";
 import {
 	scheduleWorkspaceStartup,
 	type WorkspaceStartupNamespace,
@@ -675,16 +676,7 @@ export default {
 			(gatewayRole === "runtime" || gatewayRole === "client") &&
 			request.headers.get("upgrade")?.toLowerCase() === "websocket"
 		) {
-			const connectionId = response.headers.get("x-zuse-gateway-connection");
-			const headers = new Headers(request.headers);
-			headers.delete("authorization");
-			headers.set("x-zuse-gateway-workspace", gatewayWorkspaceId);
-			headers.set("x-zuse-gateway-role", gatewayRole);
-			headers.set("x-zuse-gateway-generation", gatewayGeneration);
-			headers.set("x-zuse-gateway-epoch", gatewayEpoch);
-			headers.set("x-zuse-gateway-protocol", gatewayProtocol);
-			if (connectionId !== null)
-				headers.set("x-zuse-gateway-connection", connectionId);
+			const headers = gatewayForwardHeaders(request.headers, response.headers);
 			await api.dispose();
 			const id = env.WORKSPACE_GATEWAY.idFromName(
 				`${gatewayWorkspaceId}:${gatewayEpoch}`,

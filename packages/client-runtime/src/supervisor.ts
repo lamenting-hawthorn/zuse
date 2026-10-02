@@ -122,8 +122,10 @@ export const createConnectionSupervisor = <Options, Client>(
 	const dispose = async (): Promise<void> => {
 		await Promise.all([...entries.values()].map((entry) => entry.remove()));
 	};
+	const remove = (options: Options): Promise<void> =>
+		entries.get(deps.keyOf(options))?.remove() ?? Promise.resolve();
 
-	return { get, setOnline, snapshots, dispose };
+	return { get, setOnline, snapshots, dispose, remove };
 };
 
 class SupervisorEntryImpl<Options, Client>
@@ -287,9 +289,10 @@ class SupervisorEntryImpl<Options, Client>
 		this.clearRetry();
 		this.inFlight = null;
 		this.commandDispatcher.failPending(new Error("connection removed"));
+		// Retire the entry before asynchronous shutdown so a new scope can reconnect.
+		this.onRemove();
 		await this.closeCurrent();
 		this.listeners.clear();
-		this.onRemove();
 		this.diagnostic("entry.removed");
 	}
 

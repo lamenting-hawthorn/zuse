@@ -5,6 +5,7 @@ import type {
 } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import type { ResourceDriver } from "./client-bus";
+import { isRpcAccessDenied } from "./connection";
 import type { ResourceKey, SessionRef } from "./resource-ref";
 import type { SyncPhase } from "./resource-state";
 import {
@@ -237,6 +238,10 @@ export const makeSessionTimelineResourceDriver = <
 				Effect.catchCause((cause) =>
 					Effect.sync(() => {
 						if (active && !Cause.hasInterruptsOnly(cause)) {
+							if (isRpcAccessDenied(Cause.squash(cause))) {
+								context.emit({ accessDenied: true });
+								return;
+							}
 							context.emit({ sync: "failed" });
 							options.reportFailure(
 								ref.environmentId,

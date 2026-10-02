@@ -30,6 +30,8 @@ type Attachment =
 	| {
 			readonly role: "client";
 			readonly connectionId: string;
+			readonly actorId?: string;
+			readonly permission?: "view" | "edit";
 			readonly workspaceId: string;
 			readonly generation: number;
 			readonly gatewayEpoch: number;
@@ -380,6 +382,8 @@ describe("workspace gateway", () => {
 		const currentClient = new FakeSocket({
 			role: "client",
 			connectionId: "current",
+			actorId: "member-1",
+			permission: "view",
 			...fence,
 		});
 		const staleClient = new FakeSocket({
@@ -440,6 +444,8 @@ describe("workspace gateway", () => {
 		expect(decodeGatewayMessage(acceptedServer.sent[0] as string)).toEqual({
 			type: "client.open",
 			connectionId: "current",
+			actorId: "member-1",
+			permission: "view",
 		});
 
 		await gateway.webSocketClose(asCloudflareSocket(oldRuntime));

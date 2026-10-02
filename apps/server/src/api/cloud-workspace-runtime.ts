@@ -28,13 +28,18 @@ import {
 	AgentSessionId,
 	AgentTurnId,
 	ApiPaths,
+	type AuthTokenId,
 	type Chat,
+	type ChatAccessPermission,
 	ChatId,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+	CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY,
 	CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
+	CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
 	CLOUD_TRANSCRIPT_CHECKPOINT_SCHEMA_VERSION,
 	type CloudAuthProvider,
+	CloudRuntimeAccessResponse,
 	CloudRuntimeAssetDownload,
 	CloudRuntimeCommandList,
 	CloudTranscriptCheckpointPayload,
@@ -49,6 +54,7 @@ import {
 	MessageContent,
 	MessageId,
 	ProviderId,
+	RpcAccessDeniedError,
 	RuntimeAcknowledgment,
 	RuntimeLease,
 	RuntimeMode,
@@ -60,7 +66,9 @@ import {
 	WORKSPACE_GATEWAY_AUTH_EXPIRED_CLOSE,
 	WORKSPACE_GATEWAY_STALE_GENERATION_CLOSE,
 	WORKSPACE_GATEWAY_UPDATE_REQUIRED_CLOSE,
+	type WorkspaceActor,
 	type WorkspaceGatewayFrame,
+	WorkspaceScope,
 	workspaceGatewayArrayBuffer,
 } from "@zuse/contracts";
 import type { CommandReceiptIdentity } from "@zuse/domain/engine/dispatch";
@@ -109,6 +117,7 @@ import {
 	TranscriptService,
 	type TranscriptServiceShape,
 } from "../conversation/services/conversation-services.ts";
+import { WorkspaceExecutionPolicy } from "../conversation/services/workspace-execution-policy.ts";
 import { CloudDeviceCommandClient } from "../device-bridge/cloud-client.ts";
 import {
 	connectionStorageRequest,
@@ -257,6 +266,7 @@ export const bufferWorkspaceLocalFrame = (
 const BootstrapResponse = Schema.Struct({
 	workspaceId: Schema.String,
 	zuseAccountId: Schema.optional(Schema.String),
+	workspaceScope: Schema.optional(WorkspaceScope),
 	providerSandboxId: Schema.String,
 	runtimeCredential: Schema.String,
 	runtimeGatewayCredential: Schema.String,
@@ -541,6 +551,7 @@ export const makeCloudRuntimeCheckpointPublisher = Effect.fn(
 		{
 			readonly cursor: { readonly epoch: string; readonly version: number };
 			readonly projection: CloudTranscriptCheckpointPayload["projection"];
+			readonly context?: CloudTranscriptCheckpointPayload["context"];
 		},
 		CloudWorkspaceRuntimeError
 	>;
@@ -595,6 +606,7 @@ export const makeCloudRuntimeCheckpointPublisher = Effect.fn(
 					sessionId: AgentSessionId.make(input.sessionId),
 					cursor: snapshot.cursor,
 					projection: snapshot.projection,
+					context: snapshot.context,
 				});
 				const plaintext = new TextEncoder().encode(
 					JSON.stringify(
@@ -935,6 +947,68 @@ const superviseRuntimeCredential = (input: {
 		}),
 	);
 
+const requestCloudRuntimeActorAccess = Effect.fn(
+	"requestCloudRuntimeActorAccess",
+)(function* (input: {
+	readonly config: Pick<CloudWorkspaceRuntimeConfig, "apiUrl" | "workspaceId">;
+	readonly credential: Pick<
+		RuntimeCredentialState,
+		"credential" | "generation" | "gatewayEpoch"
+	>;
+	readonly actorId: string;
+	readonly membershipId?: string;
+}) {
+	return yield* requestJson({
+		schema: CloudRuntimeAccessResponse,
+		url: `${input.config.apiUrl}${ApiPaths.cloudWorkspaceRuntimeAccess(input.config.workspaceId)}`,
+		token: input.credential.credential,
+		method: "POST",
+		timeoutMs: 10_000,
+		body: {
+			actorId: input.actorId,
+			membershipId: input.membershipId,
+			runtimeGeneration: input.credential.generation,
+			gatewayEpoch: input.credential.gatewayEpoch,
+		},
+	});
+});
+
+export const authorizeCloudRuntimeActor = Effect.fn(
+	"authorizeCloudRuntimeActor",
+)(function* (
+	input: Parameters<typeof requestCloudRuntimeActorAccess>[0] & {
+		readonly permission: ChatAccessPermission;
+	},
+) {
+	const access = yield* requestCloudRuntimeActorAccess(input).pipe(
+		Effect.mapError(() => new RpcAccessDeniedError({ code: "access-denied" })),
+	);
+	return input.permission === "view" ? ("view" as const) : access.permission;
+});
+
+export const authorizeCloudQueuedActor = Effect.fn("authorizeCloudQueuedActor")(
+	function* (
+		input: Omit<
+			Parameters<typeof requestCloudRuntimeActorAccess>[0],
+			"actorId" | "membershipId"
+		> & { readonly actor: WorkspaceActor | undefined },
+	) {
+		if (input.actor === undefined) return false;
+		return yield* requestCloudRuntimeActorAccess({
+			...input,
+			actorId: input.actor.subject,
+			membershipId: input.actor.membershipId,
+		}).pipe(
+			Effect.map((access) => access.permission === "edit"),
+			Effect.catch((error) =>
+				error.httpStatus === 403 ? Effect.succeed(false) : Effect.fail(error),
+			),
+			Effect.retry(Schedule.spaced("5 seconds")),
+			Effect.orDie,
+		);
+	},
+);
+
 const requestJson = <A, I>(input: {
 	readonly schema: Schema.Codec<A, I>;
 	readonly url: string;
@@ -1032,6 +1106,8 @@ const CloudMailboxCommandRejectionCategory = Schema.Literals([
 	"command-payload-identity-mismatch",
 	"command-dependencies-not-supported",
 	"command-goal-mode-not-supported",
+	"command-author-access-denied",
+	"command-author-access-unavailable",
 	"runtime-generation-mismatch",
 	"runtime-provider-sandbox-mismatch",
 	"runtime-lease-expired",
@@ -1057,6 +1133,36 @@ const rejectCloudMailboxCommand = (
 	category: CloudMailboxCommandRejectionCategory,
 ) => new CloudMailboxApplyError({ category });
 
+export const authorizeCloudMailboxActor = Effect.fn(
+	"authorizeCloudMailboxActor",
+)(function* (
+	input: Omit<
+		Parameters<typeof requestCloudRuntimeActorAccess>[0],
+		"actorId" | "membershipId"
+	> & {
+		readonly actor: WorkspaceActor | undefined;
+	},
+) {
+	if (input.actor === undefined)
+		return yield* rejectCloudMailboxCommand("command-author-access-denied");
+	const access = yield* requestCloudRuntimeActorAccess({
+		config: input.config,
+		credential: input.credential,
+		actorId: input.actor.subject,
+		membershipId: input.actor.membershipId,
+	}).pipe(
+		Effect.mapError((error) =>
+			rejectCloudMailboxCommand(
+				error.httpStatus === 403
+					? "command-author-access-denied"
+					: "command-author-access-unavailable",
+			),
+		),
+	);
+	if (access.permission !== "edit")
+		return yield* rejectCloudMailboxCommand("command-author-access-denied");
+});
+
 export interface CloudMailboxCommandReceipt {
 	readonly commandId: string;
 	readonly streamKind: string;
@@ -1073,6 +1179,7 @@ export interface CloudMailboxCommandReceipt {
 }
 
 export interface CloudMailboxCommandIdentity extends CommandReceiptIdentity {
+	readonly actor?: WorkspaceActor;
 	readonly commandId: string;
 	readonly streamId: string;
 }
@@ -1206,6 +1313,7 @@ const receiptConflict = (
 const receiptMatchesMessagePayload = (
 	receipt: CloudMailboxCommandReceipt,
 	payload: CloudMessageSendPayload,
+	actor: WorkspaceActor | undefined,
 ): boolean => {
 	if (
 		receipt.messageEventJson === null ||
@@ -1251,6 +1359,7 @@ const receiptMatchesMessagePayload = (
 			messageEvent.value.kind !== persisted._tag ||
 			persisted.text !== text ||
 			persisted.goal !== false ||
+			!isDeepStrictEqual(persisted.actor, actor) ||
 			persisted.origin !== undefined
 		)
 			return false;
@@ -1288,6 +1397,7 @@ const receiptMatchesMessagePayload = (
 const receiptProvesDurableMessage = (
 	receipt: CloudMailboxCommandReceipt,
 	payload: CloudMessageSendPayload,
+	actor: WorkspaceActor | undefined,
 ): boolean => {
 	if (
 		!Number.isSafeInteger(receipt.streamVersion) ||
@@ -1306,7 +1416,7 @@ const receiptProvesDurableMessage = (
 			result === null
 		)
 			return false;
-		if (!receiptMatchesMessagePayload(receipt, payload)) return false;
+		if (!receiptMatchesMessagePayload(receipt, payload, actor)) return false;
 		const durableResult = result as Record<string, unknown>;
 		const durableEventIds = durableResult.eventIds;
 		return (
@@ -1332,7 +1442,7 @@ const receiptIsDurableAndBound = (
 	receipt.commandKind === identity.commandKind &&
 	receipt.schemaVersion === identity.schemaVersion &&
 	receipt.storageIncarnationId === identity.storageIncarnationId &&
-	receiptProvesDurableMessage(receipt, payload);
+	receiptProvesDurableMessage(receipt, payload, identity.actor);
 
 const verifyAndBindCloudMailboxReceipt = Effect.fn(
 	"CloudWorkspaceRuntime.verifyAndBindMailboxReceipt",
@@ -1346,7 +1456,13 @@ const verifyAndBindCloudMailboxReceipt = Effect.fn(
 		return yield* Effect.fail(
 			rejectCloudMailboxCommand("runtime-receipt-conflict"),
 		);
-	if (!receiptProvesDurableMessage(input.receipt, input.payload))
+	if (
+		!receiptProvesDurableMessage(
+			input.receipt,
+			input.payload,
+			input.identity.actor,
+		)
+	)
 		return yield* Effect.fail(
 			rejectCloudMailboxCommand("runtime-receipt-invalid"),
 		);
@@ -1402,6 +1518,9 @@ export const applyCloudMailboxLease = Effect.fn(
 	readonly storageIncarnationId: string;
 	readonly sendMessage: MessageService["Service"]["sendMessage"];
 	readonly receipts: CloudMailboxReceiptStore;
+	readonly authorizeActor?: (
+		actor: WorkspaceActor | undefined,
+	) => Effect.Effect<void, CloudMailboxApplyError>;
 }) {
 	const { command: envelope } = input.lease;
 	const applied = Effect.gen(function* () {
@@ -1511,6 +1630,7 @@ export const applyCloudMailboxLease = Effect.fn(
 			catch: () => rejectCloudMailboxCommand("result-encryption-failed"),
 		});
 		const receiptIdentity = {
+			actor: envelope.actor,
 			commandId: envelope.commandId,
 			streamId: envelope.sessionId,
 			fingerprint: envelope.fingerprint,
@@ -1531,6 +1651,10 @@ export const applyCloudMailboxLease = Effect.fn(
 			// do not re-enter MessageService or the provider from mailbox replay.
 			return encryptedResult;
 		}
+		// Receipt recovery above is not a new mutation. Only commands that have
+		// not committed must revalidate their original author's live membership.
+		if (input.authorizeActor !== undefined)
+			yield* input.authorizeActor(envelope.actor);
 		if ((yield* input.nowMs) >= input.lease.leaseDeadline)
 			return yield* Effect.fail(
 				rejectCloudMailboxCommand("runtime-lease-expired"),
@@ -1555,6 +1679,7 @@ export const applyCloudMailboxLease = Effect.fn(
 				payload.clientMessageId,
 				undefined,
 				domainReceiptIdentity,
+				envelope.actor,
 			)
 			.pipe(
 				measureCloudStage(
@@ -1600,6 +1725,7 @@ export const applyCloudMailboxLease = Effect.fn(
 	const category = rejectionCategoryFromCause(outcome.cause);
 	const retryWithoutAcknowledgment =
 		category === "runtime-receipt-store-unavailable" ||
+		category === "command-author-access-unavailable" ||
 		category === "runtime-lease-expired";
 	if (retryWithoutAcknowledgment) return null;
 	const outcomeIsUnknown =
@@ -1769,6 +1895,7 @@ export const recoverCloudMailboxReadiness = <A, R, R2>(
 	);
 
 const runCloudMailboxConsumer = (input: {
+	readonly organizationWorkspace: boolean;
 	readonly recoverReadiness: Effect.Effect<void, CloudWorkspaceRuntimeError>;
 	readonly config: CloudWorkspaceRuntimeConfig;
 	readonly runtimeCredential: RuntimeCredentialState;
@@ -1808,6 +1935,14 @@ const runCloudMailboxConsumer = (input: {
 				storageIncarnationId: input.storageIncarnationId,
 				sendMessage: input.messages.sendMessage,
 				receipts,
+				authorizeActor: input.organizationWorkspace
+					? (actor) =>
+							authorizeCloudMailboxActor({
+								config: input.config,
+								credential: input.runtimeCredential,
+								actor,
+							})
+					: undefined,
 			}),
 		acknowledge: (acknowledgment) =>
 			requestJson({
@@ -2157,6 +2292,8 @@ export const makeCloudWorkspaceRuntimeLayer = (
 								capabilities: [
 									CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
 									CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
+									CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY,
+									CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
 								],
 							},
 						}),
@@ -2492,11 +2629,35 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							}),
 						),
 					).pipe(Effect.andThen(removeBootToken(config.bootTokenFile)));
-					const localCredential = yield* auth
-						.mintToken("cloud workspace gateway")
-						.pipe(
-							Effect.mapError(() => fail("workspace_local_rpc_auth_failed")),
-						);
+					const organizationWorkspace =
+						bootstrap.workspaceScope?.kind === "organization" ||
+						bootstrap.zuseAccountId?.startsWith("organization:") === true;
+					const executionPolicy = yield* WorkspaceExecutionPolicy;
+					yield* executionPolicy.bind((sessionId, actor) =>
+						Effect.gen(function* () {
+							if (!organizationWorkspace) return actor === undefined;
+							const sessions = yield* sql<{
+								chat_id: string;
+							}>`SELECT chat_id FROM sessions WHERE id = ${sessionId}`.pipe(
+								Effect.orDie,
+							);
+							if (sessions[0]?.chat_id !== bootstrap.chatId) return false;
+							return yield* authorizeCloudQueuedActor({
+								config,
+								credential: runtimeCredential,
+								actor,
+							});
+						}),
+					);
+					const localCredential = organizationWorkspace
+						? null
+						: yield* auth
+								.mintToken("cloud workspace gateway")
+								.pipe(
+									Effect.mapError(() =>
+										fail("workspace_local_rpc_auth_failed"),
+									),
+								);
 					console.info("[cloud-workspace-runtime] local rpc auth ready");
 
 					const readRuntimeSummary = Effect.gen(function* () {
@@ -2584,12 +2745,37 @@ export const makeCloudWorkspaceRuntimeLayer = (
 									return yield* Effect.fail(
 										fail("workspace_transcript_snapshot_unavailable"),
 									);
+								const session = yield* sessions
+									.getSession(AgentSessionId.make(sessionId))
+									.pipe(
+										Effect.mapError(() =>
+											fail("workspace_transcript_context_unavailable"),
+										),
+									);
+								const chat = yield* chats
+									.getChat(session.chatId)
+									.pipe(
+										Effect.mapError(() =>
+											fail("workspace_transcript_context_unavailable"),
+										),
+									);
+								const folder = (yield* workspaces.list()).find(
+									(candidate) => candidate.id === chat.projectId,
+								);
+								if (
+									folder === undefined ||
+									session.projectId !== chat.projectId
+								)
+									return yield* Effect.fail(
+										fail("workspace_transcript_context_unavailable"),
+									);
 								return {
 									cursor: {
 										epoch: snapshot.streamEpoch,
 										version: snapshot.throughVersion,
 									},
 									projection: snapshot.projection,
+									context: { session, chat, folder },
 								};
 							}),
 							readPage: (beforeSequence) =>
@@ -2790,11 +2976,25 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							}),
 						).pipe(Effect.retry(cloudRuntimeRetrySchedule), Effect.ignore);
 					const localSockets = new Map<string, WebSocket>();
+					const localCredentials = new Map<string, AuthTokenId>();
+					const releaseLocalCredential = (connectionId: string) => {
+						const id = localCredentials.get(connectionId);
+						localCredentials.delete(connectionId);
+						if (id !== undefined)
+							void Effect.runPromise(auth.revokeToken(id).pipe(Effect.ignore));
+					};
 					const pendingLocalFrames = new Map<
 						string,
 						WorkspaceLocalFrameQueue
 					>();
 					let gateway: WebSocket | null = null;
+					const closeLocalConnections = () => {
+						for (const socket of localSockets.values()) socket.close();
+						localSockets.clear();
+						pendingLocalFrames.clear();
+						for (const id of localCredentials.keys())
+							releaseLocalCredential(id);
+					};
 					let repositoryReady = false;
 					const sendGateway = (message: unknown) => {
 						if (gateway?.readyState === WebSocket.OPEN)
@@ -2804,11 +3004,10 @@ export const makeCloudWorkspaceRuntimeLayer = (
 									: JSON.stringify(message),
 							);
 					};
-					const openLocal = (connectionId: string) => {
+					const connectLocal = (connectionId: string, token: string) => {
 						if (localSockets.has(connectionId)) return;
-						pendingLocalFrames.set(connectionId, { frames: [], bytes: 0 });
 						const url = new URL(`ws://127.0.0.1:${config.localPort}`);
-						url.searchParams.set("token", localCredential.token);
+						url.searchParams.set("token", token);
 						url.searchParams.set("wireVersion", String(WIRE_PROTOCOL_VERSION));
 						const socket = new WebSocket(url);
 						socket.binaryType = "arraybuffer";
@@ -2852,12 +3051,87 @@ export const makeCloudWorkspaceRuntimeLayer = (
 							// not terminate its successor.
 							if (localSockets.get(connectionId) !== socket) return;
 							localSockets.delete(connectionId);
+							releaseLocalCredential(connectionId);
 							pendingLocalFrames.delete(connectionId);
 							// The gateway deliberately has no replay buffer. Closing the
 							// disposable client makes its one supervisor reconnect and
 							// resume every retained resource from a durable cursor.
 							sendGateway({ type: "client.close", connectionId });
 						});
+					};
+					const openLocal = (
+						connectionId: string,
+						actorId?: string,
+						permission?: "view" | "edit",
+					) => {
+						if (
+							localSockets.has(connectionId) ||
+							pendingLocalFrames.has(connectionId)
+						)
+							return;
+						const pending: WorkspaceLocalFrameQueue = { frames: [], bytes: 0 };
+						pendingLocalFrames.set(connectionId, pending);
+						if (!organizationWorkspace && localCredential !== null) {
+							connectLocal(connectionId, localCredential.token);
+							return;
+						}
+						if (!actorId || permission === undefined) {
+							pendingLocalFrames.delete(connectionId);
+							sendGateway({ type: "client.close", connectionId });
+							return;
+						}
+						void Effect.runPromise(
+							Effect.gen(function* () {
+								const access = yield* requestCloudRuntimeActorAccess({
+									config,
+									credential: runtimeCredential,
+									actorId,
+								});
+								if (
+									access.actor === undefined ||
+									access.actor.subject !== actorId
+								)
+									return yield* new RpcAccessDeniedError({
+										code: "access-denied",
+									});
+								const chat = yield* chats.getChat(
+									ChatId.make(bootstrap.chatId),
+								);
+								const now = yield* Clock.currentTimeMillis;
+								return yield* auth.mintToken("workspace gateway", undefined, {
+									kind: "workspace",
+									subject: actorId,
+									membershipId: access.actor.membershipId,
+									workspaceId: config.workspaceId,
+									chatId: chat.id,
+									projectId: chat.projectId,
+									expiresAt: now + 60 * 60 * 1000,
+									authorize: authorizeCloudRuntimeActor({
+										config,
+										credential: runtimeCredential,
+										actorId,
+										membershipId: access.actor.membershipId,
+										permission,
+									}),
+								});
+							}),
+						)
+							.then((minted) => {
+								if (pendingLocalFrames.get(connectionId) !== pending) {
+									void Effect.runPromise(
+										auth.revokeToken(minted.id).pipe(Effect.ignore),
+									);
+									return;
+								}
+								localCredentials.set(connectionId, minted.id);
+								connectLocal(connectionId, minted.token);
+							})
+							.catch(() => {
+								if (pendingLocalFrames.get(connectionId) !== pending) return;
+								pendingLocalFrames.delete(connectionId);
+								releaseLocalCredential(connectionId);
+								sendGateway({ type: "client.close", connectionId });
+							});
 					};
 
 					console.info("[cloud-workspace-runtime] connecting gateway");
@@ -2871,6 +3145,15 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						],
 						(socket) => {
 							gateway = socket;
+							socket.addEventListener(
+								"close",
+								() => {
+									if (gateway !== socket) return;
+									gateway = null;
+									closeLocalConnections();
+								},
+								{ once: true },
+							);
 							cloudTimingEvent(
 								{
 									workspaceId: config.workspaceId,
@@ -2904,7 +3187,8 @@ export const makeCloudWorkspaceRuntimeLayer = (
 									if (local?.readyState === WebSocket.OPEN) {
 										local.send(frame.payload);
 									} else if (
-										local?.readyState === WebSocket.CONNECTING &&
+										(local === undefined ||
+											local.readyState === WebSocket.CONNECTING) &&
 										pending !== undefined &&
 										bufferWorkspaceLocalFrame(pending, frame.payload)
 									) {
@@ -2912,6 +3196,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 									} else {
 										local?.close(1013, "local runtime synchronizing");
 										localSockets.delete(frame.connectionId);
+										releaseLocalCredential(frame.connectionId);
 										pendingLocalFrames.delete(frame.connectionId);
 										sendGateway({
 											type: "client.close",
@@ -2931,13 +3216,23 @@ export const makeCloudWorkspaceRuntimeLayer = (
 									message.type === "client.open" &&
 									typeof message.connectionId === "string"
 								)
-									openLocal(message.connectionId);
+									openLocal(
+										message.connectionId,
+										typeof message.actorId === "string"
+											? message.actorId
+											: undefined,
+										message.permission === "view" ||
+											message.permission === "edit"
+											? message.permission
+											: undefined,
+									);
 								if (
 									message.type === "client.close" &&
 									typeof message.connectionId === "string"
 								) {
 									localSockets.get(message.connectionId)?.close();
 									localSockets.delete(message.connectionId);
+									releaseLocalCredential(message.connectionId);
 									pendingLocalFrames.delete(message.connectionId);
 								}
 								if (message.type === "runtime.command") drainApiCommands();
@@ -2954,9 +3249,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						Effect.ensuring(
 							Effect.sync(() => {
 								gateway = null;
-								for (const socket of localSockets.values()) socket.close();
-								localSockets.clear();
-								pendingLocalFrames.clear();
+								closeLocalConnections();
 							}),
 						),
 					);
@@ -3121,6 +3414,7 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						"runtime.mailbox-starting",
 					);
 					yield* runCloudMailboxConsumer({
+						organizationWorkspace,
 						recoverReadiness: postCurrentRuntimeReady("repository-ready").pipe(
 							// A retained session must be acknowledged too: repository readiness
 							// alone deliberately leaves session recovery fenced in the API.

@@ -9,9 +9,9 @@ import {
 } from "../../src/cloud-workspace-store";
 
 const url = process.env.ZUSE_TEST_POSTGRES_URL;
-test.skipIf(!url)(
-	"catalog changes commit atomically, resume and isolate accounts",
-	async () => {
+test.skipIf(!url).each(["a", "organization:org_a"])(
+	"catalog changes commit atomically, resume and isolate owner %s",
+	async (ownerId) => {
 		const schema = `catalog_${crypto.randomUUID().replaceAll("-", "")}`;
 		const admin = new Pool({ connectionString: url });
 		await admin.query(`CREATE SCHEMA ${schema}`);
@@ -45,13 +45,50 @@ test.skipIf(!url)(
 					);
 			}
 			await pool.query(
-				`INSERT INTO api_cloud_projects (project_id,account_id,repository_identity,repository_url,display_name,default_branch,visibility,git_connection_kind,configuration_digest,state,idempotency_key,created_at,updated_at) VALUES ('p','a','repo','https://example.test/repo','Repo','main','private','github-app','digest','ready','p',1,1)`,
+				`INSERT INTO api_cloud_projects (project_id,account_id,repository_identity,repository_url,display_name,default_branch,visibility,git_connection_kind,configuration_digest,state,idempotency_key,created_at,updated_at) VALUES ('p',$1,'repo','https://example.test/repo','Repo','main','private','github-app','digest','ready','p',1,1)`,
+				[ownerId],
 			);
 			await pool.query(
-				`INSERT INTO api_cloud_project_builds (build_id,project_id,account_id,provider,template_version,configuration_digest,state,idempotency_key,next_action_at,created_at,updated_at) VALUES ('b','p','a','box','1','digest','ready','b',1,1,1)`,
+				`INSERT INTO api_cloud_project_builds (build_id,project_id,account_id,provider,template_version,configuration_digest,state,idempotency_key,next_action_at,created_at,updated_at) VALUES ('b','p',$1,'box','1','digest','ready','b',1,1,1)`,
+				[ownerId],
 			);
 			const store = await runtime.runPromise(CloudWorkspaceStore);
-			const read = (cursor?: number, account = "a") =>
+			expect(
+				await runtime.runPromise(store.getWorkspaceSettings(ownerId)),
+			).toEqual({ revision: 0, values: {} });
+			const settingsWrites = await Promise.all(
+				["first", "second"].map((branchNamingPrefix) =>
+					runtime.runPromise(
+						store.replaceWorkspaceSettings(ownerId, {
+							expectedRevision: 0,
+							values: { branchNamingPrefix },
+						}),
+					),
+				),
+			);
+			expect(settingsWrites.filter((result) => result !== null)).toHaveLength(
+				1,
+			);
+			expect(
+				await runtime.runPromise(store.getWorkspaceSettings("unrelated-owner")),
+			).toEqual({ revision: 0, values: {} });
+			expect(
+				await runtime.runPromise(
+					store.replaceWorkspaceSettings(ownerId, {
+						expectedRevision: 0,
+						values: {},
+					}),
+				),
+			).toBeNull();
+			expect(
+				await runtime.runPromise(
+					store.replaceWorkspaceSettings(ownerId, {
+						expectedRevision: 1,
+						values: {},
+					}),
+				),
+			).toEqual({ revision: 2, values: {} });
+			const read = (cursor?: number, account = ownerId) =>
 				runtime.runPromise(store.readCloudCatalog(account, cursor));
 			expect(await read()).toMatchObject({
 				reset: true,
@@ -61,7 +98,8 @@ test.skipIf(!url)(
 			const tx = await pool.connect();
 			await tx.query("BEGIN");
 			await tx.query(
-				`INSERT INTO api_cloud_workspaces (workspace_id,account_id,project_id,build_id,provider,chat_id,initial_session_id,branch,base_ref,state,desired_state,status_code,idempotency_key,next_action_at,created_at,updated_at,last_activity_at) VALUES ('w','a','p','b','box','chat','session','branch','main','ready','ready','ready','w',1,1,1,1)`,
+				`INSERT INTO api_cloud_workspaces (workspace_id,account_id,project_id,build_id,provider,chat_id,initial_session_id,branch,base_ref,state,desired_state,status_code,idempotency_key,next_action_at,created_at,updated_at,last_activity_at) VALUES ('w',$1,'p','b','box','chat','session','branch','main','ready','ready','ready','w',1,1,1,1)`,
+				[ownerId],
 			);
 			expect((await read(0)).entries).toHaveLength(0);
 			await tx.query("COMMIT");
@@ -72,6 +110,10 @@ test.skipIf(!url)(
 			).toEqual(["w"]);
 			expect((await read(created.cursor)).entries).toEqual([]);
 			expect((await read(undefined, "another-account")).entries).toEqual([]);
+			expect((await read(undefined, "organization:org_b")).entries).toEqual([]);
+			const otherOwner = ownerId === "a" ? "organization:org_a" : "a";
+			expect((await read(undefined, otherOwner)).entries).toEqual([]);
+			expect((await read(0, otherOwner)).entries).toEqual([]);
 			await pool.query(
 				"UPDATE api_cloud_projects SET display_name='Updated' WHERE project_id='p'",
 			);
@@ -85,11 +127,60 @@ test.skipIf(!url)(
 			await rollback.query("ROLLBACK");
 			rollback.release();
 			expect((await read(renamed.cursor)).entries).toEqual([]);
+			const policy = {
+				creatorSubject: "creator",
+				creatorMembershipId: "membership_creator",
+				audience: "organization",
+				permission: "edit",
+				grants: [],
+			};
+			await pool.query(
+				"UPDATE api_cloud_workspaces SET request_config=$1::jsonb WHERE workspace_id='w'",
+				[JSON.stringify({ sharingPolicy: policy })],
+			);
+			const beforeSharing = await runtime.runPromise(store.getWorkspace("w"));
+			if (beforeSharing === null) throw new Error("Missing fixture workspace");
+			const sharingUpdate = {
+				workspaceId: "w",
+				accountId: ownerId,
+				expectedRevision: 0,
+				sharing: {
+					audience: "private" as const,
+					permission: "view" as const,
+					grants: [],
+				},
+				nowMs: 100,
+			};
+			expect(
+				await runtime.runPromise(
+					store.updateWorkspaceSharing({
+						...sharingUpdate,
+						accountId: otherOwner,
+					}),
+				),
+			).toBeNull();
+			const concurrent = await Promise.all([
+				runtime.runPromise(store.updateWorkspaceSharing(sharingUpdate)),
+				runtime.runPromise(store.updateWorkspaceSharing(sharingUpdate)),
+			]);
+			expect(concurrent.filter((value) => value !== null)).toHaveLength(1);
+			await runtime.runPromise(
+				store.saveWorkspace({
+					...beforeSharing,
+					revision: beforeSharing.revision + 10,
+					updatedAtMs: 200,
+				}),
+			);
+			expect(
+				(await runtime.runPromise(store.getWorkspace("w")))?.requestConfig
+					.sharingPolicy,
+			).toEqual({ ...policy, ...sharingUpdate.sharing, revision: 1 });
 			await pool.query(
 				"DELETE FROM api_cloud_workspaces WHERE workspace_id='w'",
 			);
 			const deleted = await read(renamed.cursor);
 			expect(deleted.deletedWorkspaceIds).toEqual(["w"]);
+			expect((await read(0, otherOwner)).deletedWorkspaceIds).toEqual([]);
 			expect((await read(deleted.cursor + 10)).reset).toBe(true);
 		} finally {
 			await runtime.dispose();

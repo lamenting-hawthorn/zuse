@@ -3,6 +3,7 @@ import type {
 	GitFolderNotFoundError,
 	GitNotARepoError,
 	GitNotInstalledError,
+	RpcAccessDeniedError,
 } from "@zuse/contracts";
 import { Effect } from "effect";
 import type { RpcClientError } from "effect/unstable/rpc/RpcClientError";
@@ -40,7 +41,7 @@ export type GitRpcResult<A> =
  * net for transport/defect failures outside the typed error channel.
  */
 export const classifyGit = async <A>(
-	effect: Effect.Effect<A, GitFailure | RpcClientError>,
+	effect: Effect.Effect<A, GitFailure | RpcClientError | RpcAccessDeniedError>,
 ): Promise<GitRpcResult<A>> => {
 	try {
 		return await Effect.runPromise(

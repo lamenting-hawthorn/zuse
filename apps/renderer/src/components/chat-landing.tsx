@@ -1147,6 +1147,7 @@ export function ChatLanding() {
 					input.text.trim().split(/\r?\n/u, 1)[0]?.slice(0, 80) ||
 					launch.workspace.branch;
 				const summary = summaryFromLaunch({
+					workspaceScope: { kind: "personal" },
 					workspace: launch.workspace,
 					repositoryIdentity: cloudProject.repositoryIdentity,
 					repositoryDisplayName: cloudProject.displayName,

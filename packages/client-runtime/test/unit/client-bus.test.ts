@@ -21,8 +21,10 @@ import type {
 import {
 	CloudCommandTerminalError,
 	CloudCommandTransportUnavailableError,
+	CommandAuthorityLostError,
 	CommandIdentityCollisionError,
 	commandFingerprint,
+	resourceCacheStorageKey,
 	terminalErrorFromReceipt,
 } from "../../src/client-persistence.ts";
 import type { EnvironmentResolver } from "../../src/environment-runtime.ts";
@@ -118,21 +120,33 @@ class MemoryPersistence implements ClientPersistence {
 
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
+		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		return (this.loadGate ??
-			this.resources.get(resourceKeyId(key)) ??
+			this.resources.get(
+				resourceCacheStorageKey(resourceKeyId(key), namespace),
+			) ??
 			null) as PersistedResource<Data> | null;
 	}
 
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
+		namespace?: string,
 	): Promise<void> {
-		this.resources.set(resourceKeyId(key), value);
+		this.resources.set(
+			resourceCacheStorageKey(resourceKeyId(key), namespace),
+			value,
+		);
 	}
 
-	async removeResource(key: ResourceKey<unknown>): Promise<void> {
-		this.resources.delete(resourceKeyId(key));
+	async removeResource(
+		key: ResourceKey<unknown>,
+		namespace?: string,
+	): Promise<void> {
+		this.resources.delete(
+			resourceCacheStorageKey(resourceKeyId(key), namespace),
+		);
 	}
 
 	async putOutbox(entry: OutboxEntry): Promise<void> {
@@ -206,6 +220,424 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("clears retained account views in place and fences old hydration across A -> B -> A", async () => {
+		const persistence = new MemoryPersistence();
+		const oldLoad = deferred<PersistedResource<unknown> | null>();
+		const first = { data: { text: "first" }, cursor: null, storedAt: 1 };
+		const second = { data: { text: "second" }, cursor: null, storedAt: 2 };
+		await persistence.saveResource(timelineKey, first, "first");
+		await persistence.saveResource(timelineKey, second, "second");
+		await persistence.saveResource(otherTimelineKey, first);
+		vi.spyOn(persistence, "loadResource").mockImplementationOnce(
+			() => oldLoad.promise,
+		);
+		let namespace = "first";
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			resourceCacheNamespaceFor: (key) =>
+				key === timelineKey ? namespace : undefined,
+		});
+		const seen: Array<string | null> = [];
+		bus.subscribe(timelineKey, (view) => seen.push(view.data?.text ?? null));
+		bus.retain(timelineKey, { activation: "cache-only" });
+		bus.retain(otherTimelineKey, { activation: "cache-only" });
+		await waitUntil(() => bus.snapshot(otherTimelineKey).data !== null);
+		namespace = "second";
+		bus.refreshResourceNamespaces();
+		await waitUntil(() => bus.snapshot(timelineKey).data?.text === "second");
+		namespace = "first";
+		bus.refreshResourceNamespaces();
+		expect(bus.snapshot(timelineKey).data).toBeNull();
+		expect(bus.snapshot(otherTimelineKey).data).toEqual(first.data);
+		oldLoad.resolve({ ...first, data: { text: "stale first load" } });
+		await waitUntil(() => bus.snapshot(timelineKey).data?.text === "first");
+		expect(seen).not.toContain("stale first load");
+		expect(seen).toContain("second");
+		expect(seen.at(-1)).toBe("first");
+		await bus.dispose();
+	});
+	it("captures cache ownership before queued writes and rejects stale hydration", async () => {
+		const persistence = new MemoryPersistence();
+		const loaded = deferred<PersistedResource<unknown> | null>();
+		vi.spyOn(persistence, "loadResource").mockImplementationOnce(
+			() => loaded.promise,
+		);
+		const save = vi.spyOn(persistence, "saveResource");
+		let namespace: string | null = "account:first";
+		const contexts: ResourceDriverContext<Client, unknown>[] = [];
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			resourceCacheNamespaceFor: () => namespace,
+			driverFor: () => ({
+				start: (context) => {
+					contexts.push(context);
+				},
+				stop: () => undefined,
+			}),
+		});
+		bus.retain(timelineKey, { activation: "connect" });
+		namespace = "account:second";
+		bus.refreshResourceNamespaces();
+		loaded.resolve({
+			data: { text: "private first account" },
+			cursor: null,
+			storedAt: 1,
+		});
+		await waitUntil(() => contexts.length === 1);
+		expect(bus.snapshot(timelineKey).data).toBeNull();
+		contexts[0]?.emit({ data: { text: "second account" }, persist: true });
+		namespace = "account:third";
+		await waitUntil(() => save.mock.calls.length === 1);
+		expect(save.mock.calls[0]?.[2]).toBe("account:second");
+		expect(contexts[0]?.isCurrent()).toBe(false);
+		expect(
+			contexts[0]?.emit({
+				data: { text: "late second account" },
+				persist: true,
+			}),
+		).toBe(false);
+		namespace = null;
+		contexts[0]?.emit({ data: { text: "unowned" }, persist: true });
+		await bus.dispose();
+		expect(save).toHaveBeenCalledOnce();
+	});
+	it.each([
+		"acceptance",
+		"result",
+		"reflection",
+	] as const)("releases a pending mailbox %s on account change without cancelling durable work", async (phase) => {
+		const persistence = new MemoryPersistence();
+		const listeners = new Set<() => void>();
+		let epoch = 0;
+		const command: ClientCommand = {
+			kind: "messages.send",
+			commandId: CommandId.make("pending-authority"),
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+			awaitResourceReflection: true,
+			owner: { kind: "account", subject: "first" },
+		};
+		const cancel = vi.fn();
+		const dispose = vi.fn();
+		const started = deferred<void>();
+		const reflected = vi.fn(() => false);
+		const transport = testCloudTransport(() => ({
+			accepted:
+				phase === "acceptance"
+					? new Promise(() => undefined)
+					: Promise.resolve({
+							commandId: command.commandId,
+							workspaceSequence: 1,
+							revision: 2,
+							acceptedAt: 3,
+							state: "accepted",
+						}),
+			result:
+				phase === "reflection"
+					? Promise.resolve({
+							commandId: command.commandId,
+							fingerprint: commandFingerprint(command),
+							receivedAt: 4,
+							result: null,
+						})
+					: new Promise(() => undefined),
+			cancel,
+		}));
+		const observedTransport: CloudCommandTransport = {
+			...transport,
+			dispatch: (input) => ({
+				...transport.dispatch(input),
+				start: () => started.resolve(),
+				dispose,
+			}),
+		};
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandExecutor: {
+				execute: async () => {
+					throw new Error("unexpected live execution");
+				},
+			},
+			commandTransportFor: () => observedTransport,
+			commandReflected: reflected,
+			commandScopeFor: () => {
+				const captured = epoch;
+				return () => captured === epoch;
+			},
+			subscribeCommandAuthority: (listener) => {
+				listeners.add(listener);
+				return () => {
+					listeners.delete(listener);
+				};
+			},
+		});
+		const handle = bus.dispatchHandle(command);
+		const rejected = expect(handle.result).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		await started.promise;
+		if (phase !== "acceptance") await handle.accepted;
+		if (phase === "reflection")
+			await waitUntil(() => reflected.mock.calls.length > 0);
+		epoch++;
+		for (const listener of listeners) listener();
+		await rejected;
+		expect(listeners.size).toBe(0);
+		expect(dispose).toHaveBeenCalledOnce();
+		expect(cancel).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(command.commandId)?.command.owner).toEqual(
+			command.owner,
+		);
+		expect(bus.snapshot(timelineKey).pendingCommands).toEqual([]);
+		expect(bus.snapshot(timelineKey).failedCommands).toEqual([]);
+		if (phase === "result") {
+			const resumed = bus.dispatchHandle(command);
+			void resumed.result.catch(() => undefined);
+			await resumed.accepted;
+			await expect(handle.cancel()).rejects.toBeInstanceOf(
+				CommandAuthorityLostError,
+			);
+			expect(cancel).not.toHaveBeenCalled();
+		}
+		await bus.dispose();
+	});
+	it.each([
+		false,
+		true,
+	])("fences mailbox cancellation before sending and after completion (in flight: %s)", async (inFlight) => {
+		const persistence = new MemoryPersistence();
+		const commandId = CommandId.make("cancel-authority");
+		let epoch = 0;
+		const status = {
+			commandId,
+			workspaceSequence: 1,
+			revision: 3,
+			fingerprint: "hmac-sha256:test-envelope",
+			state: "cancelled" as const,
+			everLeased: false,
+			updatedAt: 4,
+		};
+		const cancellation = deferred<typeof status>();
+		const cancel = vi.fn(() => cancellation.promise);
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandScopeFor: () => {
+				const captured = epoch;
+				return () => captured === epoch;
+			},
+			commandExecutor: {
+				execute: async () => {
+					throw new Error("live executor must not run");
+				},
+			},
+			commandTransportFor: () =>
+				testCloudTransport(() => ({
+					accepted: Promise.resolve({
+						commandId,
+						workspaceSequence: 1,
+						revision: 2,
+						acceptedAt: 3,
+						state: "accepted",
+					}),
+					result: new Promise<never>(() => undefined),
+					cancel,
+				})),
+		});
+		const command: ClientCommand = {
+			kind: "messages.send",
+			commandId,
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+		};
+		const handle = bus.dispatchHandle(command);
+		void handle.result.catch(() => undefined);
+		await handle.accepted;
+		if (!inFlight) epoch++;
+		const pending = inFlight ? handle.cancel() : bus.cancelCommand(commandId);
+		const rejected = expect(pending).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		if (inFlight) {
+			expect(cancel).toHaveBeenCalledOnce();
+			epoch++;
+			cancellation.resolve(status);
+		}
+		await rejected;
+		if (!inFlight) expect(cancel).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(commandId)?.acceptance?.state).toBe(
+			"accepted",
+		);
+		await bus.dispose();
+	});
+	it("captures ownership for new dispatch but never retroactively assigns replay ownership", async () => {
+		const persistence = new MemoryPersistence();
+		const legacy: ClientCommand = {
+			kind: "test",
+			commandId: CommandId.make("unowned-history"),
+			environmentId,
+			resource: null,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+		};
+		await persistence.putOutbox({
+			command: legacy,
+			fingerprint: commandFingerprint(legacy),
+			attempts: 0,
+			lastAttemptAt: null,
+		});
+		const ownerFor = vi.fn(() => ({
+			kind: "account" as const,
+			subject: "first",
+		}));
+		const execute = vi.fn(async (_client: Client, command: ClientCommand) => ({
+			commandId: command.commandId,
+			receivedAt: 2,
+			result: command.owner,
+		}));
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandOwnerFor: ownerFor,
+			commandScopeFor: (command) => () => command.owner?.kind === "account",
+			commandExecutor: { execute },
+		});
+		await bus.flushOutbox();
+		expect(ownerFor).not.toHaveBeenCalled();
+		expect(execute).not.toHaveBeenCalled();
+		const fresh = { ...legacy, commandId: CommandId.make("new-owned") };
+		const receipt = await bus.dispatchHandle(fresh).result;
+		expect(receipt.result).toEqual({ kind: "account", subject: "first" });
+		expect(ownerFor).toHaveBeenCalledOnce();
+		expect(
+			persistence.outbox.get(legacy.commandId)?.command.owner,
+		).toBeUndefined();
+		expect(fresh.owner).toBeUndefined();
+		await bus.dispose();
+	});
+	it("leaves another owner's durable intent untouched and resumes it when authorized", async () => {
+		const persistence = new MemoryPersistence();
+		let subject = "second";
+		const command: ClientCommand = {
+			kind: "test",
+			commandId: CommandId.make("owned-replay"),
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+			owner: { kind: "account", subject: "first" },
+		};
+		await persistence.putOutbox({
+			command,
+			fingerprint: commandFingerprint(command),
+			attempts: 0,
+			lastAttemptAt: null,
+		});
+		const execute = vi.fn(async (_client: Client, intent: ClientCommand) => ({
+			commandId: intent.commandId,
+			receivedAt: 2,
+			result: "done",
+		}));
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandExecutor: { execute },
+			commandScopeFor: (intent) => {
+				const captured = subject;
+				return () =>
+					subject === captured &&
+					intent.owner?.kind === "account" &&
+					intent.owner.subject === captured;
+			},
+		});
+		await bus.flushOutbox();
+		expect(execute).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(command.commandId)?.command).toEqual(command);
+		subject = "first";
+		await bus.flushOutbox();
+		expect(execute).toHaveBeenCalledOnce();
+		expect(persistence.outbox.size).toBe(0);
+		subject = "second";
+		await expect(bus.dispatch(command)).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		await bus.dispose();
+	});
+
+	it("preserves a newly persisted command if authority changes before network delivery", async () => {
+		const persistence = new MemoryPersistence();
+		const persisted = deferred<void>();
+		const releaseWrite = deferred<void>();
+		const put = persistence.putOutbox.bind(persistence);
+		vi.spyOn(persistence, "putOutbox").mockImplementation(async (entry) => {
+			await put(entry);
+			persisted.resolve();
+			await releaseWrite.promise;
+		});
+		let epoch = 0;
+		const execute = vi.fn(async (_client: Client, intent: ClientCommand) => ({
+			commandId: intent.commandId,
+			receivedAt: 2,
+			result: "done",
+		}));
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			commandExecutor: { execute },
+			commandScopeFor: () => {
+				const captured = epoch;
+				return () => epoch === captured;
+			},
+		});
+		const command: ClientCommand = {
+			kind: "test",
+			commandId: CommandId.make("owned-write"),
+			environmentId,
+			resource: timelineKey,
+			payload: {},
+			retry: "safe",
+			createdAt: 1,
+			owner: { kind: "account", subject: "first" },
+		};
+		const pending = bus.dispatch(command);
+		const rejected = expect(pending).rejects.toBeInstanceOf(
+			CommandAuthorityLostError,
+		);
+		await persisted.promise;
+		epoch++;
+		releaseWrite.resolve();
+		await rejected;
+		expect(execute).not.toHaveBeenCalled();
+		expect(persistence.outbox.get(command.commandId)?.command).toEqual(command);
+		expect(bus.snapshot(timelineKey).failedCommands).toEqual([]);
+		await bus.dispose();
+	});
+	it("preserves the shipped v1 fingerprint for unowned durable commands", () => {
+		expect(
+			commandFingerprint({
+				kind: "test",
+				commandId: CommandId.make("command"),
+				environmentId: EnvironmentId.make("env"),
+				resource: null,
+				retry: "safe",
+				payload: { text: "hello" },
+				createdAt: 1,
+			}),
+		).toBe(
+			"sha256:9e5279ffdc10c35abf4eecf9a96f979afc4f7ef1315509cb80683ab74035ace6",
+		);
+	});
 	it("fingerprints binary payloads by bytes instead of enumerable indices", () => {
 		const binary = {
 			kind: "attachments.upload",
@@ -328,6 +760,181 @@ describe("ClientBus", () => {
 		expect(bus.snapshot(timelineKey).sync).toBe("live");
 		lease.release();
 		await bus.dispose();
+	});
+
+	it("clears revoked resources after pending writes and fences cleanup and overlays", async () => {
+		const persistence = new MemoryPersistence();
+		const saveGate = deferred<void>();
+		const save = vi
+			.spyOn(persistence, "saveResource")
+			.mockImplementation(async (key, value) => {
+				await saveGate.promise;
+				persistence.resources.set(resourceKeyId(key), value);
+			});
+		const remove = vi.spyOn(persistence, "removeResource");
+		const contexts: ResourceDriverContext<Client, unknown>[] = [];
+		const cleanupWrites: boolean[] = [];
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			driverFor: () => {
+				let context: ResourceDriverContext<Client, unknown> | null = null;
+				return {
+					start: (next) => {
+						context = next;
+						contexts.push(next);
+					},
+					stop: () => {
+						if (context !== null)
+							cleanupWrites.push(
+								context.emit({ data: { text: "old cleanup" }, persist: true }),
+							);
+					},
+				};
+			},
+		});
+		const lease = bus.retain(timelineKey, { activation: "connect" });
+		try {
+			await waitUntil(() => contexts.length === 1);
+			const first = contexts[0];
+			if (first === undefined) throw new Error("missing driver");
+			first.emit({
+				data: { text: "private" },
+				cursor: { epoch: "old", version: 1 },
+				sync: "live",
+				persist: true,
+			});
+			await waitUntil(() => save.mock.calls.length === 1);
+			expect(first.emit({ accessDenied: true })).toBe(true);
+			expect(bus.snapshot(timelineKey)).toMatchObject({
+				data: null,
+				cursor: null,
+				origin: "none",
+				sync: "failed",
+			});
+			expect(cleanupWrites).toEqual([false]);
+			const denied = bus.snapshot(timelineKey);
+			expect(
+				bus.update(timelineKey, {
+					expectedGeneration: denied.generation,
+					expectedCursor: denied.cursor,
+					initialData: { text: "late checkpoint" },
+					origin: "checkpoint",
+					update: (data) => data,
+				}),
+			).toBe(false);
+			expect(first.emit({ data: { text: "late" } })).toBe(false);
+			expect(
+				bus.overlay(timelineKey, {
+					initialData: { text: "draft" },
+					update: (data) => data,
+				}),
+			).toBe(false);
+			saveGate.resolve();
+			await waitUntil(() => remove.mock.calls.length === 1);
+			expect(persistence.resources.has(resourceKeyId(timelineKey))).toBe(false);
+			expect(bus.restart(timelineKey)).toBe(true);
+			await waitUntil(() => contexts.length === 2);
+			expect(contexts[1]?.data).toBeNull();
+			contexts[1]?.emit({
+				data: { text: "authorized again" },
+				cursor: { epoch: "new", version: 1 },
+				sync: "live",
+			});
+			expect(bus.snapshot(timelineKey).data).toEqual({
+				text: "authorized again",
+			});
+		} finally {
+			saveGate.resolve();
+			lease.release();
+			await bus.dispose();
+		}
+	});
+
+	it("does not restore a late checkpoint after a permission denial", async () => {
+		const persistence = new MemoryPersistence();
+		const cache = deferred<ResourceSynchronization<Timeline> | null>();
+		let starts = 0;
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			synchronizer: {
+				synchronize: <Data>() =>
+					cache.promise as Promise<ResourceSynchronization<Data> | null>,
+			},
+			driverFor: () => ({
+				start: (context) => {
+					starts += 1;
+					context.emit({ accessDenied: true });
+				},
+				stop: () => undefined,
+			}),
+		});
+		const lease = bus.retain(timelineKey, { activation: "connect" });
+		await waitUntil(() => starts === 1);
+		cache.resolve({
+			data: { text: "private cache" },
+			cursor: { epoch: "old", version: 1 },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(bus.snapshot(timelineKey)).toMatchObject({
+			data: null,
+			sync: "failed",
+		});
+		expect(starts).toBe(1);
+		lease.release();
+		// Keep the denial marker until an authorized runtime frame replaces it.
+		expect(bus.forget(timelineKey)).toBe(false);
+		await bus.dispose();
+	});
+
+	it("orders revocation deletion after an in-flight checkpoint save", async () => {
+		const persistence = new MemoryPersistence();
+		const checkpoint = deferred<ResourceSynchronization<Timeline> | null>();
+		const saving = deferred<void>();
+		const release = deferred<void>();
+		vi.spyOn(persistence, "saveResource").mockImplementation(
+			async (key, value) => {
+				saving.resolve();
+				await release.promise;
+				persistence.resources.set(resourceKeyId(key), value);
+			},
+		);
+		const removed = vi.spyOn(persistence, "removeResource");
+		const contexts: ResourceDriverContext<Client, unknown>[] = [];
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			synchronizer: {
+				synchronize: <Data>() =>
+					checkpoint.promise as Promise<ResourceSynchronization<Data> | null>,
+			},
+			driverFor: () => ({
+				start: (context) => {
+					contexts.push(context);
+				},
+				stop: () => undefined,
+			}),
+		});
+		const lease = bus.retain(timelineKey, { activation: "connect" });
+		try {
+			await waitUntil(() => contexts.length === 1);
+			checkpoint.resolve({
+				data: { text: "private checkpoint" },
+				cursor: { epoch: "old", version: 1 },
+			});
+			await saving.promise;
+			contexts[0]?.emit({ accessDenied: true });
+			release.resolve();
+			await waitUntil(() => removed.mock.calls.length === 1);
+			expect(persistence.resources.has(resourceKeyId(timelineKey))).toBe(false);
+			expect(bus.snapshot(timelineKey).data).toBeNull();
+		} finally {
+			checkpoint.resolve(null);
+			release.resolve();
+			lease.release();
+			await bus.dispose();
+		}
 	});
 
 	it("restarts a retained resource after its provisional subscription fails", async () => {
@@ -710,6 +1317,41 @@ describe("ClientBus", () => {
 				data: { text: "with older page" },
 				cursor: { epoch: "epoch-1", version: 7 },
 			},
+		);
+	});
+
+	it("seeds a cold checkpoint without connecting and leaves subsequent data in charge", async () => {
+		const resolver = immediateResolver();
+		const connect = vi.spyOn(resolver, "resolve");
+		const persistence = new MemoryPersistence();
+		const bus = new ClientBus<Client>({
+			resolver,
+			persistence,
+			driverFor: () => null,
+		});
+		const before = bus.snapshot(timelineKey);
+		const initialData = { text: "checkpoint context" };
+		const options = {
+			expectedGeneration: before.generation,
+			expectedCursor: before.cursor,
+			initialData,
+			origin: "checkpoint" as const,
+			update: (data: Timeline) => (data === initialData ? data : undefined),
+			persist: true,
+		};
+		expect(bus.update(timelineKey, options)).toBe(true);
+		expect(bus.snapshot(timelineKey)).toMatchObject({
+			data: initialData,
+			origin: "checkpoint",
+			cursor: null,
+		});
+		expect(connect).not.toHaveBeenCalled();
+		bus.overlay(timelineKey, { update: () => ({ text: "newer state" }) });
+		expect(bus.update(timelineKey, options)).toBe(false);
+		expect(bus.snapshot(timelineKey).data).toEqual({ text: "newer state" });
+		await bus.dispose();
+		expect(persistence.resources.get(resourceKeyId(timelineKey))?.data).toEqual(
+			initialData,
 		);
 	});
 

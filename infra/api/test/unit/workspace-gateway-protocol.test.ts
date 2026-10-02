@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
 	decodeGatewayMessage,
 	encodeGatewayMessage,
+	gatewayForwardHeaders,
 	WORKSPACE_GATEWAY_AUTH_EXPIRED_CLOSE,
 	WORKSPACE_GATEWAY_BACKPRESSURE_CLOSE,
 	WORKSPACE_GATEWAY_RUNTIME_UNAVAILABLE_CLOSE,
@@ -16,6 +17,33 @@ import {
 } from "../../src/workspace-gateway-protocol.ts";
 
 describe("workspace gateway protocol", () => {
+	it("strips forged gateway authority and only forwards API-verified fields", () => {
+		const request = new Headers({
+			authorization: "Bearer secret",
+			"x-zuse-gateway-actor": "owner",
+			"x-zuse-gateway-permission": "edit",
+			"x-zuse-gateway-role": "runtime",
+			"x-zuse-gateway-nudge": "command",
+			upgrade: "websocket",
+		});
+		const verified = new Headers({
+			"x-zuse-gateway-actor": "member",
+			"x-zuse-gateway-permission": "view",
+			"x-zuse-gateway-role": "client",
+		});
+		const forwarded = gatewayForwardHeaders(request, verified);
+		expect(forwarded.get("x-zuse-gateway-actor")).toBe("member");
+		expect(forwarded.get("x-zuse-gateway-permission")).toBe("view");
+		expect(forwarded.get("x-zuse-gateway-role")).toBe("client");
+		expect(forwarded.has("x-zuse-gateway-nudge")).toBe(false);
+		expect(forwarded.has("authorization")).toBe(false);
+		expect(forwarded.get("upgrade")).toBe("websocket");
+		expect(
+			gatewayForwardHeaders(request, new Headers()).has("x-zuse-gateway-actor"),
+		).toBe(false);
+		expect(request.get("x-zuse-gateway-actor")).toBe("owner");
+	});
+
 	it("round-trips control messages", () => {
 		const message = {
 			type: "client.open" as const,
