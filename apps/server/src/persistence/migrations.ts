@@ -62,8 +62,8 @@ import { Migration0058QuestionAnswerDeliveries } from "./migrations/0058_questio
 import { Migration0059EventSequenceIndex } from "./migrations/0059_event_sequence_index.ts";
 import { Migration0060ChatUserMessageTime } from "./migrations/0060_chat_user_message_time.ts";
 import { Migration0061HarnessExecutions } from "./migrations/0061_harness_executions.ts";
-import { Migration0063SharedHostAccess } from "./migrations/0063_shared_host_access.ts";
 import { Migration0062ModelConnections } from "./migrations/0062_model_connections.ts";
+import { Migration0063SharedHostAccess } from "./migrations/0063_shared_host_access.ts";
 
 /**
  * Runs every numbered migration on boot. `fromRecord` keys must match
