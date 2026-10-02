@@ -70,6 +70,7 @@ import { useOrganizationWorkspaces } from "../lib/organization-workspaces.ts";
 import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
 import {
 	rendererWorkspaceSnapshot,
+	selectRendererWorkspace,
 	subscribeRendererWorkspace,
 } from "../lib/renderer-workspace.ts";
 import { useSettingsStore } from "../lib/settings-client-bus.ts";
@@ -159,15 +160,13 @@ export function SettingsPage() {
 		(entry) => entry.id === organizationId,
 	);
 	const visibleSection: SettingsSection =
-		workspace.scope.kind === "personal" &&
-		section.kind === "cloud" &&
-		section.page === "sharing"
+		section.kind === "cloud" && section.page === "sharing"
 			? { kind: "general" }
 			: workspace.scope.kind === "organization" &&
 					selectedOrganization?.role === "billing"
 				? { kind: "cloud", page: "billing" }
 				: workspace.scope.kind === "organization" &&
-						!ORGANIZATION_NAVIGATION.some(
+						!settingsNavigationFor(section, desktop, workspace.scope).some(
 							(item) => item.section.kind === section.kind,
 						)
 					? { kind: "organizations" }
@@ -370,6 +369,10 @@ function SectionTitle({
 	folders: ReadonlyArray<Folder>;
 }) {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+	);
 
 	const { title, subtitle } = useMemo(() => {
 		if (section.kind === "cloud")
@@ -382,7 +385,7 @@ function SectionTitle({
 		if (section.kind === "general") {
 			return {
 				title: uiMessage("settings:settings_page_general"),
-				subtitle: "Defaults for new chats.",
+				subtitle: "Workspace defaults and your personal app preferences.",
 			};
 		}
 		if (section.kind === "providers") {
@@ -430,7 +433,8 @@ function SectionTitle({
 		if (section.kind === "browser") {
 			return {
 				title: uiMessage("settings:settings_page_browser"),
-				subtitle: "Sessions, password filling, privacy, and agent access.",
+				subtitle:
+					"Browser sessions and credentials stay on this device; they are not shared with your organization.",
 			};
 		}
 		if (section.kind === "pokedex") {
@@ -461,7 +465,11 @@ function SectionTitle({
 		}
 		if (section.kind === "organizations")
 			return {
-				title: uiMessage("settings:organizations_organizations"),
+				title: uiMessage(
+					workspace.scope.kind === "organization"
+						? "settings:organizations_members"
+						: "settings:organizations_organizations",
+				),
 				subtitle: uiMessage("settings:organizations_manage_team"),
 			};
 		if (section.kind === "self-hosted")
@@ -474,7 +482,7 @@ function SectionTitle({
 			title: f?.name ?? "Repository",
 			subtitle: f?.path !== undefined ? displayPath(f.path) : "",
 		};
-	}, [section, folders, uiMessage]);
+	}, [section, folders, uiMessage, workspace.scope.kind]);
 	return (
 		<div className="flex min-w-0 flex-col gap-1 border-b border-border pb-4">
 			<h1 className="truncate text-xl font-medium tracking-[-0.01em] text-foreground">
@@ -518,8 +526,40 @@ function Pane({ section }: { section: SettingsSection }) {
 				}
 			/>
 		);
-	if (section.kind === "self-hosted") return <SelfHostedServersPane />;
-	if (section.kind === "general") return <GeneralPane />;
+	if (section.kind === "self-hosted")
+		return workspace.scope.kind === "personal" ? (
+			<SelfHostedServersPane />
+		) : (
+			<SettingsGroup title={uiMessage("settings:self_hosted_servers")}>
+				<SettingsRow
+					title={uiMessage("settings:settings_scope_personal")}
+					description={uiMessage("settings:self_hosted_personal_only")}
+					action={
+						<Button
+							className="h-7"
+							size="xs"
+							onClick={() => {
+								selectRendererWorkspace({ kind: "personal" });
+								useUiStore
+									.getState()
+									.setSettingsSection({ kind: "self-hosted" });
+							}}
+						>
+							{uiMessage("settings:settings_scope_personal")}
+						</Button>
+					}
+				/>
+			</SettingsGroup>
+		);
+	if (section.kind === "general")
+		return (
+			<div className="flex flex-col gap-4">
+				{organization !== undefined && (
+					<OrganizationSharingPane organization={organization} />
+				)}
+				<GeneralPane />
+			</div>
+		);
 	if (section.kind === "defaults") return <DefaultModelsPane />;
 	if (section.kind === "providers")
 		return isHostedProduct() ? <CloudWorkspacePool /> : <ProvidersPane />;

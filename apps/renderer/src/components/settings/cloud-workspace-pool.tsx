@@ -1,7 +1,9 @@
 import { formatNumber as formatUiNumber } from "@zuse/i18n";
+import { githubInstallationSettingsUrl } from "@zuse/utils/github-installation";
 import {
 	cloudImageGroupStatus,
 	rebuildCloudImages,
+	reconcileCloudImages,
 } from "../../lib/cloud-image-group.ts";
 import {
 	refreshCloudImages,
@@ -26,6 +28,7 @@ import {
 	type CloudWorkspace,
 	CloudWorkspaceOpError,
 	type GithubRepoSummary,
+	type WorkspaceScope,
 } from "@zuse/contracts";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Cloud } from "lucide-react";
@@ -140,6 +143,7 @@ export function CloudWorkspacePool({
 			key={`${workspace.key}:${workspace.epoch}`}
 			section={organization?.role === "billing" ? "billing" : section}
 			workspaceName={name}
+			workspaceScope={workspace.scope}
 			canManageBilling={canManageBilling}
 			onboarding={onboarding}
 		/>
@@ -150,11 +154,13 @@ function ScopedCloudWorkspacePool({
 	onboarding,
 	section,
 	workspaceName,
+	workspaceScope,
 	canManageBilling,
 }: {
 	onboarding?: CloudWorkspacePoolProps["onboarding"];
 	section: NonNullable<CloudWorkspacePoolProps["section"]>;
 	workspaceName: string;
+	workspaceScope: WorkspaceScope;
 	canManageBilling: boolean;
 }) {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
@@ -171,7 +177,13 @@ function ScopedCloudWorkspacePool({
 	const [providerImages, setProviderImages] = useState<
 		readonly CloudAccountImage[]
 	>([]);
-	useEffect(() => subscribeCloudImages(setProviderImages), []);
+	useEffect(
+		() =>
+			subscribeCloudImages((images) =>
+				setProviderImages((current) => reconcileCloudImages(current, images)),
+			),
+		[],
+	);
 	const [chosenProvider, setChosenProvider] = useState<string | null>(null);
 	const selectedProvider = selectedCloudProvider(providers, chosenProvider);
 	const accountImage = cloudImageGroupStatus(
@@ -309,7 +321,9 @@ function ScopedCloudWorkspacePool({
 				if (workspaceResult.status === "fulfilled")
 					setWorkspaces(workspaceResult.value.workspaces);
 				if (imageResult.status === "fulfilled")
-					setProviderImages(imageResult.value.images);
+					setProviderImages((current) =>
+						reconcileCloudImages(current, imageResult.value.images),
+					);
 				setFailedImageProviders(
 					imageResult.status === "fulfilled" &&
 						providerResult.status === "fulfilled"
@@ -391,14 +405,32 @@ function ScopedCloudWorkspacePool({
 		githubStatus !== null,
 	]);
 	useEffect(() => {
-		if (onboarding === undefined) return;
+		if (authLoading || !isSignedIn) return;
 		const refresh = () => {
 			void load(true);
-			void loadGithubRepos(true);
+			if (section !== "billing") void loadGithubRepos(true);
 		};
 		window.addEventListener("focus", refresh);
-		return () => window.removeEventListener("focus", refresh);
-	}, [onboarding !== undefined, load, loadGithubRepos]);
+		window.addEventListener("online", refresh);
+		return () => {
+			window.removeEventListener("focus", refresh);
+			window.removeEventListener("online", refresh);
+		};
+	}, [authLoading, isSignedIn, section, load, loadGithubRepos]);
+	useEffect(() => {
+		if (
+			authLoading ||
+			!isSignedIn ||
+			(section !== "repositories" && section !== "all")
+		)
+			return;
+		// Webhooks update the existing API state. Reuse its scoped cache instead
+		// of introducing a second realtime transport for settings.
+		const timer = window.setInterval(() => {
+			if (document.visibilityState === "visible") void loadGithubRepos();
+		}, 30_000);
+		return () => window.clearInterval(timer);
+	}, [authLoading, isSignedIn, section, loadGithubRepos]);
 
 	const run = async (
 		name: string,
@@ -479,10 +511,10 @@ function ScopedCloudWorkspacePool({
 		const installation = githubStatus?.installations.find(
 			(item) => item.installationId === installationId,
 		);
-		const settingsUrl =
-			installation?.accountType === "Organization"
-				? `https://github.com/organizations/${encodeURIComponent(installation.accountLogin)}/settings/installations/${installationId}`
-				: `https://github.com/settings/installations/${installationId}`;
+		const settingsUrl = githubInstallationSettingsUrl(
+			installationId,
+			installation,
+		);
 		return openExternal(settingsUrl);
 	};
 
@@ -562,15 +594,17 @@ function ScopedCloudWorkspacePool({
 							}),
 						),
 				);
-				setProviderImages((current) => [
-					...current.filter(
-						(image) =>
-							!result.images.some(
-								(next) => next.providerId === image.providerId,
-							),
-					),
-					...result.images,
-				]);
+				setProviderImages((current) =>
+					reconcileCloudImages(current, [
+						...current.filter(
+							(image) =>
+								!result.images.some(
+									(next) => next.providerId === image.providerId,
+								),
+						),
+						...result.images,
+					]),
+				);
 				setBuildError(
 					result.failedProviderIds.length === 0
 						? null
@@ -780,7 +814,7 @@ function ScopedCloudWorkspacePool({
 					(onboarding === undefined || onboarding.step === "auth") ? (
 						<>
 							<CloudWorkspaceAuth />
-							<CloudApiKeys />
+							<CloudApiKeys scope={workspaceScope} />
 						</>
 					) : null}
 					{(section === "all" || section === "image") &&

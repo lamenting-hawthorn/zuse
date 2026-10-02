@@ -1,73 +1,81 @@
 import { escapeHtml } from "./browser-page.ts";
 
-const pad = (value: number): string => String(value).padStart(2, "0");
-
-const stampMetadata = (nowMs: number) => {
-	const now = new Date(nowMs);
-	const date = `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())}`;
-	return {
-		date,
-		reference: `ZS-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}-${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}`,
-	};
-};
+// Static ordered-dither waves inspired by reactbits.dev/backgrounds/dither.
+// Render once on the server: no scripts, GPU context, or third-party requests
+// on a page whose URL contains authorization credentials.
+const DITHER = (() => {
+	const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+	let pixels = "";
+	for (let y = 0; y < 64; y++) {
+		for (let x = 0; x < 96; x++) {
+			const wave =
+				Math.sin(x / 19 + Math.sin(y / 17)) * 0.22 +
+				Math.cos(y / 13 - x / 28) * 0.18 +
+				0.32;
+			if (wave > ((bayer[(y % 4) * 4 + (x % 4)] ?? 0) + 0.5) / 16)
+				pixels += `M${x * 3} ${y * 3}h2v2h-2z`;
+		}
+	}
+	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288 192" preserveAspectRatio="xMidYMid slice" focusable="false"><path fill="currentColor" d="${pixels}"/></svg>`;
+})();
 
 const STYLES = `
-:root{color-scheme:light dark;--bg:#f4f4f2;--fg:#181713;--muted:#6c6c64;--grid:rgb(24 23 19 / 12%);--font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;--font-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
-@media (prefers-color-scheme:dark){:root{--bg:#0d0d0d;--fg:#f2f2f2;--muted:#9a9a93;--grid:rgb(242 242 242 / 9%)}}
+:root{color-scheme:light dark;--bg:#f5f6f3;--panel:#fff;--fg:#202621;--muted:#697169;--line:#e9ece6;--soft:#f3f5f0;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#101210;--panel:#191c19;--fg:#edf0e9;--muted:#a1a89d;--line:#2b3029;--soft:#242923}}
 *{box-sizing:border-box}
-body{margin:0;min-height:100vh;display:grid;place-items:center;padding:2.5rem 1.25rem;background:var(--bg);color:var(--fg);font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
-.stage{position:relative;display:grid;justify-items:center;gap:2rem;width:100%}
-.stage::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.55;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;-webkit-mask-image:radial-gradient(circle at center,#000,transparent 74%);mask-image:radial-gradient(circle at center,#000,transparent 74%)}
-.stage>*{position:relative;z-index:1}
-.stamp-shell{width:min(100%,15rem);filter:drop-shadow(0 1px 1px rgb(15 15 15 / 12%)) drop-shadow(0 12px 22px rgb(15 15 15 / 9%));transform:rotate(-2deg);transition:transform 200ms cubic-bezier(.23,1,.32,1);animation:stamp-in 380ms cubic-bezier(.23,1,.32,1) both}
-.stamp-shell:hover{transform:rotate(0deg) scale(1.015)}
-@keyframes stamp-in{from{opacity:0;transform:rotate(-2deg) scale(.96)}to{opacity:1;transform:rotate(-2deg) scale(1)}}
-.stamp{--hole:5px;--pitch:22px;position:relative;aspect-ratio:4/5;padding:13px;color:#181713;background:linear-gradient(145deg,rgb(255 255 255 / 34%),transparent 42%),#fbfbf8;-webkit-mask:radial-gradient(var(--hole) at 50% 0,#0000 98%,#000) 50% 0/var(--pitch) 100% repeat-x,radial-gradient(var(--hole) at 50% 100%,#0000 98%,#000) 50% 100%/var(--pitch) 100% repeat-x,radial-gradient(var(--hole) at 0 50%,#0000 98%,#000) 0 50%/100% var(--pitch) repeat-y,radial-gradient(var(--hole) at 100% 50%,#0000 98%,#000) 100% 50%/100% var(--pitch) repeat-y;-webkit-mask-composite:source-in;mask:radial-gradient(var(--hole) at 50% 0,#0000 98%,#000) 50% 0/var(--pitch) 100% repeat-x,radial-gradient(var(--hole) at 50% 100%,#0000 98%,#000) 50% 100%/var(--pitch) 100% repeat-x,radial-gradient(var(--hole) at 0 50%,#0000 98%,#000) 0 50%/100% var(--pitch) repeat-y,radial-gradient(var(--hole) at 100% 50%,#0000 98%,#000) 100% 50%/100% var(--pitch) repeat-y;mask-composite:intersect}
-.stamp-face{position:relative;display:grid;grid-template-rows:auto 1fr auto;gap:.75rem;height:100%;padding:12px 13px 11px;overflow:hidden;background:#caff00;box-shadow:inset 0 0 0 1px rgb(24 23 19 / 16%)}
-.stamp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}
-.stamp-head strong{font-family:var(--font-mono);font-size:1.0625rem;font-weight:700;line-height:.8;letter-spacing:-.06em}
-.micro{font-family:var(--font-mono);font-size:.4375rem;font-weight:700;line-height:1;letter-spacing:.09em;text-transform:uppercase;opacity:.8}
-.stamp-face h1{margin:0;align-self:center;font-size:1.5rem;font-weight:750;line-height:.85;letter-spacing:-.05em;text-transform:uppercase}
-.stamp-face p{margin:.5rem 0 0;max-width:11rem;font-size:.75rem;font-weight:500;line-height:1.4}
-.postmark{position:absolute;right:14px;bottom:34px;display:grid;place-items:center;width:92px;height:92px;border:2px solid currentColor;border-radius:50%;opacity:.72;transform:rotate(-14deg);text-align:center}
-.postmark::before{content:"";position:absolute;inset:6px;border:1px dashed currentColor;border-radius:50%}
-.postmark span{font-family:var(--font-mono);font-size:.4375rem;font-weight:700;line-height:1.35;letter-spacing:.08em;text-transform:uppercase}
-.hint{display:grid;justify-items:center;gap:.75rem;text-align:center;max-width:26rem}
-.hint p{margin:0;color:var(--muted);font-size:.8125rem;line-height:1.5}
-.open{display:inline-flex;align-items:center;padding:.5rem .9rem;border:1px solid color-mix(in srgb,var(--fg) 18%,transparent);border-radius:.625rem;color:var(--fg);font-size:.75rem;font-weight:600;text-decoration:none;transition:border-color 160ms ease,transform 160ms ease}
-.open:hover{border-color:color-mix(in srgb,var(--fg) 38%,transparent);transform:translateY(-1px)}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+body{margin:0;min-height:100svh;display:grid;place-items:center;padding:40px 20px;background:var(--bg);color:var(--fg);font:13px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+.stage{width:100%;max-width:440px;position:relative;padding:28px;background:var(--panel);border-radius:16px;box-shadow:0 8px 40px #00000008}
+.dither{position:fixed;inset:0;pointer-events:none;overflow:hidden;color:#82956b;opacity:.16;mask-image:linear-gradient(140deg,#000,transparent 85%)}
+.dither svg{width:100%;height:100%;display:block}
+.eyebrow{display:flex;align-items:center;gap:10px;margin:0 0 24px;font-size:11px;color:var(--muted)}
+.eyebrow strong{color:var(--fg);letter-spacing:.15em}
+h1{font-size:24px;line-height:1.25;letter-spacing:-.035em;font-weight:600;margin:0 0 8px;text-wrap:balance}
+.description{margin:0 0 24px;color:var(--muted);overflow-wrap:anywhere}
+.actions{display:grid;gap:0}
+.account{padding:16px 0;border-top:1px solid var(--line);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}
+.account-name{display:block;font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.account-description{margin:2px 0 6px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+form{margin:0}
+.action{position:relative;display:inline-flex;align-items:center;justify-content:center;height:28px;padding:0 10px;border:0;border-radius:6px;background:var(--fg);color:var(--panel);font:500 12px var(--font);text-decoration:none;cursor:pointer;white-space:nowrap}
+.action:hover{filter:brightness(.93)}
+.action:active{transform:translateY(1px)}
+.link{position:relative;display:inline-flex;align-items:center;gap:4px;min-height:28px;color:var(--muted);font-size:12px;text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}
+.link:hover{color:var(--fg);text-decoration-color:currentColor}
+.standalone{justify-self:start;margin-top:8px}
+.hint{margin:20px 0 0;color:var(--muted);font-size:12px}
+:is(a,button):focus-visible{outline:2px solid var(--fg);outline-offset:4px}
+@media(max-width:440px){body{padding:24px 16px}.stage{padding:24px 20px}.account{gap:12px}}
+@media(max-width:340px){.account{grid-template-columns:1fr}.account form{justify-self:start}}
+@media(pointer:coarse){:is(a,button)::before{content:"";position:absolute;inset:-8px 0}.account{gap:20px}.standalone{margin-top:24px}}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 `;
 
 export interface IntegrationPageInput {
 	readonly integration: string;
+	readonly title?: string;
 	readonly description: string;
 	readonly status: string;
 	readonly hint: string;
 	readonly actions: readonly (
 		| { readonly label: string; readonly href: string }
-		| { readonly label: string; readonly action: string; readonly csrf: string }
+		| {
+				readonly label: string;
+				readonly action: string;
+				readonly csrf: string;
+				readonly accountName?: string;
+				readonly description?: string;
+				readonly manageUrl?: string;
+		  }
 	)[];
-	readonly nowMs?: number;
 }
+
 export const renderIntegrationPage = (input: IntegrationPageInput): string => {
-	const { date, reference } = stampMetadata(input.nowMs ?? Date.now());
 	const actions = input.actions
-		.map((action) =>
-			"href" in action
-				? `<a class="open" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`
-				: `<form method="post" action="${escapeHtml(action.action)}"><input type="hidden" name="csrf" value="${escapeHtml(action.csrf)}"><button class="open" type="submit">${escapeHtml(action.label)}</button></form>`,
-		)
+		.map((action) => {
+			if ("href" in action)
+				return `<a class="${input.actions.length === 1 ? "action" : "link"} standalone" href="${escapeHtml(action.href)}">${escapeHtml(action.label)}</a>`;
+			return `<section class="account"><div><span class="account-name">${escapeHtml(action.accountName ?? action.label)}</span>${action.description ? `<p class="account-description">${escapeHtml(action.description)}</p>` : ""}${action.manageUrl ? `<a class="link" href="${escapeHtml(action.manageUrl)}" target="_blank" rel="noopener noreferrer">Manage repository access<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true" focusable="false"><path d="M7 17 17 7M7 7h10v10"/></svg><span class="sr-only"> (opens in a new tab)</span></a>` : ""}</div><form method="post" action="${escapeHtml(action.action)}"><input type="hidden" name="csrf" value="${escapeHtml(action.csrf)}"><button class="action" type="submit" aria-label="${escapeHtml(`${action.label}${action.accountName ? `: ${action.accountName}` : ""}`)}">${escapeHtml(action.label)}</button></form></section>`;
+		})
 		.join("");
-	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(input.integration)} ${escapeHtml(input.status.toLowerCase())} · Zuse</title><style>${STYLES}
-.actions{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem}
-.actions form{margin:0}.open{height:28px;padding:0 12px;font-family:inherit;cursor:pointer;background:transparent}
-.open:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
-</style></head><body><main class="stage">
-<div class="stamp-shell"><article class="stamp" aria-label="${escapeHtml(input.integration)} integration stamp"><div class="stamp-face">
-<div class="stamp-head"><span class="micro">Zuse · Integration</span><strong>01</strong></div>
-<div><h1>${escapeHtml(input.integration)}</h1><p>${escapeHtml(input.description)}</p></div>
-<span class="micro">${escapeHtml(reference)}</span><div class="postmark" aria-hidden="true"><span>${escapeHtml(input.status)}<br>${escapeHtml(date)}</span></div>
-</div></article></div><div class="hint"><p>${escapeHtml(input.hint)}</p><div class="actions">${actions}</div></div>
-</main></body></html>`;
+	return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(input.integration)} ${escapeHtml(input.status.toLowerCase())} · Zuse</title><style>${STYLES}</style></head><body><div class="dither" aria-hidden="true">${DITHER}</div><main class="stage"><p class="eyebrow"><strong>ZUSE</strong><span aria-hidden="true">/</span>${escapeHtml(input.integration)}</p><h1>${escapeHtml(input.title ?? `${input.integration} connected`)}</h1><p class="description">${escapeHtml(input.description)}</p><div class="actions">${actions}</div><p class="hint">${escapeHtml(input.hint)}</p></main></body></html>`;
 };

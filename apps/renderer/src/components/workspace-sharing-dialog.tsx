@@ -10,13 +10,7 @@ import {
 } from "../lib/workspace-sharing.ts";
 import { organizationErrorMessage } from "./settings/organizations-pane.tsx";
 import { Button } from "./ui/button.tsx";
-import {
-	Dialog,
-	DialogDescription,
-	DialogHeader,
-	DialogPopup,
-	DialogTitle,
-} from "./ui/dialog.tsx";
+import { PopoverDescription, PopoverTitle } from "./ui/popover.tsx";
 
 export default function WorkspaceSharingDialog({
 	chatRef,
@@ -122,199 +116,194 @@ export default function WorkspaceSharingDialog({
 	};
 
 	return (
-		<Dialog
-			open
-			onOpenChange={(open) => {
-				if (!open) onClose();
-			}}
-		>
-			<DialogPopup className="max-w-sm">
-				<DialogHeader>
-					<DialogTitle>{message("settings:sharing_title")}</DialogTitle>
-					<DialogDescription>
-						{message("settings:sharing_description")}
-					</DialogDescription>
-				</DialogHeader>
-				<div
-					className="space-y-3 px-5 pb-5 text-xs"
-					aria-busy={busy || loading}
-				>
-					{organizations.length > 0 && (
-						<select
-							aria-label={message("settings:sharing_organization")}
-							className="h-7 w-full rounded-md bg-muted px-2"
-							value={organizationId}
-							disabled={busy || loading}
-							onChange={(event) => void load(event.target.value)}
-						>
-							{organizations.map((organization) => (
-								<option key={organization.id} value={organization.id}>
-									{organization.name}
-								</option>
-							))}
-						</select>
-					)}
-					{loading ? (
-						<p role="status">{message("settings:sharing_loading")}</p>
-					) : !error && organizations.length === 0 ? (
-						<p>{message("settings:sharing_no_organizations")}</p>
-					) : null}
-					{error && (
-						<div role="alert" className="space-y-2 text-destructive">
-							<p>{error}</p>
-							{
-								<Button
-									className="h-7"
-									size="xs"
-									disabled={busy}
-									onClick={() =>
-										organizationId
-											? void load(organizationId)
-											: setRetry((value) => value + 1)
-									}
-								>
-									{message("settings:sharing_retry")}
-								</Button>
-							}
-						</div>
-					)}
-					{state && !loading && (
-						<>
-							<p>
-								{message(
-									state.shared
-										? "settings:sharing_shared"
-										: "settings:sharing_private",
-								)}
-							</p>
-							{state.shared ? (
-								<>
-									<div className="max-h-64 space-y-2 overflow-y-auto">
-										{state.members
-											.filter((member) => member.status === "active")
-											.map((member) => {
-												const grant = state.grants.find(
-													(candidate) => candidate.memberId === member.id,
-												);
-												return (
-													<div
-														key={member.id}
-														className="flex items-center gap-3"
-													>
-														<div className="min-w-0 flex-1">
-															<p className="truncate">{member.displayName}</p>
-															<p className="truncate text-muted-foreground">
-																{member.email}
-															</p>
-														</div>
-														{member.role === "owner" ? (
-															<span className="text-muted-foreground">
-																{message("settings:sharing_owner")}
-															</span>
-														) : (
-															<select
-																className="h-7 w-24 rounded-md bg-muted px-2"
-																aria-label={message(
-																	"settings:sharing_access_for",
-																	{ name: member.displayName },
-																)}
-																value={grant?.role ?? "none"}
-																disabled={busy || error !== null}
-																onChange={(event) => {
-																	const role =
-																		event.target.value === "driver"
-																			? "driver"
-																			: event.target.value === "viewer"
-																				? "viewer"
-																				: null;
-																	void mutate(() =>
-																		workspaceSharing.setGrant(
-																			chatRef,
-																			organizationId,
-																			member.subject,
-																			role,
-																		),
-																	);
-																}}
-															>
-																<option value="none">
-																	{message("settings:sharing_no_access")}
-																</option>
-																<option value="viewer">
-																	{message("settings:sharing_viewer")}
-																</option>
-																{member.role === "driver" && (
-																	<option value="driver">
-																		{message("settings:sharing_driver")}
-																	</option>
-																)}
-															</select>
-														)}
-													</div>
-												);
-											})}
-									</div>
-									{confirmStop ? (
-										<div className="space-y-2 rounded-md bg-muted p-3">
-											<p>{message("settings:sharing_stop_description")}</p>
-											<div className="flex gap-2">
-												<Button
-													className="h-7"
-													size="xs"
-													disabled={busy}
-													onClick={() =>
-														void mutate(() =>
-															workspaceSharing.setShared(
-																chatRef,
-																organizationId,
-																false,
-															),
-														)
-													}
-												>
-													{message("settings:sharing_stop")}
-												</Button>
-												<Button
-													className="h-7"
-													size="xs"
-													disabled={busy}
-													variant="ghost"
-													onClick={() => setConfirmStop(false)}
-												>
-													{message("settings:organizations_cancel")}
-												</Button>
-											</div>
-										</div>
-									) : (
-										<Button
-											className="h-7"
-											size="xs"
-											disabled={busy || error !== null}
-											variant="ghost"
-											onClick={() => setConfirmStop(true)}
-										>
-											{message("settings:sharing_stop")}
-										</Button>
-									)}
-								</>
-							) : (
-								<Button
-									className="h-7"
-									size="xs"
-									disabled={busy || error !== null}
-									onClick={() =>
-										void mutate(() =>
-											workspaceSharing.setShared(chatRef, organizationId, true),
-										)
-									}
-								>
-									{message("settings:sharing_enable")}
-								</Button>
+		<>
+			<div className="space-y-2 px-2 py-2">
+				<PopoverTitle className="text-sm">
+					{message("settings:sharing_title")}
+				</PopoverTitle>
+				<PopoverDescription>
+					{message("settings:sharing_description")}
+				</PopoverDescription>
+			</div>
+			<div
+				className="space-y-4 px-2 pb-2 pt-2 text-xs"
+				aria-busy={busy || loading}
+			>
+				{organizations.length > 0 && (
+					<select
+						aria-label={message("settings:sharing_organization")}
+						className="h-7 w-full rounded-md bg-muted px-2"
+						value={organizationId}
+						disabled={busy || loading}
+						onChange={(event) => void load(event.target.value)}
+					>
+						{organizations.map((organization) => (
+							<option key={organization.id} value={organization.id}>
+								{organization.name}
+							</option>
+						))}
+					</select>
+				)}
+				{loading ? (
+					<p role="status">{message("settings:sharing_loading")}</p>
+				) : !error && organizations.length === 0 ? (
+					<p>{message("settings:sharing_no_organizations")}</p>
+				) : null}
+				{error && (
+					<div role="alert" className="space-y-2 text-destructive">
+						<p>{error}</p>
+						{
+							<Button
+								className="h-7"
+								size="xs"
+								disabled={busy}
+								onClick={() =>
+									organizationId
+										? void load(organizationId)
+										: setRetry((value) => value + 1)
+								}
+							>
+								{message("settings:sharing_retry")}
+							</Button>
+						}
+					</div>
+				)}
+				{state && !loading && (
+					<>
+						<p>
+							{message(
+								state.shared
+									? "settings:sharing_shared"
+									: "settings:sharing_private",
 							)}
-						</>
-					)}
-				</div>
-			</DialogPopup>
-		</Dialog>
+						</p>
+						{state.shared ? (
+							<>
+								<div className="max-h-64 space-y-2 overflow-y-auto">
+									{state.members
+										.filter((member) => member.status === "active")
+										.map((member) => {
+											const grant = state.grants.find(
+												(candidate) => candidate.memberId === member.id,
+											);
+											return (
+												<div
+													key={member.id}
+													className="flex items-center gap-3"
+												>
+													<div className="min-w-0 flex-1">
+														<p className="truncate">{member.displayName}</p>
+														<p className="truncate text-muted-foreground">
+															{member.email}
+														</p>
+													</div>
+													{member.role === "owner" ? (
+														<span className="text-muted-foreground">
+															{message("settings:sharing_owner")}
+														</span>
+													) : (
+														<select
+															className="h-7 w-24 rounded-md bg-muted px-2"
+															aria-label={message(
+																"settings:sharing_access_for",
+																{ name: member.displayName },
+															)}
+															value={grant?.role ?? "none"}
+															disabled={busy || error !== null}
+															onChange={(event) => {
+																const role =
+																	event.target.value === "driver"
+																		? "driver"
+																		: event.target.value === "viewer"
+																			? "viewer"
+																			: null;
+																void mutate(() =>
+																	workspaceSharing.setGrant(
+																		chatRef,
+																		organizationId,
+																		member.subject,
+																		role,
+																	),
+																);
+															}}
+														>
+															<option value="none">
+																{message("settings:sharing_no_access")}
+															</option>
+															<option value="viewer">
+																{message("settings:sharing_viewer")}
+															</option>
+															{member.role === "driver" && (
+																<option value="driver">
+																	{message("settings:sharing_driver")}
+																</option>
+															)}
+														</select>
+													)}
+												</div>
+											);
+										})}
+								</div>
+								{confirmStop ? (
+									<div className="space-y-2 rounded-md bg-muted p-3">
+										<p>{message("settings:sharing_stop_description")}</p>
+										<div className="flex gap-2">
+											<Button
+												className="h-7"
+												size="xs"
+												disabled={busy}
+												onClick={() =>
+													void mutate(() =>
+														workspaceSharing.setShared(
+															chatRef,
+															organizationId,
+															false,
+														),
+													)
+												}
+											>
+												{message("settings:sharing_stop")}
+											</Button>
+											<Button
+												className="h-7"
+												size="xs"
+												disabled={busy}
+												variant="ghost"
+												onClick={() => setConfirmStop(false)}
+											>
+												{message("settings:organizations_cancel")}
+											</Button>
+										</div>
+									</div>
+								) : (
+									<Button
+										className="h-7"
+										size="xs"
+										disabled={busy || error !== null}
+										variant="ghost"
+										onClick={() => setConfirmStop(true)}
+									>
+										{message("settings:sharing_stop")}
+									</Button>
+								)}
+							</>
+						) : (
+							<Button
+								className="h-7"
+								size="xs"
+								disabled={busy || error !== null}
+								onClick={() =>
+									void mutate(() =>
+										workspaceSharing.setShared(chatRef, organizationId, true),
+									)
+								}
+							>
+								{message("settings:sharing_enable")}
+							</Button>
+						)}
+					</>
+				)}
+			</div>
+		</>
 	);
 }

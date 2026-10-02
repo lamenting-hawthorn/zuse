@@ -58,6 +58,13 @@ it.each([
 		/>,
 	);
 	expect(markup.includes("<button")).toBe(input.visible);
+	if (input.visible) {
+		expect(markup).toContain("[-webkit-app-region:no-drag]");
+		expect(markup).toContain("<svg");
+		expect(markup).toContain('data-slot="popover-trigger"');
+		expect(markup).toContain("gap-2");
+		expect(markup).toContain("size-3");
+	}
 });
 
 it.each([

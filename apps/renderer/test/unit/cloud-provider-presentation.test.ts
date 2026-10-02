@@ -90,3 +90,17 @@ it("recommends boxd while preserving explicit selections and handling catalog ch
 	expect(selectedCloudProvider(providers.slice(0, 2), null)).toBe("box");
 	expect(selectedCloudProvider([], "boxd")).toBeNull();
 });
+
+it("selects a configured Cloud provider after onboarding instead of an unbuilt default", () => {
+	const providers = ["box", "e2b", "boxd"].map((providerId) => ({
+		providerId,
+		displayName: providerId,
+	}));
+	// Boat was selected from catalog order before the completed image arrived.
+	expect(selectedCloudProvider(providers, "box", ["boxd"])).toBe("boxd");
+	// Onboarding also permits configuring a non-recommended provider.
+	expect(selectedCloudProvider(providers, null, ["e2b"])).toBe("e2b");
+	expect(selectedCloudProvider(providers, "e2b", ["boxd", "e2b"])).toBe("e2b");
+	expect(selectedCloudProvider(providers, null, ["removed"])).toBe("boxd");
+	expect(selectedCloudProvider(providers, null, [])).toBe("boxd");
+});

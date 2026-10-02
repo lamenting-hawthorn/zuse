@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { runCloudControl } from "../../lib/control-plane-client.ts";
 import { ChatSharingOptions } from "../chat-sharing-options.tsx";
 import { Button } from "../ui/button.tsx";
+import { SettingsGroup, SettingsRow } from "../ui/settings-panel.tsx";
 
 export function OrganizationSharingPane({
 	organization,
@@ -62,53 +63,52 @@ export function OrganizationSharingPane({
 		}
 	};
 	return (
-		<section
-			className="flex flex-col gap-3 text-xs"
-			aria-busy={busy || (draft === null && !error)}
-		>
-			<p className="text-muted-foreground">
-				{message("settings:workspace_sharing_defaults_description")}
-			</p>
-			{draft === null ? (
-				!error && <p>{message("common:loading")}</p>
-			) : (
-				<div className="flex flex-wrap items-center justify-between gap-3">
-					<ChatSharingOptions
-						value={draft}
-						organizationName={organization.name}
-						disabled={!canManage || busy}
-						onChange={setDraft}
-					/>
-					{canManage && (
-						<Button
-							className="h-7"
-							size="xs"
-							disabled={!changed || busy}
-							onClick={() => void save()}
-						>
-							{message("common:save")}
-						</Button>
-					)}
-				</div>
-			)}
-			<p className="text-[11px] leading-4 text-muted-foreground">
-				{message("settings:workspace_sharing_admin_notice")}
-			</p>
-			{error && (
-				<div className="flex items-center gap-2">
-					<p role="alert">{message("settings:workspace_sharing_error")}</p>
-					{draft === null && (
-						<Button
-							className="h-7"
-							size="xs"
-							variant="ghost"
-							onClick={() => setReload((value) => value + 1)}
-						>
-							{message("common:retry")}
-						</Button>
-					)}
-				</div>
-			)}
-		</section>
+		<SettingsGroup title={message("settings:workspace_new_chat_access")}>
+			<SettingsRow
+				title={message("settings:workspace_sharing_audience")}
+				description={message("settings:workspace_new_chat_access_description")}
+			>
+				{draft === null ? (
+					!error && <p>{message("common:loading")}</p>
+				) : (
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<ChatSharingOptions
+							value={draft}
+							organizationName={organization.name}
+							disabled={!canManage || busy}
+							onChange={setDraft}
+						/>
+						{canManage && (
+							<Button
+								className="h-7"
+								size="xs"
+								disabled={!changed || busy}
+								onClick={() => void save()}
+							>
+								{message("common:save")}
+							</Button>
+						)}
+					</div>
+				)}
+				<p className="text-[11px] leading-4 text-muted-foreground">
+					{message("settings:workspace_sharing_admin_notice")}
+				</p>
+				{error && (
+					<div className="flex items-center gap-2">
+						<p role="alert">{message("settings:workspace_sharing_error")}</p>
+						{draft === null && (
+							<Button
+								className="h-7"
+								size="xs"
+								variant="ghost"
+								onClick={() => setReload((value) => value + 1)}
+							>
+								{message("common:retry")}
+							</Button>
+						)}
+					</div>
+				)}
+			</SettingsRow>
+		</SettingsGroup>
 	);
 }

@@ -1,5 +1,9 @@
 import "@zuse/i18n/english/settings";
-import { type CloudApiKey, CloudWorkspaceOpError } from "@zuse/contracts";
+import {
+	type CloudApiKey,
+	CloudWorkspaceOpError,
+	type WorkspaceScope,
+} from "@zuse/contracts";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Check, Copy, KeyRound } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -104,7 +108,13 @@ export function CloudApiKeyList({
  * The `zk_` secret is shown exactly once at creation; afterwards only the
  * display prefix remains.
  */
-export function CloudApiKeys() {
+export function CloudApiKeys({ scope }: { scope: WorkspaceScope }) {
+	// API-key management and machine callers are Personal-only. Never mount
+	// their loader in an organization or fall back to Personal credentials.
+	return scope.kind === "personal" ? <PersonalCloudApiKeys /> : null;
+}
+
+function PersonalCloudApiKeys() {
 	const { message: uiMessage } = useUiMessages(["settings"]);
 
 	const [keys, setKeys] = useState<ReadonlyArray<CloudApiKey> | null>(null);

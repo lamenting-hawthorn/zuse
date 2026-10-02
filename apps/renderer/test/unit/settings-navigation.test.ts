@@ -2,15 +2,41 @@ import { describe, expect, it } from "vitest";
 import { settingsNavigationFor } from "../../src/lib/settings-navigation.ts";
 
 describe("settings contexts", () => {
-	it("exposes sharing defaults only in the selected organization's settings", () => {
+	it("keeps the Help diagnostics destination available inside an organization", () => {
+		const navigation = settingsNavigationFor({ kind: "diagnostics" }, true, {
+			kind: "organization",
+			organizationId: "org_a",
+		});
+		expect(navigation.some((item) => item.section.kind === "diagnostics")).toBe(
+			true,
+		);
+	});
+	it("reuses regular settings in organizations without a separate sharing page", () => {
 		const organization = settingsNavigationFor(
 			{ kind: "organizations" },
 			true,
 			{ kind: "organization", organizationId: "org_a" },
 		);
-		expect(organization.find((item) => item.id === "sharing")?.section).toEqual(
-			{ kind: "cloud", page: "sharing" },
+		const ids = organization.map((item) => item.id);
+		expect(ids).toEqual(
+			expect.arrayContaining([
+				"general",
+				"defaults",
+				"browser",
+				"shortcuts",
+				"self-hosted",
+				"organizations",
+				"billing",
+			]),
 		);
+		expect(ids).not.toContain("sharing");
+		expect(new Set(ids).size).toBe(ids.length);
+		expect(
+			settingsNavigationFor({ kind: "general" }, false, {
+				kind: "organization",
+				organizationId: "org_a",
+			}).map((item) => item.id),
+		).not.toContain("self-hosted");
 		expect(
 			settingsNavigationFor({ kind: "general" }, true, {
 				kind: "personal",

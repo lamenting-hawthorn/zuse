@@ -27,12 +27,11 @@ import {
 import { resolveChatRuntimeMode } from "../lib/auto-worktree.ts";
 import { deriveChatAttentionState } from "../lib/chat-attention-state.ts";
 import { closeChatTab } from "../lib/close-chat-tab.ts";
-import {
-	useActiveEnvironmentEntities,
-	useEnvironmentChat,
-} from "../lib/environment-entity-hooks.ts";
+import { EMPTY_SESSIONS_BY_PROJECT } from "../lib/environment-entities.ts";
+import { useEnvironmentChat } from "../lib/environment-entity-hooks.ts";
 import { useEnvironmentPermissions } from "../lib/environment-permissions-client-bus.ts";
 import { useEnvironmentQuestionAttachments } from "../lib/environment-question-attachments-client-bus.ts";
+import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
 import { selectAuthenticatedProvider } from "../lib/model-picker-availability.ts";
 import { filterActionableQuestionInteractions } from "../lib/question-actionability.ts";
 import {
@@ -109,7 +108,9 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 	const closeChangesTab = useUiStore((s) => s.closeChangesTab);
 
 	const selectedSessionId = useSessionsStore((s) => s.selectedSessionId);
-	const { sessionsByProject } = useActiveEnvironmentEntities();
+	const shell = useEnvironmentShellResource(environmentId);
+	const sessionsByProject =
+		shell.data?.sessionsByProject ?? EMPTY_SESSIONS_BY_PROJECT;
 	const projectSessions =
 		projectId !== null
 			? (sessionsByProject[projectId] ?? EMPTY_SESSIONS)
@@ -123,7 +124,8 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 	// Sessions with a pending permission prompt. Surfaced on the tab as a lock
 	// so a supervised-mode request is visible without opening the session.
 	// ExitPlanMode is excluded — plan mode owns its own inline approval card.
-	const requestsById = useEnvironmentPermissions().data?.requestsById ?? {};
+	const requestsById =
+		useEnvironmentPermissions(environmentId).data?.requestsById ?? {};
 	const questionAttachmentsByKey =
 		useEnvironmentQuestionAttachments(environmentId).data?.attachmentsByKey ??
 		{};

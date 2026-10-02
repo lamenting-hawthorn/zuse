@@ -41,6 +41,76 @@ user-managed remote connections do not use Cloud billing.
    `api-staging.zuse.sh`, where staging performs the signature and account
    validation.
 
+### GitHub installation authorization
+
+The main **Install GitHub App / Configure app** button handles both new and existing
+installations. This uses GitHub user authorization, not an installation
+callback or a manually entered installation ID. The browser then explicitly
+chooses one account for the selected Zuse workspace; users without an installation
+are sent to GitHub to install it. Personal and organization
+links remain independent; no credentials are inherited automatically.
+
+Before deploying this flow:
+
+- Set `GITHUB_APP_CLIENT_SECRET` alongside the existing client ID/private key in
+  each API deployment. Never expose the client secret to the renderer.
+- Register both user authorization callback URLs in the shared GitHub App:
+  `https://api.zuse.sh/v1/cloud/github/callback` and
+  `https://api-staging.zuse.sh/v1/cloud/github/callback`.
+- Grant the app **Organization permissions → Members: read-only**. Existing
+  installations must approve this permission before their GitHub organization
+  owner can connect them. Repository collaborators cannot grant an entire
+  installation to a workspace.
+- Keep the existing Setup URL and leave **Request user authorization during
+  installation** off: Zuse starts authorization after setup and binds it to an
+  HttpOnly browser cookie. **Redirect on update** is useful but not required for
+  existing-connection recovery or repository refresh.
+
+New setup callbacks also require user authorization before saving an installation.
+Old in-flight setup links expire; restart them from Zuse after the deployment.
+Verify fresh install, existing install, repository access changes without a
+callback, and organization-admin removal during authorization on staging before
+promoting. No migration is needed. GitHub OAuth tokens are not persisted or sent
+to clients; only the explicitly selected installation is stored.
+
+References: [GitHub setup URL](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/about-the-setup-url),
+[user access tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app).
+
+### GitHub installation webhooks
+
+Deploy the receiver before enabling **Webhook → Active** on the GitHub App.
+Use separate GitHub Apps and secrets for staging and production:
+
+- Staging: `https://api-staging.zuse.sh/v1/cloud/github/webhook`
+- Production: `https://api.zuse.sh/v1/cloud/github/webhook`
+- Store the matching secret as `GITHUB_APP_WEBHOOK_SECRET` in that API deployment
+  (`bun run secret:github-webhook-secret` from `infra/api` for staging).
+- Match the App ID, client ID/secret, slug and private key to the same app.
+  With separate apps, register only that environment's callback and Setup URL.
+- The receiver handles `installation`, `installation_repositories`, and signed
+  `ping` deliveries. Push/PR events and additional repository permissions are
+  unnecessary for connection synchronization.
+
+Signatures are verified against the raw body before parsing. Events trigger a
+current-state GitHub API read, not historical payload replay. Only existing
+workspace links are updated; uninstallation removes links, not projects or
+repositories. Connecting an installation still requires user authorization.
+Repeated deliveries are idempotent reconciliations, not jobs; there is no separate
+delivery ledger or connection registry. Older overlapping refreshes cannot
+overwrite newer observations or recreate removed links.
+
+The existing GitHub status endpoint reconciles installation metadata after 60
+seconds, including suspended installations, to recover missed deliveries. The
+repository picker already fetches current permissions from GitHub. Visible
+repository settings refresh their scoped cache every 30 seconds and on window
+focus; this is not a new push transport. Transient GitHub failures leave persisted
+connections intact and return a non-2xx webhook response. GitHub does not retry
+failed deliveries automatically: inspect Recent deliveries and redeliver failures.
+
+Before enabling, verify a signed ping, repository selection changes, suspension,
+restoration, and uninstall against a test installation. A new installation must
+not appear in a Zuse workspace until explicitly connected. No migration is needed.
+
 When the production API hostname changes, update and verify both the Polar
 and E2B endpoints above. They are provider-owned configuration and cannot be
 changed by an API deployment.

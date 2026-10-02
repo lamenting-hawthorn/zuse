@@ -1,4 +1,7 @@
 {
+	"workspace_new_chat_access": "Neue Cloud-Chats",
+	"workspace_new_chat_access_description": "Wähle den Zugriff für neue Organisations-Chats. Anzeigen erlaubt das Lesen; Bearbeiten erlaubt auch Änderungen und Agenteninteraktion. Bestehende Chats bleiben unverändert. Den Zugriff änderst du im Teilen-Menü eines Chats.",
+	"self_hosted_personal_only": "Die SSH-Einrichtung verbindet Server derzeit mit Persönlich, nicht mit dieser Organisation. Wechsle zu Persönlich, um sie zu verwalten.",
 	"sharing_link_notice": "Nur Personen mit bestehendem Zugriff können diesen Link öffnen. Speichern Sie zuerst Änderungen an der Freigabe.",
 	"sharing_link_copy_failed": "Der Link konnte nicht kopiert werden. Versuchen Sie es erneut.",
 	"workspace_sharing_inherited": "Standard: {{permission}}",

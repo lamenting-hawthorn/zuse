@@ -1,7 +1,32 @@
+import { EnvironmentId } from "@zuse/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { ChatTabButton } from "../../src/components/main-tabs.tsx";
+const scopedResources = vi.hoisted(() => ({
+	shell: vi.fn(() => ({ data: null })),
+	permissions: vi.fn(() => ({ data: null })),
+}));
+vi.mock("../../src/lib/environment-shell-client-bus.ts", () => ({
+	useEnvironmentShellResource: scopedResources.shell,
+}));
+vi.mock("../../src/lib/environment-permissions-client-bus.ts", () => ({
+	useEnvironmentPermissions: scopedResources.permissions,
+}));
+
+import { ChatTabButton, MainTabs } from "../../src/components/main-tabs.tsx";
+
+it("reads tabs and approval state from the displayed cloud environment", () => {
+	const environmentId = EnvironmentId.make("workspace-cloud");
+	renderToStaticMarkup(
+		<MainTabs
+			environmentId={environmentId}
+			projectId={null}
+			emptyLabel="Cloud conversation"
+		/>,
+	);
+	expect(scopedResources.shell).toHaveBeenCalledWith(environmentId);
+	expect(scopedResources.permissions).toHaveBeenCalledWith(environmentId);
+});
 
 describe("ChatTabButton", () => {
 	it.each([

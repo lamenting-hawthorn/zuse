@@ -90,18 +90,16 @@ export const launchMobileCloudChat = async (input: {
 		}),
 	);
 	assertAccount();
-	const summary = {
-		...summaryFromLaunch({
-			workspace: launch.workspace,
-			repositoryIdentity: input.project.repositoryIdentity,
-			repositoryDisplayName: input.project.displayName,
-			title: input.text.trim().split(/\r?\n/u)[0]?.slice(0, 80) || "New chat",
-			agent: input.agent,
-			model: input.model,
-			runtimeMode: input.runtimeMode,
-		}),
+	const summary = summaryFromLaunch({
 		workspaceScope: scope,
-	};
+		workspace: launch.workspace,
+		repositoryIdentity: input.project.repositoryIdentity,
+		repositoryDisplayName: input.project.displayName,
+		title: input.text.trim().split(/\r?\n/u)[0]?.slice(0, 80) || "New chat",
+		agent: input.agent,
+		model: input.model,
+		runtimeMode: input.runtimeMode,
+	});
 	registerCloudSummary(summary);
 	const key = cloudConnectionKey(summary.workspaceId);
 	if (launch.initialMessageDelivery === "mailbox-v1") {

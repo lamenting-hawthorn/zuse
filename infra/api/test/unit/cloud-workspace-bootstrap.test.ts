@@ -729,6 +729,14 @@ describe("cloud workspace runtime bootstrap", () => {
 				}),
 			);
 			expect((await connect()).status).toBe(409);
+			const incompatibleTicket = await read(
+				`${itemPath}/gateway/ticket`,
+				"POST",
+			);
+			expect(incompatibleTicket.status).toBe(409);
+			expect(await incompatibleTicket.json()).toEqual({
+				error: "workspace_runtime_update_required",
+			});
 			const current = await runtime.runPromise(store.getWorkspace(workspaceId));
 			if (!current) throw new Error("missing test workspace");
 			await runtime.runPromise(

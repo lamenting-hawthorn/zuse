@@ -67,7 +67,7 @@ export const loadCloudEntitlements = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.entitlements,
 		(client) => client["machines.entitlements"](),
-		{ refresh },
+		{ refresh, maxAgeMs: 30_000 },
 	);
 
 export const loadCloudImage = (providerId?: string, refresh = false) =>
@@ -81,7 +81,11 @@ export const loadCloudGithub = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.github,
 		(client) => client["cloud.github.status"](),
-		{ refresh, decode: Schema.decodeUnknownSync(CloudGithubStatus) },
+		{
+			refresh,
+			maxAgeMs: 30_000,
+			decode: Schema.decodeUnknownSync(CloudGithubStatus),
+		},
 	);
 
 export const loadCloudWorkspaces = (refresh = false) =>

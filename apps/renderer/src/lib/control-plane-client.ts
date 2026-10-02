@@ -1,4 +1,8 @@
-import type { WorkspaceScope } from "@zuse/contracts";
+import {
+	CloudWorkspaceOpError,
+	RpcAccessDeniedError,
+	type WorkspaceScope,
+} from "@zuse/contracts";
 import { Effect } from "effect";
 import type { getCloudControlClient } from "./cloud-control-client.ts";
 import { hostedAccountId, isHostedProduct } from "./hosted-connect.ts";
@@ -225,7 +229,13 @@ export const runCachedControlPlane = <Result>(
 				) {
 					entry.pending = undefined;
 					entry.checkedAt = Date.now();
-					if (!entry.value) sessionCache.delete(memoryKey);
+					if (
+						cause instanceof RpcAccessDeniedError ||
+						(cause instanceof CloudWorkspaceOpError &&
+							cause.code === "not-allowed")
+					) {
+						invalidateControlPlaneCache(key);
+					} else if (!entry.value) sessionCache.delete(memoryKey);
 				}
 				throw cause;
 			},

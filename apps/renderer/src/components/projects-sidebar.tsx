@@ -1,5 +1,9 @@
 import { chatRecency } from "@zuse/client-runtime/chat-recency";
 import {
+	isCloudProjectFolder,
+	mergeCloudProjectFolders,
+} from "../lib/cloud-project-folders.ts";
+import {
 	refreshHostedProjects,
 	selectHostedCloudHome,
 } from "../lib/hosted-workspace.ts";
@@ -9,6 +13,7 @@ import {
 	rendererWorkspaceSnapshot,
 	subscribeRendererWorkspace,
 } from "../lib/renderer-workspace.ts";
+import { useCloudProjects } from "../lib/use-cloud-projects.ts";
 import { HostedLaptopSection } from "./hosted-sidebar.tsx";
 import {
 	organizationWorkspacesAvailable,
@@ -296,7 +301,12 @@ export function ProjectsSidebar() {
 	const loading = useWorkspaceStore((s) => s.loading);
 	const removeFolder = useWorkspaceStore((s) => s.remove);
 	const remove = async (id: FolderId) => {
-		if (isHostedProduct()) openProjectSetupDialog();
+		if (isCloudProjectFolder(id)) {
+			useUiStore
+				.getState()
+				.setSettingsSection({ kind: "cloud", page: "repositories" });
+			useUiStore.getState().setView("settings");
+		} else if (isHostedProduct()) openProjectSetupDialog();
 		else await removeFolder(id);
 	};
 	const selectFolder = useWorkspaceStore((s) => s.select);
@@ -339,11 +349,24 @@ export function ProjectsSidebar() {
 
 	const {
 		chatsByProject,
-		originsByFolder: origins,
+		originsByFolder: runtimeOrigins,
 		sessionsByProject,
 		folders: cloudFolders,
-	} = useEnvironmentEntities(isHostedProduct() ? "local" : activeEnvironmentId);
-	const folders = isHostedProduct() ? cloudFolders : workspaceFolders;
+	} = useEnvironmentEntities(
+		isHostedProduct() ? "local" : activeEnvironmentId,
+		isHostedProduct() ||
+			environmentBelongsToWorkspace(activeEnvironmentId, workspaceScope.scope),
+	);
+	const cloudProjects = useCloudProjects();
+	const { folders, originsByFolder: origins } = useMemo(
+		() =>
+			mergeCloudProjectFolders(
+				isHostedProduct() ? cloudFolders : workspaceFolders,
+				runtimeOrigins,
+				cloudProjects,
+			),
+		[cloudFolders, workspaceFolders, runtimeOrigins, cloudProjects],
+	);
 	useEffect(() => {
 		if (isHostedProduct())
 			void refreshHostedProjects().catch((cause) =>
@@ -1873,11 +1896,17 @@ function ProjectGroup({
 		(state) => state.hiddenArchivedChatIds,
 	);
 	const openRepositorySettings = () => {
+		if (isCloudProjectFolder(id)) {
+			setSettingsSection({ kind: "cloud", page: "repositories" });
+			setView("settings");
+			return;
+		}
 		setSettingsSection({ kind: "repository", projectId: id });
 		setView("settings");
 	};
 
 	const openArchives = () => {
+		if (isCloudProjectFolder(id)) return;
 		onSelect();
 		void useArchivePreviewStore.getState().showList(environmentId, id);
 		setView("chat");
@@ -1885,6 +1914,11 @@ function ProjectGroup({
 	};
 
 	const openProjectUsage = () => {
+		if (isCloudProjectFolder(id)) {
+			setSettingsSection({ kind: "cloud", page: "billing" });
+			setView("settings");
+			return;
+		}
 		onSelect();
 		openUsage("project");
 	};
@@ -2133,6 +2167,7 @@ function ProjectGroup({
 			</Tooltip>
 
 			<ProjectContextMenu
+				cloudOnly={isCloudProjectFolder(id)}
 				open={menuOpen}
 				anchor={anchorRef.current}
 				onOpenChange={setMenuOpen}
@@ -2445,6 +2480,7 @@ function AddToGroupFlyout({
 }
 
 function ProjectContextMenu({
+	cloudOnly = false,
 	open,
 	anchor,
 	onOpenChange,
@@ -2458,6 +2494,7 @@ function ProjectContextMenu({
 	onAddToGroup,
 	onRemoveFromGroup,
 }: {
+	cloudOnly?: boolean;
 	open: boolean;
 	anchor: { getBoundingClientRect: () => DOMRect } | null;
 	onOpenChange: (open: boolean) => void;
@@ -2491,6 +2528,7 @@ function ProjectContextMenu({
 				</MenuItem>
 				<MenuItem
 					onClick={onOpenArchives}
+					disabled={cloudOnly}
 					className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] hover:bg-sidebar-accent"
 				>
 					<HugeiconsIcon icon={ArchiveIcon} className="size-3.5" />

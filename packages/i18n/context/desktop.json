@@ -29877,5 +29877,35 @@
 			}
 		],
 		"context": "chat interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:workspace_new_chat_access": {
+		"source": "New cloud chats",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organization-sharing-pane.tsx",
+				"line": 66
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:workspace_new_chat_access_description": {
+		"source": "Choose access for new organization chats. View permits reading; Edit also permits changes and agent interaction. Existing chats are unchanged. Use a chat’s Share menu to change its access.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings/organization-sharing-pane.tsx",
+				"line": 69
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
+	},
+	"settings:self_hosted_personal_only": {
+		"source": "SSH setup currently connects servers to Personal, not this organization. Switch to Personal to manage them.",
+		"locations": [
+			{
+				"path": "apps/renderer/src/components/settings-page.tsx",
+				"line": 536
+			}
+		],
+		"context": "settings interface. Preserve named placeholders and mapped rich-text tags. See internal-docs/localization.md for terminology."
 	}
 }

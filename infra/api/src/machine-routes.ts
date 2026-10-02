@@ -61,6 +61,7 @@ import { getOrganizationName } from "./organizations.ts";
 import { ApiStore } from "./store.ts";
 import type { WorkosVerifier } from "./workos.ts";
 import { requireWorkspaceAccess } from "./workspace-authorization.ts";
+import { workspaceScopeForOwner } from "./workspace-scope.ts";
 
 export type MachineRouteContext =
 	| WorkosVerifier
@@ -152,6 +153,7 @@ const checkoutComplete = (input: {
 	readonly offerId: string | null;
 	readonly summary: CheckoutSummary | null;
 	readonly workspaceName?: string;
+	readonly workspaceKind?: "personal" | "organization";
 }): Response => {
 	const offer = findMachineOffer(input.offerId ?? "");
 	const catalogAmount =
@@ -165,6 +167,9 @@ const checkoutComplete = (input: {
 			: orderReference(input.summary.checkoutId);
 	return new Response(
 		renderCheckoutCompletePage({
+			...(input.workspaceKind === undefined
+				? {}
+				: { workspaceKind: input.workspaceKind }),
 			...(input.workspaceName === undefined
 				? {}
 				: { workspaceName: input.workspaceName }),
@@ -677,6 +682,9 @@ export const routeMachineRequest = (
 							checkoutId,
 						});
 			return checkoutComplete({
+				...(ticket === null
+					? {}
+					: { workspaceKind: workspaceScopeForOwner(ticket.accountId).kind }),
 				offerId: knownOfferId(ticket?.offerId ?? url.searchParams.get("offer")),
 				summary,
 				...(ticket?.workspaceName === undefined

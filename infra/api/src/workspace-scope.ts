@@ -86,6 +86,7 @@ export const workspaceAccessForPath = (
 		path === ApiPaths.cloudAuth ||
 		path.startsWith(`${ApiPaths.cloudAuth}/`) ||
 		(path !== ApiPaths.cloudGithubCallback &&
+			path !== ApiPaths.cloudGithubWebhook &&
 			(path === ApiPaths.cloudGithub ||
 				path.startsWith(`${ApiPaths.cloudGithub}/`)))
 	)

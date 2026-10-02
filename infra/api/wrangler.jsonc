@@ -71,9 +71,9 @@
 		"API_MINT_PUBLIC_JWK": "{\"crv\":\"Ed25519\",\"x\":\"rLuckqLkdtwPKtradClTam6ovMItDJZ3SNbBQXFjJWw\",\"kty\":\"OKP\"}",
 		"MAX_ENVIRONMENTS_PER_ACCOUNT": "5",
 		"ALLOWED_BROWSER_ORIGINS": "https://code.zuse.sh,https://code-staging.zuse.sh",
-		"GITHUB_APP_ID": "4663095",
-		"GITHUB_APP_SLUG": "zusesh",
-		"GITHUB_APP_CLIENT_ID": "Iv23liToo4tc4RcbDNpV",
+		"GITHUB_APP_ID": "5150694",
+		"GITHUB_APP_SLUG": "zuse-staging",
+		"GITHUB_APP_CLIENT_ID": "Iv23lim6UymqlW3Tw2HE",
 
 		"MANAGED_TUNNEL_BASE_DOMAIN": "stuff.md",
 		"MANAGED_TUNNEL_NAMESPACE": "zenv-staging",

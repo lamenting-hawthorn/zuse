@@ -43,10 +43,16 @@ export function WorkspaceSwitcher() {
 			value: `organization:${organization.id}`,
 			label: organization.name,
 		})),
-		{
-			value: "create",
-			label: message("settings:organizations_create_an_organization"),
-		},
+		...(!loading &&
+		error == null &&
+		!organizations.some((organization) => organization.isCreator)
+			? [
+					{
+						value: "create",
+						label: message("settings:organizations_create_an_organization"),
+					},
+				]
+			: []),
 	];
 	return (
 		<Select

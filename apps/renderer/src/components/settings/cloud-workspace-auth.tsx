@@ -62,7 +62,7 @@ const LABEL: Record<CloudAuthProvider, string> = {
 	grok: "Grok",
 };
 const CODEX_SECURITY_SETTINGS_URL = "https://chatgpt.com/#settings/Security";
-const COMPACT_AUTH_ACTION = COMPACT_CLOUD_ACTION;
+const COMPACT_AUTH_ACTION = `${COMPACT_CLOUD_ACTION} gap-2 [&_svg]:size-3 [&_svg]:mx-0`;
 
 function InstructionStep({
 	number,
@@ -257,8 +257,12 @@ export function CloudWorkspaceAuth() {
 	);
 	const [error, setError] = useState<string | null>(null);
 
-	const refresh = useCallback(async (force = true) => {
+	const refresh = useCallback(async (force = true, restoreStatus = false) => {
 		try {
+			// An older, sleeping authority has no database status yet. Only the
+			// explicit retry action may wake it to read its existing credentials.
+			if (restoreStatus)
+				await runCloudControl((client) => client["cloud.auth.provision"]());
 			setStatus(await loadCloudAuth(force));
 			setError(null);
 		} catch (cause) {
@@ -305,8 +309,16 @@ export function CloudWorkspaceAuth() {
 					void refreshCloudImages().catch(() => undefined);
 				}
 				if (next.state !== "authorizing") return;
-			} catch {
+			} catch (cause) {
 				if (disposed) return;
+				if (
+					cause instanceof CloudWorkspaceOpError &&
+					cause.code === "invalid-request"
+				) {
+					setOperation({ ...operation, state: "error" });
+					setError(uiMessage("settings:cloud_auth_setup_failed"));
+					return;
+				}
 				setError(uiMessage("settings:cloud_auth_poll_retry"));
 			}
 			timer = setTimeout(() => void poll(), 1_000);
@@ -498,7 +510,14 @@ export function CloudWorkspaceAuth() {
 								loading={loading}
 								onClick={() => {
 									setLoading(true);
-									void refresh();
+									void refresh(
+										true,
+										status?.providers.some(
+											(provider) =>
+												provider.errorCode ===
+												"cloud_auth_status_refresh_required",
+										) === true,
+									);
 								}}
 							>
 								<RefreshCw aria-hidden />
@@ -626,7 +645,7 @@ export function CloudWorkspaceAuth() {
 						</DialogDescription>
 					</DialogHeader>
 					<form className="contents" onSubmit={submitProviderSetup}>
-						<DialogPanel className="space-y-3.5 pb-4 pt-1">
+						<DialogPanel className="space-y-3 pb-3 pt-1">
 							{displayedError === null ? null : (
 								<p role="alert" className="text-xs text-destructive">
 									{displayedError}
@@ -702,7 +721,7 @@ export function CloudWorkspaceAuth() {
 							selectedProvider !== null &&
 							selectedProvider !== "claude" &&
 							selectedProvider !== "cursor" ? (
-								<div className="space-y-2.5 rounded-lg bg-background/55 p-3">
+								<div className="space-y-2.5">
 									{operation?.state === "connected" ? (
 										<div
 											role="status"
@@ -751,10 +770,17 @@ export function CloudWorkspaceAuth() {
 											/>
 										</div>
 									)}
-									{operation?.state === "authorizing" &&
-									operation.verificationCode === undefined ? (
-										<div className="flex h-7 items-center gap-2 rounded-md bg-muted/55 px-2 text-[11px] text-muted-foreground">
-											<RefreshCw className="animate-spin" aria-hidden />
+									{(busy?.startsWith("login:") === true ||
+										operation?.state === "authorizing") &&
+									operation?.verificationCode === undefined ? (
+										<div
+											role="status"
+											className="flex min-h-7 items-center gap-2.5 text-[11px] text-muted-foreground"
+										>
+											<RefreshCw
+												className="size-3 shrink-0 animate-spin"
+												aria-hidden
+											/>
 											{uiMessage(
 												"settings:cloud_workspace_auth_requesting_a_one_time_code_from",
 											)}
@@ -954,14 +980,15 @@ export function CloudWorkspaceAuth() {
 											type="submit"
 											className={COMPACT_AUTH_ACTION}
 											size="xs"
-											loading={busy?.startsWith("login:") === true}
+											aria-busy={busy?.startsWith("login:") === true}
 											disabled={
 												busy !== null || operation?.state === "authorizing"
 											}
 										>
 											{operation?.state === "connected"
 												? uiMessage("settings:cloud_workspace_auth_reauthorize")
-												: operation?.state === "authorizing"
+												: busy?.startsWith("login:") === true ||
+														operation?.state === "authorizing"
 													? uiMessage(
 															"settings:cloud_workspace_auth_requesting_code",
 														)

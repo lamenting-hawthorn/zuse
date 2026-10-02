@@ -17,6 +17,7 @@ import {
 	cloudWorkspaceStartupNeedsObservation,
 	MAILBOX_RUNTIME_STALL_TIMEOUT_MS,
 	RUNTIME_CONNECTION_TIMEOUT_MS,
+	reconcileCloudBuild,
 	reconcileCloudResourceBatch,
 	reconcileCloudResources,
 	reconcileCloudWorkspace,
@@ -65,6 +66,82 @@ const makeTestLayer = (cloudCommandMailboxEnabled = false) =>
 
 const testLayer = makeTestLayer();
 const mailboxEnabledTestLayer = makeTestLayer(true);
+
+test.each([
+	"rejected",
+	"transient",
+] as const)("persists snapshot failure %s instead of leaving a silent lease", async (code) => {
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const workspace = yield* seedWorkspace({
+				workspaceId: "snapshot-error",
+				requestConfig: {},
+				state: "ready",
+				desiredState: "ready",
+				statusCode: "ready",
+			});
+			const store = yield* CloudWorkspaceStore;
+			const build = yield* store.getBuild(workspace.buildId);
+			if (build === null) throw new Error("Missing build");
+			yield* store.saveBuild({
+				...build,
+				state: "sanitizing",
+				snapshotId: undefined,
+				providerSandboxId: workspace.providerSandboxId,
+				logText: "Setup complete",
+				nextActionAtMs: 0,
+			});
+			const providers = yield* SandboxProviders;
+			const provider = yield* providers.get(build.provider);
+			yield* reconcileCloudBuild(build.buildId).pipe(
+				Effect.provideService(SandboxProviders, {
+					...providers,
+					get: () =>
+						Effect.succeed({
+							...provider,
+							snapshot: () => Effect.fail(new SandboxProviderError({ code })),
+						}),
+				}),
+			);
+			const result = yield* store.getBuild(build.buildId);
+			expect(result?.state).toBe(code === "rejected" ? "failed" : "sanitizing");
+			expect(result?.lastErrorCode).toBe(`snapshot-${code}`);
+			expect(result?.logText).toContain("Setup complete");
+			expect(result?.logText).toContain(`Snapshot publication: ${code}`);
+			expect(result?.nextActionAtMs).toBeGreaterThan(Date.now());
+		}).pipe(Effect.provide(testLayer)),
+	);
+});
+
+test("resumes a persisted snapshot stage after the original worker exits", async () => {
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const workspace = yield* seedWorkspace({
+				workspaceId: "snapshot-retry",
+				requestConfig: {},
+				state: "ready",
+				desiredState: "ready",
+				statusCode: "ready",
+			});
+			const store = yield* CloudWorkspaceStore;
+			const build = yield* store.getBuild(workspace.buildId);
+			if (build === null) throw new Error("Missing fixture build");
+			yield* store.saveBuild({
+				...build,
+				state: "sanitizing",
+				snapshotId: undefined,
+				providerSandboxId: workspace.providerSandboxId,
+				logText: "Repositories prepared",
+				nextActionAtMs: 0,
+			});
+			yield* reconcileCloudBuild(build.buildId);
+			const resumed = yield* store.getBuild(build.buildId);
+			expect(resumed?.state).toBe("ready");
+			expect(resumed?.snapshotId).toBeDefined();
+			expect(resumed?.logText).toContain("Repositories prepared");
+		}).pipe(Effect.provide(testLayer)),
+	);
+});
 
 const seedWorkspace = Effect.fn("seedArchiveWorkspace")(function* (
 	input: Pick<

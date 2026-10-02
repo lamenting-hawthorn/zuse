@@ -198,7 +198,11 @@ export function EnvironmentSummary() {
 			) ?? null
 		);
 	});
-	const branchLabel = status?.branch ?? worktree?.branch ?? "Loading branch…";
+	const gitFailed = gitView.sync === "failed";
+	const branchLabel =
+		status?.branch ??
+		worktree?.branch ??
+		(gitFailed ? "Branch unavailable" : "Loading branch…");
 	const refreshBranches = async (): Promise<void> => {
 		if (executionRef === null || folderId === null) return;
 		setBranchesLoading(true);
@@ -275,7 +279,9 @@ export function EnvironmentSummary() {
 				: `${status.dirtyFiles} change${status.dirtyFiles === 1 ? "" : "s"}`;
 	const prLabel =
 		pr === null
-			? "Loading pull request…"
+			? gitFailed
+				? "Pull request unavailable"
+				: "Loading pull request…"
 			: pr.state === "none"
 				? "Pull request"
 				: `PR #${pr.number ?? "?"} · ${pr.state}`;
@@ -283,9 +289,11 @@ export function EnvironmentSummary() {
 	const prStatus = (() => {
 		if (pr === null) {
 			return {
-				icon: Loading02Icon,
-				label: uiMessage("chat:environment_summary_loading_pull_request"),
-				className: "animate-spin text-muted-foreground",
+				icon: gitFailed ? Alert01Icon : Loading02Icon,
+				label: prLabel,
+				className: gitFailed
+					? "text-muted-foreground"
+					: "animate-spin text-muted-foreground",
 			};
 		}
 		if (pr.state === "merged") {

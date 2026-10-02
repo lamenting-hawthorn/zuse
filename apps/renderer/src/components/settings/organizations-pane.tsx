@@ -241,79 +241,88 @@ export function OrganizationsPane({
 		details !== null &&
 		details.members.length + details.invitations.length >=
 			ORGANIZATION_MEMBER_LIMIT;
+	const refreshAction = (
+		<Button
+			className="h-7"
+			size="xs"
+			variant="ghost"
+			disabled={busy || loading}
+			onClick={() => void refresh(selectedId)}
+		>
+			{uiMessage("settings:organizations_refresh")}
+		</Button>
+	);
 	return (
-		<div className="flex max-w-xl flex-col gap-5 text-xs">
+		<div className="flex flex-col gap-4 text-xs">
 			{notice && (
 				<p role="status" className="text-muted-foreground">
 					{notice}
 				</p>
 			)}
-			<SettingsFrame
-				title={uiMessage("settings:organizations_your_organizations")}
-				action={
-					<Button
-						className="h-7"
-						size="xs"
-						variant="ghost"
-						disabled={busy || loading}
-						onClick={() => void refresh(selectedId)}
-					>
-						{uiMessage("settings:organizations_refresh")}
-					</Button>
-				}
-			>
-				{error && (
-					<p role="alert" className="text-destructive">
-						{error}
-					</p>
-				)}
-				{loading && (
-					<p role="status" className="text-muted-foreground">
-						{uiMessage("settings:organizations_loading_organization")}
-					</p>
-				)}
-				{!loading && organizations.length === 0 && !error && (
-					<p className="text-muted-foreground">
-						{uiMessage(
-							"settings:organizations_no_organizations_yet_create_one_below_or_accept_an_invitation_from_your_team",
-						)}
-					</p>
-				)}
-				<div className="flex items-center gap-2">
-					{organizationId === undefined && organizations.length > 0 && (
-						<Select
-							items={organizations.map((org) => ({
-								value: org.id,
-								label: org.name,
-							}))}
-							value={selectedId}
-							disabled={busy || loading}
-							onValueChange={(value) => {
-								if (!value) return;
-								setEmail("");
-								setNotice(null);
-								void refresh(value);
-							}}
-						>
-							<SelectTrigger
-								className="h-7 min-w-0 flex-1"
-								aria-label={uiMessage("settings:organizations_organization")}
-							>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectPopup>
-								{organizations.map((org) => (
-									<SelectItem key={org.id} value={org.id}>
-										{org.name}
-									</SelectItem>
-								))}
-							</SelectPopup>
-						</Select>
+			{error && (
+				<p role="alert" className="text-destructive">
+					{error}
+				</p>
+			)}
+			{loading && (
+				<p role="status" className="text-muted-foreground">
+					{uiMessage("settings:organizations_loading_organization")}
+				</p>
+			)}
+			{organizationId !== undefined && !details && (
+				<div className="flex justify-end">{refreshAction}</div>
+			)}
+			{organizationId === undefined && (
+				<SettingsFrame
+					title={uiMessage("settings:organizations_your_organizations")}
+					action={refreshAction}
+				>
+					{!loading && organizations.length === 0 && !error && (
+						<p className="text-muted-foreground">
+							{uiMessage(
+								"settings:organizations_no_organizations_yet_create_one_below_or_accept_an_invitation_from_your_team",
+							)}
+						</p>
 					)}
-				</div>
-			</SettingsFrame>
+					<div className="flex items-center gap-2">
+						{organizationId === undefined && organizations.length > 0 && (
+							<Select
+								items={organizations.map((org) => ({
+									value: org.id,
+									label: org.name,
+								}))}
+								value={selectedId}
+								disabled={busy || loading}
+								onValueChange={(value) => {
+									if (!value) return;
+									setEmail("");
+									setNotice(null);
+									void refresh(value);
+								}}
+							>
+								<SelectTrigger
+									className="h-7 min-w-0 flex-1"
+									aria-label={uiMessage("settings:organizations_organization")}
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectPopup>
+									{organizations.map((org) => (
+										<SelectItem key={org.id} value={org.id}>
+											{org.name}
+										</SelectItem>
+									))}
+								</SelectPopup>
+							</Select>
+						)}
+					</div>
+				</SettingsFrame>
+			)}
 			{details && (
-				<SettingsGroup title={uiMessage("settings:organizations_members")}>
+				<SettingsGroup
+					title={uiMessage("settings:organizations_members")}
+					action={organizationId === undefined ? undefined : refreshAction}
+				>
 					{details.members.map((member) => (
 						<SettingsRow
 							key={member.id}

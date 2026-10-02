@@ -91,6 +91,7 @@ export const ApiPaths = {
 	cloudGithub: "/v1/cloud/github",
 	cloudGithubInstall: "/v1/cloud/github/install",
 	cloudGithubCallback: "/v1/cloud/github/callback",
+	cloudGithubWebhook: "/v1/cloud/github/webhook",
 	cloudGithubDisconnect: (installationId: number) =>
 		`/v1/cloud/github/installations/${installationId}`,
 	cloudProjects: "/v1/cloud/projects",

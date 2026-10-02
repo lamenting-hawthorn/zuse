@@ -2,6 +2,7 @@ import {
 	ChatSharingPolicy,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_COMMAND_AUTHOR_CAPABILITY,
+	CloudAuthStatus,
 	type CloudProjectBuildState,
 	type CloudProjectState,
 	type CloudWorkspaceDesiredState,
@@ -62,7 +63,13 @@ export interface CloudGithubInstallationRecord {
 	readonly updatedAtMs: number;
 }
 
+export type CloudGithubInstallationRefresh = Omit<
+	CloudGithubInstallationRecord,
+	"accountId" | "installationId" | "createdAtMs" | "updatedAtMs"
+>;
+
 export interface CloudAuthAuthorityRecord {
+	readonly status?: CloudAuthStatus;
 	readonly accountId: string;
 	readonly provider: string;
 	readonly providerSandboxId?: string;
@@ -535,6 +542,11 @@ export interface CloudWorkspaceStoreApi {
 	readonly getCloudAuthAuthority: (
 		accountId: string,
 	) => Effect.Effect<CloudAuthAuthorityRecord | null>;
+	readonly saveCloudAuthStatus: (input: {
+		readonly accountId: string;
+		readonly expectedRevision: number;
+		readonly status: CloudAuthStatus;
+	}) => Effect.Effect<void>;
 	readonly claimCloudAuthAuthority: (input: {
 		readonly accountId: string;
 		readonly provider: string;
@@ -564,6 +576,12 @@ export interface CloudWorkspaceStoreApi {
 	) => Effect.Effect<ReadonlyArray<CloudGithubInstallationRecord>>;
 	readonly saveGithubInstallation: (
 		installation: CloudGithubInstallationRecord,
+	) => Effect.Effect<void>;
+	/** Refresh existing links only. Never enroll a workspace from a webhook. */
+	readonly refreshGithubInstallation: (
+		installationId: number,
+		installation: CloudGithubInstallationRefresh | null,
+		observedAtMs: number,
 	) => Effect.Effect<void>;
 	readonly removeGithubInstallation: (
 		accountId: string,
@@ -1684,6 +1702,22 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 						(current) => current.authAuthorities.get(accountId) ?? null,
 					),
 				),
+			saveCloudAuthStatus: (input) =>
+				Ref.update(state, (current) => {
+					const existing = current.authAuthorities.get(input.accountId);
+					if (existing?.revision !== input.expectedRevision) return current;
+					return {
+						...current,
+						authAuthorities: new Map(current.authAuthorities).set(
+							input.accountId,
+							{
+								...existing,
+								status: input.status,
+								revision: existing.revision + 1,
+							},
+						),
+					};
+				}),
 			claimCloudAuthAuthority: (input) =>
 				Ref.modify(
 					state,
@@ -1800,6 +1834,25 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 						installation,
 					),
 				})),
+			refreshGithubInstallation: (installationId, installation, observedAtMs) =>
+				Ref.update(state, (current) => {
+					const githubInstallations = new Map(current.githubInstallations);
+					for (const [key, existing] of githubInstallations) {
+						if (
+							existing.installationId !== installationId ||
+							existing.updatedAtMs >= observedAtMs
+						)
+							continue;
+						if (installation === null) githubInstallations.delete(key);
+						else
+							githubInstallations.set(key, {
+								...existing,
+								...installation,
+								updatedAtMs: observedAtMs,
+							});
+					}
+					return { ...current, githubInstallations };
+				}),
 			removeGithubInstallation: (accountId, installationId) =>
 				Ref.update(state, (current) => {
 					const githubInstallations = new Map(current.githubInstallations);
@@ -3926,6 +3979,9 @@ const buildFromRow = (row: Row): CloudProjectBuildRecord => ({
 	updatedAtMs: numberValue(row.updated_at),
 });
 const authAuthorityFromRow = (row: Row): CloudAuthAuthorityRecord => ({
+	...(row.status == null
+		? {}
+		: { status: Schema.decodeUnknownSync(CloudAuthStatus)(row.status) }),
 	accountId: String(row.account_id),
 	provider: String(row.provider),
 	providerSandboxId: optionalString(row.provider_sandbox_id),
@@ -4260,6 +4316,12 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 		return CloudWorkspaceStore.of({
 			getWorkspaceSettings,
 			replaceWorkspaceSettings,
+			saveCloudAuthStatus: (input) =>
+				orDie(
+					sql`UPDATE api_cloud_auth_authorities SET status=${JSON.stringify(input.status)}::jsonb, revision=revision + 1 WHERE account_id=${input.accountId} AND revision=${input.expectedRevision}`.pipe(
+						Effect.asVoid,
+					),
+				),
 			getCloudAuthAuthority: (accountId) =>
 				orDie(
 					sql`SELECT * FROM api_cloud_auth_authorities WHERE account_id=${accountId}`.pipe(
@@ -4282,6 +4344,7 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 								${input.leaseExpiresAtMs}, 0, ${input.nowMs}, ${input.nowMs})
 							ON CONFLICT (account_id) DO UPDATE SET
 								provider=EXCLUDED.provider,
+								status=NULL,
 								provider_sandbox_id=CASE WHEN ${input.replaceReady === true} THEN NULL ELSE api_cloud_auth_authorities.provider_sandbox_id END,
 								storage_incarnation_id=CASE WHEN ${input.replaceReady === true} THEN EXCLUDED.storage_incarnation_id ELSE api_cloud_auth_authorities.storage_incarnation_id END,
 								auth_epoch=CASE WHEN ${input.replaceReady === true} THEN api_cloud_auth_authorities.auth_epoch + 1 ELSE api_cloud_auth_authorities.auth_epoch END,
@@ -4356,6 +4419,13 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 					sql`INSERT INTO api_cloud_github_installations (account_id, installation_id, github_account_id, account_login, account_type, avatar_url, repository_selection, suspended, created_at, updated_at) VALUES (${installation.accountId}, ${installation.installationId}, ${installation.githubAccountId}, ${installation.accountLogin}, ${installation.accountType}, ${installation.avatarUrl ?? null}, ${installation.repositorySelection}, ${installation.suspended}, ${installation.createdAtMs}, ${installation.updatedAtMs}) ON CONFLICT (account_id, installation_id) DO UPDATE SET github_account_id=EXCLUDED.github_account_id, account_login=EXCLUDED.account_login, account_type=EXCLUDED.account_type, avatar_url=EXCLUDED.avatar_url, repository_selection=EXCLUDED.repository_selection, suspended=EXCLUDED.suspended, updated_at=EXCLUDED.updated_at`.pipe(
 						Effect.asVoid,
 					),
+				),
+			refreshGithubInstallation: (installationId, installation, observedAtMs) =>
+				orDie(
+					(installation === null
+						? sql`DELETE FROM api_cloud_github_installations WHERE installation_id=${installationId} AND updated_at < ${observedAtMs}`
+						: sql`UPDATE api_cloud_github_installations SET github_account_id=${installation.githubAccountId}, account_login=${installation.accountLogin}, account_type=${installation.accountType}, avatar_url=${installation.avatarUrl ?? null}, repository_selection=${installation.repositorySelection}, suspended=${installation.suspended}, updated_at=${observedAtMs} WHERE installation_id=${installationId} AND updated_at < ${observedAtMs}`
+					).pipe(Effect.asVoid),
 				),
 			removeGithubInstallation: (accountId, installationId) =>
 				orDie(

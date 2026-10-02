@@ -55,6 +55,7 @@ export const controlApiErrorCode = (
 	)
 		return "invalid-state";
 	if (code === "cloud_workspace_unavailable") return "invalid-state";
+	if (code === "workspace_runtime_update_required") return "invalid-request";
 	if (code === "cloud_credential_connection_required")
 		return "credential-required";
 	if (

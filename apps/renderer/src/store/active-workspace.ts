@@ -81,17 +81,17 @@ const useSelectedWorkspaceBinding = (folderId: FolderId | null) => {
 	// The current panels must follow the same session selection as the transcript.
 	// The per-project slot is navigation history and can lag a newly selected tab.
 	const sessionId = useSessionsStore((s) =>
-		folderId === null
-			? null
-			: folderId === selectedFolderId
-				? s.selectedSessionId
+		folderId === selectedFolderId
+			? s.selectedSessionId
+			: folderId === null
+				? null
 				: (s.selectedSessionByProject[folderId] ?? null),
 	);
 	const selectedChatId = useChatsStore((s) =>
-		folderId === null
-			? null
-			: folderId === selectedFolderId
-				? s.selectedChatId
+		folderId === selectedFolderId
+			? s.selectedChatId
+			: folderId === null
+				? null
 				: (s.selectedChatByProject[folderId] ?? null),
 	);
 	const pendingCreation = useChatsStore((s) =>
@@ -223,13 +223,10 @@ export const useActiveContext = (): ActiveContext => {
 
 	return useMemo<ActiveContext>(() => {
 		if (!visible) return { status: "empty" };
-		if (!foldersLoaded) return { status: "loading" };
-		if (selectedFolderId === null || folderPath === null) {
-			return { status: "empty" };
-		}
 		if (
 			cloudWorkspaceId !== null &&
 			cloudFolder === null &&
+			selectedFolderId !== null &&
 			sessionId !== null
 		) {
 			return {
@@ -264,6 +261,10 @@ export const useActiveContext = (): ActiveContext => {
 				rootKind: "folder",
 				worktreePending: false,
 			};
+		}
+		if (!foldersLoaded) return { status: "loading" };
+		if (selectedFolderId === null || folderPath === null) {
+			return { status: "empty" };
 		}
 		if (
 			workspaceRequested &&

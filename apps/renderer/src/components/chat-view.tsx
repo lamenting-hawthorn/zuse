@@ -915,8 +915,10 @@ export function ChatView({
 							data-pane="chat"
 							tabIndex={-1}
 							ref={scrollElementRef}
-							className="h-full min-h-0 w-full flex-1 outline-none"
-						/>
+							className="flex h-full min-h-0 w-full flex-1 flex-col outline-none"
+						>
+							<ChatLoadingFallback />
+						</div>
 					) : (
 						<ChatLookupsProvider value={chatLookups}>
 							{cloudSummary !== null && historyStatus !== "idle" && (

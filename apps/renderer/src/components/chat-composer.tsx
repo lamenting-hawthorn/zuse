@@ -233,6 +233,7 @@ export function ChatComposer({
 	constrain = true,
 	directoryUnavailable = false,
 	submitDisabled = false,
+	cloudProviderIds,
 	environmentId,
 }: {
 	session: Session;
@@ -242,6 +243,7 @@ export function ChatComposer({
 	directoryUnavailable?: boolean;
 	/** Disable sending while keeping the editor interactive and mounted. */
 	submitDisabled?: boolean;
+	cloudProviderIds?: ReadonlyArray<ProviderId>;
 	/**
 	 * Optional content rendered as a header row inside the composer frame, above
 	 * the editor. Used by the new-chat landing to host the "Create from…" picker
@@ -1696,6 +1698,7 @@ export function ChatComposer({
 								</div>
 								<div className="flex shrink-0 items-center gap-2">
 									<ComposerModelPicker
+										cloudProviderIds={cloudProviderIds}
 										environmentId={qualifiedEnvironmentId}
 										session={session}
 										runtimeMode={appliedRuntimeMode}
@@ -2290,6 +2293,7 @@ function GoalEditorDialog({
  * opencode driver in turn translates into the prompt body's `model.variant`.
  */
 function ComposerModelPicker({
+	cloudProviderIds,
 	environmentId,
 	session,
 	runtimeMode,
@@ -2297,6 +2301,7 @@ function ComposerModelPicker({
 	onLevelChange,
 	onOpenChange,
 }: {
+	cloudProviderIds?: ReadonlyArray<ProviderId>;
 	environmentId: EnvironmentId;
 	session: Session;
 	runtimeMode: RuntimeMode;
@@ -2373,6 +2378,7 @@ function ComposerModelPicker({
 	}, [defaultId, level, onLevelChange, resolved, storageKey]);
 
 	const modelPickerProps = {
+		cloudProviderIds,
 		composer: true,
 		environmentId,
 		mode: "session" as const,

@@ -1,4 +1,7 @@
 {
+	"workspace_new_chat_access": "新建云端聊天",
+	"workspace_new_chat_access_description": "选择组织新聊天的访问权限。查看允许阅读；编辑还允许修改和与智能体交互。现有聊天不受影响。可在聊天的共享菜单中更改访问权限。",
+	"self_hosted_personal_only": "SSH 设置目前将服务器连接到个人工作区，而非此组织。请切换到个人工作区进行管理。",
 	"sharing_link_notice": "只有已拥有访问权限的人才能打开此链接。请先保存共享设置的更改。",
 	"sharing_link_copy_failed": "无法复制链接。请重试。",
 	"workspace_sharing_inherited": "默认：{{permission}}",

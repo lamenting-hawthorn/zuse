@@ -16,6 +16,7 @@ import {
 	WIRE_PROTOCOL_VERSION,
 } from "@zuse/contracts";
 import { Effect } from "effect";
+import { isCloudProjectFolder } from "../lib/cloud-project-folders.ts";
 import {
 	cloudSummaryActiveSessionId,
 	cloudSummaryForChat,
@@ -143,9 +144,10 @@ export const projectEnvironmentShell = (
 			? options.folderId
 			: options.resetOptimisticState !== true &&
 					previousWorkspace.selectedFolderId !== null &&
-					normalized.folders.some(
-						(folder) => folder.id === previousWorkspace.selectedFolderId,
-					)
+					(isCloudProjectFolder(previousWorkspace.selectedFolderId) ||
+						normalized.folders.some(
+							(folder) => folder.id === previousWorkspace.selectedFolderId,
+						))
 				? previousWorkspace.selectedFolderId
 				: (normalized.folders[0]?.id ?? null);
 
@@ -1098,14 +1100,20 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						const localRuntime = retainShell(
 							entryKey(localEntry),
 							localEntry.environmentId,
-							"connect",
+							"cache-only",
 						);
-						await activateRuntime(
-							entryKey(localEntry),
-							localRuntime,
-							localEntry.environmentId,
-							undefined,
-						);
+						// Discover the desktop in any workspace, but only activate its
+						// Personal shell while that workspace is selected.
+						if (environmentBelongsToWorkspace(localEntry.environmentId)) {
+							await activateRuntime(
+								entryKey(localEntry),
+								localRuntime,
+								localEntry.environmentId,
+								undefined,
+							);
+						} else {
+							useWorkspaceStore.setState({ loading: false, error: null });
+						}
 						set({ initialized: true, initializationError: null });
 
 						// Remote catalogs are optional. A corrupt saved profile or an

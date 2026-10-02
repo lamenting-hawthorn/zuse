@@ -1,6 +1,7 @@
 import "@zuse/i18n/english/chat";
 import type { ChatRef } from "@zuse/client-runtime/resource-ref";
 import { useMessages } from "@zuse/i18n/react";
+import { Share2 } from "lucide-react";
 import { lazy, Suspense, useState, useSyncExternalStore } from "react";
 import { useAuth } from "../hooks/use-auth.ts";
 import { useCloudChatCatalogStore } from "../lib/cloud-workspace-catalog.ts";
@@ -10,6 +11,8 @@ import {
 	subscribeRendererWorkspace,
 } from "../lib/renderer-workspace.ts";
 import { Button } from "./ui/button.tsx";
+import { Popover, PopoverPopup, PopoverTrigger } from "./ui/popover.tsx";
+import { Spinner } from "./ui/spinner.tsx";
 
 const WorkspaceSharingDialog = lazy(
 	() => import("./workspace-sharing-dialog.tsx"),
@@ -43,6 +46,7 @@ export function WorkspaceSharingButton({
 			? cloud.workspaceScope.organizationId
 			: undefined;
 	const [open, setOpen] = useState(false);
+	const [opened, setOpened] = useState(false);
 	if (
 		!auth.isSignedIn ||
 		chat === null ||
@@ -57,33 +61,57 @@ export function WorkspaceSharingButton({
 	if (organizationId !== undefined && workspace.scope.kind !== "organization")
 		return null;
 	return (
-		<>
-			<Button
-				className="h-7"
-				size="xs"
-				variant="ghost"
-				onClick={() => setOpen(true)}
+		<Popover
+			open={open}
+			onOpenChange={(value) => {
+				setOpen(value);
+				if (value) setOpened(true);
+			}}
+		>
+			<PopoverTrigger
+				render={
+					<Button
+						className="h-7 gap-2 px-2.5 text-xs [-webkit-app-region:no-drag]"
+						size="sm"
+						variant="ghost"
+					/>
+				}
 			>
+				<Share2 className="size-3" aria-hidden="true" />
 				{message("chat:workspace_sharing_button")}
-			</Button>
-			{open && (
-				<Suspense fallback={null}>
-					{organizationId !== undefined ? (
-						<CloudChatSharingDialog
-							key={`${chatRef.environmentId}:${auth.user?.id}:${workspace.epoch}`}
-							workspaceId={chatRef.environmentId}
-							organizationId={organizationId}
-							onClose={() => setOpen(false)}
-						/>
-					) : (
-						<WorkspaceSharingDialog
-							key={`${chatRef.environmentId}:${chatRef.chatId}:${auth.user?.id}`}
-							chatRef={chatRef}
-							onClose={() => setOpen(false)}
-						/>
-					)}
-				</Suspense>
+			</PopoverTrigger>
+			{opened && (
+				<PopoverPopup
+					portalProps={{ keepMounted: true }}
+					align="end"
+					sideOffset={8}
+					className="w-80 max-w-[calc(100vw-1rem)] [-webkit-app-region:no-drag]"
+				>
+					<Suspense
+						fallback={
+							<div className="flex justify-center p-4">
+								<Spinner className="size-3.5" />
+							</div>
+						}
+					>
+						{organizationId !== undefined ? (
+							<CloudChatSharingDialog
+								key={`${chatRef.environmentId}:${auth.user?.id}:${workspace.epoch}`}
+								workspaceId={chatRef.environmentId}
+								organizationId={organizationId}
+								open={open}
+								onClose={() => setOpen(false)}
+							/>
+						) : (
+							<WorkspaceSharingDialog
+								key={`${chatRef.environmentId}:${chatRef.chatId}:${auth.user?.id}`}
+								chatRef={chatRef}
+								onClose={() => setOpen(false)}
+							/>
+						)}
+					</Suspense>
+				</PopoverPopup>
 			)}
-		</>
+		</Popover>
 	);
 }

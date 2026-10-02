@@ -123,4 +123,13 @@ describe("chat-scoped right pane state", () => {
 		expect(sandboxFolderId).not.toBe(localProjectId);
 		expect(logicalRightPaneProject([project], localProjectId)).toBe(project);
 	});
+	it("uses the connected cloud project when no local project is selected", () => {
+		const cloud = Folder.make({
+			id: FolderId.make("sandbox"),
+			name: "zuse",
+			path: "/home/repos/zuse",
+			addedAt: new Date(0),
+		});
+		expect(logicalRightPaneProject([], null, cloud)).toBe(cloud);
+	});
 });

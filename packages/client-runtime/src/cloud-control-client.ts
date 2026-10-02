@@ -22,6 +22,7 @@ import {
 	CloudChatChanges,
 	CloudChatList,
 	type CloudCommandEnvelope,
+	CloudGithubInstallResult,
 	CloudGithubStatus,
 	CloudProject,
 	type CloudProjectConnectRequest,
@@ -69,12 +70,7 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 		request(ApiPaths.cloudProject(input.projectId), CloudProject, "DELETE"),
 	"cloud.github.status": () => request(ApiPaths.cloudGithub, CloudGithubStatus),
 	"cloud.github.install": () =>
-		request(
-			ApiPaths.cloudGithubInstall,
-			Schema.Struct({ url: Schema.String }),
-			"POST",
-			{},
-		),
+		request(ApiPaths.cloudGithubInstall, CloudGithubInstallResult, "POST", {}),
 	"cloud.github.disconnect": (input: { installationId: number }) =>
 		request(
 			ApiPaths.cloudGithubDisconnect(input.installationId),

@@ -218,6 +218,20 @@
 			"when": 1790640000003,
 			"tag": "0030_workspace_settings",
 			"breakpoints": true
+		},
+		{
+			"idx": 31,
+			"version": "7",
+			"when": 1790940000000,
+			"tag": "0031_cloud_auth_status",
+			"breakpoints": true
+		},
+		{
+			"idx": 32,
+			"version": "7",
+			"when": 1790940000001,
+			"tag": "0032_classify_legacy_lifecycle_usage",
+			"breakpoints": true
 		}
 	]
 }

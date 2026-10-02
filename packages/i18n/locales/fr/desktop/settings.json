@@ -1,4 +1,7 @@
 {
+	"workspace_new_chat_access": "Nouveaux chats cloud",
+	"workspace_new_chat_access_description": "Choisissez l’accès aux nouveaux chats de l’organisation. Voir autorise la lecture ; Modifier autorise aussi les changements et les interactions avec l’agent. Les chats existants restent inchangés. Modifiez leur accès dans le menu Partager du chat.",
+	"self_hosted_personal_only": "La configuration SSH connecte actuellement les serveurs à Personnel, pas à cette organisation. Passez à Personnel pour les gérer.",
 	"sharing_link_notice": "Seules les personnes ayant déjà accès peuvent ouvrir ce lien. Enregistrez d’abord les modifications du partage.",
 	"sharing_link_copy_failed": "Impossible de copier le lien. Réessayez.",
 	"workspace_sharing_inherited": "Par défaut : {{permission}}",

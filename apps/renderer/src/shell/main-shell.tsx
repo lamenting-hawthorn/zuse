@@ -1,3 +1,4 @@
+import { isCloudProjectFolder } from "../lib/cloud-project-folders.ts";
 import { SurfaceFallback } from "./surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
 
@@ -540,7 +541,8 @@ export function MainShell() {
 	// worktree" until the user opens the chat tab.
 	const refreshWorktrees = useWorktreesStore((s) => s.refresh);
 	useEffect(() => {
-		if (selectedFolderId === null) return;
+		if (selectedFolderId === null || isCloudProjectFolder(selectedFolderId))
+			return;
 		void refreshWorktrees(selectedFolderId);
 	}, [selectedFolderId, refreshWorktrees]);
 
@@ -566,9 +568,11 @@ export function MainShell() {
 		});
 	}, [selectedEnvironmentId]);
 
-	const emptyTabLabel = selectedFolder
-		? selectedFolder.name
-		: "no project selected";
+	const emptyTabLabel =
+		selectedSession?.title ||
+		selectedCloudSummary?.title ||
+		selectedFolder?.name ||
+		"no project selected";
 
 	// The empty new-chat landing reads as a clean, chrome-free surface: no top
 	// bar, no tab strip — just the centered composer. Keep the chrome whenever a
@@ -696,7 +700,7 @@ export function MainShell() {
 									<Suspense fallback={<TabsFallback />}>
 										<MainTabs
 											environmentId={selectedEnvironmentId}
-											projectId={selectedFolderId}
+											projectId={selectedSession?.projectId ?? selectedFolderId}
 											emptyLabel={emptyTabLabel}
 										/>
 									</Suspense>

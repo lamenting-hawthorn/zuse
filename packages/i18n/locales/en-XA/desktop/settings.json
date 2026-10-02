@@ -1,4 +1,7 @@
 {
+	"workspace_new_chat_access": "⟦Nëëw clôôüüd chààts⟧",
+	"workspace_new_chat_access_description": "⟦Chôôôôsëë ààccëëss fôôr nëëw ôôrgàànïïzààtïïôôn chààts. Vïïëëw pëërmïïts rëëààdïïng; ËËdïït ààlsôô pëërmïïts chààngëës àànd ààgëënt ïïntëërààctïïôôn. ËËxïïstïïng chààts ààrëë üünchààngëëd. ÜÜsëë àà chààt’s Shààrëë mëënüü tôô chààngëë ïïts ààccëëss.⟧",
+	"self_hosted_personal_only": "⟦SSH sëëtüüp cüürrëëntly côônnëëcts sëërvëërs tôô Pëërsôônààl, nôôt thïïs ôôrgàànïïzààtïïôôn. Swïïtch tôô Pëërsôônààl tôô màànààgëë thëëm.⟧",
 	"sharing_link_notice": "⟦ÔÔnly pëëôôplëë whôô ààlrëëààdy hààvëë ààccëëss cààn ôôpëën thïïs lïïnk. Shààrïïng chààngëës müüst bëë sààvëëd fïïrst.⟧",
 	"sharing_link_copy_failed": "⟦Côôüüld nôôt côôpy thëë lïïnk. Try ààgààïïn.⟧",
 	"workspace_sharing_inherited": "⟦Dëëfààüült: {{permission}}⟧",

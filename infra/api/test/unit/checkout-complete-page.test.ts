@@ -6,6 +6,15 @@ import { renderCheckoutCompletePage } from "../../src/checkout-complete-page.ts"
 const purchasedAtMs = Date.parse("2026-08-14T10:11:12.000Z");
 
 describe("checkout completion page", () => {
+	test("labels organization subscriptions with the organization name", () => {
+		const page = renderCheckoutCompletePage({
+			productName: "Zuse Cloud",
+			workspaceName: "Acme",
+			workspaceKind: "organization",
+			status: "paid",
+		});
+		expect(page).toContain('Organization</span><span class="value">Acme');
+	});
 	test("identifies the billed workspace and escapes its name", () => {
 		const page = renderCheckoutCompletePage({
 			productName: "Cloud Workspace",

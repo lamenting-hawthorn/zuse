@@ -4,6 +4,14 @@ import { workspaceAccessForPath } from "../../src/workspace-scope.ts";
 
 describe("organization configuration route permissions", () => {
 	it.each([
+		["GET", ApiPaths.cloudApiKeys],
+		["POST", ApiPaths.cloudApiKeys],
+		["DELETE", `${ApiPaths.cloudApiKeys}/key_a`],
+	])("keeps Personal-only API key management closed for organizations: %s %s", (method, path) => {
+		expect(workspaceAccessForPath(path, method)).toBeUndefined();
+	});
+
+	it.each([
 		ApiPaths.cloudProviders,
 		ApiPaths.cloudProjects,
 		ApiPaths.cloudAuth,

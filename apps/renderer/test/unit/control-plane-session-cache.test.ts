@@ -1,3 +1,4 @@
+import { CloudWorkspaceOpError } from "@zuse/contracts";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
@@ -281,6 +282,21 @@ describe("persistent display cache", () => {
 			stored.set(storageKey, JSON.stringify({ value: { connected: "bad" } }));
 		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
 		expect(await save()).toEqual({ connected: true });
+	});
+
+	it("discards memory and persisted display data when access is revoked", async () => {
+		await save();
+		await expect(
+			runCachedControlPlane(
+				key,
+				() => Effect.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
+				{ decode, refresh: true },
+			),
+		).rejects.toMatchObject({ code: "not-allowed" });
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+		clearControlPlaneSessionCache();
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+		expect(stored.size).toBe(0);
 	});
 
 	it("throttles revalidation for five minutes without expiring the display snapshot", async () => {

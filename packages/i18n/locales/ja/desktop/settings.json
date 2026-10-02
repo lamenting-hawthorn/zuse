@@ -1,4 +1,7 @@
 {
+	"workspace_new_chat_access": "新しいクラウドチャット",
+	"workspace_new_chat_access_description": "組織の新しいチャットへのアクセスを設定します。表示では閲覧、編集では変更とエージェントとの対話も可能です。既存のチャットには影響しません。各チャットの共有メニューでアクセスを変更できます。",
+	"self_hosted_personal_only": "SSH設定では現在、サーバーはこの組織ではなく個人用ワークスペースに接続されます。管理するには個人用に切り替えてください。",
 	"sharing_link_notice": "すでにアクセス権を持つ人だけがこのリンクを開けます。共有設定の変更は先に保存してください。",
 	"sharing_link_copy_failed": "リンクをコピーできませんでした。もう一度お試しください。",
 	"workspace_sharing_inherited": "既定：{{permission}}",

@@ -12,7 +12,6 @@ import {
 	PuzzleIcon,
 	ServerStack01Icon,
 	Settings01Icon,
-	Share01Icon,
 	SmartPhone01Icon,
 	TaskDone01Icon,
 	TestTubeIcon,
@@ -153,7 +152,10 @@ export function settingsNavigationFor(
 	desktop: boolean,
 	scope?: WorkspaceScope,
 ) {
-	if (scope?.kind === "organization") return ORGANIZATION_NAVIGATION;
+	if (scope?.kind === "organization")
+		return ORGANIZATION_NAVIGATION.filter(
+			(item) => desktop || item.id !== "self-hosted",
+		);
 	return SETTINGS_NAVIGATION.filter(
 		(item) =>
 			(item.section.kind === "organizations") ===
@@ -165,6 +167,7 @@ export function settingsNavigationFor(
 }
 
 export const ORGANIZATION_NAVIGATION: ReadonlyArray<SettingsNavigationItem> = [
+	...TOP_RAIL.filter((item) => item.id === "general"),
 	{
 		id: "organizations",
 		get label() {
@@ -197,14 +200,7 @@ export const ORGANIZATION_NAVIGATION: ReadonlyArray<SettingsNavigationItem> = [
 		Icon: PackageIcon,
 		section: { kind: "cloud", page: "agents" },
 	},
-	{
-		id: "sharing",
-		get label() {
-			return uiMessage("settings:workspace_sharing_defaults");
-		},
-		Icon: Share01Icon,
-		section: { kind: "cloud", page: "sharing" },
-	},
+	...TOP_RAIL.filter((item) => item.id === "defaults"),
 	{
 		id: "billing",
 		get label() {
@@ -213,6 +209,9 @@ export const ORGANIZATION_NAVIGATION: ReadonlyArray<SettingsNavigationItem> = [
 		Icon: DocumentAttachmentIcon,
 		section: { kind: "cloud", page: "billing" },
 	},
+	...TOP_RAIL.filter((item) =>
+		["browser", "shortcuts", "self-hosted", "diagnostics"].includes(item.id),
+	),
 ];
 
 export const SETTINGS_NAVIGATION: ReadonlyArray<SettingsNavigationItem> =

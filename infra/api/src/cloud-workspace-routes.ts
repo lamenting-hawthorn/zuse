@@ -75,10 +75,13 @@ import {
 import type { CloudBillingStore } from "./cloud-billing-store.ts";
 import { hasUsableCloudWorkspaceEntitlement } from "./cloud-entitlement.ts";
 import {
-	completeGithubInstallation,
+	githubAuthorizationCallback,
+	githubAuthorizationUrl,
 	githubInstallationCredentialForRepository,
 	githubInstallationGrants,
+	githubWebhook,
 	makeGithubInstallUrl,
+	refreshGithubConnections,
 } from "./cloud-github-app.ts";
 import {
 	attachCloudMailboxBillingDirective,
@@ -152,10 +155,7 @@ import {
 	serviceUnavailable,
 	unauthorized,
 } from "./errors.ts";
-import {
-	githubCallbackPageHeaders,
-	renderGithubConnectedPage,
-} from "./github-callback-page.ts";
+import { githubCallbackPageHeaders } from "./github-callback-page.ts";
 import { decodeBody, json } from "./http.ts";
 import { MachineControlConfiguration } from "./machine-config.ts";
 import { MachineStore } from "./machine-store.ts";
@@ -213,16 +213,13 @@ const escapeHtml = (value: string): string =>
 const githubCallbackPage = (input: {
 	readonly title: string;
 	readonly message: string;
-	readonly success: boolean;
 }) =>
 	// These values currently originate from fixed copy and GitHub login names,
 	// but escaping here keeps this public callback safe if its copy evolves.
 	new Response(
-		input.success
-			? renderGithubConnectedPage(input.message)
-			: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(input.title)}</title><body style="margin:0;background:#111;color:#eee;font:14px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:420px;padding:24px"><h1 style="font-size:18px">${escapeHtml(input.title)}</h1><p style="color:#aaa;line-height:1.5">${escapeHtml(input.message)}</p></main></body></html>`,
+		`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(input.title)}</title><body style="margin:0;background:#111;color:#eee;font:14px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:420px;padding:24px"><h1 style="font-size:18px">${escapeHtml(input.title)}</h1><p style="color:#aaa;line-height:1.5">${escapeHtml(input.message)}</p></main></body></html>`,
 		{
-			status: input.success ? 200 : 400,
+			status: 400,
 			headers: githubCallbackPageHeaders,
 		},
 	);
@@ -862,6 +859,16 @@ export const currentCloudRuntimeSummary = (
 	cloudWorkspaceRuntimeGeneration(workspace)
 		? runtimeSummary
 		: null;
+
+const workspaceRuntimeSupportsScope = (
+	workspace: CloudWorkspaceRecord,
+): boolean =>
+	workspaceScopeForOwner(workspace.accountId).kind !== "organization" ||
+	runtimeBootstrapReceiptFromConfig(
+		workspace.requestConfig,
+	)?.capabilities?.includes(
+		CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
+	) === true;
 
 const workspaceRuntimeStorageUnavailable = (
 	workspace: CloudWorkspaceRecord,
@@ -1580,43 +1587,28 @@ export const routeCloudWorkspaceRequest = (
 		const path = url.pathname;
 		const method = request.method.toUpperCase();
 		if (!path.startsWith("/v1/cloud/")) return null;
-		if (method === "GET" && path === "/v1/cloud/github/callback") {
-			const state = url.searchParams.get("state");
-			const installationId = Number(url.searchParams.get("installation_id"));
-			if (
-				state === null ||
-				!Number.isSafeInteger(installationId) ||
-				installationId <= 0
-			)
-				return githubCallbackPage({
-					title: "Installation not linked",
-					message:
-						"The GitHub App was installed, but this installation was not started from Zuse. Return to Cloud Workspace settings and choose Install GitHub App so Zuse can link it securely.",
-					success: false,
-				});
-			return yield* completeGithubInstallation(state, installationId).pipe(
+		if (method === "POST" && path === ApiPaths.cloudGithubWebhook)
+			return yield* githubWebhook(request);
+		if (
+			(method === "GET" || method === "POST") &&
+			path === "/v1/cloud/github/callback"
+		) {
+			return yield* githubAuthorizationCallback(request).pipe(
 				Effect.tapError((error) =>
 					Effect.sync(() =>
 						console.warn("[cloud-github] installation callback failed", {
 							code: error.code,
-							installationId,
 						}),
 					),
 				),
-				Effect.map((accountLogin) =>
-					githubCallbackPage({
-						title: "GitHub connected",
-						message: accountLogin,
-						success: true,
-					}),
-				),
-				Effect.catch(() =>
+				Effect.catch((error) =>
 					Effect.succeed(
 						githubCallbackPage({
 							title: "GitHub could not be connected",
 							message:
-								"This install link is invalid or expired. Return to Cloud Workspace settings and start the GitHub App installation again.",
-							success: false,
+								error.code === "github_app_oauth_not_configured"
+									? "GitHub authorization is not configured on this deployment. Ask the operator to configure the GitHub App client secret and callback URL."
+									: "Return to Zuse and try the GitHub button again. The link may have expired or your workspace access changed.",
 						}),
 					),
 				),
@@ -2760,13 +2752,7 @@ export const routeCloudWorkspaceRequest = (
 				client &&
 				workspaceScopeForOwner(workspace.accountId).kind === "organization"
 			) {
-				if (
-					!runtimeBootstrapReceiptFromConfig(
-						workspace.requestConfig,
-					)?.capabilities?.includes(
-						CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
-					)
-				)
+				if (!workspaceRuntimeSupportsScope(workspace))
 					return yield* conflict("workspace_runtime_update_required");
 				yield* cloudWorkspaceActorPermission(workspace, client.actorId);
 			}
@@ -3086,7 +3072,7 @@ export const routeCloudWorkspaceRequest = (
 			}
 		}
 		if (method === "GET" && path === "/v1/cloud/github") {
-			const installations = yield* store.listGithubInstallations(ownerId);
+			const installations = yield* refreshGithubConnections(ownerId);
 			const grants = yield* githubInstallationGrants(ownerId).pipe(
 				Effect.orElseSucceed(() => []),
 			);
@@ -3115,7 +3101,16 @@ export const routeCloudWorkspaceRequest = (
 			});
 		}
 		if (method === "POST" && path === "/v1/cloud/github/install") {
-			return json({ url: yield* makeGithubInstallUrl(ownerId) });
+			const installUrl = yield* makeGithubInstallUrl(
+				ownerId,
+				access.actor.accountId,
+			);
+			return json({
+				url: githubAuthorizationUrl(
+					installUrl,
+					apiConfiguration.publicApiOrigin ?? apiConfiguration.apiIssuer,
+				),
+			});
 		}
 		const githubDisconnectMatch =
 			/^\/v1\/cloud\/github\/installations\/(\d+)$/u.exec(path);
@@ -3704,6 +3699,9 @@ export const routeCloudWorkspaceRequest = (
 			const { permission } = yield* cloudWorkspacePermission(access, workspace);
 			if (workspace.state === "failed" || workspace.state === "deleted")
 				return yield* Effect.fail(conflict("cloud_workspace_unavailable"));
+			// Reject before the WebSocket handshake, where browsers hide HTTP errors.
+			if (!workspaceRuntimeSupportsScope(workspace))
+				return yield* conflict("workspace_runtime_update_required");
 			yield* recordWorkspaceActivity(workspace);
 			const api = yield* ApiConfiguration;
 			const expiresAt = nowMs + WORKSPACE_CLIENT_TICKET_TTL_MS;
