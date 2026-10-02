@@ -30,12 +30,14 @@ export interface ManagedTunnelConfig {
 }
 
 export interface ApiConfig {
+	/** Staging-only rollout gate. Keep off until all resource paths are scoped. */
+	readonly organizationWorkspacesEnabled: boolean;
 	readonly apiIssuer: string;
 	/** Public origin for DPoP request binding, independent of credential issuer. */
 	readonly publicApiOrigin?: string;
 	readonly workosJwksUrl: string;
 	readonly workosIssuer: string;
-	/** Server-side key used only for permanent identity deletion. */
+	/** Server-side key for organization management and permanent identity deletion. */
 	readonly workosApiKey?: Redacted.Redacted<string>;
 	readonly mintPrivateKey: Redacted.Redacted<string>;
 	readonly mintPublicKey: string;
@@ -99,6 +101,7 @@ export class ApiConfiguration extends Context.Service<
 >()("@zuse/api/ApiConfiguration") {}
 
 const DEFAULTS = {
+	organizationWorkspacesEnabled: false,
 	challengeTtlMs: 5 * 60 * 1000,
 	connectTokenTtlMs: 60 * 1000,
 	accessTokenTtlMs: 30 * 60 * 1000,
