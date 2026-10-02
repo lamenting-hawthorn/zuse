@@ -80,7 +80,13 @@ describe("bundled provider SDK translation", () => {
 			},
 			current,
 		);
-		expect(statusEvents.at(-1)).toEqual({ _tag: "Status", status: "idle" });
+		expect(statusEvents).toEqual([
+			expect.objectContaining({
+				_tag: "Thinking",
+				text: "Checking",
+				checkpoint: { revision: 2, final: true },
+			}),
+		]);
 	});
 
 	it("translates usage", () => {

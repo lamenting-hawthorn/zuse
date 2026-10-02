@@ -303,18 +303,14 @@ export const translateCursorSdkMessage = (
 		case "status": {
 			const terminal =
 				message.status !== "CREATING" && message.status !== "RUNNING";
+			// The SDK result owns completion. Forwarding a terminal status here
+			// settles the turn before run.wait() can publish its error or cancellation
+			// reason, and discards any remaining usage events from the stream.
+			if (terminal) return flushCursorSdkMessages(state);
 			return [
-				...(terminal ? flushCursorSdkMessages(state) : []),
 				{
 					_tag: "Status",
-					status:
-						message.status === "CREATING"
-							? "starting"
-							: message.status === "RUNNING"
-								? "running"
-								: message.status === "ERROR"
-									? "error"
-									: "idle",
+					status: message.status === "CREATING" ? "starting" : "running",
 				},
 			];
 		}

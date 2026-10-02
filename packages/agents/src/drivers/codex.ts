@@ -169,6 +169,7 @@ export const codexApprovalPolicy = (
 	switch (runtimeMode) {
 		case "approval-required":
 			return "untrusted";
+		case "auto":
 		case "auto-accept-edits":
 		case "auto-accept-edits-and-bash":
 			return "on-request";
@@ -176,6 +177,12 @@ export const codexApprovalPolicy = (
 			return "never";
 	}
 };
+
+export const codexApprovalsReviewer = (
+	runtimeMode: RuntimeMode,
+	permissionMode: PermissionMode,
+): "user" | "auto_review" =>
+	runtimeMode === "auto" && permissionMode !== "plan" ? "auto_review" : "user";
 
 const toSandboxMode = (
 	runtimeMode: RuntimeMode,
@@ -185,6 +192,7 @@ const toSandboxMode = (
 	switch (runtimeMode) {
 		case "approval-required":
 			return "read-only";
+		case "auto":
 		case "auto-accept-edits":
 		case "auto-accept-edits-and-bash":
 			return "workspace-write";
@@ -247,6 +255,7 @@ export const codexSandboxPolicy = (
 	switch (runtimeMode) {
 		case "approval-required":
 			return { type: "readOnly", networkAccess: false };
+		case "auto":
 		case "auto-accept-edits":
 		case "auto-accept-edits-and-bash":
 			return {
@@ -1720,6 +1729,7 @@ export const startCodexSession = (
 			model: input.model ?? null,
 			cwd,
 			approvalPolicy: codexApprovalPolicy(getRuntimeMode(), currentMode),
+			approvalsReviewer: codexApprovalsReviewer(getRuntimeMode(), currentMode),
 			sandbox: toSandboxMode(getRuntimeMode(), currentMode),
 			serviceName: "zuse",
 			developerInstructions: input.workspaceInstructions ?? null,
@@ -1815,24 +1825,36 @@ export const startCodexSession = (
 				}),
 		});
 
-		const resolveImageInputs = async (
+		const resolveAttachmentInputs = async (
 			refs: ReadonlyArray<AttachmentRef>,
 		): Promise<ReadonlyArray<UserInput>> => {
-			const resolved: Array<UserInput | null> = await Promise.all(
-				refs.map(async (ref) => {
-					if (ref.id.startsWith("pending-")) return null;
+			return Promise.all(
+				refs.map(async (ref): Promise<UserInput> => {
+					if (ref.id.startsWith("pending-")) {
+						throw new Error(
+							`Attachment is still uploading: ${ref.originalName}`,
+						);
+					}
 					const normalizedMime =
 						ref.mimeType.toLowerCase() === "image/jpg"
 							? "image/jpeg"
 							: ref.mimeType.toLowerCase();
-					if (!SUPPORTED_CODEX_IMAGE_MIME.has(normalizedMime)) return null;
 					const meta = await Effect.runPromise(attachments.readPath(ref.id));
-					return meta === null
-						? null
-						: ({ type: "localImage", path: meta.path } as const);
+					if (meta === null) {
+						throw new Error(
+							`Attachment is unavailable: ${ref.originalName}. Please attach it again.`,
+						);
+					}
+					if (SUPPORTED_CODEX_IMAGE_MIME.has(normalizedMime)) {
+						return { type: "localImage", path: meta.path } as const;
+					}
+					return {
+						type: "text",
+						text: `The user attached a file. Read it before proceeding: ${JSON.stringify(meta.path)}`,
+						text_elements: [],
+					} as const;
 				}),
 			);
-			return resolved.filter((item): item is UserInput => item !== null);
 		};
 
 		const findSkillPath = async (name: string): Promise<string | null> => {
@@ -1876,7 +1898,7 @@ export const startCodexSession = (
 			if (cleanText.length > 0) {
 				out.push({ type: "text", text: cleanText, text_elements: [] });
 			}
-			out.push(...(await resolveImageInputs(attachmentRefs)));
+			out.push(...(await resolveAttachmentInputs(attachmentRefs)));
 			return out;
 		};
 
@@ -1933,6 +1955,10 @@ export const startCodexSession = (
 				],
 				cwd,
 				approvalPolicy: codexApprovalPolicy(getRuntimeMode(), currentMode),
+				approvalsReviewer: codexApprovalsReviewer(
+					getRuntimeMode(),
+					currentMode,
+				),
 				sandboxPolicy: codexSandboxPolicy(getRuntimeMode(), currentMode, cwd),
 				model: input.model ?? null,
 				...(effort !== null ? { effort } : {}),
@@ -2078,13 +2104,9 @@ export const startCodexSession = (
 					say(`Codex status log:\n${statusLog.path}`);
 					return true;
 				case "permissions":
-					say(
-						"Codex approval policy is managed by this app. Current embedded policy: never.",
-					);
-					return true;
 				case "approval":
 					say(
-						"Codex embedded approval policy is currently fixed at never; permission prompts are bridged through this app when app-server requests them.",
+						`Codex access: ${getRuntimeMode()}. Approval policy: ${codexApprovalPolicy(getRuntimeMode(), currentMode)}. Reviewer: ${codexApprovalsReviewer(getRuntimeMode(), currentMode)}.`,
 					);
 					return true;
 				case "sandbox":
