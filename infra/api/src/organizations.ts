@@ -126,7 +126,7 @@ const requestWorkos = <A, I>(
 		if (apiKey === undefined)
 			return yield* serviceUnavailable("organizations_not_configured");
 		const response = yield* Effect.tryPromise({
-			try: () =>
+			try: (signal) =>
 				fetch(`https://api.workos.com${path}`, {
 					method,
 					headers: {
@@ -134,7 +134,7 @@ const requestWorkos = <A, I>(
 						"content-type": "application/json",
 					},
 					body: body === undefined ? undefined : JSON.stringify(body),
-					signal: AbortSignal.timeout(15_000),
+					signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
 				}),
 			catch: () => serviceUnavailable("organizations_unavailable"),
 		});
