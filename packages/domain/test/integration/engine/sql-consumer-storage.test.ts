@@ -63,7 +63,7 @@ describe("SqlConsumerStorage", () => {
 		});
 	});
 
-	test("replays legacy auto mode with approval required without rewriting history", async () => {
+	test("preserves automatic review mode when replaying stored events", async () => {
 		const result = await run(
 			Effect.gen(function* () {
 				yield* createDomainTestSchema();
@@ -95,7 +95,7 @@ describe("SqlConsumerStorage", () => {
 				events.map(({ event }) =>
 					"runtimeMode" in event ? event.runtimeMode : null,
 				),
-			).toEqual(["approval-required", "approval-required"]);
+			).toEqual(["auto", "auto"]);
 		}
 		expect(result.stored).toEqual([{ mode: "auto" }, { mode: "auto" }]);
 	});
