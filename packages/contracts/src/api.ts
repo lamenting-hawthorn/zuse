@@ -28,6 +28,13 @@ import { EnvironmentId } from "./ids.ts";
 
 /** Paths, centralised so client + api never drift. */
 export const ApiPaths = {
+	organizations: "/v1/organizations",
+	organizationAuthorize: "/v1/organizations/authorize",
+	organizationDetails: "/v1/organizations/details",
+	organizationInvite: "/v1/organizations/invite",
+	organizationRevokeInvite: "/v1/organizations/revoke-invite",
+	organizationSetRole: "/v1/organizations/set-role",
+	organizationRemoveMember: "/v1/organizations/remove-member",
 	authToken: "/v1/auth/token",
 	organizations: "/v1/organizations",
 	organizationAuthorize: "/v1/organizations/authorize",
