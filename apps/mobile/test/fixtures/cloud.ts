@@ -26,6 +26,7 @@ export const workspace = (
 	});
 export const summary = (row = workspace()) =>
 	summaryFromLaunch({
+		workspaceScope: { kind: "personal" },
 		workspace: row,
 		repositoryIdentity: "github.com/example/repo",
 		repositoryDisplayName: "example/repo",
