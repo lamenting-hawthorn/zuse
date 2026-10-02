@@ -3,6 +3,7 @@ import { cloudFailurePresentation } from "../../src/cloud-failure-presentation.t
 import {
 	cloudControlError,
 	controlApiErrorCode,
+	organizationControlError,
 } from "../../src/control-api-error.ts";
 
 it("surfaces runtime incompatibility as an update requirement", () => {
@@ -16,6 +17,12 @@ it("surfaces runtime incompatibility as an update requirement", () => {
 
 it("preserves ordinary conflicts", () => {
 	expect(controlApiErrorCode(409, "conflict")).toBe("conflict");
+});
+
+it("presents organization permission denials as access errors, not outages", () => {
+	expect(
+		organizationControlError(controlApiErrorCode(403, "forbidden")).code,
+	).toBe("not-allowed");
 });
 
 it("does not mistake a permission denial for an expired login", () => {
