@@ -44,6 +44,9 @@ import { ExternalThreadServiceLive } from "./external-thread/layers/external-thr
 import { FsServiceLive } from "./fs/layers/fs-service.ts";
 import { RepositoryLocatorLive } from "./git/repository-locator-live.ts";
 import { HandlersLayer } from "./handlers.ts";
+import { RuntimeModelConnections } from "./harness/account-vault.ts";
+import { modelConnectionsLayer } from "./harness/connections-layer.ts";
+import { HarnessProviderLive } from "./harness/provider.ts";
 import { LanAuthServiceLive } from "./lan-auth/layers/lan-auth-service.ts";
 import type { LanAuthPolicy } from "./lan-auth/policy.ts";
 import {
@@ -453,7 +456,37 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	// ModelCatalogService merges the curated catalog (bundled / disk / zuse.sh)
 	// with live provider inventories. ProviderService resolves the model
 	// descriptor from it at session start; handlers stream it to the picker.
+	const RuntimeModelConnectionsLayer = Layer.succeed(RuntimeModelConnections, {
+		current: null,
+	});
+	const ChatGPTLayer = modelConnectionsLayer(
+		deps.telemetryIdentity?.kind === "desktop" &&
+			process.platform !== "win32" &&
+			deps.machineRuntimeRole !== "cloud-environment",
+		deps.cloudWorkspaceRuntime !== undefined,
+	).pipe(
+		Layer.provide(CredentialsLayer),
+		Layer.provide(AppPathsLayer),
+		Layer.provide(MigratedSqlite),
+		Layer.provide(AuthLayer),
+		Layer.provide(EnrolledLanAuthLayer),
+		Layer.provide(RuntimeModelConnectionsLayer),
+	);
+
+	const SkillDiscoveryLayer = SkillDiscoveryServiceLive.pipe(
+		Layer.provide(NodeServices.layer),
+	);
+	const HarnessProviderLayer = HarnessProviderLive.pipe(
+		Layer.provide(SkillDiscoveryLayer),
+		Layer.provide(ChatGPTLayer),
+		Layer.provide(AppPathsLayer),
+		Layer.provide(MigratedSqlite),
+		Layer.provide(ConfigStoreLayer),
+		Layer.provide(PermissionLayer),
+		Layer.provide(AttachmentLayer),
+	);
 	const ModelCatalogLayer = ModelCatalogServiceLive.pipe(
+		Layer.provide(HarnessProviderLayer),
 		Layer.provide(AppPathsLayer),
 		Layer.provide(CredentialsLayer),
 		Layer.provide(ConfigStoreLayer),
@@ -461,6 +494,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	);
 
 	const ProviderLayer = ProviderServiceLive.pipe(
+		Layer.provide(HarnessProviderLayer),
 		Layer.provide(ModelCatalogLayer),
 		Layer.provide(CredentialsLayer),
 		Layer.provide(RuntimeProviderCredentialsLayer),
@@ -514,6 +548,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const ApiActivityPublisherLayer = ApiActivityPublisherLive.pipe(
 		Layer.provide(EnrolledLanAuthLayer),
 	);
+
 	const LinearLayer = LinearServiceLive.pipe(
 		Layer.provide(CredentialsLayer),
 		Layer.provide(AuthShellLayer),
@@ -565,6 +600,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const CloudWorkspaceRuntimeLayer = makeCloudWorkspaceRuntimeLayer(
 		deps.cloudWorkspaceRuntime,
 	).pipe(
+		Layer.provide(RuntimeModelConnectionsLayer),
 		Layer.provide(CredentialsLayer),
 		Layer.provide(AttachmentLayer),
 		Layer.provide(RuntimeProviderCredentialsLayer),
@@ -596,9 +632,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	// composer's slash popover. Discovery walks disk; the bridge caches per
 	// (provider, projectCwd) and re-emits on watcher fire so editing a
 	// SKILL.md updates the popover within ~2 s.
-	const SkillDiscoveryLayer = SkillDiscoveryServiceLive.pipe(
-		Layer.provide(NodeServices.layer),
-	);
+
 	const SkillBridgeLayer = SkillBridgeLive.pipe(
 		Layer.provide(SkillDiscoveryLayer),
 		Layer.provide(ConversationServicesLayer),
@@ -705,6 +739,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		ApiLinkLayer,
 		ExternalThreadLayer,
 		LinearLayer,
+		ChatGPTLayer,
 		MachineControlLayer,
 		MachineHostLayer,
 		MachineResourceServiceLive,

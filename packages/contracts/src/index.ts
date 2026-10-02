@@ -35,6 +35,7 @@ export type {
 export * from "./machines.ts";
 export * from "./mcp.ts";
 export * from "./model-catalog/index.ts";
+export * from "./model-connections.ts";
 export * from "./naming.ts";
 export * from "./network-access.ts";
 export * from "./pairing.ts";

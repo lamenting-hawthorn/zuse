@@ -694,5 +694,6 @@
 	"fork_menu_new_tab_on_this_machine": "Open a new tab on this machine with the conversation through this message.",
 	"fork_menu_fork_in_new_machine": "Fork in new machine",
 	"fork_menu_new_machine_description": "Clone this machine and continue the conversation in a separate chat.",
-	"fork_menu_forking_in_new_machine": "Forking in new machine"
+	"fork_menu_forking_in_new_machine": "Forking in new machine",
+	"message_row_compaction_failed": "Compaction stopped"
 }

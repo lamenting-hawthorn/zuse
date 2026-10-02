@@ -710,13 +710,19 @@ const ContextCompactionRow = ({
 			? `${before} to ${after}`
 			: content.status === "in_progress"
 				? "Compacting context"
-				: "Context compacted";
+				: content.status === "failed"
+					? "Compaction stopped"
+					: "Context compacted";
 
 	return (
 		<ExpandableEventRow
 			icon="hourglass"
 			title={
-				content.status === "in_progress" ? "Compacting context" : "Compacted"
+				content.status === "in_progress"
+					? "Compacting context"
+					: content.status === "failed"
+						? "Compaction stopped"
+						: "Compacted"
 			}
 			detail={detail}
 			badge={formatDuration(content.durationMs)}
@@ -724,7 +730,11 @@ const ContextCompactionRow = ({
 			<Text className="font-sans text-sm leading-5 text-muted-foreground">
 				{before !== null && after !== null
 					? `Context changed from ${before} to ${after}.`
-					: "The conversation context was compacted for the next turn."}
+					: content.status === "failed"
+						? "Compaction stopped; the conversation history is preserved."
+						: content.status === "in_progress"
+							? "Reducing conversation context for the next turn."
+							: "The conversation context was compacted for the next turn."}
 			</Text>
 		</ExpandableEventRow>
 	);

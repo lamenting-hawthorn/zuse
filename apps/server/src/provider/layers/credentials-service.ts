@@ -1,4 +1,3 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import {
 	chmod,
 	mkdir,
@@ -8,11 +7,15 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
-
 import type { ProviderId } from "@zuse/contracts";
 import { Effect, Layer, Schema } from "effect";
-
 import { AppPaths } from "../../app-paths.ts";
+import { acquireProcessLock } from "../../cache/process-lock.ts";
+import {
+	openStorage,
+	type SecureStorageEnvelope,
+	sealStorage,
+} from "../../secure-storage-envelope.ts";
 import { secureStorageMasterKey } from "../../secure-storage-master-key.ts";
 import { CredentialsError } from "../errors.ts";
 import {
@@ -36,12 +39,7 @@ interface VaultContents {
 	readonly mcpOauth: Record<string, string>;
 }
 
-interface VaultEnvelope {
-	readonly version: 1;
-	readonly iv: string;
-	readonly ciphertext: string;
-	readonly tag: string;
-}
+type VaultEnvelope = SecureStorageEnvelope;
 
 const emptyVault = (): VaultContents => ({
 	version: 2,
@@ -153,36 +151,10 @@ const decodeEnvelope = (raw: string): VaultEnvelope => {
 	return value as VaultEnvelope;
 };
 
-const encryptVault = (contents: VaultContents, key: Buffer): VaultEnvelope => {
-	const iv = randomBytes(12);
-	const cipher = createCipheriv("aes-256-gcm", key, iv);
-	cipher.setAAD(VAULT_AAD);
-	const ciphertext = Buffer.concat([
-		cipher.update(JSON.stringify(contents), "utf8"),
-		cipher.final(),
-	]);
-	return {
-		version: 1,
-		iv: iv.toString("base64url"),
-		ciphertext: ciphertext.toString("base64url"),
-		tag: cipher.getAuthTag().toString("base64url"),
-	};
-};
-
-const decryptVault = (envelope: VaultEnvelope, key: Buffer): VaultContents => {
-	const decipher = createDecipheriv(
-		"aes-256-gcm",
-		key,
-		Buffer.from(envelope.iv, "base64url"),
-	);
-	decipher.setAAD(VAULT_AAD);
-	decipher.setAuthTag(Buffer.from(envelope.tag, "base64url"));
-	const plaintext = Buffer.concat([
-		decipher.update(Buffer.from(envelope.ciphertext, "base64url")),
-		decipher.final(),
-	]).toString("utf8");
-	return parseVaultContents(JSON.parse(plaintext) as unknown);
-};
+const encryptVault = (contents: VaultContents, key: Buffer): VaultEnvelope =>
+	sealStorage(JSON.stringify(contents), key, VAULT_AAD);
+const decryptVault = (envelope: VaultEnvelope, key: Buffer): VaultContents =>
+	parseVaultContents(JSON.parse(openStorage(envelope, key, VAULT_AAD)));
 
 export const readBrowserCredentialFromVault = async (
 	userData: string,
@@ -219,11 +191,9 @@ export const CredentialsServiceLive = Layer.effect(
 	Effect.gen(function* () {
 		const { userData } = yield* AppPaths;
 		const vaultPath = join(userData, VAULT_FILENAME);
-		let cachedVault: VaultContents | null = null;
 		let writeTail = Promise.resolve();
 
 		const load = async (): Promise<VaultContents> => {
-			if (cachedVault !== null) return cachedVault;
 			let raw: string;
 			try {
 				raw = await readFile(vaultPath, "utf8");
@@ -233,14 +203,12 @@ export const CredentialsServiceLive = Layer.effect(
 					cause !== null &&
 					(cause as { code?: unknown }).code === "ENOENT"
 				) {
-					cachedVault = emptyVault();
-					return cachedVault;
+					return emptyVault();
 				}
 				throw cause;
 			}
 			const key = await secureStorageMasterKey(false);
-			cachedVault = decryptVault(decodeEnvelope(raw), key);
-			return cachedVault;
+			return decryptVault(decodeEnvelope(raw), key);
 		};
 
 		const persist = async (contents: VaultContents): Promise<void> => {
@@ -254,7 +222,6 @@ export const CredentialsServiceLive = Layer.effect(
 				await chmod(tmp, 0o600);
 				await rename(tmp, vaultPath);
 				await chmod(vaultPath, 0o600);
-				cachedVault = contents;
 			} finally {
 				await rm(tmp, { force: true }).catch(() => {});
 			}
@@ -274,8 +241,16 @@ export const CredentialsServiceLive = Layer.effect(
 			Effect.tryPromise({
 				try: async () => {
 					const operation = writeTail.then(async () => {
-						const current = await load();
-						await persist(update(current));
+						await mkdir(userData, { recursive: true, mode: 0o700 });
+						const lock = await Effect.runPromise(
+							acquireProcessLock(`${vaultPath}.lock.sqlite`),
+						);
+						try {
+							const current = await load();
+							await persist(update(current));
+						} finally {
+							lock.close();
+						}
 					});
 					writeTail = operation.catch(() => {});
 					await operation;

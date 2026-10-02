@@ -18,6 +18,7 @@ export const ProviderId = Schema.Literals([
 	"opencode2",
 	"kiro",
 	"pi",
+	"zuse",
 ]);
 export type ProviderId = typeof ProviderId.Type;
 
@@ -552,7 +553,7 @@ const ContextCompactionEvent = Schema.TaggedStruct("ContextCompaction", {
 	durationMs: Schema.Number,
 	beforeTokens: Schema.NullOr(Schema.Number),
 	afterTokens: Schema.NullOr(Schema.Number),
-	status: Schema.Literals(["in_progress", "completed"]),
+	status: Schema.Literals(["in_progress", "completed", "failed"]),
 });
 
 const UsageLimitEvent = Schema.TaggedStruct("UsageLimit", {
@@ -614,6 +615,7 @@ const SessionCursorEvent = Schema.TaggedStruct("SessionCursor", {
 		"opencode2-session-id",
 		"kiro-session-id",
 		"pi-session-file",
+		"zuse-execution-id",
 	]),
 });
 

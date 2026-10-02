@@ -229,6 +229,14 @@ import {
 } from "./mcp.ts";
 import { ModelCatalogRpc, ModelCatalogStreamRpc } from "./model-catalog/rpc.ts";
 import {
+	ModelConnectionAcknowledgePlanRpc,
+	ModelConnectionDisconnectRpc,
+	ModelConnectionPreferredRpc,
+	ModelConnectionRenameRpc,
+	ModelConnectionsRpc,
+	ModelConnectRpc,
+} from "./model-connections.ts";
+import {
 	PairingListNearbyRequestsRpc,
 	PairingListTokensRpc,
 	PairingResolveNearbyRequestRpc,
@@ -373,6 +381,12 @@ import {
  * Add new RPCs by importing them here and including them in the group.
  */
 export const MemoizeRpcs = RpcGroup.make(
+	ModelConnectionsRpc,
+	ModelConnectRpc,
+	ModelConnectionRenameRpc,
+	ModelConnectionPreferredRpc,
+	ModelConnectionDisconnectRpc,
+	ModelConnectionAcknowledgePlanRpc,
 	DeviceBridgeControlRpc,
 	CloudDeviceBridgeRpc,
 	PingRpc,

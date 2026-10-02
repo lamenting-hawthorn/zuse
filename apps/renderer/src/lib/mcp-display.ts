@@ -9,6 +9,7 @@ export const MCP_PROVIDER_LABEL: Record<ProviderId, string> = {
 	gemini: "Gemini",
 	kiro: "Kiro",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 	cursor: "Cursor",
 	opencode: "OpenCode",
 	opencode2: "OpenCode 2",

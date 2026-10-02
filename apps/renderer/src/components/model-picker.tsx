@@ -60,6 +60,7 @@ const PROVIDER_CHIP_LABEL: Record<ProviderId, string> = {
 	opencode2: "OpenCode 2",
 	kiro: "Kiro",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 };
 
 interface ModelPickerEntry {

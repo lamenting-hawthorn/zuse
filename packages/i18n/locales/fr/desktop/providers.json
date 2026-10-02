@@ -130,5 +130,6 @@
 	"pi_setup_hint": "Pi gère l’authentification et les autorisations des outils. Lancez <part0>pi</part0> dans un terminal et utilisez <part1>/login</part1> pour vous connecter.",
 	"pi_binary_path": "Chemin de l’exécutable Pi",
 	"pi_binary_placeholder": "Rechercher pi dans PATH",
-	"pi_binary_help": "Indiquez un chemin absolu vers l’exécutable ou laissez ce champ vide pour rechercher dans PATH."
+	"pi_binary_help": "Indiquez un chemin absolu vers l’exécutable ou laissez ce champ vide pour rechercher dans PATH.",
+	"provider_row_configure": "Configurer {{label}}"
 }

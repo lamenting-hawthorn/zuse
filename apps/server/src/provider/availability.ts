@@ -25,7 +25,7 @@ import { PROVIDER_CLI_REGISTRY } from "./provider-cli-registry.ts";
 export { SUPPORTED_PROVIDER_CLIS } from "./provider-cli-registry.ts";
 
 interface ProviderProbe {
-	readonly providerId: Exclude<ProviderId, "cursor">;
+	readonly providerId: Exclude<ProviderId, "cursor" | "zuse">;
 	readonly displayName: string;
 	readonly cliBinary: string;
 	/**
@@ -211,7 +211,7 @@ export const selectCliPathCandidate = (
 	candidates: ReadonlyArray<string>,
 ): string | null => {
 	if (candidates.length === 0) return null;
-	if (cliBinary !== "codex") return candidates[0]!;
+	if (cliBinary !== "codex") return candidates[0] ?? null;
 
 	// Some environments can prepend a managed Codex shim to PATH for internals.
 	// Provider settings should report the user's real Codex install, not that
@@ -409,11 +409,11 @@ export const resolveCodexCapabilities = (
 // about the major.minor.patch baseline.
 export const parseCliVersion = (raw: string): CliVersion | null => {
 	const match = raw.match(/(\d+)\.(\d+)\.(\d+)/);
-	if (match === null) return null;
+	if (match === null || !match[1] || !match[2] || !match[3]) return null;
 	return {
-		major: Number.parseInt(match[1]!, 10),
-		minor: Number.parseInt(match[2]!, 10),
-		patch: Number.parseInt(match[3]!, 10),
+		major: Number.parseInt(match[1], 10),
+		minor: Number.parseInt(match[2], 10),
+		patch: Number.parseInt(match[3], 10),
 		raw: raw.trim(),
 	};
 };
@@ -602,7 +602,7 @@ export const buildUpdateCommand = (
 
 	if (
 		probe.nativeUpdate !== null &&
-		norms.some((p) => probe.nativeUpdate!.matches(p))
+		norms.some((p) => probe.nativeUpdate?.matches(p))
 	) {
 		return probe.nativeUpdate.command;
 	}
@@ -1009,7 +1009,7 @@ const probeOpencodeAccount: Effect.Effect<
 });
 
 const probeAccount = (
-	providerId: Exclude<ProviderId, "cursor">,
+	providerId: Exclude<ProviderId, "cursor" | "zuse">,
 	cliPath: string,
 ): Effect.Effect<
 	AccountInfo,

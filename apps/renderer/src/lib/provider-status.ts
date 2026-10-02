@@ -88,6 +88,7 @@ export const PROVIDER_DISPLAY: Record<ProviderId, string> = {
 	opencode2: "OpenCode 2",
 	kiro: "Kiro CLI",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 };
 
 /**

@@ -68,6 +68,7 @@ const PROVIDER_LABEL: Record<ProviderId, string> = {
 	gemini: "Gemini",
 	kiro: "Kiro",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 	opencode: "OpenCode",
 	opencode2: "OpenCode 2",
 };

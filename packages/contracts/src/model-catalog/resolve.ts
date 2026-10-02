@@ -285,7 +285,7 @@ const resolveProvider = (
 			label: live.label ?? humanizeModelId(live.id),
 			...(badgeLabel !== undefined ? { badgeLabel } : {}),
 			...(descriptors.length > 0 ? { optionDescriptors: descriptors } : {}),
-			supportsPlanMode: providerId !== "pi",
+			supportsPlanMode: providerId !== "pi" && providerId !== "zuse",
 			...(webSearch !== undefined ? { supportsWebSearch: webSearch } : {}),
 			origin: "live",
 			available: true,

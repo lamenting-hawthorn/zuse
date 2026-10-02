@@ -1,14 +1,11 @@
 import "@zuse/i18n/english/providers";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type {
-	AgentAvailability,
-	ProviderId,
-	ProviderUpdateEvent,
-} from "@zuse/contracts";
+import type { AgentAvailability, ProviderId } from "@zuse/contracts";
 import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
 import {
 	Add01Icon,
 	AlertCircleIcon,
+	ArrowDown01Icon,
 	CircleArrowUp01Icon,
 	Copy01Icon,
 	Delete02Icon,
@@ -16,7 +13,7 @@ import {
 	Loading02Icon,
 	Tick01Icon,
 } from "@zuse/icons/solid-rounded";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ApiKeyRow } from "~/components/api-key-row";
 import { BlurredEmail } from "~/components/blurred-email";
 import { OpencodeProviderManager } from "~/components/opencode-provider-manager";
@@ -32,12 +29,7 @@ import {
 	getProviderSummary,
 	PROVIDER_STATUS_STYLES,
 } from "~/lib/provider-status";
-import { runtimeOperationClient } from "~/lib/runtime-operation-client.ts";
 import { useSettingsStore } from "~/lib/settings-client-bus.ts";
-import {
-	runStreamOperation,
-	type StreamOperation,
-} from "~/lib/stream-operation.ts";
 import {
 	openExternal,
 	supportsProviderLogin,
@@ -47,6 +39,7 @@ import { cn } from "~/lib/utils";
 import { useProviderModels } from "~/store/model-catalog";
 import {
 	IDLE_PROVIDER_UPDATE_STATE,
+	providerUpdateKey,
 	useProvidersStore,
 } from "~/store/providers";
 
@@ -60,6 +53,7 @@ const PROVIDER_LABEL: Record<ProviderId, string> = {
 	opencode2: "OpenCode 2",
 	kiro: "Kiro",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 };
 
 const LOGIN_HINT: Partial<Record<ProviderId, string>> = {
@@ -83,20 +77,29 @@ const SUBSCRIPTION_INFO: Partial<
 	},
 };
 
-export function ProviderCard({
+/**
+ * One provider in the settings list: a compact summary row (status, version,
+ * update, enable switch) that expands in place to its setup, models, and keys.
+ * Long-running work started here (CLI update, sign-in) is owned by shared
+ * stores, so collapsing the row or leaving the page never loses its status.
+ */
+export function ProviderSettingsRow({
 	environmentId,
 	providerId,
 	availability,
 	loading,
-	layout = "card",
+	expanded,
+	onExpandedChange,
 }: {
 	environmentId: string;
 	providerId: ProviderId;
 	availability: AgentAvailability | undefined;
 	loading: boolean;
-	layout?: "card" | "page";
+	expanded: boolean;
+	onExpandedChange: (expanded: boolean) => void;
 }) {
 	const { message: uiMessage } = useUiMessages(["common", "providers"]);
+	const detailsId = useId();
 
 	const subscription = SUBSCRIPTION_INFO[providerId];
 	const persistedEnabled =
@@ -115,28 +118,23 @@ export function ProviderCard({
 	);
 	// Only force the violet "subscription" status + "Requires ..." headline
 	// when the backend probe says the plan requirement is still unmet.
-	// For a user with a valid Grok login the card will now show the normal
-	// emerald "Authenticated as <email>" (or "Authenticated") state.
-	const summary = unmetSubscriptionRequirement
-		? {
-				...baseSummary,
-				statusKey: "subscription" as const,
-				headline: `Requires ${subscription!.plan}`,
-				detail: null,
-				authEmail: null,
-			}
-		: baseSummary;
+	const summary =
+		unmetSubscriptionRequirement && subscription !== undefined
+			? {
+					...baseSummary,
+					statusKey: "subscription" as const,
+					headline: `Requires ${subscription?.plan}`,
+					detail: null,
+					authEmail: null,
+				}
+			: baseSummary;
 	const styles = PROVIDER_STATUS_STYLES[summary.statusKey];
 	const versionLabel = formatVersionLabel(availability?.cliVersion);
 	const showUpgrade = enabled && availability?.cliVersionStatus === "outdated";
-	// Hover-revealed one-click update affordance — independent of the blocking
-	// SDK floor (`showUpgrade`). Shown for any installed provider that has an
-	// update command, EXCEPT when we know it's already on the latest published
-	// version (`"current"`). That means:
-	//   - npm providers behind latest → shown (warning-styled "vX available")
-	//   - npm providers on latest      → hidden
-	//   - curl-installed CLIs (Grok/Cursor, version "unknown") → shown so they
-	//     are updatable even though we can't read a registry version
+	// One-click update affordance, independent of the blocking SDK floor
+	// (`showUpgrade`). Shown for any installed provider with an update command
+	// unless it is known to be on the latest published version; curl-installed
+	// CLIs (Grok, version "unknown") stay updatable.
 	const showUpdate =
 		enabled &&
 		providerId !== "cursor" &&
@@ -144,34 +142,41 @@ export function ProviderCard({
 		availability?.cliInstalled === true &&
 		availability.updateCommand !== undefined &&
 		availability.latestVersionStatus !== "current";
+	// Subscription-gated rows still open so the Subscribe call to action is reachable.
+	const canExpand = enabled || unmetSubscriptionRequirement;
+	const open = expanded && canExpand;
+	const label = PROVIDER_LABEL[providerId];
 
 	return (
-		<div
-			className={cn(
-				"group flex flex-col transition-colors",
-				layout === "card"
-					? "bg-card first:rounded-t-xl last:rounded-b-xl"
-					: "bg-transparent",
-				!enabled && !unmetSubscriptionRequirement && "opacity-70",
-			)}
-		>
+		<div className="group flex flex-col">
+			{/* biome-ignore lint/a11y/noStaticElementInteractions: pointer shortcut; the chevron button is the keyboard control. */}
+			{/* biome-ignore lint/a11y/useKeyWithClickEvents: pointer shortcut; the chevron button is the keyboard control. */}
 			<div
 				className={cn(
-					"flex w-full items-center gap-3 text-left group-first:rounded-t-xl",
-					layout === "card" ? "px-3.5 py-3" : "px-0 py-4",
+					"flex min-h-12 items-center gap-3 px-3 py-2 transition-colors",
+					canExpand && "cursor-pointer hover:bg-muted/30",
 				)}
+				onClick={() => {
+					if (canExpand) onExpandedChange(!open);
+				}}
 			>
-				<span className="flex size-7 shrink-0 items-center justify-center">
-					<ProviderIcon providerId={providerId} className="size-5" />
+				<span
+					className={cn(
+						"grid size-7 shrink-0 place-items-center rounded-md bg-muted/60",
+						!enabled && "opacity-60",
+					)}
+				>
+					<ProviderIcon providerId={providerId} className="size-4" />
 				</span>
-				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
-					<div className="flex items-center gap-2">
-						<span
-							className={cn("size-1.5 shrink-0 rounded-full", styles.dot)}
-							aria-hidden
-						/>
-						<span className="truncate text-sm font-medium text-foreground">
-							{PROVIDER_LABEL[providerId]}
+				<div
+					className={cn(
+						"flex min-w-0 flex-1 flex-col gap-0.5",
+						!enabled && !unmetSubscriptionRequirement && "opacity-60",
+					)}
+				>
+					<div className="flex min-w-0 items-center gap-1.5">
+						<span className="truncate text-xs font-medium text-foreground">
+							{label}
 						</span>
 						{versionLabel !== null && (
 							<span className="shrink-0 font-mono text-[10px] text-muted-foreground">
@@ -182,18 +187,22 @@ export function ProviderCard({
 							<UpdateAvailableButton
 								environmentId={environmentId}
 								providerId={providerId}
-								displayName={PROVIDER_LABEL[providerId]}
+								displayName={label}
 								latestVersion={availability?.latestVersion}
 								behind={availability?.latestVersionStatus === "behind"}
 							/>
 						)}
 					</div>
-					<div className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+					<div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+						<span
+							className={cn("size-1.5 shrink-0 rounded-full", styles.dot)}
+							aria-hidden
+						/>
 						<span className="truncate">{summary.headline}</span>
 						{summary.authEmail !== null && (
 							<BlurredEmail email={summary.authEmail} />
 						)}
-						{summary.detail !== null && (
+						{summary.detail !== null && summary.detail !== summary.headline && (
 							<span className="truncate">· {summary.detail}</span>
 						)}
 					</div>
@@ -205,119 +214,151 @@ export function ProviderCard({
 					onCheckedChange={(value) => {
 						if (unmetSubscriptionRequirement) return;
 						setProviderEnabled(providerId, value);
+						if (!value) onExpandedChange(false);
 					}}
 					aria-label={
 						unmetSubscriptionRequirement
 							? uiMessage("providers:provider_card_requires_a_subscription", {
-									value1: String(PROVIDER_LABEL[providerId]),
-									plan: String(subscription!.plan),
+									value1: String(label),
+									plan: String(subscription?.plan),
 								})
 							: uiMessage("providers:provider_card_enable", {
-									value1: String(PROVIDER_LABEL[providerId]),
+									value1: String(label),
 								})
 					}
 					title={
 						unmetSubscriptionRequirement
 							? uiMessage("providers:provider_card_requires_subscription", {
-									plan: String(subscription!.plan),
+									plan: String(subscription?.plan),
 								})
 							: undefined
 					}
 				/>
-			</div>
-
-			<div
-				className={cn(
-					"flex flex-col gap-5 border-t border-border/50 text-xs",
-					layout === "card" ? "px-3.5 py-3" : "px-0 py-5",
-					!enabled && "pointer-events-none",
-				)}
-			>
-				{showUpgrade && (
-					<CodeRow
-						label={uiMessage("providers:provider_card_update_cli")}
-						command={
-							availability?.cliUpgradeCommand ?? INSTALL_HINT[providerId] ?? ""
-						}
-					/>
-				)}
-				{providerId !== "cursor" &&
-					availability !== undefined &&
-					!availability.cliInstalled && (
-						<CodeRow
-							label={uiMessage("providers:provider_card_install")}
-							command={INSTALL_HINT[providerId] ?? ""}
-						/>
-					)}
-				{availability?.cliInstalled &&
-					availability.authStatus === "unauthenticated" &&
-					supportsProviderLogin(providerId) && (
-						<ProviderSignInRow providerId={providerId} />
-					)}
-				{availability?.cliInstalled &&
-					availability.authStatus === "unauthenticated" &&
-					!supportsProviderLogin(providerId) &&
-					providerId !== "cursor" && (
-						<CodeRow
-							label={uiMessage("common:signIn")}
-							command={LOGIN_HINT[providerId] ?? ""}
-						/>
-					)}
-				{providerId === "pi" && (
-					<>
-						<PiBinaryPath />
-						<p className="text-muted-foreground">
-							<RichMessage
-								id="providers:pi_setup_hint"
-								components={{ part0: <code />, part1: <code /> }}
-							/>
-						</p>
-					</>
-				)}
-				<SubscriptionRow providerId={providerId} availability={availability} />
-
-				{providerId === "opencode" || providerId === "opencode2" ? (
-					// OpenCode fronts many model providers; its card gets a dedicated
-					// provider manager (connect catalog providers, add custom
-					// OpenAI-compatible ones, pick which models show) instead of the
-					// single-model defaults + one API key the other harnesses use.
-					<OpencodeProviderManager channel={providerId} />
-				) : (
-					<>
-						<ModelVisibilitySettings providerId={providerId} />
-
-						{providerId === "cursor" && (
-							<div className="rounded-md border border-border/50 bg-background/45 px-3 py-2.5">
-								<span className="text-[11px] font-medium text-foreground">
-									{uiMessage(
-										"providers:provider_card_sandboxed_with_auto_review",
-									)}
-								</span>
-								<p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-									{uiMessage(
-										"providers:provider_card_local_edits_and_commands_run_through_the_bundled_sdk_sandbox_calls_rej",
-									)}
-								</p>
-							</div>
+				<Button
+					type="button"
+					size="icon-sm"
+					variant="ghost"
+					className="h-7 w-7 text-muted-foreground"
+					disabled={!canExpand}
+					aria-expanded={open}
+					aria-controls={detailsId}
+					aria-label={uiMessage("providers:provider_row_configure", {
+						label,
+					})}
+					onClick={(e) => {
+						e.stopPropagation();
+						onExpandedChange(!open);
+					}}
+				>
+					<HugeiconsIcon
+						icon={ArrowDown01Icon}
+						className={cn(
+							"size-3.5 transition-transform motion-reduce:transition-none",
+							open && "rotate-180",
 						)}
-
-						<div className="flex flex-col gap-1.5">
-							{providerId !== "cursor" && providerId !== "pi" && (
-								<span className="text-[11px] font-medium text-muted-foreground">
-									{uiMessage("providers:provider_card_api_key_optional")}
-								</span>
-							)}
-							{providerId !== "pi" && (
-								<ApiKeyRow
-									providerId={providerId}
-									required={providerId === "cursor"}
-								/>
-							)}
-						</div>
-					</>
-				)}
+						aria-hidden
+					/>
+				</Button>
 			</div>
+
+			{open && (
+				<div
+					id={detailsId}
+					className="flex flex-col gap-4 px-3 pt-1 pb-4 pl-[52px] text-xs"
+				>
+					{showUpgrade && (
+						<CodeRow
+							label={uiMessage("providers:provider_card_update_cli")}
+							command={
+								availability?.cliUpgradeCommand ??
+								INSTALL_HINT[providerId] ??
+								""
+							}
+						/>
+					)}
+					{providerId !== "cursor" &&
+						availability !== undefined &&
+						!availability.cliInstalled && (
+							<CodeRow
+								label={uiMessage("providers:provider_card_install")}
+								command={INSTALL_HINT[providerId] ?? ""}
+							/>
+						)}
+					{availability?.cliInstalled &&
+						availability.authStatus === "unauthenticated" &&
+						supportsProviderLogin(providerId) && (
+							<ProviderSignInRow providerId={providerId} />
+						)}
+					{availability?.cliInstalled &&
+						availability.authStatus === "unauthenticated" &&
+						!supportsProviderLogin(providerId) &&
+						providerId !== "cursor" && (
+							<CodeRow
+								label={uiMessage("common:signIn")}
+								command={LOGIN_HINT[providerId] ?? ""}
+							/>
+						)}
+					<SubscriptionRow
+						providerId={providerId}
+						availability={availability}
+					/>
+					{enabled && <ProviderConfiguration providerId={providerId} />}
+				</div>
+			)}
 		</div>
+	);
+}
+
+function ProviderConfiguration({ providerId }: { providerId: ProviderId }) {
+	const { message: uiMessage } = useUiMessages(["common", "providers"]);
+
+	if (providerId === "opencode" || providerId === "opencode2") {
+		// OpenCode fronts many model providers; it gets a dedicated provider
+		// manager (connect catalog providers, add custom OpenAI-compatible ones,
+		// pick which models show) instead of the single-model defaults + one API
+		// key the other harnesses use.
+		return <OpencodeProviderManager channel={providerId} />;
+	}
+	return (
+		<>
+			{providerId === "pi" && (
+				<div className="flex flex-col gap-1.5">
+					<PiBinaryPath />
+					<p className="text-[11px] text-muted-foreground">
+						<RichMessage
+							id="providers:pi_setup_hint"
+							components={{ part0: <code />, part1: <code /> }}
+						/>
+					</p>
+				</div>
+			)}
+			<ModelVisibilitySettings providerId={providerId} />
+			{providerId === "cursor" && (
+				<div className="rounded-md bg-muted/40 px-3 py-2.5">
+					<span className="text-[11px] font-medium text-foreground">
+						{uiMessage("providers:provider_card_sandboxed_with_auto_review")}
+					</span>
+					<p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+						{uiMessage(
+							"providers:provider_card_local_edits_and_commands_run_through_the_bundled_sdk_sandbox_calls_rej",
+						)}
+					</p>
+				</div>
+			)}
+			{providerId !== "pi" && (
+				<div className="flex flex-col gap-1.5">
+					{providerId !== "cursor" && (
+						<span className="text-[11px] font-medium text-muted-foreground">
+							{uiMessage("providers:provider_card_api_key_optional")}
+						</span>
+					)}
+					<ApiKeyRow
+						providerId={providerId}
+						required={providerId === "cursor"}
+					/>
+				</div>
+			)}
+		</>
 	);
 }
 
@@ -362,17 +403,14 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 					}}
 				/>
 			</div>
-			<div className="overflow-hidden rounded-md border border-border/50 bg-background/45">
+			<div className="flex flex-col divide-y divide-border/40 overflow-hidden rounded-md bg-muted/30">
 				{models.map((model) => {
 					const checked =
 						modelEnabledByProvider[providerId]?.[model.id] !== false;
 					const onlyVisible =
 						checked && visibleCount + customModelIds.length <= 1;
 					return (
-						<div
-							key={model.id}
-							className="flex min-h-9 items-center gap-2 border-b border-border/40 px-2.5 py-1.5 last:border-b-0"
-						>
+						<div key={model.id} className="flex h-8 items-center gap-2 px-2.5">
 							<span className="min-w-0 flex-1 truncate text-xs text-foreground">
 								{model.label}
 							</span>
@@ -395,10 +433,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 					);
 				})}
 				{customModelIds.map((modelId) => (
-					<div
-						key={modelId}
-						className="flex min-h-9 items-center gap-2 border-b border-border/40 px-2.5 py-1.5 last:border-b-0"
-					>
+					<div key={modelId} className="flex h-8 items-center gap-2 px-2.5">
 						<span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">
 							{modelId}
 						</span>
@@ -429,6 +464,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 				}}
 			>
 				<Input
+					className="h-7"
 					value={customModelId}
 					onChange={(event) => setCustomModelId(event.target.value)}
 					placeholder={uiMessage("providers:provider_card_enter_a_model_id")}
@@ -437,7 +473,13 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 					})}
 					aria-invalid={normalizedCustomModelId.length > 200 || undefined}
 				/>
-				<Button type="submit" size="default" disabled={!canAddCustomModel}>
+				<Button
+					type="submit"
+					size="sm"
+					variant="settings"
+					className="h-7"
+					disabled={!canAddCustomModel}
+				>
 					<HugeiconsIcon icon={Add01Icon} className="size-3.5" />
 					{uiMessage("common:add")}
 				</Button>
@@ -480,7 +522,7 @@ function SubscriptionRow({
 	if (!unmet) return null;
 
 	return (
-		<div className="flex flex-col gap-1.5 rounded-md border border-info/25 bg-alert-info-bg px-3 py-2.5">
+		<div className="flex flex-col gap-1.5 rounded-md bg-alert-info-bg px-3 py-2.5">
 			<span className="text-[11px] font-medium text-info">
 				{uiMessage("providers:provider_card_requires_subscription_sentence", {
 					value: info.plan,
@@ -537,7 +579,7 @@ function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
 
 	if (state.kind === "success") {
 		return (
-			<div className="flex items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-500/[0.06] px-3 py-2 text-[11px] text-emerald-200">
+			<div className="flex h-7 items-center gap-2 rounded-md bg-alert-success-bg px-2.5 text-[11px] text-success">
 				<ShimmerText as="span">
 					{uiMessage("providers:provider_card_signed_in_refreshing")}
 				</ShimmerText>
@@ -547,14 +589,14 @@ function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
 
 	if (state.kind === "waiting") {
 		return (
-			<div className="flex flex-col gap-2 rounded-md border border-border/50 bg-muted px-3 py-2.5 text-[11px]">
-				<div className="flex items-center gap-2 text-muted-foreground">
+			<div className="flex h-7 items-center gap-2 rounded-md bg-muted/40 pr-0.5 pl-2.5 text-[11px]">
+				<div className="flex min-w-0 flex-1 items-center gap-2 text-muted-foreground">
 					<HugeiconsIcon
 						icon={Loading02Icon}
 						className="size-3.5 animate-spin motion-reduce:animate-none"
 						aria-hidden
 					/>
-					<ShimmerText as="span">
+					<ShimmerText as="span" className="truncate">
 						{state.url === null
 							? uiMessage("providers:provider_card_starting_sign_in", {
 									label: String(label),
@@ -564,12 +606,12 @@ function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
 								)}
 					</ShimmerText>
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex shrink-0 items-center gap-1">
 					{state.url !== null && (
 						<Button
 							type="button"
 							size="xs"
-							variant="outline"
+							variant="ghost"
 							onClick={(e) => {
 								e.stopPropagation();
 								if (state.url !== null) openExternal(state.url);
@@ -604,7 +646,7 @@ function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
 	if (state.kind === "failed") {
 		return (
 			<div className="flex flex-col gap-2">
-				<div className="rounded-md border border-rose-400/30 bg-rose-500/[0.06] px-3 py-2 text-[11px] text-rose-200">
+				<div className="rounded-md bg-alert-error-bg px-2.5 py-1.5 text-[11px] text-destructive">
 					{state.reason}
 				</div>
 				<div className="flex items-center gap-2">
@@ -616,7 +658,7 @@ function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
 							e.stopPropagation();
 							void start();
 						}}
-						className="h-6 px-2 text-[11px]"
+						className="h-7 px-2 text-[11px]"
 					>
 						{uiMessage("providers:provider_card_try_again")}
 					</Button>
@@ -661,95 +703,15 @@ function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
 	);
 }
 
-/**
- * Subscribe to `agent.updateProvider`, which spawns the provider's update
- * command server-side and streams its output. On the terminal `done` event we
- * re-probe availability so the card reflects the new version. Interrupting the
- * fiber (unmount / cancel) closes the stream scope, which SIGTERMs the child.
- */
+/** Store-owned update run: state survives row collapse and page navigation. */
 function useProviderUpdate(environmentId: string, providerId: ProviderId) {
-	const refresh = useProvidersStore((s) => s.refresh);
 	const state = useProvidersStore(
-		(s) => s.updateStateByProvider[providerId] ?? IDLE_PROVIDER_UPDATE_STATE,
+		(s) =>
+			s.updateStateByKey[providerUpdateKey(environmentId, providerId)] ??
+			IDLE_PROVIDER_UPDATE_STATE,
 	);
-	const setProviderUpdateState = useProvidersStore(
-		(s) => s.setProviderUpdateState,
-	);
-	const operationRef = useRef<StreamOperation | null>(null);
-	const resetTimerRef = useRef<number | null>(null);
-
-	useEffect(
-		() => () => {
-			operationRef.current?.cancel();
-			setProviderUpdateState(providerId, IDLE_PROVIDER_UPDATE_STATE);
-			if (resetTimerRef.current !== null)
-				window.clearTimeout(resetTimerRef.current);
-		},
-		[providerId, setProviderUpdateState],
-	);
-
-	const run = async () => {
-		if (state.kind === "running") return;
-		if (resetTimerRef.current !== null) {
-			window.clearTimeout(resetTimerRef.current);
-			resetTimerRef.current = null;
-		}
-		setProviderUpdateState(providerId, { kind: "running", line: null });
-		let client: Awaited<ReturnType<typeof runtimeOperationClient>>;
-		try {
-			client = await runtimeOperationClient(environmentId);
-		} catch (err) {
-			setProviderUpdateState(providerId, {
-				kind: "failed",
-				reason: err instanceof Error ? err.message : String(err),
-			});
-			return;
-		}
-		const operation = runStreamOperation(
-			client["provider.update"]({ providerId }),
-			(event: ProviderUpdateEvent) => {
-				if (event._tag === "log") {
-					setProviderUpdateState(providerId, {
-						kind: "running",
-						line: event.text,
-					});
-				} else if (event._tag === "done") {
-					operationRef.current = null;
-					if (event.ok) {
-						// Re-probe FIRST so the version label is fresh before we flip
-						// the badge to "Updated" — otherwise the badge and the old
-						// version show together for a beat. Stay on the spinner until
-						// the probe lands.
-						void refresh().finally(() => {
-							setProviderUpdateState(providerId, { kind: "success" });
-							// Re-probe hides the icon if now on latest; for
-							// version-unknown CLIs (Grok) drop the "Updated" badge after
-							// a moment so the control returns to idle.
-							resetTimerRef.current = window.setTimeout(() => {
-								setProviderUpdateState(providerId, IDLE_PROVIDER_UPDATE_STATE);
-								resetTimerRef.current = null;
-							}, 4_000);
-						});
-					} else {
-						setProviderUpdateState(providerId, {
-							kind: "failed",
-							reason: event.reason ?? "Update failed.",
-						});
-					}
-				}
-			},
-		);
-		operationRef.current = operation;
-		void operation.done.catch((err) => {
-			operationRef.current = null;
-			setProviderUpdateState(providerId, {
-				kind: "failed",
-				reason: err instanceof Error ? err.message : String(err),
-			});
-		});
-	};
-
-	return { state, run };
+	const updateProvider = useProvidersStore((s) => s.updateProvider);
+	return { state, run: () => updateProvider(environmentId, providerId) };
 }
 
 /**
@@ -834,9 +796,9 @@ function UpdateAvailableButton({
 							tone: behind ? "text-warning" : "text-muted-foreground",
 						};
 
-	// While active (running/success/failed) the control stays visible; idle is
-	// hover-revealed so it doesn't clutter up-to-date rows.
-	const active = state.kind !== "idle";
+	// Active states and known newer versions stay visible; an unknown-version
+	// CLI's idle control is hover-revealed so it doesn't clutter the row.
+	const active = state.kind !== "idle" || behind;
 	const badge =
 		state.kind === "running"
 			? "Updating…"
@@ -844,7 +806,9 @@ function UpdateAvailableButton({
 				? "Failed"
 				: state.kind === "success"
 					? "Updated"
-					: null;
+					: behind && latestVersion !== undefined
+						? `v${latestVersion}`
+						: null;
 
 	return (
 		<Tooltip>
@@ -893,14 +857,14 @@ function CodeRow({ label, command }: { label: string; command: string }) {
 			<span className="text-[11px] font-medium text-muted-foreground">
 				{label}
 			</span>
-			<div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/40 px-2.5 py-1.5 font-mono text-[11px]">
+			<div className="flex h-7 items-center gap-2 rounded-md bg-muted/40 pr-0.5 pl-2.5 font-mono text-[11px]">
 				<code className="flex-1 truncate text-foreground">$ {command}</code>
 				<Button
 					type="button"
 					size="xs"
 					variant="ghost"
 					onClick={onCopy}
-					className="h-6 shrink-0 px-2 text-[10px]"
+					className="h-6 shrink-0 px-2 font-sans text-[10px]"
 				>
 					<HugeiconsIcon
 						icon={Copy01Icon}
@@ -923,7 +887,9 @@ function PiBinaryPath() {
 	useEffect(() => setValue(saved), [saved]);
 	return (
 		<label htmlFor={inputId} className="flex flex-col gap-1.5">
-			{uiMessage("providers:pi_binary_path")}
+			<span className="text-[11px] font-medium text-muted-foreground">
+				{uiMessage("providers:pi_binary_path")}
+			</span>
 			<Input
 				id={inputId}
 				className="h-7 rounded-md bg-muted/50 px-2 text-xs"
@@ -933,7 +899,7 @@ function PiBinaryPath() {
 				onChange={(event) => setValue(event.target.value)}
 				onBlur={() => save("pi", value)}
 			/>
-			<span className="text-muted-foreground">
+			<span className="text-[11px] text-muted-foreground">
 				{uiMessage("providers:pi_binary_help")}
 			</span>
 		</label>

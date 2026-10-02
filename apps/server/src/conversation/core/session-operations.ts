@@ -239,7 +239,8 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 			// status out of `"booting"` from a daemon fiber.
 			const effectiveEnableSubagents =
 				input.enableSubagents ??
-				(input.agents !== undefined && Object.keys(input.agents).length > 0);
+				(input.providerId === "zuse" ||
+					(input.agents !== undefined && Object.keys(input.agents).length > 0));
 			const initialPermissionMode =
 				input.permissionMode ?? DEFAULT_PERMISSION_MODE;
 			const initialToolSearch = input.toolSearch ?? false;

@@ -41,6 +41,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import { AppPaths } from "../../app-paths.ts";
 import { makeKeyedSwrCache, makeSwrCache } from "../../cache/swr-cache.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
+import { HarnessProvider } from "../../harness/provider.ts";
 import { resolveCliPath } from "../../provider/availability.ts";
 import { CredentialsService } from "../../provider/services/credentials-service.ts";
 import { ModelCatalogService } from "../services/model-catalog-service.ts";
@@ -56,6 +57,7 @@ const LIVE_TIMEOUT_MS = 15_000;
 const LIVE_CONCURRENCY = 2;
 
 const LIVE_PROVIDERS: ReadonlyArray<ProviderId> = [
+	"zuse",
 	"pi",
 	"codex",
 	"claude",
@@ -136,6 +138,7 @@ const pendingListing = (authoritative: boolean): LiveListingDocument => ({
 });
 
 const isAuthoritative = (providerId: ProviderId): boolean =>
+	providerId === "zuse" ||
 	providerId === "codex" ||
 	providerId === "cursor" ||
 	providerId === "kiro" ||
@@ -146,6 +149,7 @@ export const ModelCatalogServiceLive = Layer.effect(
 	ModelCatalogService,
 	Effect.gen(function* () {
 		const { userData } = yield* AppPaths;
+		const harness = yield* Effect.serviceOption(HarnessProvider);
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		const credentials = yield* CredentialsService;
 		const configStore = yield* ConfigStoreService;
@@ -465,6 +469,26 @@ export const ModelCatalogServiceLive = Layer.effect(
 			providerId: ProviderId,
 		): Effect.Effect<LiveListingDocument> => {
 			switch (providerId) {
+				case "zuse":
+					return Option.isSome(harness)
+						? harness.value.inventory().pipe(
+								Effect.map((models) => ({
+									status: "ok" as const,
+									authoritative: true,
+									fetchedAt: Date.now(),
+									error: null,
+									models,
+								})),
+								Effect.catch(() =>
+									Effect.succeed(
+										listingError(
+											true,
+											new Error("Could not load connected models"),
+										),
+									),
+								),
+							)
+						: Effect.succeed(unsupportedListing);
 				case "codex":
 					return listCodex();
 				case "claude":
@@ -487,6 +511,10 @@ export const ModelCatalogServiceLive = Layer.effect(
 		const liveFingerprint = (providerId: ProviderId): Effect.Effect<string> =>
 			Effect.gen(function* () {
 				switch (providerId) {
+					case "zuse":
+						return Option.isSome(harness)
+							? yield* harness.value.fingerprint()
+							: "unavailable";
 					case "codex":
 						return cliFingerprint(yield* cliPath("codex"));
 					case "pi":
@@ -572,15 +600,40 @@ export const ModelCatalogServiceLive = Layer.effect(
 		const compute = (): Effect.Effect<ResolvedModelCatalog> =>
 			Effect.gen(function* () {
 				const curatedState = yield* curated.state();
-				const document = curatedState.entry?.value ?? BUNDLED_MODEL_CATALOG;
-				return resolveModelCatalog(
-					pickNewerModelCatalog(document, BUNDLED_MODEL_CATALOG),
-					yield* liveListings(),
-					{
-						source: curatedState.entry === null ? "bundled" : curatedSource,
-						fetchedAt: curatedState.entry?.storedAt ?? null,
-					},
+				const sourceDocument =
+					curatedState.entry?.value ?? BUNDLED_MODEL_CATALOG;
+				const base = pickNewerModelCatalog(
+					sourceDocument,
+					BUNDLED_MODEL_CATALOG,
 				);
+				const document = {
+					...base,
+					providers: {
+						...base.providers,
+						zuse: {
+							aliases: {},
+							models: (
+								[
+									["chatgpt", "codex"],
+									["supergrok", "grok"],
+								] as const
+							).flatMap(([prefix, provider]) =>
+								(base.providers[provider]?.models ?? []).map((model) => ({
+									...model,
+									id: `${prefix}/${model.id}`,
+									supportsPlanMode: false,
+									optionDescriptors: model.optionDescriptors?.filter(
+										(option) => option.id === "reasoning",
+									),
+								})),
+							),
+						},
+					},
+				};
+				return resolveModelCatalog(document, yield* liveListings(), {
+					source: curatedState.entry === null ? "bundled" : curatedSource,
+					fetchedAt: curatedState.entry?.storedAt ?? null,
+				});
 			});
 
 		const currentRef = yield* Ref.make<ResolvedModelCatalog>(yield* compute());

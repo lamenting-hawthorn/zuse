@@ -130,5 +130,6 @@
 	"pi_setup_hint": "⟦Pïï màànààgëës ààüüthëëntïïcààtïïôôn àànd tôôôôl pëërmïïssïïôôns. Rüün <part0>pïï</part0> ïïn àà tëërmïïnààl àànd üüsëë <part1>/lôôgïïn</part1> tôô sïïgn ïïn.⟧",
 	"pi_binary_path": "⟦Pïï bïïnààry pààth⟧",
 	"pi_binary_placeholder": "⟦Fïïnd pïï ôôn PÀÀTH⟧",
-	"pi_binary_help": "⟦ÜÜsëë ààn ààbsôôlüütëë ëëxëëcüütààblëë pààth, ôôr lëëààvëë ëëmpty tôô sëëààrch PÀÀTH.⟧"
+	"pi_binary_help": "⟦ÜÜsëë ààn ààbsôôlüütëë ëëxëëcüütààblëë pààth, ôôr lëëààvëë ëëmpty tôô sëëààrch PÀÀTH.⟧",
+	"provider_row_configure": "⟦Côônfïïgüürëë {{label}}⟧"
 }

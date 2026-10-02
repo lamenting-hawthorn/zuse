@@ -1300,3 +1300,45 @@ export const apiCloudUsageOutbox = pgTable(
 			.where(sql`${table.acknowledgedAt} IS NULL`),
 	],
 );
+
+export const apiModelConnections = pgTable(
+	"api_model_connections",
+	{
+		accountId: text("account_id").notNull(),
+		provider: text("provider").notNull(),
+		kind: text("kind").notNull(),
+		connectionId: text("connection_id").notNull(),
+		envelope: text("envelope").notNull(),
+	},
+	(table) => [
+		primaryKey({
+			columns: [
+				table.accountId,
+				table.provider,
+				table.kind,
+				table.connectionId,
+			],
+		}),
+		check(
+			"model_connection_provider",
+			sql`${table.provider} IN ('chatgpt','supergrok')`,
+		),
+		check("model_connection_kind", sql`${table.kind} IN ('active','pending')`),
+	],
+);
+export const apiModelConnectionLeases = pgTable(
+	"api_model_connection_leases",
+	{
+		accountId: text("account_id").notNull(),
+		provider: text("provider").notNull(),
+		token: text("token").notNull(),
+		expiresAtMs: bigint("expires_at_ms", { mode: "number" }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.accountId, table.provider] }),
+		check(
+			"model_connection_lease_provider",
+			sql`${table.provider} IN ('chatgpt','supergrok')`,
+		),
+	],
+);

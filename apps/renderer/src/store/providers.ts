@@ -17,6 +17,8 @@ import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client
 import { formatError } from "../lib/format-error.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import { getProviderStatusNotice } from "../lib/provider-status.ts";
+import { runtimeOperationClient } from "../lib/runtime-operation-client.ts";
+import { runStreamOperation } from "../lib/stream-operation.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
 import { useEnvironmentCatalogStore } from "./environment-catalog.ts";
 import { useModelCatalogStore } from "./model-catalog.ts";
@@ -35,6 +37,20 @@ export type ProviderUpdateState =
 export const IDLE_PROVIDER_UPDATE_STATE: ProviderUpdateState = {
 	kind: "idle",
 };
+
+/** Update runs are owned per computer and provider, not by the card that started them. */
+export const providerUpdateKey = (
+	environmentId: string,
+	providerId: ProviderId,
+): string => `${environmentId}:${providerId}`;
+
+// Live update streams outlive the settings UI: navigating away (or collapsing
+// a provider row) must not cancel the install or lose its status.
+const providerUpdateResetTimers = new Map<
+	string,
+	ReturnType<typeof setTimeout>
+>();
+const PROVIDER_UPDATE_SUCCESS_MS = 4_000;
 
 const pendingAvailabilityLoads = new Map<string, Promise<void>>();
 let activeProviderStatusNotice: string | null = null;
@@ -105,9 +121,7 @@ type ProvidersState = {
 	readonly availabilityByEnvironment: Readonly<
 		Record<string, ProviderAvailabilitySnapshot>
 	>;
-	readonly updateStateByProvider: Partial<
-		Record<ProviderId, ProviderUpdateState>
-	>;
+	readonly updateStateByKey: Readonly<Record<string, ProviderUpdateState>>;
 	readonly load: () => Promise<void>;
 	readonly loadFor: (environmentId: EnvironmentId) => Promise<void>;
 	readonly refresh: (force?: boolean) => Promise<void>;
@@ -115,10 +129,11 @@ type ProvidersState = {
 		environmentId: EnvironmentId,
 		force?: boolean,
 	) => Promise<void>;
-	readonly setProviderUpdateState: (
+	/** Run the provider's update command; a second call while running is a no-op. */
+	readonly updateProvider: (
+		environmentId: string,
 		providerId: ProviderId,
-		state: ProviderUpdateState,
-	) => void;
+	) => Promise<void>;
 	/**
 	 * Version-gated features the installed CLI supports for `providerId` (the
 	 * `capabilities` list from the availability probe). `[]` when the provider
@@ -171,7 +186,7 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
 	availabilityByEnvironment: Object.fromEntries(
 		cachedAuth === undefined ? [] : [["local", initialAvailability]],
 	),
-	updateStateByProvider: {},
+	updateStateByKey: {},
 	load: async () => {
 		await get().loadFor(activeEnvironmentId());
 	},
@@ -283,13 +298,61 @@ export const useProvidersStore = create<ProvidersState>((set, get) => ({
 			}));
 		}
 	},
-	setProviderUpdateState: (providerId, state) =>
-		set((current) => ({
-			updateStateByProvider: {
-				...current.updateStateByProvider,
-				[providerId]: state,
+	updateProvider: async (environmentId, providerId) => {
+		const key = providerUpdateKey(environmentId, providerId);
+		if (get().updateStateByKey[key]?.kind === "running") return;
+		const setUpdate = (state: ProviderUpdateState) =>
+			set((current) => ({
+				updateStateByKey: { ...current.updateStateByKey, [key]: state },
+			}));
+		const timer = providerUpdateResetTimers.get(key);
+		if (timer !== undefined) {
+			clearTimeout(timer);
+			providerUpdateResetTimers.delete(key);
+		}
+		setUpdate({ kind: "running", line: null });
+		let client: Awaited<ReturnType<typeof runtimeOperationClient>>;
+		try {
+			client = await runtimeOperationClient(environmentId);
+		} catch (err) {
+			setUpdate({ kind: "failed", reason: formatError(err) });
+			return;
+		}
+		const operation = runStreamOperation(
+			client["provider.update"]({ providerId }),
+			(event) => {
+				if (event._tag === "log") {
+					setUpdate({ kind: "running", line: event.text });
+					return;
+				}
+				if (event._tag !== "done") return;
+				if (!event.ok) {
+					setUpdate({
+						kind: "failed",
+						reason: event.reason ?? "Update failed.",
+					});
+					return;
+				}
+				// Re-probe before reporting success so the new version and the
+				// "Updated" badge appear together.
+				void get()
+					.refreshFor(EnvironmentId.make(environmentId))
+					.finally(() => {
+						setUpdate({ kind: "success" });
+						providerUpdateResetTimers.set(
+							key,
+							setTimeout(() => {
+								providerUpdateResetTimers.delete(key);
+								setUpdate(IDLE_PROVIDER_UPDATE_STATE);
+							}, PROVIDER_UPDATE_SUCCESS_MS),
+						);
+					});
 			},
-		})),
+		);
+		await operation.done.catch((err) => {
+			setUpdate({ kind: "failed", reason: formatError(err) });
+		});
+	},
 	capabilitiesFor: (providerId, environmentId) => {
 		const availability =
 			environmentId === undefined

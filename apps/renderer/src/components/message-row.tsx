@@ -457,7 +457,7 @@ function CompactRow({
 	readonly afterTokens: number | null;
 	readonly startedAt: number;
 	readonly durationMs: number;
-	readonly status: "in_progress" | "completed";
+	readonly status: "in_progress" | "completed" | "failed";
 }) {
 	const { message: uiMessage } = useUiMessages(["chat", "common"]);
 
@@ -487,7 +487,9 @@ function CompactRow({
 			<span className="shrink-0 whitespace-nowrap text-sm font-medium text-foreground/90">
 				{inProgress
 					? uiMessage("chat:message_row_compacting")
-					: uiMessage("chat:message_row_chat_compacted")}
+					: status === "failed"
+						? uiMessage("chat:message_row_compaction_failed")
+						: uiMessage("chat:message_row_chat_compacted")}
 			</span>
 			<span
 				className="min-w-0 truncate text-[11px] tabular-nums text-muted-foreground/70"
@@ -836,6 +838,7 @@ const PROVIDER_LABEL_FOR_ERROR: Record<ProviderId, string> = {
 	opencode2: "OpenCode 2",
 	kiro: "Kiro",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 };
 
 /**

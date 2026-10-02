@@ -694,5 +694,6 @@
 	"fork_menu_new_tab_on_this_machine": "⟦ÔÔpëën àà nëëw tààb ôôn thïïs mààchïïnëë wïïth thëë côônvëërsààtïïôôn thrôôüügh thïïs mëëssààgëë.⟧",
 	"fork_menu_fork_in_new_machine": "⟦Fôôrk ïïn nëëw mààchïïnëë⟧",
 	"fork_menu_new_machine_description": "⟦Clôônëë thïïs mààchïïnëë àànd côôntïïnüüëë thëë côônvëërsààtïïôôn ïïn àà sëëpààrààtëë chààt.⟧",
-	"fork_menu_forking_in_new_machine": "⟦Fôôrkïïng ïïn nëëw mààchïïnëë⟧"
+	"fork_menu_forking_in_new_machine": "⟦Fôôrkïïng ïïn nëëw mààchïïnëë⟧",
+	"message_row_compaction_failed": "⟦Côômpààctïïôôn stôôppëëd⟧"
 }
