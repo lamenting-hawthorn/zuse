@@ -51,6 +51,7 @@ import { MachineStore } from "./machine-store.ts";
 import { ManagedTunnelProvider } from "./managed-tunnel.ts";
 import { routeModelConnectionRequest } from "./model-connection-routes.ts";
 import { ModelConnectionStore } from "./model-connection-store.ts";
+import { routeOrganizationRequest } from "./organizations.ts";
 import { routePublicApiRequest } from "./public-api-routes.ts";
 import { PushDelivery } from "./push.ts";
 import type { SandboxOfferConfiguration } from "./sandbox-provider-module.ts";
@@ -311,6 +312,8 @@ const route = (
 		const workos = yield* WorkosVerifier;
 		const nowMs = yield* Clock.currentTimeMillis;
 		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
+		const organizationResponse = yield* routeOrganizationRequest(request);
+		if (organizationResponse !== null) return organizationResponse;
 		if (modelConnectionResponse !== null) return modelConnectionResponse;
 		const machineResponse = yield* routeMachineRequest(request);
 		if (machineResponse !== null) return machineResponse;
