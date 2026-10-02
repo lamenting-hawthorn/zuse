@@ -28,6 +28,9 @@ import { generateKeyPair, jwtVerify } from "jose";
 import { describe, expect, it, vi } from "vitest";
 import {
 	applyCloudMailboxLease,
+	authorizeCloudMailboxActor,
+	authorizeCloudQueuedActor,
+	authorizeCloudRuntimeActor,
 	bufferWorkspaceLocalFrame,
 	CloudMailboxApplyError,
 	type CloudMailboxCommandIdentity,
@@ -51,6 +54,141 @@ import {
 	startCloudWorkspaceLaunchIntent,
 	writeGithubBrokerState,
 } from "../../src/api/cloud-workspace-runtime.ts";
+
+it("retries queued author checks after an outage but stops on revocation", async () => {
+	const fetcher = vi
+		.fn()
+		.mockResolvedValueOnce(Response.json({}, { status: 503 }))
+		.mockResolvedValue(Response.json({ permission: "edit" }));
+	vi.stubGlobal("fetch", fetcher);
+	const input = {
+		config: { apiUrl: "https://api.test", workspaceId: "workspace" },
+		credential: { credential: "runtime", generation: 4, gatewayEpoch: 8 },
+		actor: { subject: "author", membershipId: "membership" },
+	};
+	try {
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const pending = yield* Effect.forkChild(
+					authorizeCloudQueuedActor(input),
+				);
+				yield* TestClock.adjust("5 seconds");
+				expect(yield* Fiber.join(pending)).toBe(true);
+			}).pipe(Effect.scoped, Effect.provide(TestClock.layer())),
+		);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		fetcher.mockResolvedValue(Response.json({}, { status: 403 }));
+		expect(await Effect.runPromise(authorizeCloudQueuedActor(input))).toBe(
+			false,
+		);
+		expect(
+			await Effect.runPromise(
+				authorizeCloudQueuedActor({ ...input, actor: undefined }),
+			),
+		).toBe(false);
+		expect(fetcher).toHaveBeenCalledTimes(3);
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});
+
+it("checks mailbox authors and distinguishes revocation from provider outages", async () => {
+	const fetcher = vi.fn();
+	vi.stubGlobal("fetch", fetcher);
+	const input = {
+		config: { apiUrl: "https://api.test", workspaceId: "workspace" },
+		credential: { credential: "runtime", generation: 4, gatewayEpoch: 8 },
+		actor: { subject: "member", membershipId: "original-membership" },
+	};
+	try {
+		await expect(
+			Effect.runPromise(
+				authorizeCloudMailboxActor({ ...input, actor: undefined }),
+			),
+		).rejects.toMatchObject({ category: "command-author-access-denied" });
+		expect(fetcher).not.toHaveBeenCalled();
+		fetcher.mockResolvedValue(Response.json({ permission: "edit" }));
+		await Effect.runPromise(authorizeCloudMailboxActor(input));
+		expect(JSON.parse(fetcher.mock.calls[0]?.[1].body)).toEqual({
+			actorId: "member",
+			membershipId: "original-membership",
+			runtimeGeneration: 4,
+			gatewayEpoch: 8,
+		});
+		for (const [status, permission, category] of [
+			[200, "view", "command-author-access-denied"],
+			[403, "edit", "command-author-access-denied"],
+			[503, "edit", "command-author-access-unavailable"],
+			[401, "edit", "command-author-access-unavailable"],
+		] as const) {
+			fetcher.mockResolvedValue(Response.json({ permission }, { status }));
+			await expect(
+				Effect.runPromise(authorizeCloudMailboxActor(input)),
+			).rejects.toMatchObject({ category });
+		}
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});
+
+it("revalidates gateway authority with renewed credentials and never exceeds a View ticket", async () => {
+	let permission = "edit";
+	let status = 200;
+	const fetcher = vi.fn(async (_url: string, _init?: RequestInit) =>
+		Response.json({ permission }, { status }),
+	);
+	vi.stubGlobal("fetch", fetcher);
+	try {
+		const credential = {
+			credential: "runtime-1",
+			generation: 4,
+			gatewayEpoch: 8,
+		};
+		const input = {
+			config: { apiUrl: "https://api.test", workspaceId: "workspace" },
+			credential,
+			actorId: "member",
+			membershipId: "original-membership",
+			permission: "view" as const,
+		};
+		const view = authorizeCloudRuntimeActor(input);
+		expect(await Effect.runPromise(view)).toBe("view");
+		expect(fetcher.mock.calls[0]?.[0]).toBe(
+			"https://api.test/v1/cloud/workspaces/workspace/runtime/access",
+		);
+		credential.credential = "runtime-renewed";
+		permission = "view";
+		expect(
+			await Effect.runPromise(
+				authorizeCloudRuntimeActor({ ...input, permission: "edit" }),
+			),
+		).toBe("view");
+		expect(fetcher.mock.calls[1]?.[1]).toMatchObject({
+			headers: { authorization: "Bearer runtime-renewed" },
+			body: JSON.stringify({
+				actorId: "member",
+				membershipId: "original-membership",
+				runtimeGeneration: 4,
+				gatewayEpoch: 8,
+			}),
+		});
+		status = 403;
+		await expect(Effect.runPromise(view)).rejects.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+		});
+		status = 503;
+		await expect(Effect.runPromise(view)).rejects.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+		});
+		status = 200;
+		permission = "owner";
+		await expect(Effect.runPromise(view)).rejects.toMatchObject({
+			_tag: "RpcAccessDeniedError",
+		});
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});
 
 const makeDurableMessageLease = async (
 	input: { readonly text?: string } = {},
@@ -133,6 +271,7 @@ const receiptFor = (
 			parentItemId: null,
 			contentJson: JSON.stringify({
 				_tag: "user",
+				actor: input.lease.command.actor,
 				text: "continue after wake",
 				goal: false,
 			}),
@@ -766,11 +905,99 @@ describe("cloud workspace mailbox runtime", () => {
 		expect(sendMessage).not.toHaveBeenCalled();
 	});
 
-	it("acknowledges a new message only after its receipt is persisted", async () => {
+	it.each([
+		["command-author-access-denied", false],
+		["command-author-access-unavailable", false],
+		["command-author-access-denied", true],
+	] as const)("handles author validation %s with committed=%s without sending again", async (category, committed) => {
 		const durable = await makeDurableMessageLease();
+		const receipts = makeReceiptStore(
+			committed ? boundReceiptFor(durable) : null,
+		);
+		const sendMessage = vi.fn(() => Effect.void);
+		const authorizeActor = vi.fn(() =>
+			Effect.fail(new CloudMailboxApplyError({ category })),
+		);
+		const acknowledgment = await Effect.runPromise(
+			applyCloudMailboxLease({
+				config: { workspaceId: "workspace-1" },
+				lease: durable.lease,
+				runtimeGeneration: 7,
+				providerSandboxId: "sandbox-1",
+				nowMs: Effect.succeed(1),
+				transcriptKey: durable.transcriptKey,
+				storageIncarnationId: "storage-1",
+				sendMessage,
+				receipts: receipts.store,
+				authorizeActor,
+			}),
+		);
+		expect(sendMessage).not.toHaveBeenCalled();
+		expect(authorizeActor).toHaveBeenCalledTimes(committed ? 0 : 1);
+		if (committed) expect(acknowledgment).toMatchObject({ state: "applied" });
+		else if (category === "command-author-access-unavailable")
+			expect(acknowledgment).toBeNull();
+		else expect(acknowledgment).toMatchObject({ state: "rejected", category });
+	});
+
+	it.each([
+		true,
+		false,
+	])("binds recovered receipts to the original author (matching=%s)", async (matching) => {
+		const durable = await makeDurableMessageLease();
+		const actor = { subject: "author", membershipId: "original-membership" };
+		const attributed = {
+			...durable,
+			lease: { ...durable.lease, command: { ...durable.lease.command, actor } },
+		};
+		const receipts = makeReceiptStore(boundReceiptFor(attributed));
+		const sendMessage = vi.fn(() => Effect.void);
+		const acknowledgment = await Effect.runPromise(
+			applyCloudMailboxLease({
+				config: { workspaceId: "workspace-1" },
+				lease: {
+					...attributed.lease,
+					command: {
+						...attributed.lease.command,
+						actor: matching
+							? actor
+							: { ...actor, membershipId: "rejoined-membership" },
+					},
+				},
+				runtimeGeneration: 7,
+				providerSandboxId: "sandbox-1",
+				nowMs: Effect.succeed(1),
+				transcriptKey: durable.transcriptKey,
+				storageIncarnationId: "storage-1",
+				sendMessage,
+				receipts: receipts.store,
+			}),
+		);
+		expect(acknowledgment).toMatchObject(
+			matching
+				? { state: "applied" }
+				: { state: "outcome-unknown", category: "runtime-receipt-invalid" },
+		);
+		expect(sendMessage).not.toHaveBeenCalled();
+	});
+
+	it("acknowledges a new message only after its receipt is persisted", async () => {
+		const original = await makeDurableMessageLease();
+		const actor = { subject: "author", membershipId: "original-membership" };
+		const durable = {
+			...original,
+			lease: {
+				...original.lease,
+				command: { ...original.lease.command, actor },
+			},
+		};
 		const receipts = makeReceiptStore(null);
-		const sendMessage = vi.fn(() =>
-			Effect.sync(() => receipts.write(boundReceiptFor(durable))),
+		const sendMessage = vi.fn(
+			(
+				..._args: Parameters<
+					Parameters<typeof applyCloudMailboxLease>[0]["sendMessage"]
+				>
+			) => Effect.sync(() => receipts.write(boundReceiptFor(durable))),
 		);
 
 		const acknowledgment = await Effect.runPromise(
@@ -791,6 +1018,7 @@ describe("cloud workspace mailbox runtime", () => {
 		if (acknowledgment === null)
 			throw new Error("message apply was not proven");
 		expect(acknowledgment.state).toBe("applied");
+		expect(sendMessage.mock.calls[0]?.[11]).toEqual(actor);
 		expect(receipts.read()).toMatchObject({
 			fingerprint: durable.lease.command.fingerprint,
 			commandKind: "messages.send",

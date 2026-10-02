@@ -1,6 +1,10 @@
 import { BillingProvidersManual } from "@zuse/billing-providers";
-import { ApiPaths } from "@zuse/contracts";
+import {
+	ApiPaths,
+	CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
+} from "@zuse/contracts";
 import { MachineProvidersFake } from "@zuse/machine-providers/testing";
+import { SandboxProviders } from "@zuse/sandbox-providers";
 import { SandboxProvidersFake } from "@zuse/sandbox-providers/testing";
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
 import { exportJWK, generateKeyPair } from "jose";
@@ -9,6 +13,7 @@ import {
 	AccountIdentity,
 	type AccountIdentityApi,
 } from "../../src/account-identity.ts";
+import { CloudBillingStore } from "../../src/cloud-billing-store.ts";
 import { CloudBillingStoreMemory } from "../../src/cloud-billing-store-memory.ts";
 import { takeCloudMailboxDirective } from "../../src/cloud-mailbox-directive.ts";
 import {
@@ -19,11 +24,18 @@ import {
 	CloudWorkspaceStore,
 	CloudWorkspaceStoreMemory,
 } from "../../src/cloud-workspace-store.ts";
-import { layer as configurationLayer } from "../../src/config.ts";
-import { sha256Hex } from "../../src/crypto.ts";
+import {
+	ApiConfiguration,
+	layer as configurationLayer,
+} from "../../src/config.ts";
+import {
+	parseJwk,
+	sha256Hex,
+	signWorkspaceClientTicket,
+} from "../../src/crypto.ts";
 import { handleRequest } from "../../src/handler.ts";
 import { MachineControlConfiguration } from "../../src/machine-config.ts";
-import { MachineStoreMemory } from "../../src/machine-store.ts";
+import { MachineStore, MachineStoreMemory } from "../../src/machine-store.ts";
 import { ManagedTunnelProviderLive } from "../../src/managed-tunnel.ts";
 import { PushDelivery } from "../../src/push.ts";
 import { SandboxOfferConfiguration } from "../../src/sandbox-provider-module.ts";
@@ -44,12 +56,14 @@ vi.mock("../../src/cloud-github-app.ts", async (importOriginal) => {
 
 const ISSUER = "https://api.test";
 
-const makeRuntime = async () => {
+const makeRuntime = async (organizationWorkspacesEnabled = false) => {
 	const mint = await generateKeyPair("EdDSA", { extractable: true });
 	const config = configurationLayer({
 		apiIssuer: ISSUER,
 		workosJwksUrl: "https://unused.test/jwks",
 		workosIssuer: "https://unused.test",
+		organizationWorkspacesEnabled,
+		workosApiKey: Redacted.make("test-workos-key"),
 		mintPrivateKey: Redacted.make(
 			JSON.stringify(await exportJWK(mint.privateKey)),
 		),
@@ -67,7 +81,16 @@ const makeRuntime = async () => {
 		MachineStoreMemory,
 		MachineProvidersFake,
 		BillingProvidersManual,
-		SandboxProvidersFake,
+		Layer.effect(
+			SandboxProviders,
+			Effect.gen(function* () {
+				const providers = yield* SandboxProviders;
+				return {
+					...providers,
+					availableProviders: [yield* providers.get("fake")],
+				};
+			}),
+		).pipe(Layer.provide(SandboxProvidersFake)),
 		Layer.effect(
 			CloudWorkspaceLaunchIntentCipher,
 			CloudWorkspaceLaunchIntentCipherLive,
@@ -100,6 +123,726 @@ const makeRuntime = async () => {
 };
 
 describe("cloud workspace runtime bootstrap", () => {
+	test("workspace settings require admin writes, exclude device preferences and reject stale revisions", async () => {
+		const runtime = await makeRuntime(true);
+		let role = "admin";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: string) =>
+				Response.json({
+					data: [
+						{
+							id: "membership",
+							user_id: "alice",
+							organization_id: new URL(input).searchParams.get(
+								"organization_id",
+							),
+							status: "active",
+							role: { slug: role },
+						},
+					],
+					list_metadata: { after: null },
+				}),
+			),
+		);
+		const call = (scope: string, body?: unknown) =>
+			runtime.runPromise(
+				handleRequest(
+					new Request(
+						`${ISSUER}${scope === "personal" ? "" : `/v1/organization-workspaces/${scope.slice(13)}`}${ApiPaths.cloudSettings}`,
+						{
+							method: body === undefined ? "GET" : "PUT",
+							headers: {
+								authorization: "Bearer test-token:alice",
+								"x-zuse-workspace": scope,
+								"content-type": "application/json",
+							},
+							body: body === undefined ? undefined : JSON.stringify(body),
+						},
+					),
+				),
+			);
+		try {
+			for (const scope of [
+				"personal",
+				"organization:org_a",
+				"organization:org_b",
+			]) {
+				expect(await (await call(scope)).json()).toEqual({
+					revision: 0,
+					values: {},
+				});
+				expect(
+					await (
+						await call(scope, {
+							expectedRevision: 0,
+							values: {
+								branchNamingPrefix: scope,
+								appearanceMode: "light",
+								providerBinaryPaths: { claude: "/private/path" },
+							},
+						})
+					).json(),
+				).toEqual({ revision: 1, values: { branchNamingPrefix: scope } });
+			}
+			const stale = await call("organization:org_a", {
+				expectedRevision: 0,
+				values: {},
+			});
+			expect(stale.status).toBe(409);
+			expect(await stale.json()).toEqual({
+				error: "workspace_settings_changed",
+			});
+			role = "member";
+			expect(await (await call("organization:org_a")).json()).toEqual({
+				revision: 1,
+				values: { branchNamingPrefix: "organization:org_a" },
+			});
+			expect(
+				(await call("organization:org_a", { expectedRevision: 1, values: {} }))
+					.status,
+			).toBe(403);
+			role = "billing";
+			expect((await call("organization:org_a")).status).toBe(403);
+			role = "admin";
+			expect(
+				(await call("organization:org_a", { expectedRevision: -1, values: {} }))
+					.status,
+			).toBe(400);
+			expect(
+				(
+					await call("organization:org_a", {
+						expectedRevision: 1,
+						values: { defaultProviderId: "unknown" },
+					})
+				).status,
+			).toBe(400);
+			expect(
+				await (
+					await call("organization:org_a", { expectedRevision: 1, values: {} })
+				).json(),
+			).toEqual({ revision: 2, values: {} });
+			expect(await (await call("personal")).json()).toEqual({
+				revision: 1,
+				values: { branchNamingPrefix: "personal" },
+			});
+		} finally {
+			vi.unstubAllGlobals();
+			await runtime.dispose();
+		}
+	});
+	test("creates organization-owned chats with future-only defaults and member-bound retries", async () => {
+		const runtime = await makeRuntime(true);
+		let audience = "organization";
+		let subject = "alice";
+		let role = "member";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: string) => {
+				const url = new URL(input);
+				if (url.pathname.startsWith("/organizations/"))
+					return Response.json({
+						id: "org_a",
+						name: "Team",
+						metadata: {
+							zuse_chat_sharing: JSON.stringify({
+								audience,
+								permission: "edit",
+							}),
+						},
+					});
+				return Response.json({
+					data: [
+						{
+							id: `membership-${subject}`,
+							user_id: subject,
+							organization_id: "org_a",
+							status: "active",
+							role: { slug: role },
+						},
+					],
+					list_metadata: { after: null },
+				});
+			}),
+		);
+		try {
+			const store = await runtime.runPromise(CloudWorkspaceStore);
+			const machines = await runtime.runPromise(MachineStore);
+			const billing = await runtime.runPromise(CloudBillingStore);
+			const now = Date.now();
+			const owner = "organization:org_a";
+			await runtime.runPromise(
+				machines.upsertEntitlement({
+					entitlementId: "org-entitlement",
+					accountId: owner,
+					kind: "cloud-workspace",
+					offerId: "cloud-workspace-standard-v1",
+					provider: "manual",
+					status: "active",
+					createdAtMs: now,
+					updatedAtMs: now,
+				}),
+			);
+			await runtime.runPromise(
+				billing.ensurePeriod({
+					periodId: "org-period",
+					accountId: owner,
+					status: "manual",
+					periodStartMs: now - 1000,
+					periodEndMs: now + 86_400_000,
+					nowMs: now,
+				}),
+			);
+			await runtime.runPromise(
+				store.connectProject({
+					projectId: "project",
+					accountId: owner,
+					repositoryIdentity: "github.com/acme/app",
+					repositoryUrl: "https://github.com/acme/app.git",
+					displayName: "App",
+					defaultBranch: "main",
+					visibility: "private",
+					gitConnectionKind: "github-app",
+					cloudEnvironment: {},
+					secretBindings: [],
+					configurationDigest: "digest",
+					state: "ready",
+					idempotencyKey: "project",
+					createdAtMs: now,
+					updatedAtMs: now,
+				}),
+			);
+			await runtime.runPromise(
+				store.createBuild({
+					buildId: "build",
+					projectId: "project",
+					accountId: owner,
+					provider: "fake",
+					snapshotId: "org-image",
+					logText: "private build output",
+					templateVersion: "test-template",
+					configurationDigest: "digest",
+					state: "ready",
+					idempotencyKey: "build",
+					nextActionAtMs: now,
+					revision: 1,
+					createdAtMs: now,
+					updatedAtMs: now,
+				}),
+			);
+			const imageStatus = () =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(`${ISSUER}${ApiPaths.cloudAccountImage}`, {
+							headers: {
+								authorization: `Bearer test-token:${subject}`,
+								"x-zuse-workspace": "organization:org_a",
+							},
+						}),
+					),
+				);
+			const providerResponse = await runtime.runPromise(
+				handleRequest(
+					new Request(`${ISSUER}${ApiPaths.cloudProviders}`, {
+						headers: {
+							authorization: `Bearer test-token:${subject}`,
+							"x-zuse-workspace": "organization:org_a",
+						},
+					}),
+				),
+			);
+			expect(providerResponse.status).toBe(200);
+			expect(await providerResponse.json()).toMatchObject({ entitled: true });
+			const billingResponse = await runtime.runPromise(
+				handleRequest(
+					new Request(`${ISSUER}${ApiPaths.billingEntitlements}`, {
+						headers: {
+							authorization: `Bearer test-token:${subject}`,
+							"x-zuse-workspace": "organization:org_a",
+						},
+					}),
+				),
+			);
+			expect(billingResponse.status).toBe(403);
+			const memberImage = await imageStatus();
+			expect(memberImage.status).toBe(200);
+			const memberImageBody = await memberImage.json();
+			expect(memberImageBody).toMatchObject({
+				generation: "build",
+				repositories: [{ projectId: "project" }],
+			});
+			expect(JSON.stringify(memberImageBody)).not.toContain(
+				"private build output",
+			);
+			role = "admin";
+			expect(await (await imageStatus()).json()).toMatchObject({
+				builds: [{ logText: "private build output" }],
+			});
+			role = "billing";
+			expect((await imageStatus()).status).toBe(403);
+			role = "member";
+			const create = (key: string, branch?: string) =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(`${ISSUER}${ApiPaths.cloudWorkspaces}`, {
+							method: "POST",
+							headers: {
+								authorization: `Bearer test-token:${subject}`,
+								"x-zuse-workspace": "organization:org_a",
+								"content-type": "application/json",
+							},
+							body: JSON.stringify({
+								projectId: "project",
+								providerId: "fake",
+								baseRef: "main",
+								branch,
+								agent: "codex",
+								model: "test",
+								idempotencyKey: key,
+							}),
+						}),
+					),
+				);
+			const first = await create("same-key");
+			expect(first.status, await first.clone().text()).toBe(201);
+			const firstId = (await first.json()).workspace.workspaceId;
+			const original = await runtime.runPromise(store.getWorkspace(firstId));
+			expect(original).toMatchObject({
+				accountId: owner,
+				buildId: "build",
+				requestConfig: {
+					sharingPolicy: {
+						audience: "organization",
+						permission: "edit",
+						creatorSubject: "alice",
+						creatorMembershipId: "membership-alice",
+						grants: [],
+					},
+				},
+			});
+			audience = "private";
+			const retry = await create("same-key");
+			expect(retry.status).toBe(200);
+			expect((await retry.json()).workspace.workspaceId).toBe(firstId);
+			expect(
+				(await runtime.runPromise(store.getWorkspace(firstId)))?.requestConfig
+					.sharingPolicy,
+			).toEqual(original?.requestConfig.sharingPolicy);
+			subject = "bob";
+			const second = await create("same-key");
+			expect(second.status).toBe(201);
+			const secondId = (await second.json()).workspace.workspaceId;
+			expect(secondId).not.toBe(firstId);
+			expect(
+				(await runtime.runPromise(store.getWorkspace(secondId)))?.requestConfig
+					.sharingPolicy,
+			).toMatchObject({ audience: "private", creatorSubject: "bob" });
+			expect(await runtime.runPromise(store.listWorkspaces("alice"))).toEqual(
+				[],
+			);
+			expect(
+				await runtime.runPromise(billing.currentPeriod("alice", now)),
+			).toBeNull();
+			const catalog = () =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(`${ISSUER}${ApiPaths.cloudChatChanges}?cursor=0`, {
+							headers: {
+								authorization: `Bearer test-token:${subject}`,
+								"x-zuse-workspace": "organization:org_a",
+							},
+						}),
+					),
+				);
+			expect(await (await catalog()).json()).toMatchObject({
+				reset: true,
+				deletedWorkspaceIds: [],
+				chats: expect.arrayContaining([
+					expect.objectContaining({ workspaceId: firstId }),
+					expect.objectContaining({ workspaceId: secondId }),
+				]),
+			});
+			subject = "alice";
+			const visible = await (await catalog()).json();
+			expect(visible.reset).toBe(true);
+			expect(
+				visible.chats.map((chat: { workspaceId: string }) => chat.workspaceId),
+			).toEqual([firstId]);
+			expect(visible.deletedWorkspaceIds).toEqual([]);
+			const privateWorkspace = await runtime.runPromise(
+				store.getWorkspace(secondId),
+			);
+			if (!privateWorkspace) throw new Error("missing test workspace");
+			const collision = await create(
+				"branch-collision",
+				privateWorkspace.branch,
+			);
+			expect(collision.status).toBe(409);
+			expect(await collision.json()).toEqual({ error: "cloud_branch_in_use" });
+		} finally {
+			vi.unstubAllGlobals();
+			await runtime.dispose();
+		}
+	});
+
+	test("binds gateway actors and rechecks live membership through fenced runtime credentials", async () => {
+		const runtime = await makeRuntime(true);
+		let role = "member";
+		let active = true;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () =>
+				Response.json({
+					data: active
+						? [
+								{
+									id: "membership",
+									user_id: "member",
+									organization_id: "org_a",
+									status: "active",
+									role: { slug: role },
+								},
+							]
+						: [],
+					list_metadata: { after: null },
+				}),
+			),
+		);
+		try {
+			const store = await runtime.runPromise(CloudWorkspaceStore);
+			const now = Date.now();
+			const workspaceId = "org-workspace";
+			const credentialHash = await runtime.runPromise(
+				sha256Hex("runtime-secret"),
+			);
+			const workspace = {
+				workspaceId,
+				accountId: "organization:org_a",
+				projectId: "project",
+				buildId: "build",
+				provider: "fake",
+				runtimeState: "online" as const,
+				chatId: "chat",
+				initialSessionId: "session",
+				branch: "branch",
+				baseRef: "main",
+				state: "ready" as const,
+				desiredState: "ready" as const,
+				statusCode: "ready",
+				idempotencyKey: "org-create",
+				runtimeCredentialHash: credentialHash,
+				nextActionAtMs: now,
+				revision: 1,
+				createdAtMs: now,
+				updatedAtMs: now,
+				lastActivityAtMs: now,
+				requestConfig: {
+					runtimeGeneration: 4,
+					gatewayEpoch: 8,
+					runtimeCredentialExpiresAtMs: now + 60_000,
+					sharingPolicy: {
+						creatorSubject: "creator",
+						creatorMembershipId: "creator-membership",
+						audience: "organization",
+						permission: "view",
+						grants: [],
+					},
+					runtimeBootstrapReceipt: {
+						workspaceId,
+						bootTokenHash: "boot",
+						credentialKeyThumbprint: "key",
+						signingKeyThumbprint: "key",
+						signingPublicJwk: "{}",
+						runtimeCredentialHash: credentialHash,
+						runtimeCredentialExpiresAtMs: now + 60_000,
+						generation: 4,
+						gatewayEpoch: 8,
+						sealedTranscriptKey: "sealed",
+						enrolledAtMs: now,
+						capabilities: [CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY],
+					},
+				},
+			};
+			await runtime.runPromise(
+				store.createWorkspace(workspace, {
+					workspaceId,
+					accountId: workspace.accountId,
+					chatId: "chat",
+					sessionId: "session",
+					turnId: "turn",
+					commandId: "launch",
+					ciphertext: "unused",
+					expiresAtMs: now + 60_000,
+					createdAtMs: now,
+				}),
+			);
+			const userRequest = (suffix: string, method: string, scope = "org_a") =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(
+							`${ISSUER}/v1/organization-workspaces/${scope}/v1/cloud/workspaces/${workspaceId}/${suffix}`,
+							{
+								method,
+								headers: {
+									authorization: "Bearer test-token:member",
+									"x-zuse-workspace": `organization:${scope}`,
+									"content-type": "application/json",
+								},
+								body: method === "POST" ? "{}" : undefined,
+							},
+						),
+					),
+				);
+			for (const [suffix, method] of [
+				["data-key", "GET"],
+				["commands", "POST"],
+				["commands/command", "DELETE"],
+				...["pause", "resume", "restart", "archive", "unarchive", "delete"].map(
+					(action) => [action, "POST"],
+				),
+			] as const) {
+				const denied = await userRequest(suffix, method);
+				expect(denied.status).toBe(403);
+				expect(await denied.json()).toEqual({
+					error: "workspace_access_denied",
+				});
+			}
+			expect((await userRequest("commands/command", "GET")).status).toBe(200);
+			expect(
+				(await userRequest("commands/command", "GET", "org_b")).status,
+			).toBe(403);
+			role = "billing";
+			expect((await userRequest("commands/command", "GET")).status).toBe(403);
+			role = "admin";
+			expect((await userRequest("data-key", "GET")).status).toBe(200);
+			role = "member";
+			const ticket = await runtime.runPromise(
+				Effect.gen(function* () {
+					const config = yield* ApiConfiguration;
+					return yield* signWorkspaceClientTicket({
+						mintPrivateJwk: yield* parseJwk(
+							Redacted.value(config.mintPrivateKey),
+						),
+						issuer: ISSUER,
+						accountId: workspace.accountId,
+						actorId: "member",
+						permission: "edit",
+						deviceId: "device",
+						workspaceId,
+						protocol: "zuse-workspace-v2",
+						generation: 4,
+						gatewayEpoch: 8,
+						ttlMs: 60_000,
+						nowMs: now,
+					});
+				}),
+			);
+			const connect = () =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(
+							`${ISSUER}${ApiPaths.cloudWorkspaceGateway(workspaceId)}`,
+							{
+								headers: {
+									upgrade: "websocket",
+									"sec-websocket-protocol": `zuse-workspace-v2, ${ticket}`,
+									"x-zuse-gateway-actor": "forged-owner",
+								},
+							},
+						),
+					),
+				);
+			const connected = await connect();
+			expect(connected.status).toBe(204);
+			expect(connected.headers.get("x-zuse-gateway-actor")).toBe("member");
+			expect(connected.headers.get("x-zuse-gateway-permission")).toBe("view");
+			const read = (path: string, method = "GET") =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(`${ISSUER}${path}`, {
+							method,
+							headers: {
+								authorization: "Bearer test-token:member",
+								"x-zuse-workspace": "organization:org_a",
+							},
+						}),
+					),
+				);
+			const itemPath = `${ApiPaths.cloudWorkspaces}/${workspaceId}`;
+			expect((await read(itemPath)).status).toBe(200);
+			expect(await (await read(ApiPaths.cloudWorkspaces)).json()).toMatchObject(
+				{
+					workspaces: [{ workspaceId }],
+				},
+			);
+			expect((await read(`${itemPath}/gateway/ticket`, "POST")).status).toBe(
+				200,
+			);
+			expect((await read(`${itemPath}/pause`, "POST")).status).toBe(403);
+			expect(await (await read(`${itemPath}/sharing`)).json()).toMatchObject({
+				policy: { audience: "organization", permission: "view" },
+				canManageSharing: false,
+			});
+			const access = (
+				token = "runtime-secret",
+				generation = 4,
+				actorId = "member",
+				membershipId?: string,
+			) =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(
+							`${ISSUER}${ApiPaths.cloudWorkspaceRuntimeAccess(workspaceId)}`,
+							{
+								method: "POST",
+								headers: {
+									authorization: `Bearer ${token}`,
+									"content-type": "application/json",
+								},
+								body: JSON.stringify({
+									actorId,
+									membershipId,
+									runtimeGeneration: generation,
+									gatewayEpoch: 8,
+								}),
+							},
+						),
+					),
+				);
+			expect(await (await access()).json()).toEqual({
+				permission: "view",
+				actor: { subject: "member", membershipId: "membership" },
+			});
+			expect((await access("invalid")).status).toBe(401);
+			expect((await access("runtime-secret", 3)).status).toBe(401);
+			expect((await access("runtime-secret", 4, "stranger")).status).toBe(403);
+			expect(
+				(await access("runtime-secret", 4, "member", "membership")).status,
+			).toBe(200);
+			expect(
+				(await access("runtime-secret", 4, "member", "previous-membership"))
+					.status,
+			).toBe(403);
+			role = "billing";
+			expect((await access()).status).toBe(403);
+			expect((await connect()).status).toBe(403);
+			expect((await read(ApiPaths.cloudWorkspaces)).status).toBe(403);
+			expect((await read(itemPath)).status).toBe(403);
+			role = "member";
+			active = false;
+			expect((await access()).status).toBe(403);
+			expect((await connect()).status).toBe(403);
+			active = true;
+			const beforeUpdate = await runtime.runPromise(
+				store.getWorkspace(workspaceId),
+			);
+			if (!beforeUpdate) throw new Error("missing test workspace");
+			await runtime.runPromise(
+				store.saveWorkspace({
+					...beforeUpdate,
+					revision: beforeUpdate.revision + 1,
+					updatedAtMs: beforeUpdate.updatedAtMs + 1,
+					requestConfig: {
+						...beforeUpdate.requestConfig,
+						runtimeBootstrapReceipt: {
+							...workspace.requestConfig.runtimeBootstrapReceipt,
+							capabilities: [],
+						},
+					},
+				}),
+			);
+			expect((await connect()).status).toBe(409);
+			const incompatibleTicket = await read(
+				`${itemPath}/gateway/ticket`,
+				"POST",
+			);
+			expect(incompatibleTicket.status).toBe(409);
+			expect(await incompatibleTicket.json()).toEqual({
+				error: "workspace_runtime_update_required",
+			});
+			const current = await runtime.runPromise(store.getWorkspace(workspaceId));
+			if (!current) throw new Error("missing test workspace");
+			await runtime.runPromise(
+				store.updateWorkspaceSharing({
+					workspaceId,
+					accountId: workspace.accountId,
+					expectedRevision: 0,
+					sharing: { audience: "private", permission: "edit", grants: [] },
+					nowMs: now + 2,
+				}),
+			);
+			expect(await (await read(ApiPaths.cloudWorkspaces)).json()).toEqual({
+				workspaces: [],
+			});
+			expect((await read(itemPath)).status).toBe(403);
+			expect((await read(`${itemPath}/gateway/ticket`, "POST")).status).toBe(
+				403,
+			);
+			expect(
+				(await read(`${itemPath}/sessions/session/transcript-checkpoint`))
+					.status,
+			).toBe(403);
+			expect(
+				(await read(`${itemPath}/sessions/session/transcript-message-page`))
+					.status,
+			).toBe(403);
+			role = "admin";
+			expect((await read(itemPath)).status).toBe(200);
+			const sharing = await (await read(`${itemPath}/sharing`)).json();
+			const updateSharing = (
+				grants: ReadonlyArray<{ membershipId: string; permission: "view" }>,
+			) =>
+				runtime.runPromise(
+					handleRequest(
+						new Request(`${ISSUER}${itemPath}/sharing`, {
+							method: "PUT",
+							headers: {
+								authorization: "Bearer test-token:member",
+								"x-zuse-workspace": "organization:org_a",
+								"content-type": "application/json",
+							},
+							body: JSON.stringify({
+								expectedRevision: sharing.revision,
+								audience: "private",
+								permission: "view",
+								grants,
+							}),
+						}),
+					),
+				);
+			expect(
+				(
+					await updateSharing([
+						{ membershipId: "foreign-member", permission: "view" },
+					])
+				).status,
+			).toBe(400);
+			const grant = { membershipId: "membership", permission: "view" as const };
+			expect((await updateSharing([grant, grant])).status).toBe(400);
+			const granted = await updateSharing([grant]);
+			expect(granted.status).toBe(200);
+			expect(await granted.json()).toMatchObject({
+				policy: {
+					creatorSubject: "creator",
+					creatorMembershipId: "creator-membership",
+					grants: [grant],
+				},
+			});
+			expect((await updateSharing([])).status).toBe(409);
+			role = "member";
+			expect((await read(itemPath)).status).toBe(200);
+			expect((await updateSharing([])).status).toBe(403);
+			expect(await (await read(ApiPaths.cloudWorkspaces)).json()).toMatchObject(
+				{
+					workspaces: [{ workspaceId }],
+				},
+			);
+		} finally {
+			vi.unstubAllGlobals();
+			await runtime.dispose();
+		}
+	});
+
 	test("backfills transcript keys and replays a byte-stable bootstrap", async () => {
 		const runtime = await makeRuntime();
 		const store = await runtime.runPromise(CloudWorkspaceStore);

@@ -68,6 +68,7 @@ const CATEGORY_KIND: Readonly<Record<string, CloudFailureKind>> = {
 	"grok-auth-reconnect-required": "sign-in-required",
 	"grok-auth-legacy-workspace": "sign-in-required",
 	"not-allowed": "sign-in-required",
+	"access-denied": "cloud-access-required",
 	"billing-blocked": "billing-blocked",
 	"billing-hold": "billing-blocked",
 	"entitlement-required": "billing-blocked",

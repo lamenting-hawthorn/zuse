@@ -6,7 +6,7 @@ it.each([
 	5, 6,
 ])("accepts and echoes deployed protocol %i", async (protocolVersion) => {
 	expect(await Effect.runPromise(acceptWireHandshake(protocolVersion))).toEqual(
-		{ protocolVersion },
+		{ protocolVersion, workspaceScopeProtocol: 1 },
 	);
 });
 it.each([

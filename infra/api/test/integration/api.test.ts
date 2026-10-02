@@ -4,7 +4,13 @@ import {
 	BillingProviders,
 	BillingProvidersManual,
 } from "@zuse/billing-providers";
-import { ApiPaths } from "@zuse/contracts";
+import {
+	ApiPaths,
+	CLOUD_WORKSPACE_OFFER_ID,
+	CloudAuthStatus,
+	WORKSPACE_API_PREFIX,
+	WORKSPACE_SCOPE_HEADER,
+} from "@zuse/contracts";
 import { MachineProvidersFake } from "@zuse/machine-providers/testing";
 import {
 	type SandboxProviderAdapter,
@@ -20,7 +26,8 @@ import {
 	jwtVerify,
 	SignJWT,
 } from "jose";
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import * as CloudAuthAuthority from "../../src/cloud-auth-authority.ts";
 import { routeCloudWorkspaceRequest } from "../../src/cloud-workspace-routes.ts";
 import { CloudWorkspaceStore } from "../../src/cloud-workspace-store.ts";
 import * as Config from "../../src/config.ts";
@@ -135,6 +142,7 @@ const makeLayer = async (
 	machineControlOverrides: Partial<MachineControlConfig> = {},
 	sandboxProvidersLayer: Layer.Layer<SandboxProviders> = SandboxProvidersFake,
 	publicApiOrigin?: string,
+	organizationWorkspacesEnabled = false,
 ): Promise<Layer.Layer<ApiContext>> => {
 	const billingLayer =
 		typeof billingLayerOrMaxEnvironments === "number"
@@ -146,10 +154,12 @@ const makeLayer = async (
 			: undefined;
 	mintKey = (await eddsa()) as KeyPair;
 	const configLayer = Config.layer({
+		organizationWorkspacesEnabled,
 		apiIssuer: API_ISSUER,
 		publicApiOrigin,
 		workosJwksUrl: "https://unused.test/jwks",
 		workosIssuer: "https://unused.test",
+		workosApiKey: Redacted.make("test-workos-key"),
 		mintPrivateKey: Redacted.make(
 			JSON.stringify(await exportJWK(mintKey.privateKey)),
 		),
@@ -341,6 +351,479 @@ beforeEach(async () => {
 });
 
 describe("@zuse/api", () => {
+	test.each([
+		undefined,
+		"personal",
+		"organization:org_b",
+	])("rejects a scoped URL with missing or mismatched scope (%s)", async (scope) => {
+		const response = await api.fetch(
+			new Request(
+				`${API_ISSUER}${WORKSPACE_API_PREFIX}org_a${ApiPaths.billingPortal}`,
+				{
+					method: "POST",
+					headers: {
+						authorization: "Bearer test-token:user_a",
+						...(scope === undefined ? {} : { [WORKSPACE_SCOPE_HEADER]: scope }),
+					},
+				},
+			),
+		);
+		expect(response.status).toBe(400);
+	});
+	test.each([
+		"/v1/environments",
+		"/v1/auth/token",
+		"/v1/keys",
+	])("rejects explicit organization scope on unmigrated route %s", async (path) => {
+		const response = await api.fetch(
+			new Request(`${API_ISSUER}${path}`, {
+				headers: {
+					authorization: "Bearer test-token:user_a",
+					[WORKSPACE_SCOPE_HEADER]: "organization:org_a",
+				},
+			}),
+		);
+		expect(response.status).toBe(403);
+		expect(await response.json()).toEqual({
+			error: "workspace_scope_not_supported",
+		});
+	});
+
+	test("keeps migrated organization catalog access behind the rollout gate", async () => {
+		const response = await api.fetch(
+			new Request(`${API_ISSUER}/v1/cloud/chats`, {
+				headers: {
+					authorization: "Bearer test-token:user_a",
+					[WORKSPACE_SCOPE_HEADER]: "organization:org_a",
+				},
+			}),
+		);
+		expect(response.status).toBe(403);
+		expect(await response.json()).toEqual({
+			error: "organization_workspaces_disabled",
+		});
+	});
+
+	test("uses independent workspace owners for checkout and portal without transferring Personal subscriptions", async () => {
+		const checkoutOwners: string[] = [];
+		const checkoutReturns: string[] = [];
+		const portalOwners: string[] = [];
+		let role = "admin";
+		let membershipStatus = "active";
+		const workos = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (input) => {
+				const url = new URL(String(input));
+				expect(url.origin).toBe("https://api.workos.com");
+				if (url.pathname.startsWith("/organizations/")) {
+					const id = url.pathname.split("/").at(-1);
+					return Response.json({ id, name: `Team ${id}` });
+				}
+				return Response.json({
+					data: [
+						{
+							id: "member_a",
+							user_id: url.searchParams.get("user_id"),
+							organization_id: url.searchParams.get("organization_id"),
+							status: membershipStatus,
+							role: { slug: role },
+						},
+					],
+					list_metadata: { after: null },
+				});
+			});
+		const billing: BillingProviderAdapter = {
+			providerId: "billing-test",
+			checkout: (input) => {
+				checkoutOwners.push(input.accountId);
+				checkoutReturns.push(input.successUrl);
+				return Effect.succeed("https://billing.test/checkout");
+			},
+			customerPortal: (owner) => {
+				portalOwners.push(owner);
+				return Effect.succeed("https://billing.test/portal");
+			},
+			getCheckout: () => Effect.succeed(null),
+			verifyEvent: () => Effect.die("unused"),
+			reconcileSubscription: () => Effect.die("unused"),
+			cancel: () => Effect.void,
+		};
+		const billingApi = makeApi(
+			await makeLayer(
+				undefined,
+				BillingProviders.layer({
+					adapters: [billing],
+					defaultProviderId: billing.providerId,
+				}).pipe(Layer.orDie),
+				true,
+				{},
+				SandboxProvidersFake,
+				undefined,
+				true,
+			),
+		);
+		const call = (
+			path: string,
+			scope: string,
+			body?: unknown,
+			actor = "user_a",
+		) =>
+			billingApi.fetch(
+				new Request(
+					`${API_ISSUER}${scope.startsWith("organization:") ? `${WORKSPACE_API_PREFIX}${scope.slice(13)}` : ""}${path}`,
+					{
+						method: "POST",
+						headers: {
+							authorization: `Bearer test-token:${actor}`,
+							"content-type": "application/json",
+							[WORKSPACE_SCOPE_HEADER]: scope,
+						},
+						body: body === undefined ? undefined : JSON.stringify(body),
+					},
+				),
+			);
+		try {
+			for (const scope of [
+				"personal",
+				"organization:org_a",
+				"organization:org_b",
+			]) {
+				expect(
+					(
+						await call(ApiPaths.billingCheckout, scope, {
+							offerId: CLOUD_WORKSPACE_OFFER_ID,
+						})
+					).status,
+				).toBe(200);
+				expect((await call(ApiPaths.billingPortal, scope)).status).toBe(200);
+				const receipt = await billingApi.fetch(
+					new Request(checkoutReturns.at(-1) ?? ""),
+				);
+				expect(await receipt.text()).toContain(
+					scope === "personal"
+						? ">Personal</span>"
+						: `>Team ${scope.slice(13)}</span>`,
+				);
+			}
+			expect(checkoutOwners).toEqual([
+				"user_a",
+				"organization:org_a",
+				"organization:org_b",
+			]);
+			expect(portalOwners).toEqual(checkoutOwners);
+			role = "member";
+			expect(
+				(
+					await call(ApiPaths.billingCheckout, "organization:org_a", {
+						offerId: CLOUD_WORKSPACE_OFFER_ID,
+					})
+				).status,
+			).toBe(403);
+			expect(
+				(await call(ApiPaths.billingPortal, "organization:org_a")).status,
+			).toBe(403);
+			expect(checkoutOwners).toHaveLength(3);
+			expect(portalOwners).toHaveLength(3);
+			role = "billing";
+			expect(
+				(
+					await call(
+						ApiPaths.billingPortal,
+						"organization:org_a",
+						undefined,
+						"user_finance",
+					)
+				).status,
+			).toBe(200);
+			expect(portalOwners.at(-1)).toBe("organization:org_a");
+			expect(
+				(
+					await call(
+						ApiPaths.billingCheckout,
+						"organization:org_a",
+						{
+							offerId: CLOUD_WORKSPACE_OFFER_ID,
+						},
+						"user_finance",
+					)
+				).status,
+			).toBe(200);
+			expect(checkoutOwners.at(-1)).toBe("organization:org_a");
+			membershipStatus = "inactive";
+			expect(
+				(
+					await call(
+						ApiPaths.billingPortal,
+						"organization:org_a",
+						undefined,
+						"user_finance",
+					)
+				).status,
+			).toBe(403);
+			expect(portalOwners).toHaveLength(4);
+		} finally {
+			workos.mockRestore();
+			await billingApi.dispose();
+		}
+	});
+
+	test("members can discover funded organization agents without credential-administration metadata", async () => {
+		let role = "member";
+		let status = "active";
+		const workos = vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+			Response.json({
+				data: [
+					{
+						id: "membership_a",
+						user_id: "user_a",
+						organization_id: "org_a",
+						status,
+						role: { slug: role },
+					},
+				],
+				list_metadata: { after: null },
+			}),
+		);
+		const fullStatus = CloudAuthStatus.make({
+			authorityState: "ready",
+			providers: [
+				{
+					providerId: "codex",
+					state: "connected",
+					accountLabel: "private-owner@example.test",
+					method: "subscription",
+					verifiedAt: 123,
+					errorCode: "private-diagnostic",
+				},
+			],
+			encryptionKeyId: "authority-key",
+			encryptionPublicJwk: "authority-jwk",
+			updatedAt: 123,
+		});
+		const authStatus = vi
+			.spyOn(CloudAuthAuthority, "cloudAuthStatus")
+			.mockReturnValue(Effect.succeed(fullStatus));
+		const scopedApi = makeApi(
+			await makeLayer(
+				undefined,
+				BillingProvidersManual,
+				false,
+				{ allowlistedAccountIds: new Set(["organization:org_a", "user_a"]) },
+				SandboxProvidersFake,
+				undefined,
+				true,
+			),
+		);
+		const call = (
+			path: string = ApiPaths.cloudAuth,
+			method = "GET",
+			scope = "organization:org_a",
+		) =>
+			scopedApi.fetch(
+				new Request(
+					`${API_ISSUER}${scope === "personal" ? "" : `${WORKSPACE_API_PREFIX}${scope.slice(13)}`}${path}`,
+					{
+						method,
+						headers: {
+							authorization: "Bearer test-token:user_a",
+							[WORKSPACE_SCOPE_HEADER]: scope,
+						},
+					},
+				),
+			);
+		try {
+			const response = await call();
+			expect(response.status).toBe(200);
+			expect(await response.json()).toEqual({
+				authorityState: "ready",
+				providers: [{ providerId: "codex", state: "connected" }],
+			});
+			expect(authStatus).toHaveBeenLastCalledWith("organization:org_a");
+			for (const [path, method] of [
+				[ApiPaths.cloudAuthProvision, "POST"],
+				[ApiPaths.cloudAuthConfigure, "POST"],
+				[ApiPaths.cloudAuthLoginStart, "POST"],
+				[ApiPaths.cloudAuthLoginPoll("operation_a"), "GET"],
+				[ApiPaths.cloudAuthDisconnect("codex"), "DELETE"],
+			])
+				expect((await call(path, method)).status).toBe(403);
+			expect(
+				(await call(ApiPaths.cloudAuth, "GET", "organization:org_b")).status,
+			).toBe(403);
+			role = "billing";
+			expect((await call()).status).toBe(403);
+			role = "member";
+			status = "inactive";
+			expect((await call()).status).toBe(403);
+			expect(authStatus).toHaveBeenCalledTimes(1);
+			status = "active";
+			role = "admin";
+			expect(await (await call()).json()).toEqual(fullStatus);
+			expect(
+				await (await call(ApiPaths.cloudAuth, "GET", "personal")).json(),
+			).toEqual(fullStatus);
+			expect(authStatus).toHaveBeenLastCalledWith("user_a");
+		} finally {
+			authStatus.mockRestore();
+			workos.mockRestore();
+			await scopedApi.dispose();
+		}
+	});
+
+	test("isolates repository configuration and idempotency keys across Personal and organizations", async () => {
+		let role = "admin";
+		const workos = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (input) => {
+				const url = new URL(String(input));
+				expect(url.origin).toBe("https://api.workos.com");
+				return Response.json({
+					data: [
+						{
+							id: "membership",
+							user_id: "user_a",
+							organization_id: url.searchParams.get("organization_id"),
+							status: "active",
+							role: { slug: role },
+						},
+					],
+					list_metadata: { after: null },
+				});
+			});
+		const scopedApi = makeApi(
+			await makeLayer(
+				undefined,
+				BillingProvidersManual,
+				false,
+				{
+					allowlistedAccountIds: new Set([
+						"user_a",
+						"organization:org_a",
+						"organization:org_b",
+					]),
+				},
+				SandboxProvidersFake,
+				undefined,
+				true,
+			),
+		);
+		const call = (scope: string, method = "GET", projectId?: string) =>
+			scopedApi.fetch(
+				new Request(
+					`${API_ISSUER}${scope === "personal" ? "" : `${WORKSPACE_API_PREFIX}${scope.slice(13)}`}${projectId ? ApiPaths.cloudProject(projectId) : ApiPaths.cloudProjects}`,
+					{
+						method,
+						headers: {
+							authorization: "Bearer test-token:user_a",
+							"content-type": "application/json",
+							[WORKSPACE_SCOPE_HEADER]: scope,
+						},
+						body:
+							method === "POST"
+								? JSON.stringify({
+										repositoryUrl: "https://github.com/acme/app",
+										defaultBranch: "main",
+										visibility: "public",
+										idempotencyKey: "same-intent",
+									})
+								: undefined,
+					},
+				),
+			);
+		try {
+			const ids: string[] = [];
+			for (const scope of [
+				"personal",
+				"organization:org_a",
+				"organization:org_b",
+			]) {
+				const empty = await call(scope);
+				expect(empty.status).toBe(200);
+				expect(await empty.json()).toEqual({ projects: [] });
+				const created = await call(scope, "POST");
+				expect(created.status).toBe(201);
+				const project = (await created.json()) as { projectId: string };
+				ids.push(project.projectId);
+				const duplicate = await call(scope, "POST");
+				expect(await duplicate.json()).toMatchObject({
+					projectId: project.projectId,
+				});
+			}
+			expect(new Set(ids).size).toBe(3);
+			expect((await call("organization:org_b", "DELETE", ids[1])).status).toBe(
+				404,
+			);
+			expect((await call("organization:org_a", "DELETE", ids[0])).status).toBe(
+				404,
+			);
+			role = "member";
+			const memberProjects = await call("organization:org_a");
+			expect(memberProjects.status).toBe(200);
+			expect(await memberProjects.json()).toMatchObject({
+				projects: [{ projectId: ids[1] }],
+			});
+			expect((await call("organization:org_a", "POST")).status).toBe(403);
+			expect((await call("organization:org_a", "DELETE", ids[1])).status).toBe(
+				403,
+			);
+			role = "billing";
+			expect((await call("organization:org_a")).status).toBe(403);
+			expect((await call("organization:org_a", "POST")).status).toBe(403);
+		} finally {
+			workos.mockRestore();
+			await scopedApi.dispose();
+		}
+	});
+
+	test("does not discover or connect another owner's host through legacy sharing metadata", async () => {
+		const environmentId = "shared-host";
+		const { credential } = await linkEnvironment({
+			account: "user_a",
+			environmentId,
+		});
+		const published = await api.fetch(
+			new Request(`${API_ISSUER}/v1/environments/${environmentId}/heartbeat`, {
+				method: "POST",
+				headers: {
+					authorization: `Bearer ${credential}`,
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({
+					sharingAudience: [
+						{
+							organizationId: "org",
+							membershipId: "member-b",
+							subject: "user_b",
+							adminOnly: false,
+						},
+					],
+				}),
+			}),
+		);
+		expect(published.status).toBe(200);
+		const listed = await api.fetch(
+			new Request(`${API_ISSUER}/v1/environments`, {
+				headers: { authorization: "Bearer test-token:user_b" },
+			}),
+		);
+		expect((await listed.json()).environments).toEqual([]);
+		const device = (await ec()) as KeyPair;
+		const jwk = await exportJWK(device.publicKey);
+		const access = await mintAccess("user_b", device, jwk);
+		for (const action of ["connect", "status"]) {
+			const url = `${API_ISSUER}/v1/environments/${environmentId}/${action}`;
+			const response = await api.fetch(
+				new Request(url, {
+					method: "POST",
+					headers: {
+						authorization: `DPoP ${access}`,
+						dpop: await dpopProof(device, jwk, { method: "POST", url }),
+					},
+				}),
+			);
+			expect(response.status).toBe(404);
+		}
+	});
 	test("serves the GitHub App callback without a WorkOS bearer", async () => {
 		const response = await api.fetch(
 			new Request(`${API_ISSUER}/v1/cloud/github/callback?installation_id=123`),
@@ -348,7 +831,9 @@ describe("@zuse/api", () => {
 
 		expect(response.status).toBe(400);
 		expect(response.headers.get("content-type")).toContain("text/html");
-		expect(await response.text()).toContain("Installation not linked");
+		expect(await response.text()).toContain(
+			"GitHub authorization is not configured on this deployment.",
+		);
 
 		const invalidState = await api.fetch(
 			new Request(
@@ -548,6 +1033,7 @@ describe("@zuse/api", () => {
 					completeUrl({
 						checkout_id: "checkout_abcdef123456",
 						t: receiptTicket,
+						workspaceName: "Untrusted organization",
 					}),
 				),
 			);
@@ -559,6 +1045,8 @@ describe("@zuse/api", () => {
 				{ accountId: "user_a", checkoutId: "checkout_abcdef123456" },
 			]);
 			expect(completionPage).toContain("Persistent Standard");
+			expect(completionPage).toContain(">Personal</span>");
+			expect(completionPage).not.toContain("Untrusted organization");
 			expect(completionPage).toContain("$19.00");
 			expect(completionPage).toContain("Paid");
 
@@ -1178,6 +1666,32 @@ describe("@zuse/api", () => {
 				expect(registered.status).toBe(200);
 			}
 		}
+	});
+	test.each([
+		ApiPaths.cloudSettings,
+		ApiPaths.cloudSharingDefaults,
+		ApiPaths.cloudWorkspaceSharing("workspace-a"),
+	])("permits scoped browser PUT preflights for %s", async (path) => {
+		const response = await api.fetch(
+			new Request(`${API_ISSUER}${path}`, {
+				method: "OPTIONS",
+				headers: {
+					origin: "https://code.zuse.sh",
+					"access-control-request-method": "PUT",
+					"access-control-request-headers": `authorization,content-type,${WORKSPACE_SCOPE_HEADER}`,
+				},
+			}),
+		);
+		expect(response.status).toBe(204);
+		expect(
+			response.headers.get("access-control-allow-methods")?.split(", "),
+		).toContain("PUT");
+		expect(response.headers.get("access-control-allow-headers")).toContain(
+			WORKSPACE_SCOPE_HEADER,
+		);
+		expect(response.headers.get("access-control-allow-origin")).toBe(
+			"https://code.zuse.sh",
+		);
 	});
 
 	test("allows the hosted product origin without opening api CORS broadly", async () => {

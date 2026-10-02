@@ -55,7 +55,7 @@
 		"MAX_ENVIRONMENTS_PER_ACCOUNT": "5",
 		"ALLOWED_BROWSER_ORIGINS": "https://code.zuse.sh",
 		"GITHUB_APP_ID": "4663095",
-		"GITHUB_APP_SLUG": "zusesh",
+		"GITHUB_APP_SLUG": "zusehq",
 		"GITHUB_APP_CLIENT_ID": "Iv23liToo4tc4RcbDNpV",
 		"MANAGED_TUNNEL_BASE_DOMAIN": "stuff.md",
 		"MANAGED_TUNNEL_NAMESPACE": "zenv",

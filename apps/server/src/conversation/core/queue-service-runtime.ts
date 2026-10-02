@@ -8,20 +8,23 @@ import {
 	MessageId,
 	QueuedMessage,
 	QueuedMessageCapacityError,
+	QueuedMessageInput,
 	QueuedMessageNotFoundError,
 	QueueState,
 	type Session,
 	SessionId,
 	type SessionNotFoundError,
+	type WorkspaceActor,
 } from "@zuse/contracts";
 import type { SessionCommand } from "@zuse/domain/core/commands";
 import type { CommandReceipt } from "@zuse/domain/engine/dispatch";
-import { Cause, Effect, Queue, type Scope, Semaphore } from "effect";
+import { Cause, Effect, Queue, Schema, type Scope, Semaphore } from "effect";
 import type { SqlClient } from "effect/unstable/sql";
 import type {
 	QueueServiceShape,
 	QueueTransactionServiceShape,
 } from "../services/conversation-services.ts";
+import { WorkspaceExecutionPolicy } from "../services/workspace-execution-policy.ts";
 import { handoffToServiceScope } from "./service-scope.ts";
 
 interface QueuedMessageRow {
@@ -45,6 +48,7 @@ export interface QueueServiceRuntimeDeps {
 		sessionId: SessionId,
 		input: ComposerInput,
 		clientMessageId: MessageId,
+		actor?: WorkspaceActor,
 	) => Effect.Effect<boolean, SessionNotFoundError | DirectoryUnavailableError>;
 	readonly setQueuePaused: (
 		sessionId: SessionId,
@@ -82,22 +86,29 @@ export interface QueueServiceRuntime {
 	readonly shutdown: (sessionId: SessionId) => Effect.Effect<void>;
 }
 
-const queuedMessageFromRow = (row: QueuedMessageRow): QueuedMessage =>
-	QueuedMessage.make({
+const decodeQueuedInput = Schema.decodeUnknownSync(
+	Schema.fromJsonString(QueuedMessageInput),
+);
+const queuedMessageFromRow = (row: QueuedMessageRow): QueuedMessage => {
+	const input = decodeQueuedInput(row.input_json);
+	return QueuedMessage.make({
 		id: row.id,
 		sessionId: SessionId.make(row.session_id),
-		input: ComposerInput.make(JSON.parse(row.input_json)),
+		input: ComposerInput.make(input),
+		actor: input.actor,
 		position: row.queue_order,
 		createdAt: new Date(row.created_at),
 		updatedAt: new Date(row.updated_at),
 		ready: row.ready !== 0,
 	});
+};
 
 const utf8Bytes = (value: string): number =>
 	new TextEncoder().encode(value).byteLength;
 
 export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 	function* (deps: QueueServiceRuntimeDeps) {
+		const executionPolicy = yield* WorkspaceExecutionPolicy;
 		const {
 			serviceScope,
 			sql,
@@ -162,7 +173,10 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 				items: ReadonlyArray<QueuedMessage>,
 				candidate: QueuedMessage,
 			) {
-				const inputJson = JSON.stringify(candidate.input);
+				const inputJson = JSON.stringify({
+					...candidate.input,
+					actor: candidate.actor,
+				});
 				const inputBytes = utf8Bytes(inputJson);
 				if (inputBytes > MAX_SESSION_QUEUE_INPUT_BYTES) {
 					return yield* new QueuedMessageCapacityError({
@@ -246,6 +260,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 			queueId,
 			ready = true,
 			flush = true,
+			actor,
 		) =>
 			capacityLock(sessionId).withPermits(1)(
 				Effect.gen(function* () {
@@ -265,7 +280,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 						Math.max(-1, ...existingItems.map((item) => item.position)) + 1;
 					const now = new Date();
 					const id = queueId ?? `q_${crypto.randomUUID()}`;
-					const inputJson = JSON.stringify(input);
+					const inputJson = JSON.stringify({ ...input, actor });
 					yield* assertQueueCapacity(
 						sessionId,
 						existingItems,
@@ -273,6 +288,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 							id,
 							sessionId,
 							input,
+							actor,
 							position,
 							createdAt: now,
 							updatedAt: now,
@@ -318,6 +334,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 													id,
 													sessionId,
 													input,
+													actor,
 													position,
 													createdAt: now,
 													updatedAt: now,
@@ -406,7 +423,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 						});
 					}
 					const updatedAt = new Date();
-					const inputJson = JSON.stringify(input);
+					const inputJson = JSON.stringify({ ...input, actor: existing.actor });
 					yield* assertQueueCapacity(
 						sessionId,
 						existingItems,
@@ -488,15 +505,28 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 
 		const claim = (sessionId: SessionId, queueId: string) =>
 			Effect.gen(function* () {
-				const rows = yield* sql<QueuedMessageRow>`
+				const read = sql<QueuedMessageRow>`
 		SELECT id, session_id, queue_order, input_json, created_at, updated_at, ready
 		FROM queued_messages
 		WHERE session_id = ${sessionId} AND id = ${queueId} AND ready = 1
 		LIMIT 1
       `.pipe(Effect.orDie);
+				const rows = yield* read;
 				const row = rows[0];
 				if (row === undefined) return null;
 				const item = queuedMessageFromRow(row);
+				if (!(yield* executionPolicy.authorize(sessionId, item.actor))) {
+					yield* setPaused(sessionId, true);
+					return null;
+				}
+				// Authorization can wait through an outage. An edit/delete made during
+				// that wait must not be replaced by this stale snapshot.
+				const current = (yield* read)[0];
+				if (current === undefined) return null;
+				if (current.input_json !== row.input_json) {
+					yield* requestFlush(sessionId);
+					return null;
+				}
 				yield* dispatchSessionCommand(sessionId, {
 					_tag: "ClaimQueuedTurn",
 					queueId,
@@ -511,7 +541,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 				yield* dispatchSessionCommand(item.sessionId, {
 					_tag: "EnqueueTurn",
 					queueId: item.id,
-					inputJson: JSON.stringify(item.input),
+					inputJson: JSON.stringify({ ...item.input, actor: item.actor }),
 					position: item.position,
 					createdAt: item.createdAt.getTime(),
 					ready: true,
@@ -525,6 +555,7 @@ export const makeQueueServiceRuntime = Effect.fn("QueueServiceRuntime.make")(
 				item.sessionId,
 				item.input,
 				MessageId.make(`queued_${item.id}`),
+				item.actor,
 			).pipe(
 				Effect.flatMap((accepted) => (accepted ? Effect.void : restore(item))),
 				Effect.catchTag("DirectoryUnavailableError", () =>

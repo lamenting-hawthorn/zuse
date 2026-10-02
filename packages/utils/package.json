@@ -8,6 +8,7 @@
 		"./cloud-auth-crypto": "./src/cloud-auth-crypto.ts",
 		"./browser-page": "./src/browser-page.ts",
 		"./integration-page": "./src/integration-page.ts",
+		"./github-installation": "./src/github-installation.ts",
 		"./site-favicon": "./src/site-favicon.ts",
 		"./cloud-timing": "./src/cloud-timing.ts",
 		"./cloud-api": "./src/cloud-api.ts",

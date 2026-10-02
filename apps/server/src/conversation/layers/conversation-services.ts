@@ -55,6 +55,7 @@ import type {
 	SessionServiceShape,
 	TranscriptServiceShape,
 } from "../services/conversation-services.ts";
+import { WorkspaceExecutionPolicy } from "../services/workspace-execution-policy.ts";
 import { ChatServiceLive } from "./chat-service.ts";
 import { MessageServiceLive } from "./message-service.ts";
 import {
@@ -68,6 +69,7 @@ const ConversationRuntimeLive = Layer.effect(
 	ConversationRuntime,
 	Effect.gen(function* () {
 		const serviceScope = yield* Effect.scope;
+		const executionPolicy = yield* WorkspaceExecutionPolicy;
 		const sql = yield* SqlClient.SqlClient;
 		const state = yield* ConversationState;
 		const sessionQueries = yield* SqlSessionQueries;
@@ -365,6 +367,7 @@ const ConversationRuntimeLive = Layer.effect(
 			handleScheduledSuccessor,
 			handleAutoName,
 		} = makeProviderReactorHandlers({
+			authorizeQueuedTurn: executionPolicy.authorize,
 			reactorEffects,
 			getSession: lookupSession,
 			ensureForTurn,

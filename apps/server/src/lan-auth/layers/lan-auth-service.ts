@@ -15,23 +15,34 @@ import {
 	buildBrowserPairUrl,
 	type EnvironmentId,
 	normalizePairingCodeInput,
+	RpcAccessDeniedError,
 	SHORT_PAIRING_CODE_ALPHABET,
 	SHORT_PAIRING_CODE_LENGTH,
 } from "@zuse/contracts";
 import { firstReachableIpv4 } from "@zuse/utils/network-address";
-import { Clock, Effect, Layer, Ref, Semaphore } from "effect";
+import { Clock, Effect, Layer, Ref, Schema, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { importJWK, type JWK, jwtVerify } from "jose";
 import {
 	generateEnvironmentKeypair,
 	signEnvironmentLinkProof,
 } from "../../api/link-proof.ts";
+import type {
+	CredentialIdentity,
+	WorkspaceCredentialIdentity,
+} from "../services/connection-identity.ts";
 import {
 	LanAuthConfig,
 	LanAuthError,
 	LanAuthService,
 	PairingRedeemError,
 } from "../services/lan-auth-service.ts";
+
+const ConnectIdentityClaims = Schema.Struct({
+	sub: Schema.String.check(Schema.isMinLength(1)),
+	exp: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+	environmentId: Schema.String,
+});
 
 const PAIRING_TTL_MS = 5 * 60 * 1000;
 const NEARBY_PAIRING_TTL_MS = 2 * 60 * 1000;
@@ -215,9 +226,11 @@ const nowIso = Effect.map(Clock.currentTimeMillis, (ms) =>
 );
 
 const toLanAuthError = (cause: unknown): LanAuthError =>
-	new LanAuthError({
-		reason: cause instanceof Error ? cause.message : String(cause),
-	});
+	cause instanceof LanAuthError
+		? cause
+		: new LanAuthError({
+				reason: cause instanceof Error ? cause.message : String(cause),
+			});
 
 const configuredHost = (
 	advertisedHost: string | null,
@@ -236,6 +249,7 @@ export const LanAuthServiceLive = Layer.effect(
 		const sql = yield* SqlClient.SqlClient;
 		const config = yield* LanAuthConfig;
 		const pairingCodes = yield* Ref.make(new Map<string, PairingCodeState>());
+		const pairingEndpoint = yield* Ref.make<string | undefined>(undefined);
 		const nearbyPairings = yield* Ref.make(
 			new Map<string, NearbyPairingState>(),
 		);
@@ -244,11 +258,50 @@ export const LanAuthServiceLive = Layer.effect(
 		const nearbyAdmission = yield* Semaphore.make(1);
 		const nearbyChallenges = yield* Ref.make(new Map<string, number>());
 
-		const mintToken = (label?: string, deviceId?: string) =>
+		// Gateway credentials live only for the local connection, never in the paired-device table.
+		const workspaceTokens = new Map<
+			string,
+			{
+				readonly id: AuthTokenId;
+				readonly identity: WorkspaceCredentialIdentity;
+			}
+		>();
+		const mintToken = (
+			label?: string,
+			deviceId?: string,
+			workspace?: WorkspaceCredentialIdentity,
+		) =>
 			Effect.gen(function* () {
 				const id = `auth_${yield* randomBase64Url(16)}` as AuthTokenId;
 				const token = `zt_${yield* randomBase64Url(32)}`;
 				const hash = yield* tokenHash(token);
+				if (workspace !== undefined) {
+					const now = yield* Clock.currentTimeMillis;
+					for (const [key, value] of workspaceTokens)
+						if (value.identity.expiresAt <= now) workspaceTokens.delete(key);
+					if (workspace.expiresAt <= now || workspaceTokens.size >= 256)
+						return yield* new LanAuthError({
+							reason: "workspace_credential_unavailable",
+						});
+					const validate = Effect.gen(function* () {
+						if (
+							!workspaceTokens.has(hash) ||
+							workspace.expiresAt <= (yield* Clock.currentTimeMillis)
+						)
+							return yield* new RpcAccessDeniedError({
+								code: "credential-expired",
+							});
+					});
+					const identity: WorkspaceCredentialIdentity = {
+						...workspace,
+						authorize: validate.pipe(
+							Effect.andThen(workspace.authorize),
+							Effect.tap(() => validate),
+						),
+					};
+					workspaceTokens.set(hash, { id, identity });
+					return { id, token } as const;
+				}
 				const createdAt = yield* nowIso;
 				yield* sql.withTransaction(
 					Effect.gen(function* () {
@@ -696,8 +749,44 @@ export const LanAuthServiceLive = Layer.effect(
 			},
 		);
 
-		const makePairingUrls = (code: string) =>
+		const makePairingUrls = (
+			code: string,
+			endpoint?: { readonly httpBaseUrl: string },
+		) =>
 			Effect.gen(function* () {
+				const httpBaseUrl =
+					endpoint?.httpBaseUrl ?? (yield* Ref.get(pairingEndpoint));
+				if (httpBaseUrl !== undefined) {
+					const base = yield* Effect.try({
+						try: () => new URL(httpBaseUrl),
+						catch: () =>
+							new LanAuthError({ reason: "invalid_pairing_endpoint" }),
+					});
+					if (
+						!["http:", "https:"].includes(base.protocol) ||
+						base.username ||
+						base.password ||
+						base.search ||
+						base.hash ||
+						base.port === "0"
+					) {
+						return yield* new LanAuthError({
+							reason: "invalid_pairing_endpoint",
+						});
+					}
+					const browserUrl = buildBrowserPairUrl({
+						httpBaseUrl: base.toString(),
+						code,
+					});
+					if (endpoint !== undefined)
+						yield* Ref.set(pairingEndpoint, base.toString());
+					base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+					return {
+						pairingUrl: base.toString().replace(/\/$/u, ""),
+						browserUrl,
+						qrText: browserUrl,
+					};
+				}
 				if (config.port === null) {
 					return yield* Effect.fail(
 						new LanAuthError({ reason: "no_pairing_endpoint" }),
@@ -713,54 +802,88 @@ export const LanAuthServiceLive = Layer.effect(
 				return { pairingUrl, browserUrl, qrText } as const;
 			});
 
-		const service = LanAuthService.of({
-			policy: config.policy,
-			pairingBootstrap: config.pairingBootstrap,
-			mintToken,
-			verifyToken: (token) =>
-				Effect.gen(function* () {
-					const hash = yield* tokenHash(token);
-					const rows = yield* sql<{ readonly id: string }>`
-            SELECT id
+		const authenticateToken = (
+			token: string,
+		): Effect.Effect<CredentialIdentity | null, LanAuthError> =>
+			Effect.gen(function* () {
+				const hash = yield* tokenHash(token);
+				const workspace = workspaceTokens.get(hash);
+				if (workspace !== undefined) {
+					if (
+						workspace.identity.expiresAt <= (yield* Clock.currentTimeMillis)
+					) {
+						workspaceTokens.delete(hash);
+						return null;
+					}
+					return workspace.identity;
+				}
+				const rows = yield* sql<{
+					readonly id: string;
+					readonly device_id: string | null;
+				}>`
+            SELECT id, device_id
             FROM auth_tokens
             WHERE token_hash = ${hash}
               AND revoked_at IS NULL
             LIMIT 1
           `;
-					const matchedToken = rows[0];
-					if (matchedToken === undefined) {
-						const apiRows = yield* sql<ApiConfigAuthRow>`
+				const matchedToken = rows[0];
+				if (matchedToken === undefined) {
+					const apiRows = yield* sql<ApiConfigAuthRow>`
               SELECT environment_id, api_issuer, api_mint_public_key
               FROM api_config
               LIMIT 1
             `;
-						const api = apiRows[0];
-						if (api === undefined || api.api_mint_public_key === null) {
-							return false;
-						}
-						const mintPublicKey = api.api_mint_public_key;
-						return yield* Effect.tryPromise({
-							try: async () => {
-								const jwk = JSON.parse(mintPublicKey) as JWK;
-								const key = await importJWK(jwk, "EdDSA");
-								const verified = await jwtVerify(token, key, {
-									issuer: api.api_issuer,
-									audience: `zuse-env:${api.environment_id}`,
-									typ: "connect+jwt",
-								});
-								return verified.payload.environmentId === api.environment_id;
-							},
-							catch: (cause) => cause,
-						}).pipe(Effect.catch(() => Effect.succeed(false)));
+					const api = apiRows[0];
+					if (api === undefined || api.api_mint_public_key === null) {
+						return null;
 					}
-					const usedAt = yield* nowIso;
-					yield* sql`
+					const mintPublicKey = api.api_mint_public_key;
+					return yield* Effect.tryPromise({
+						try: async () => {
+							const jwk = JSON.parse(mintPublicKey) as JWK;
+							const key = await importJWK(jwk, "EdDSA");
+							const verified = await jwtVerify(token, key, {
+								issuer: api.api_issuer,
+								audience: `zuse-env:${api.environment_id}`,
+								typ: "connect+jwt",
+							});
+							const claims = Schema.decodeUnknownSync(ConnectIdentityClaims)(
+								verified.payload,
+							);
+							return claims.environmentId === api.environment_id
+								? {
+										kind: "account" as const,
+										subject: claims.sub,
+										expiresAt: claims.exp * 1000,
+									}
+								: null;
+						},
+						catch: (cause) => cause,
+					}).pipe(Effect.catch(() => Effect.succeed(null)));
+				}
+				const usedAt = yield* nowIso;
+				yield* sql`
             UPDATE auth_tokens
             SET last_used_at = ${usedAt}
 							WHERE id = ${matchedToken.id}
           `;
-					return true;
-				}).pipe(Effect.mapError(toLanAuthError)),
+				return {
+					kind: "paired" as const,
+					tokenId: matchedToken.id as AuthTokenId,
+					deviceId: matchedToken.device_id,
+				};
+			}).pipe(Effect.mapError(toLanAuthError));
+
+		const service = LanAuthService.of({
+			policy: config.policy,
+			pairingBootstrap: config.pairingBootstrap,
+			mintToken,
+			authenticateToken,
+			verifyToken: (token) =>
+				authenticateToken(token).pipe(
+					Effect.map((identity) => identity !== null),
+				),
 			listTokens: () =>
 				Effect.gen(function* () {
 					const rows = yield* sql<TokenRow>`
@@ -785,6 +908,11 @@ export const LanAuthServiceLive = Layer.effect(
 				}).pipe(Effect.mapError(toLanAuthError)),
 			revokeToken: (id) =>
 				Effect.gen(function* () {
+					for (const [hash, workspace] of workspaceTokens)
+						if (workspace.id === id) {
+							workspaceTokens.delete(hash);
+							return;
+						}
 					const revokedAt = yield* nowIso;
 					yield* sql`
             UPDATE auth_tokens
@@ -802,12 +930,12 @@ export const LanAuthServiceLive = Layer.effect(
           `;
 					return rows.length > 0;
 				}).pipe(Effect.mapError(toLanAuthError)),
-			createPairingCode: () =>
+			createPairingCode: (endpoint) =>
 				Effect.gen(function* () {
 					const code = yield* randomShortPairingCode;
 					const now = yield* Clock.currentTimeMillis;
 					const expiresAtMs = now + PAIRING_TTL_MS;
-					const urls = yield* makePairingUrls(code);
+					const urls = yield* makePairingUrls(code, endpoint);
 					yield* Ref.update(pairingCodes, (codes) => {
 						const next = new Map(
 							[...codes].filter(([, entry]) => entry.expiresAtMs > now),

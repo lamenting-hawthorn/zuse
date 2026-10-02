@@ -38,6 +38,7 @@ import { AuthShell } from "./auth/services/auth-shell.ts";
 import { ConfigStoreServiceLive } from "./config-store/layers/config-store-service.ts";
 import { ConversationState } from "./conversation/core/conversation-state.ts";
 import { ConversationServicesLive } from "./conversation/layers/conversation-services.ts";
+import { PendingWorkspaceExecutionPolicy } from "./conversation/services/workspace-execution-policy.ts";
 import { DeviceBridgeServiceLive } from "./device-bridge/service.ts";
 import { DiagnosticsServiceLive } from "./diagnostics/layers/diagnostics-service.ts";
 import { ExternalThreadServiceLive } from "./external-thread/layers/external-thread-service.ts";
@@ -48,6 +49,7 @@ import { RuntimeModelConnections } from "./harness/account-vault.ts";
 import { modelConnectionsLayer } from "./harness/connections-layer.ts";
 import { HarnessProviderLive } from "./harness/provider.ts";
 import { LanAuthServiceLive } from "./lan-auth/layers/lan-auth-service.ts";
+import { RpcAuthorizationLive } from "./lan-auth/layers/rpc-authorization.ts";
 import type { LanAuthPolicy } from "./lan-auth/policy.ts";
 import {
 	LanAuthConfig,
@@ -579,7 +581,12 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(MachineRuntimeRoleLayer),
 	);
 
+	const ExecutionPolicyLayer =
+		deps.cloudWorkspaceRuntime === undefined
+			? Layer.empty
+			: PendingWorkspaceExecutionPolicy;
 	const ConversationServicesLayer = ConversationServicesLive.pipe(
+		Layer.provide(ExecutionPolicyLayer),
 		Layer.provide(ConversationState.layer),
 		Layer.provide(ProviderLayer),
 		Layer.provide(ModelCatalogLayer),
@@ -603,6 +610,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const CloudWorkspaceRuntimeLayer = makeCloudWorkspaceRuntimeLayer(
 		deps.cloudWorkspaceRuntime,
 	).pipe(
+		Layer.provide(ExecutionPolicyLayer),
 		Layer.provide(RuntimeModelConnectionsLayer),
 		Layer.provide(CredentialsLayer),
 		Layer.provide(AttachmentLayer),
@@ -771,12 +779,19 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		>,
 	) =>
 		RpcServer.layer(MemoizeRpcs).pipe(
+			Layer.provide(
+				RpcAuthorizationLive.pipe(
+					Layer.provide(AuthLayer),
+					Layer.provide(MigratedSqlite),
+				),
+			),
 			Layer.provide(Handlers),
 			Layer.provide(
 				serverProtocol.pipe(
 					Layer.provide(
 						Layer.mergeAll(
 							EnrolledLanAuthLayer,
+							AuthLayer,
 							AttachmentLayer,
 							DeviceBridgeLayer,
 						),

@@ -13,6 +13,7 @@ import {
 	type SessionStartError,
 	type SkillRef,
 	type TurnInterruptReceipt,
+	type WorkspaceActor,
 } from "@zuse/contracts";
 import type { SessionCommand } from "@zuse/domain/core/commands";
 import type { CommandReceiptIdentity } from "@zuse/domain/engine/dispatch";
@@ -249,6 +250,7 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 			origin?: MessageOrigin,
 			receiptIdentity?: CommandReceiptIdentity,
 			turnIdOverride?: AgentTurnId,
+			actor?: WorkspaceActor,
 		): ReturnType<ConversationOperations["sendMessageWithInput"]> =>
 			Effect.gen(function* () {
 				const session = yield* lookupSession(sessionId);
@@ -328,6 +330,7 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 				const content: MessageContent = hasRichSegments
 					? {
 							_tag: "user_rich",
+							...(actor !== undefined ? { actor } : {}),
 							text,
 							attachments: cleanAttachments,
 							fileRefs: fileRefs ?? [],
@@ -338,6 +341,7 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 						}
 					: {
 							_tag: "user",
+							...(actor !== undefined ? { actor } : {}),
 							text,
 							...(origin !== undefined ? { origin } : {}),
 							goal: asGoal === true,
@@ -467,6 +471,7 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 						input.origin,
 						input.receiptIdentity,
 						input.turnId,
+						input.actor,
 					);
 					if (!result.accepted) {
 						const turnId = yield* resolveActiveTurn(input.sessionId);
@@ -488,6 +493,7 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 			clientMessageId,
 			origin,
 			receiptIdentity,
+			actor,
 		) =>
 			sendMessageWithInput({
 				commandId,
@@ -501,13 +507,20 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 				messageId: clientMessageId,
 				origin,
 				receiptIdentity,
+				actor,
 			}).pipe(Effect.asVoid);
 
 		const queueRuntime = yield* makeQueueServiceRuntime({
 			serviceScope,
 			sql,
 			lookupSession,
-			submitUserMessage: (commandId, sessionId, input, clientMessageId) =>
+			submitUserMessage: (
+				commandId,
+				sessionId,
+				input,
+				clientMessageId,
+				actor,
+			) =>
 				submitUserMessage(
 					commandId,
 					sessionId,
@@ -518,6 +531,10 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 					input.annotations,
 					input.asGoal,
 					clientMessageId,
+					undefined,
+					undefined,
+					undefined,
+					actor,
 				).pipe(Effect.map((result) => result.accepted)),
 			setQueuePaused: (sessionId, paused, commandId) => {
 				const command = {

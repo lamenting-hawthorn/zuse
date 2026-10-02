@@ -96,6 +96,34 @@ const call = (mailbox: WorkspaceMailbox, path: string, body?: unknown) =>
 describe("workspace mailbox", () => {
 	afterEach(() => vi.useRealTimers());
 
+	test("binds organization command retries to the original actor and membership", async () => {
+		const { mailbox, rows } = makeMailboxHarness();
+		const command = {
+			...envelope("attributed"),
+			actor: { subject: "alice", membershipId: "member_alice" },
+		};
+		expect((await call(mailbox, "/reserve", command)).status).toBe(200);
+		expect((await call(mailbox, "/reserve", command)).status).toBe(200);
+		for (const actor of [
+			undefined,
+			{ subject: "bob", membershipId: "member_bob" },
+			{ subject: "alice", membershipId: "rejoined_alice" },
+		]) {
+			const response = await call(mailbox, "/reserve", { ...command, actor });
+			expect(response.status).toBe(409);
+			expect(await response.json()).toEqual({
+				code: "command-identity-collision",
+			});
+		}
+		const persisted = rows<{ envelope_json: string }>(
+			"SELECT envelope_json FROM mailbox_commands WHERE command_id = ?",
+			command.commandId,
+		);
+		expect(JSON.parse(persisted[0]?.envelope_json ?? "{}").actor).toEqual(
+			command.actor,
+		);
+	});
+
 	test("acceptance is idempotent and rejects identity collisions", async () => {
 		const mailbox = makeMailbox();
 		const command = envelope("command-1");

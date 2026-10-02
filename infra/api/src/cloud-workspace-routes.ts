@@ -1,10 +1,14 @@
 import { cloudCommandEnvelopeEligibility } from "@zuse/cloud-commands";
 import {
 	ApiPaths,
+	ChatSharingDefaults,
+	ChatSharingPolicy,
+	ChatSharingUpdate,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
 	CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
 	CLOUD_RUNTIME_TURN_REPLY_MAX_LENGTH,
+	CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
 	CloudAccountImageBuildRequest,
 	CloudAuthConfigureRequest,
 	CloudAuthLoginStartRequest,
@@ -12,6 +16,7 @@ import {
 	CloudCommandEnvelope,
 	CloudProjectConnectRequest,
 	CloudProjectPrepareRequest,
+	CloudRuntimeAccessRequest,
 	CloudRuntimeCommandAck,
 	CloudRuntimeTurnEventUpload,
 	CloudTranscriptCheckpointUpload,
@@ -28,6 +33,7 @@ import {
 	ProviderGrantRequest,
 	RuntimeAcknowledgment,
 	RuntimeMode,
+	WorkspaceSettingsUpdate,
 } from "@zuse/contracts";
 import { POKEMON_BRANCH_CATALOG } from "@zuse/pokemon-data/branch-catalog";
 import { allocatePokemonName } from "@zuse/pokemon-data/name-allocator";
@@ -69,10 +75,13 @@ import {
 import type { CloudBillingStore } from "./cloud-billing-store.ts";
 import { hasUsableCloudWorkspaceEntitlement } from "./cloud-entitlement.ts";
 import {
-	completeGithubInstallation,
+	githubAuthorizationCallback,
+	githubAuthorizationUrl,
 	githubInstallationCredentialForRepository,
 	githubInstallationGrants,
+	githubWebhook,
 	makeGithubInstallUrl,
+	refreshGithubConnections,
 } from "./cloud-github-app.ts";
 import {
 	attachCloudMailboxBillingDirective,
@@ -89,6 +98,10 @@ import {
 	openCloudTranscriptKey,
 	putCloudTranscriptObject,
 } from "./cloud-transcript.ts";
+import {
+	cloudWorkspaceActorPermission,
+	cloudWorkspacePermission,
+} from "./cloud-workspace-access.ts";
 import {
 	CloudWorkspaceLaunchIntentCipher,
 	hasCloudWorkspaceInitialMessage,
@@ -142,21 +155,28 @@ import {
 	serviceUnavailable,
 	unauthorized,
 } from "./errors.ts";
-import {
-	githubCallbackPageHeaders,
-	renderGithubConnectedPage,
-} from "./github-callback-page.ts";
+import { githubCallbackPageHeaders } from "./github-callback-page.ts";
 import { decodeBody, json } from "./http.ts";
 import { MachineControlConfiguration } from "./machine-config.ts";
 import { MachineStore } from "./machine-store.ts";
+import {
+	getOrganizationSharingDefaults,
+	setOrganizationSharingDefaults,
+	validateOrganizationChatGrants,
+} from "./organizations.ts";
 import { SandboxOfferConfiguration } from "./sandbox-provider-module.ts";
 import { ApiStore } from "./store.ts";
 import type { WorkosVerifier } from "./workos.ts";
+import { requireWorkspaceAccess } from "./workspace-authorization.ts";
 import {
 	WORKSPACE_GATEWAY_PROTOCOL,
 	type WorkspaceGatewayProtocol,
 	workspaceGatewayProtocol,
 } from "./workspace-gateway-protocol.ts";
+import {
+	workspaceAccessForPath,
+	workspaceScopeForOwner,
+} from "./workspace-scope.ts";
 
 export type CloudWorkspaceRouteContext =
 	| ApiStore
@@ -193,16 +213,13 @@ const escapeHtml = (value: string): string =>
 const githubCallbackPage = (input: {
 	readonly title: string;
 	readonly message: string;
-	readonly success: boolean;
 }) =>
 	// These values currently originate from fixed copy and GitHub login names,
 	// but escaping here keeps this public callback safe if its copy evolves.
 	new Response(
-		input.success
-			? renderGithubConnectedPage(input.message)
-			: `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(input.title)}</title><body style="margin:0;background:#111;color:#eee;font:14px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:420px;padding:24px"><h1 style="font-size:18px">${escapeHtml(input.title)}</h1><p style="color:#aaa;line-height:1.5">${escapeHtml(input.message)}</p></main></body></html>`,
+		`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(input.title)}</title><body style="margin:0;background:#111;color:#eee;font:14px system-ui;display:grid;min-height:100vh;place-items:center"><main style="max-width:420px;padding:24px"><h1 style="font-size:18px">${escapeHtml(input.title)}</h1><p style="color:#aaa;line-height:1.5">${escapeHtml(input.message)}</p></main></body></html>`,
 		{
-			status: input.success ? 200 : 400,
+			status: 400,
 			headers: githubCallbackPageHeaders,
 		},
 	);
@@ -559,6 +576,7 @@ export const providerAuthModeForAccountBuild = (
 const cloudAccountImage = Effect.fn("cloudAccountImage")(function* (
 	accountId: string,
 	requestedProviderId?: string,
+	includeBuildLogs = true,
 ) {
 	const store = yield* CloudWorkspaceStore;
 	const apiConfiguration = yield* ApiConfiguration;
@@ -693,7 +711,7 @@ const cloudAccountImage = Effect.fn("cloudAccountImage")(function* (
 					? build.state
 					: undefined,
 			errorCode: build.lastErrorCode,
-			logText: build.logText,
+			logText: includeBuildLogs ? build.logText : undefined,
 			runtimeVersion: build.templateVersion,
 			configurationDigest: build.configurationDigest,
 			repositories: storedBuildRepositories(build, repositories),
@@ -842,6 +860,16 @@ export const currentCloudRuntimeSummary = (
 		? runtimeSummary
 		: null;
 
+const workspaceRuntimeSupportsScope = (
+	workspace: CloudWorkspaceRecord,
+): boolean =>
+	workspaceScopeForOwner(workspace.accountId).kind !== "organization" ||
+	runtimeBootstrapReceiptFromConfig(
+		workspace.requestConfig,
+	)?.capabilities?.includes(
+		CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
+	) === true;
+
 const workspaceRuntimeStorageUnavailable = (
 	workspace: CloudWorkspaceRecord,
 ): boolean =>
@@ -859,6 +887,7 @@ export const publicCloudWorkspaceSummary = (
 	const recoveringRetainedStorage =
 		workspace.requestConfig.runtimeSessionRecoveryPending === true;
 	return {
+		workspaceScope: workspaceScopeForOwner(workspace.accountId),
 		workspaceId: workspace.workspaceId,
 		projectId: project.projectId,
 		repositoryIdentity: project.repositoryIdentity,
@@ -1271,9 +1300,22 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		readonly publicApiRequestDigest?: string;
 	},
 	nowMs: number,
+	creator?: { readonly subject: string; readonly membershipId: string },
 ) {
 	const store = yield* CloudWorkspaceStore;
 	const launchIntentCipher = yield* CloudWorkspaceLaunchIntentCipher;
+	const scope = workspaceScopeForOwner(accountId);
+	if (scope.kind === "organization" && creator === undefined)
+		return yield* forbidden("workspace_creator_required");
+	const sharingPolicy: ChatSharingPolicy | undefined =
+		scope.kind === "organization" && creator !== undefined
+			? {
+					...(yield* getOrganizationSharingDefaults(scope.organizationId)),
+					creatorSubject: creator.subject,
+					creatorMembershipId: creator.membershipId,
+					grants: [],
+				}
+			: undefined;
 	yield* requireCloudWorkspaceEntitlement(accountId, nowMs);
 	yield* requireCloudBillingCapacity(accountId, nowMs);
 	const apiConfiguration = yield* ApiConfiguration;
@@ -1435,6 +1477,7 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		idempotencyKey: body.idempotencyKey,
 		requestConfig: {
 			...(machineFork === undefined ? {} : { machineFork }),
+			...(sharingPolicy === undefined ? {} : { sharingPolicy }),
 			localDeviceId:
 				body.localDeviceId ?? forkSource?.requestConfig.localDeviceId,
 			title,
@@ -1490,7 +1533,11 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 	const outcome = yield* store.createWorkspace(workspace, launchIntentRecord);
 	if (outcome.kind === "branch-in-use")
 		return yield* Effect.fail(
-			conflict(`cloud_branch_in_use:${outcome.workspace.workspaceId}`),
+			conflict(
+				scope.kind === "organization"
+					? "cloud_branch_in_use"
+					: `cloud_branch_in_use:${outcome.workspace.workspaceId}`,
+			),
 		);
 	return {
 		workspace: outcome.workspace,
@@ -1538,43 +1585,28 @@ export const routeCloudWorkspaceRequest = (
 		const path = url.pathname;
 		const method = request.method.toUpperCase();
 		if (!path.startsWith("/v1/cloud/")) return null;
-		if (method === "GET" && path === "/v1/cloud/github/callback") {
-			const state = url.searchParams.get("state");
-			const installationId = Number(url.searchParams.get("installation_id"));
-			if (
-				state === null ||
-				!Number.isSafeInteger(installationId) ||
-				installationId <= 0
-			)
-				return githubCallbackPage({
-					title: "Installation not linked",
-					message:
-						"The GitHub App was installed, but this installation was not started from Zuse. Return to Cloud Workspace settings and choose Install GitHub App so Zuse can link it securely.",
-					success: false,
-				});
-			return yield* completeGithubInstallation(state, installationId).pipe(
+		if (method === "POST" && path === ApiPaths.cloudGithubWebhook)
+			return yield* githubWebhook(request);
+		if (
+			(method === "GET" || method === "POST") &&
+			path === "/v1/cloud/github/callback"
+		) {
+			return yield* githubAuthorizationCallback(request).pipe(
 				Effect.tapError((error) =>
 					Effect.sync(() =>
 						console.warn("[cloud-github] installation callback failed", {
 							code: error.code,
-							installationId,
 						}),
 					),
 				),
-				Effect.map((accountLogin) =>
-					githubCallbackPage({
-						title: "GitHub connected",
-						message: accountLogin,
-						success: true,
-					}),
-				),
-				Effect.catch(() =>
+				Effect.catch((error) =>
 					Effect.succeed(
 						githubCallbackPage({
 							title: "GitHub could not be connected",
 							message:
-								"This install link is invalid or expired. Return to Cloud Workspace settings and start the GitHub App installation again.",
-							success: false,
+								error.code === "github_app_oauth_not_configured"
+									? "GitHub authorization is not configured on this deployment. Ask the operator to configure the GitHub App client secret and callback URL."
+									: "Return to Zuse and try the GitHub button again. The link may have expired or your workspace access changed.",
 						}),
 					),
 				),
@@ -1835,6 +1867,7 @@ export const routeCloudWorkspaceRequest = (
 			return json({
 				workspaceId,
 				zuseAccountId: workspace.accountId,
+				workspaceScope: workspaceScopeForOwner(workspace.accountId),
 				providerSandboxId,
 				runtimeCredential,
 				runtimeGatewayCredential,
@@ -2111,6 +2144,27 @@ export const routeCloudWorkspaceRequest = (
 				summaryRevision: outcome.summary.summaryRevision,
 				sessionHeadVersion: outcome.summary.sessionHeadVersion,
 			});
+		}
+		const runtimeAccessMatch =
+			/^\/v1\/cloud\/workspaces\/([^/]+)\/runtime\/access$/u.exec(path);
+		if (method === "POST" && runtimeAccessMatch !== null) {
+			const workspace = yield* requireRuntime(
+				request,
+				decodeURIComponent(runtimeAccessMatch[1] ?? ""),
+				nowMs,
+			);
+			const body = yield* decodeBody(CloudRuntimeAccessRequest, request);
+			if (
+				body.runtimeGeneration !== cloudWorkspaceRuntimeGeneration(workspace) ||
+				body.gatewayEpoch !== cloudWorkspaceGatewayEpoch(workspace)
+			)
+				return yield* unauthorized("workspace_runtime_fenced");
+			const { permission, actor } = yield* cloudWorkspaceActorPermission(
+				workspace,
+				body.actorId,
+				body.membershipId,
+			);
+			return json({ permission, actor });
 		}
 		if (method === "POST" && activityMatch !== null) {
 			const workspaceId = decodeURIComponent(activityMatch[1] ?? "");
@@ -2682,7 +2736,6 @@ export const routeCloudWorkspaceRequest = (
 						expectedGatewayEpoch: cloudWorkspaceGatewayEpoch(workspace),
 						nowMs,
 					}).pipe(
-						Effect.as(true),
 						Effect.tapError((error) =>
 							Effect.sync(() =>
 								console.warn("[cloud-workspace] gateway upgrade rejected", {
@@ -2693,6 +2746,18 @@ export const routeCloudWorkspaceRequest = (
 							),
 						),
 					);
+			let livePermission: "view" | "edit" | undefined;
+			if (
+				client &&
+				workspaceScopeForOwner(workspace.accountId).kind === "organization"
+			) {
+				if (!workspaceRuntimeSupportsScope(workspace))
+					return yield* conflict("workspace_runtime_update_required");
+				livePermission = (yield* cloudWorkspaceActorPermission(
+					workspace,
+					client.actorId,
+				)).permission;
+			}
 			if (!runtime && !client) {
 				console.warn("[cloud-workspace] gateway upgrade rejected", {
 					workspaceId,
@@ -2721,6 +2786,18 @@ export const routeCloudWorkspaceRequest = (
 			});
 			const response = new Response(null, { status: 204 });
 			response.headers.set("x-zuse-gateway-workspace", workspaceId);
+			if (
+				client &&
+				workspaceScopeForOwner(workspace.accountId).kind === "organization"
+			) {
+				response.headers.set("x-zuse-gateway-actor", client.actorId);
+				response.headers.set(
+					"x-zuse-gateway-permission",
+					client.permission === "edit" && livePermission === "edit"
+						? "edit"
+						: "view",
+				);
+			}
 			response.headers.set(
 				"x-zuse-gateway-generation",
 				String(cloudWorkspaceRuntimeGeneration(workspace)),
@@ -2746,7 +2823,95 @@ export const routeCloudWorkspaceRequest = (
 			/^\/v1\/cloud\/workspaces\/([^/]+)\/(pause|resume|restart|archive|unarchive|delete)$/u.exec(
 				path,
 			);
-		const principal = yield* requireWorkos(request);
+		const access = yield* requireWorkspaceAccess(
+			request,
+			workspaceAccessForPath(path, method) ?? "content",
+		);
+		if (
+			access.scope.kind === "organization" &&
+			workspaceAccessForPath(path, method) === undefined
+		)
+			return yield* forbidden("workspace_scope_not_supported");
+		const ownerId = access.ownerId;
+		if (path === ApiPaths.cloudSettings) {
+			if (method === "GET")
+				return json(yield* store.getWorkspaceSettings(ownerId));
+			if (method === "PUT") {
+				const input = yield* decodeBody(WorkspaceSettingsUpdate, request);
+				const updated = yield* store.replaceWorkspaceSettings(ownerId, input);
+				if (updated === null)
+					return yield* conflict("workspace_settings_changed");
+				return json(updated);
+			}
+			return yield* badRequest("invalid_workspace_settings_method");
+		}
+		if (
+			path === ApiPaths.cloudSharingDefaults &&
+			(method === "GET" || method === "PUT")
+		) {
+			if (access.scope.kind !== "organization")
+				return yield* badRequest("organization_workspace_required");
+			return json(
+				method === "GET"
+					? yield* getOrganizationSharingDefaults(access.scope.organizationId)
+					: yield* setOrganizationSharingDefaults(
+							access.actor.accountId,
+							access.scope.organizationId,
+							yield* decodeBody(ChatSharingDefaults, request),
+						),
+			);
+		}
+		const sharingMatch = /^\/v1\/cloud\/workspaces\/([^/]+)\/sharing$/u.exec(
+			path,
+		);
+		if ((method === "GET" || method === "PUT") && sharingMatch !== null) {
+			if (access.scope.kind !== "organization")
+				return yield* badRequest("organization_workspace_required");
+			const workspace = yield* store.getWorkspace(
+				decodeURIComponent(sharingMatch[1] ?? ""),
+			);
+			if (workspace === null || workspace.accountId !== ownerId)
+				return yield* notFound("cloud_workspace_not_found");
+			const { canManageSharing } = yield* cloudWorkspacePermission(
+				access,
+				workspace,
+			);
+			if (method === "GET") {
+				const policy = yield* Schema.decodeUnknownEffect(ChatSharingPolicy)(
+					workspace.requestConfig.sharingPolicy,
+				).pipe(
+					Effect.mapError(() => forbidden("workspace_sharing_policy_invalid")),
+				);
+				return json({
+					policy,
+					revision: policy.revision ?? 0,
+					canManageSharing,
+				});
+			}
+			if (!canManageSharing) return yield* forbidden("workspace_access_denied");
+			const body = yield* decodeBody(ChatSharingUpdate, request);
+			yield* validateOrganizationChatGrants(
+				access.scope.organizationId,
+				body.grants.map((grant) => grant.membershipId),
+			);
+			const updated = yield* store.updateWorkspaceSharing({
+				workspaceId: workspace.workspaceId,
+				accountId: ownerId,
+				expectedRevision: body.expectedRevision,
+				sharing: {
+					audience: body.audience,
+					permission: body.permission,
+					grants: body.grants,
+				},
+				nowMs,
+			});
+			if (updated === null) return yield* conflict("workspace_sharing_changed");
+			return json({
+				policy: updated.requestConfig.sharingPolicy,
+				revision: body.expectedRevision + 1,
+				canManageSharing,
+			});
+		}
 
 		const commandCollectionMatch =
 			/^\/v1\/cloud\/workspaces\/([^/]+)\/commands$/u.exec(path);
@@ -2766,8 +2931,13 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "GET" && dataKeyMatch !== null) {
 			const workspaceId = decodeURIComponent(dataKeyMatch[1] ?? "");
 			let workspace = yield* store.getWorkspace(workspaceId);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+			if (
+				(yield* cloudWorkspacePermission(access, workspace)).permission !==
+				"edit"
+			)
+				return yield* forbidden("workspace_access_denied");
 			if (workspace.state === "deleted" || workspace.state === "deleting")
 				return yield* Effect.fail(conflict("cloud_workspace_unavailable"));
 			if (workspace.wrappedTranscriptKey === undefined) {
@@ -2818,8 +2988,11 @@ export const routeCloudWorkspaceRequest = (
 			commandWatchMatch !== null
 		) {
 			const workspace = yield* store.getWorkspace(mailboxWorkspaceId);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+			const commandAccess = yield* cloudWorkspacePermission(access, workspace);
+			if (method !== "GET" && commandAccess.permission !== "edit")
+				return yield* forbidden("workspace_access_denied");
 			if (method === "POST" && commandCollectionMatch !== null) {
 				if (
 					workspaceDeletionRequested(workspace) ||
@@ -2846,11 +3019,24 @@ export const routeCloudWorkspaceRequest = (
 					envelope.destructionFence !== destructionFence
 				)
 					return yield* Effect.fail(conflict("cloud_command_fence_stale"));
-				const response = json(envelope, 202);
+				const response = json(
+					{
+						...envelope,
+						// Overwrite caller claims, including removing them for legacy Personal.
+						actor:
+							access.membership === null
+								? undefined
+								: {
+										subject: access.actor.accountId,
+										membershipId: access.membership.id,
+									},
+					},
+					202,
+				);
 				return attachCloudMailboxCommandDirective(response, {
 					action: "enqueue",
 					workspaceId: mailboxWorkspaceId,
-					accountId: principal.accountId,
+					accountId: ownerId,
 				});
 			}
 			if (method === "GET" && commandWatchMatch !== null) {
@@ -2893,10 +3079,8 @@ export const routeCloudWorkspaceRequest = (
 			}
 		}
 		if (method === "GET" && path === "/v1/cloud/github") {
-			const installations = yield* store.listGithubInstallations(
-				principal.accountId,
-			);
-			const grants = yield* githubInstallationGrants(principal.accountId).pipe(
+			const installations = yield* refreshGithubConnections(ownerId);
+			const grants = yield* githubInstallationGrants(ownerId).pipe(
 				Effect.orElseSucceed(() => []),
 			);
 			return json({
@@ -2924,7 +3108,16 @@ export const routeCloudWorkspaceRequest = (
 			});
 		}
 		if (method === "POST" && path === "/v1/cloud/github/install") {
-			return json({ url: yield* makeGithubInstallUrl(principal.accountId) });
+			const installUrl = yield* makeGithubInstallUrl(
+				ownerId,
+				access.actor.accountId,
+			);
+			return json({
+				url: githubAuthorizationUrl(
+					installUrl,
+					apiConfiguration.publicApiOrigin ?? apiConfiguration.apiIssuer,
+				),
+			});
 		}
 		const githubDisconnectMatch =
 			/^\/v1\/cloud\/github\/installations\/(\d+)$/u.exec(path);
@@ -2932,38 +3125,44 @@ export const routeCloudWorkspaceRequest = (
 			const installationId = Number(githubDisconnectMatch[1]);
 			if (!Number.isSafeInteger(installationId))
 				return yield* Effect.fail(badRequest("invalid_github_installation"));
-			yield* store.removeGithubInstallation(
-				principal.accountId,
-				installationId,
-			);
+			yield* store.removeGithubInstallation(ownerId, installationId);
 			return json({ ok: true });
 		}
 		const requireBillingCapacity = () =>
-			requireCloudBillingCapacity(principal.accountId, nowMs);
+			requireCloudBillingCapacity(ownerId, nowMs);
 
 		if (method === "GET" && path === ApiPaths.cloudAuth) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
-			return json(yield* cloudAuthStatus(principal.accountId));
+			const status = yield* cloudAuthStatus(ownerId);
+			return json(
+				access.membership !== null && access.membership.role.slug !== "admin"
+					? {
+							authorityState: status.authorityState,
+							providers: status.providers.map(({ providerId, state }) => ({
+								providerId,
+								state,
+							})),
+						}
+					: status,
+			);
 		}
 		if (method === "POST" && path === ApiPaths.cloudAuthProvision) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
-			return json(yield* provisionCloudAuth(principal.accountId));
+			return json(yield* provisionCloudAuth(ownerId));
 		}
 		if (method === "POST" && path === ApiPaths.cloudAuthConfigure) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
 			const body = yield* decodeBody(CloudAuthConfigureRequest, request);
-			return json(yield* configureCloudAuth(principal.accountId, body));
+			return json(yield* configureCloudAuth(ownerId, body));
 		}
 		if (method === "POST" && path === ApiPaths.cloudAuthLoginStart) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
 			const body = yield* decodeBody(CloudAuthLoginStartRequest, request);
-			return json(
-				yield* startCloudAuthLogin(principal.accountId, body.providerId),
-			);
+			return json(yield* startCloudAuthLogin(ownerId, body.providerId));
 		}
 		const cloudAuthLoginMatch = /^\/v1\/cloud\/auth\/login\/([^/]+)$/u.exec(
 			path,
@@ -2971,7 +3170,7 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "GET" && cloudAuthLoginMatch !== null) {
 			return json(
 				yield* pollCloudAuthLogin(
-					principal.accountId,
+					ownerId,
 					decodeURIComponent(cloudAuthLoginMatch[1] ?? ""),
 				),
 			);
@@ -2981,7 +3180,7 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "POST" && cloudAuthCancelMatch !== null) {
 			return json(
 				yield* cancelCloudAuthLogin(
-					principal.accountId,
+					ownerId,
 					decodeURIComponent(cloudAuthCancelMatch[1] ?? ""),
 				),
 			);
@@ -2992,7 +3191,7 @@ export const routeCloudWorkspaceRequest = (
 			const providerId = yield* Schema.decodeUnknownEffect(CloudAuthProvider)(
 				decodeURIComponent(cloudAuthDisconnectMatch[1] ?? ""),
 			).pipe(Effect.mapError(() => badRequest("invalid_cloud_auth_provider")));
-			return json(yield* disconnectCloudAuth(principal.accountId, providerId));
+			return json(yield* disconnectCloudAuth(ownerId, providerId));
 		}
 
 		const transcriptMatch =
@@ -3009,10 +3208,11 @@ export const routeCloudWorkspaceRequest = (
 				.pipe(measure("workspace"));
 			if (
 				workspace === null ||
-				workspace.accountId !== principal.accountId ||
+				workspace.accountId !== ownerId ||
 				workspace.state === "deleted"
 			)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+			yield* cloudWorkspacePermission(access, workspace);
 			const checkpoint = yield* store
 				.getTranscriptCheckpoint(workspaceId, sessionId)
 				.pipe(measure("metadata"));
@@ -3078,10 +3278,11 @@ export const routeCloudWorkspaceRequest = (
 			const workspace = yield* store.getWorkspace(workspaceId);
 			if (
 				workspace === null ||
-				workspace.accountId !== principal.accountId ||
+				workspace.accountId !== ownerId ||
 				workspace.state === "deleted"
 			)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+			yield* cloudWorkspacePermission(access, workspace);
 			const checkpoint = yield* store.getTranscriptCheckpoint(
 				workspaceId,
 				sessionId,
@@ -3141,6 +3342,7 @@ export const routeCloudWorkspaceRequest = (
 					config.availableSandboxProviderIds?.has(provider.providerId) ?? true,
 			);
 			return json({
+				entitled: yield* hasEntitlement(ownerId, nowMs),
 				providers: available.map((provider) => ({
 					providerId: provider.providerId,
 					displayName: provider.displayName,
@@ -3157,29 +3359,35 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "GET" && path === ApiPaths.cloudAccountImage) {
 			const requested = url.searchParams.get("providerId") ?? undefined;
 			if (requested !== undefined) yield* selectedProvider(requested);
-			return json(yield* cloudAccountImage(principal.accountId, requested));
+			return json(
+				yield* cloudAccountImage(
+					ownerId,
+					requested,
+					access.membership === null || access.membership.role.slug === "admin",
+				),
+			);
 		}
 
 		if (method === "POST" && path === ApiPaths.cloudAccountImageBuild) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
 			yield* requireBillingCapacity();
 			const body = yield* decodeBody(CloudAccountImageBuildRequest, request);
-			const projects = yield* store.listProjects(principal.accountId);
+			const projects = yield* store.listProjects(ownerId);
 			if (projects.length === 0)
 				return yield* Effect.fail(conflict("cloud_image_has_no_repositories"));
 			const provider = yield* selectedProvider(
 				body.providerId ?? (yield* SandboxProviders).defaultProviderId,
 			);
 			const builds = yield* store.listAccountBuilds(
-				principal.accountId,
+				ownerId,
 				provider.providerId,
 			);
 			const activeBuild = yield* store.getActiveAccountBuild(
-				principal.accountId,
+				ownerId,
 				provider.providerId,
 			);
-			const auth = yield* cloudAuthStatus(principal.accountId);
+			const auth = yield* cloudAuthStatus(ownerId);
 			const authenticationChanged = auth.providers.some(
 				(status) =>
 					!apiConfiguration.cloudProviderAuthBrokerEnrollmentEnabled &&
@@ -3203,7 +3411,7 @@ export const routeCloudWorkspaceRequest = (
 			);
 			if (inProgress !== undefined)
 				return json(
-					yield* cloudAccountImage(principal.accountId, provider.providerId),
+					yield* cloudAccountImage(ownerId, provider.providerId),
 					202,
 				);
 			const configurationDigest = yield* sha256Hex(
@@ -3223,7 +3431,7 @@ export const routeCloudWorkspaceRequest = (
 			const build: CloudProjectBuildRecord = {
 				buildId: yield* randomToken("image", 12),
 				projectId: anchor.projectId,
-				accountId: principal.accountId,
+				accountId: ownerId,
 				provider: provider.providerId,
 				templateVersion: provider.templateVersion,
 				configurationDigest,
@@ -3260,7 +3468,7 @@ export const routeCloudWorkspaceRequest = (
 					updatedAtMs: nowMs,
 				});
 			const response = json(
-				yield* cloudAccountImage(principal.accountId, provider.providerId),
+				yield* cloudAccountImage(ownerId, provider.providerId),
 				202,
 			);
 			response.headers.set("x-zuse-reconcile-cloud-build", created.buildId);
@@ -3268,7 +3476,7 @@ export const routeCloudWorkspaceRequest = (
 		}
 
 		if (method === "GET" && path === ApiPaths.cloudProjects) {
-			const projects = yield* store.listProjects(principal.accountId);
+			const projects = yield* store.listProjects(ownerId);
 			const providers = yield* SandboxProviders;
 			const currentTemplateVersions = new Map(
 				providers.availableProviders.map((provider) => [
@@ -3299,19 +3507,32 @@ export const routeCloudWorkspaceRequest = (
 				changes && rawCursor !== null ? Number(rawCursor) : undefined;
 			if (cursor !== undefined && (!Number.isSafeInteger(cursor) || cursor < 0))
 				return json({ error: "invalid-request" }, 400);
+			// Organization membership and grants can change independently of a client's
+			// cursor. A filtered replacement also removes revoked chats without exposing
+			// tombstone IDs for private chats this member has never seen.
+			const replacement = access.scope.kind === "organization";
 			const catalog = yield* store.readCloudCatalog(
-				principal.accountId,
-				cursor,
+				ownerId,
+				replacement ? undefined : cursor,
 			);
 			const projectId = url.searchParams.get("projectId");
 			const scope = changes
 				? "all"
 				: (url.searchParams.get("scope") ?? "active");
-			const deletedWorkspaceIds = [...catalog.deletedWorkspaceIds];
+			const deletedWorkspaceIds = replacement
+				? []
+				: [...catalog.deletedWorkspaceIds];
 			const chats = [];
 			for (const { workspace, project, runtimeSummary } of catalog.entries) {
+				if (
+					!(yield* cloudWorkspacePermission(access, workspace).pipe(
+						Effect.as(true),
+						Effect.catch(() => Effect.succeed(false)),
+					))
+				)
+					continue;
 				if (workspace.state === "deleted") {
-					deletedWorkspaceIds.push(workspace.workspaceId);
+					if (!replacement) deletedWorkspaceIds.push(workspace.workspaceId);
 					continue;
 				}
 				if (projectId !== null && workspace.projectId !== projectId) continue;
@@ -3338,7 +3559,7 @@ export const routeCloudWorkspaceRequest = (
 				changes
 					? {
 							cursor: catalog.cursor,
-							reset: catalog.reset,
+							reset: replacement || catalog.reset,
 							chats,
 							deletedWorkspaceIds,
 						}
@@ -3347,7 +3568,7 @@ export const routeCloudWorkspaceRequest = (
 		}
 
 		if (method === "POST" && path === ApiPaths.cloudProjects) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
 			yield* requireBillingCapacity();
 			const body = yield* decodeBody(CloudProjectConnectRequest, request);
@@ -3370,7 +3591,7 @@ export const routeCloudWorkspaceRequest = (
 			);
 			const project: CloudProjectRecord = {
 				projectId: yield* randomToken("project", 12),
-				accountId: principal.accountId,
+				accountId: ownerId,
 				repositoryIdentity: repository.identity,
 				repositoryUrl: repository.url,
 				displayName: body.displayName ?? repository.name,
@@ -3400,7 +3621,7 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "DELETE" && removeProjectMatch !== null) {
 			const projectId = decodeURIComponent(removeProjectMatch[1] ?? "");
 			const project = yield* store.getProject(projectId);
-			if (project === null || project.accountId !== principal.accountId)
+			if (project === null || project.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_project_not_found"));
 			const removed = yield* store.removeProject(projectId, nowMs);
 			if (removed === null)
@@ -3412,7 +3633,7 @@ export const routeCloudWorkspaceRequest = (
 			path,
 		);
 		if (method === "POST" && prepareMatch !== null) {
-			if (!(yield* hasEntitlement(principal.accountId, nowMs)))
+			if (!(yield* hasEntitlement(ownerId, nowMs)))
 				return yield* Effect.fail(forbidden("cloud_entitlement_required"));
 			yield* requireBillingCapacity();
 			const projectId = decodeURIComponent(prepareMatch[1] ?? "");
@@ -3420,13 +3641,13 @@ export const routeCloudWorkspaceRequest = (
 			if (body.projectId !== projectId)
 				return yield* Effect.fail(badRequest("project_mismatch"));
 			const project = yield* store.getProject(projectId);
-			if (project === null || project.accountId !== principal.accountId)
+			if (project === null || project.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_project_not_found"));
 			const provider = yield* selectedProvider(body.providerId);
 			const build: CloudProjectBuildRecord = {
 				buildId: yield* randomToken("build", 12),
 				projectId,
-				accountId: principal.accountId,
+				accountId: ownerId,
 				provider: provider.providerId,
 				templateVersion: provider.templateVersion,
 				configurationDigest: project.configurationDigest,
@@ -3451,11 +3672,17 @@ export const routeCloudWorkspaceRequest = (
 
 		if (method === "GET" && path === ApiPaths.cloudWorkspaces) {
 			const workspaces = yield* store.listWorkspaces(
-				principal.accountId,
+				ownerId,
 				url.searchParams.get("projectId") ?? undefined,
 			);
+			const visible = yield* Effect.filter(workspaces, (workspace) =>
+				cloudWorkspacePermission(access, workspace).pipe(
+					Effect.as(true),
+					Effect.catch(() => Effect.succeed(false)),
+				),
+			);
 			return json({
-				workspaces: workspaces.map(publicWorkspace),
+				workspaces: visible.map(publicWorkspace),
 			});
 		}
 
@@ -3464,8 +3691,9 @@ export const routeCloudWorkspaceRequest = (
 			const workspace = yield* store.getWorkspace(
 				decodeURIComponent(workspaceMatch[1] ?? ""),
 			);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+			yield* cloudWorkspacePermission(access, workspace);
 			return json(publicWorkspace(workspace));
 		}
 
@@ -3474,19 +3702,25 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "POST" && connectionTicketMatch !== null) {
 			const workspaceId = decodeURIComponent(connectionTicketMatch[1] ?? "");
 			const workspace = yield* store.getWorkspace(workspaceId);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
+			const { permission } = yield* cloudWorkspacePermission(access, workspace);
 			if (workspace.state === "failed" || workspace.state === "deleted")
 				return yield* Effect.fail(conflict("cloud_workspace_unavailable"));
+			// Reject before the WebSocket handshake, where browsers hide HTTP errors.
+			if (!workspaceRuntimeSupportsScope(workspace))
+				return yield* conflict("workspace_runtime_update_required");
 			yield* recordWorkspaceActivity(workspace);
 			const api = yield* ApiConfiguration;
 			const expiresAt = nowMs + WORKSPACE_CLIENT_TICKET_TTL_MS;
 			const credential = yield* signWorkspaceClientTicket({
 				mintPrivateJwk: yield* parseJwk(Redacted.value(api.mintPrivateKey)),
 				issuer: api.apiIssuer,
-				accountId: principal.accountId,
+				accountId: ownerId,
+				actorId: access.actor.accountId,
+				permission,
 				deviceId:
-					request.headers.get("x-zuse-device-id") ?? principal.accountId,
+					request.headers.get("x-zuse-device-id") ?? access.actor.accountId,
 				workspaceId,
 				protocol: WORKSPACE_GATEWAY_PROTOCOL,
 				generation: cloudWorkspaceRuntimeGeneration(workspace),
@@ -3501,6 +3735,7 @@ export const routeCloudWorkspaceRequest = (
 			const response = json({
 				workspaceId,
 				wsUrl: gatewayUrl(api.apiIssuer, workspaceId),
+				workspaceScope: access.scope,
 				protocol: WORKSPACE_GATEWAY_PROTOCOL,
 				role: "client",
 				generation: cloudWorkspaceRuntimeGeneration(workspace),
@@ -3518,7 +3753,7 @@ export const routeCloudWorkspaceRequest = (
 		if (method === "POST" && sshAccessMatch !== null) {
 			const workspaceId = decodeURIComponent(sshAccessMatch[1] ?? "");
 			const workspace = yield* store.getWorkspace(workspaceId);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
 			if (
 				workspace.state !== "ready" ||
@@ -3587,7 +3822,7 @@ export const routeCloudWorkspaceRequest = (
 		) {
 			const workspaceId = decodeURIComponent(previewUrlMatch[1] ?? "");
 			const workspace = yield* store.getWorkspace(workspaceId);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
 			if (
 				(method === "POST" && workspace.state !== "ready") ||
@@ -3668,7 +3903,23 @@ export const routeCloudWorkspaceRequest = (
 			)
 				return yield* Effect.fail(badRequest("cloud_fork_endpoint_required"));
 			const { workspace: launchedWorkspace, created } =
-				yield* createCloudWorkspaceForAccount(principal.accountId, body, nowMs);
+				yield* createCloudWorkspaceForAccount(
+					ownerId,
+					access.membership === null
+						? body
+						: {
+								...body,
+								idempotencyKey: `${access.membership.id}:${body.idempotencyKey}`,
+							},
+					nowMs,
+					access.membership === null
+						? undefined
+						: {
+								subject: access.actor.accountId,
+								membershipId: access.membership.id,
+							},
+				);
+			yield* cloudWorkspacePermission(access, launchedWorkspace);
 			const response = json(
 				{
 					workspace: publicWorkspace(launchedWorkspace),
@@ -3695,11 +3946,16 @@ export const routeCloudWorkspaceRequest = (
 			const workspace = yield* store.getWorkspace(
 				decodeURIComponent(actionMatch[1] ?? ""),
 			);
-			if (workspace === null || workspace.accountId !== principal.accountId)
+			if (workspace === null || workspace.accountId !== ownerId)
 				return yield* Effect.fail(notFound("cloud_workspace_not_found"));
 			const action = actionMatch[2] as CloudWorkspaceLifecycleAction;
+			if (
+				(yield* cloudWorkspacePermission(access, workspace)).permission !==
+				"edit"
+			)
+				return yield* forbidden("workspace_access_denied");
 			if (action === "resume" || action === "restart")
-				yield* requireCloudWorkspaceEntitlement(principal.accountId, nowMs);
+				yield* requireCloudWorkspaceEntitlement(ownerId, nowMs);
 			if (action === "resume") yield* requireBillingCapacity();
 			const actionRequest =
 				action === "resume"
@@ -3731,7 +3987,7 @@ export const routeCloudWorkspaceRequest = (
 			if (recoverRuntime && workspace.providerSandboxId === undefined) {
 				const provider = yield* registeredProvider(workspace.provider);
 				runtimeRecoveryBuild = yield* store.getActiveAccountBuild(
-					principal.accountId,
+					ownerId,
 					provider.providerId,
 				);
 				if (
@@ -3748,7 +4004,7 @@ export const routeCloudWorkspaceRequest = (
 			) {
 				const provider = yield* registeredProvider(workspace.provider);
 				failedRetryBuild = yield* store.getActiveAccountBuild(
-					principal.accountId,
+					ownerId,
 					provider.providerId,
 				);
 				if (

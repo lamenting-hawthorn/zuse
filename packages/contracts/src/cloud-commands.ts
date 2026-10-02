@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { WorkspaceActor } from "./collaboration.ts";
 import { AgentSessionId, CommandId } from "./ids.ts";
 
 export const CLOUD_COMMAND_PROTOCOL_VERSION = 3 as const;
@@ -71,7 +72,7 @@ export class CloudCommandDependency extends Schema.Class<CloudCommandDependency>
 	expiresAt: Schema.Number,
 }) {}
 
-/** Opaque v3 command. Routing metadata is authenticated as AES-GCM AAD. */
+/** Opaque v3 command. Client routing metadata is authenticated as AES-GCM AAD. */
 export class CloudCommandEnvelope extends Schema.Class<CloudCommandEnvelope>(
 	"CloudCommandEnvelope",
 )({
@@ -88,6 +89,8 @@ export class CloudCommandEnvelope extends Schema.Class<CloudCommandEnvelope>(
 	iv: Schema.String,
 	ciphertext: Schema.String,
 	dependencies: Schema.Array(CloudCommandDependency),
+	/** API-stamped organization author, outside the client's encrypted payload/AAD. */
+	actor: Schema.optional(WorkspaceActor),
 }) {}
 
 export class CommandAcceptance extends Schema.Class<CommandAcceptance>(

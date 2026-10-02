@@ -7,6 +7,10 @@ import type {
 import { Context, type Effect, Schema } from "effect";
 
 import type { LanAuthPolicy } from "../policy.ts";
+import type {
+	CredentialIdentity,
+	WorkspaceCredentialIdentity,
+} from "./connection-identity.ts";
 
 export interface LanAuthConfigShape {
 	readonly policy: LanAuthPolicy;
@@ -72,18 +76,25 @@ export interface LanAuthServiceShape {
 	readonly mintToken: (
 		label?: string,
 		deviceId?: string,
+		workspace?: WorkspaceCredentialIdentity,
 	) => Effect.Effect<
 		{ readonly id: AuthTokenId; readonly token: string },
 		LanAuthError
 	>;
 	readonly verifyToken: (token: string) => Effect.Effect<boolean, LanAuthError>;
+	readonly authenticateToken: (
+		token: string,
+	) => Effect.Effect<CredentialIdentity | null, LanAuthError>;
 	readonly listTokens: () => Effect.Effect<
 		ReadonlyArray<AuthTokenSummary>,
 		LanAuthError
 	>;
 	readonly revokeToken: (id: AuthTokenId) => Effect.Effect<void, LanAuthError>;
 	readonly hasActiveTokens: () => Effect.Effect<boolean, LanAuthError>;
-	readonly createPairingCode: () => Effect.Effect<
+	/** A transport's resolved endpoint is reused for subsequent codes during this runtime. */
+	readonly createPairingCode: (endpoint?: {
+		readonly httpBaseUrl: string;
+	}) => Effect.Effect<
 		{
 			readonly code: string;
 			readonly expiresAt: Date;
