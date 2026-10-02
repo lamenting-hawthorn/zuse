@@ -6,6 +6,7 @@ import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
 import { CheckCircle2, ChevronDown, CircleX, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 
+import { useRelativeTimeTick } from "../../lib/use-relative-time.ts";
 import { CopyButton } from "../copy-button.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
@@ -13,15 +14,17 @@ import { COMPACT_CLOUD_ACTION } from "./cloud-settings-ui.tsx";
 
 const PAGE_SIZE = 5;
 
-const formatDuration = (build: CloudAccountImageBuildAttempt) => {
-	const seconds = Math.max(
-		0,
-		Math.round((build.updatedAt - build.createdAt) / 1_000),
-	);
+const formatDuration = (createdAt: number, endAt: number) => {
+	const seconds = Math.max(0, Math.round((endAt - createdAt) / 1_000));
 	return seconds < 60
 		? `${seconds}s`
 		: `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 };
+
+function RunningDuration({ createdAt }: { readonly createdAt: number }) {
+	const now = useRelativeTimeTick(1_000);
+	return <>{formatDuration(createdAt, now)}</>;
+}
 
 const presentation = (state: CloudAccountImageBuildAttempt["state"]) =>
 	state === "ready"
@@ -68,7 +71,7 @@ function BuildAccordion({
 	const status = presentation(build.state);
 	return (
 		<details className="group/build" open={defaultOpen}>
-			<summary className="flex h-9 cursor-pointer list-none items-center gap-2 px-3 hover:bg-muted/40">
+			<summary className="flex h-7 cursor-pointer list-none items-center gap-2 px-3 hover:bg-muted/40">
 				<BuildIcon state={build.state} />
 				<span className="min-w-0 flex-1 truncate text-xs font-medium">
 					{build.mode === "rebuild"
@@ -84,7 +87,12 @@ function BuildAccordion({
 						minute: "numeric",
 						second: "numeric",
 					})}{" "}
-					· {formatDuration(build)}
+					·{" "}
+					{build.state === "ready" || build.state === "failed" ? (
+						formatDuration(build.createdAt, build.updatedAt)
+					) : (
+						<RunningDuration createdAt={build.createdAt} />
+					)}
 				</span>
 				{build.active ? (
 					<Badge variant="success">
@@ -94,8 +102,8 @@ function BuildAccordion({
 				<Badge variant={status.variant}>{status.label}</Badge>
 				<ChevronDown className="size-3 text-muted-foreground transition-transform group-open/build:rotate-180" />
 			</summary>
-			<div className="space-y-3 bg-muted/20 px-3 py-3">
-				<div className="relative rounded-md bg-background/60 p-3">
+			<div className="space-y-2 px-3 py-2">
+				<div className="relative rounded-md bg-muted/30 p-2.5">
 					<CopyButton
 						text={build.logText ?? ""}
 						label={uiMessage(
@@ -107,7 +115,11 @@ function BuildAccordion({
 						{build.logText ||
 							(build.state === "failed"
 								? `Logs were not retained for this older build.\nError: ${build.errorCode ?? "unknown"}`
-								: "Waiting for build output…")}
+								: build.state === "sanitizing"
+									? "Preparing snapshot…"
+									: build.state === "ready"
+										? "Build completed. No output was retained."
+										: "Waiting for build output…")}
 					</pre>
 				</div>
 				<details>
@@ -179,8 +191,14 @@ export function CloudImageBuildHistory({
 	);
 
 	return (
-		<div className="border-border border-t">
-			<div className="px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+		<div>
+			<div
+				className={
+					expandLatest
+						? "sr-only"
+						: "px-3 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wide"
+				}
+			>
 				{uiMessage("settings:cloud_image_build_history_latest_build")}
 			</div>
 			<BuildAccordion

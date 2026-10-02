@@ -9,9 +9,15 @@ import {
 } from "@zuse/client-runtime/resource-state";
 import { type AuthState, EnvironmentId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
-import { useMemo } from "react";
-import type { MemoizeClient } from "./rpc-client.ts";
-import { LOCAL_ENVIRONMENT_KEY } from "./rpc-client.ts";
+import { useMemo, useSyncExternalStore } from "react";
+import { hostedAuthState, subscribeHostedAuth } from "./hosted-session.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
+import { observeRendererAccount } from "./renderer-account.ts";
+import {
+	isRpcClientTransportError,
+	LOCAL_ENVIRONMENT_KEY,
+	type MemoizeClient,
+} from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -46,6 +52,11 @@ const makeDriver = (): ResourceDriver<MemoizeClient, EnvironmentAuthData> => {
 				(state) =>
 					Effect.sync(() => {
 						if (!active || !context.isCurrent()) return;
+						if (environmentId === LOCAL_ENVIRONMENT_KEY) {
+							observeRendererAccount(
+								state._tag === "SignedIn" ? state.session.user.id : null,
+							);
+						}
 						version += 1;
 						context.emit({
 							data: { state },
@@ -62,6 +73,7 @@ const makeDriver = (): ResourceDriver<MemoizeClient, EnvironmentAuthData> => {
 					Effect.sync(() => {
 						if (!active || Cause.hasInterruptsOnly(cause)) return;
 						context.emit({ sync: "failed" });
+						if (!isRpcClientTransportError(Cause.squash(cause))) return;
 						getRendererClientBus().reportConnectionFault(
 							environmentId,
 							{ phase: "failed", message: messageOf(Cause.squash(cause)) },
@@ -90,10 +102,27 @@ registerRendererResourceDriver("environment-auth", (key) =>
 const EMPTY = emptyResourceView<EnvironmentAuthData>();
 
 export const useEnvironmentAuth = (): ResourceView<EnvironmentAuthData> => {
+	const hosted = isHostedProduct();
 	const environmentId = EnvironmentId.make(LOCAL_ENVIRONMENT_KEY);
 	const key = useMemo(
-		() => environmentAuthResourceKey(environmentId),
-		[environmentId],
+		() => (hosted ? null : environmentAuthResourceKey(environmentId)),
+		[environmentId, hosted],
 	);
-	return useClientBusResource(key, EMPTY, "connect");
+	const remote = useClientBusResource(key, EMPTY, "connect");
+	const state = useSyncExternalStore(
+		hosted ? subscribeHostedAuth : () => () => {},
+		hosted ? hostedAuthState : () => null,
+	);
+	return useMemo(
+		() =>
+			state === null
+				? remote
+				: {
+						...EMPTY,
+						data: { state },
+						connection: "connected",
+						sync: "live",
+					},
+		[remote, state],
+	);
 };

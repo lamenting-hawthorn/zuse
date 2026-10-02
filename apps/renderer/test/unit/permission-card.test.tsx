@@ -1,7 +1,10 @@
 import { EnvironmentId, PermissionRequest, SessionId } from "@zuse/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PermissionCard } from "../../src/components/permission-card.tsx";
+import {
+	PermissionCard,
+	PermissionPrompt,
+} from "../../src/components/permission-card.tsx";
 
 const request = PermissionRequest.make({
 	id: "approval-1",
@@ -12,6 +15,20 @@ const request = PermissionRequest.make({
 });
 
 describe("permission recovery presentation", () => {
+	it("keeps chat-scoped choices without offering a folder-wide rule", () => {
+		const html = renderToStaticMarkup(
+			<PermissionPrompt
+				requestId={request.id}
+				kind={request.kind}
+				queueSize={1}
+				allowFolderRule={false}
+				onDecision={async () => {}}
+			/>,
+		);
+		expect(html).toContain("Allow once");
+		expect(html).toContain("Allow for session");
+		expect(html).not.toContain("Always allow");
+	});
 	it("keeps a live approval actionable regardless of its age", () => {
 		const html = renderToStaticMarkup(
 			<PermissionCard

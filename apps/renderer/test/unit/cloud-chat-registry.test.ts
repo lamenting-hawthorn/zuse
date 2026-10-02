@@ -15,6 +15,27 @@ import {
 	cloudChatShowsWorking,
 	deriveCloudChatActivity,
 } from "../../src/lib/cloud-chat-activity.ts";
+
+it("keeps the working indicator visible between runtime claim and live turn arrival", () => {
+	const command = {
+		commandId: CommandId.make("message-send:pending"),
+		kind: "messages.send",
+		targetId: null,
+		submittedAt: 1,
+		deliveryPhase: "leased" as const,
+	};
+	expect(cloudChatShowsWorking("attaching", [command])).toBe(true);
+	expect(cloudChatShowsWorking("running", [])).toBe(true);
+	expect(cloudChatShowsWorking("idle", [])).toBe(false);
+	expect(cloudChatShowsWorking("failed", [command])).toBe(false);
+	expect(cloudChatShowsWorking("paused", [command])).toBe(false);
+	expect(
+		cloudChatShowsWorking("attaching", [
+			{ ...command, deliveryPhase: "accepted" },
+		]),
+	).toBe(false);
+});
+
 import { cloudConnectionPresentation } from "../../src/lib/cloud-connection-presentation.ts";
 import {
 	cloudSummaryForChat,
@@ -73,6 +94,28 @@ describe("cloud chat catalog", () => {
 			localProjectByEnvironment: {},
 			archiveIntents: {},
 		});
+	});
+
+	it("rejects a mixed-owner catalog without partially replacing its rows", () => {
+		const current = summary({
+			workspaceId: "personal",
+			chatId: "chat",
+			sessionId: "session",
+			revision: 1,
+		});
+		registerCloudChat(current);
+		const before = useCloudChatCatalogStore.getState();
+		expect(() =>
+			reconcileCloudChatCatalog([
+				{ ...current, revision: 2 },
+				{
+					...current,
+					workspaceId: "other",
+					workspaceScope: { kind: "organization", organizationId: "org_a" },
+				},
+			]),
+		).toThrow("another workspace");
+		expect(useCloudChatCatalogStore.getState()).toBe(before);
 	});
 
 	it("keeps one monotonic summary per qualified environment", () => {

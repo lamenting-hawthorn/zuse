@@ -1,23 +1,44 @@
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "~/lib/utils";
 import { Card } from "./card.tsx";
 import { Frame, FrameFooter, FrameHeader } from "./frame.tsx";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./tooltip.tsx";
 
 type SettingsHeaderProps = {
 	title: string;
 	description?: ReactNode;
+	help?: string;
 	action?: ReactNode;
 };
 
-function SettingsHeader({ title, description, action }: SettingsHeaderProps) {
+function SettingsHeader({
+	title,
+	description,
+	action,
+	help,
+}: SettingsHeaderProps) {
 	return (
 		<FrameHeader className="flex w-full flex-row items-start justify-between gap-3 px-2.5 py-2">
 			<div className="min-w-0">
-				<p className="truncate text-xs font-medium leading-4 text-foreground">
-					{title}
-				</p>
+				<div className="flex items-center gap-1">
+					<p className="truncate text-xs font-medium leading-4 text-foreground">
+						{title}
+					</p>
+					{help === undefined ? null : (
+						<Tooltip>
+							<TooltipTrigger
+								className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+								aria-label={title}
+							>
+								<Info className="size-3" aria-hidden />
+							</TooltipTrigger>
+							<TooltipPopup>{help}</TooltipPopup>
+						</Tooltip>
+					)}
+				</div>
 				{description === undefined ? null : (
 					<div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
 						{description}
@@ -63,6 +84,7 @@ export function SettingsFrame({
 export function SettingsGroup({
 	title,
 	description,
+	help,
 	action,
 	trailing,
 	footer,
@@ -76,6 +98,7 @@ export function SettingsGroup({
 		<Frame>
 			<SettingsHeader
 				title={title}
+				help={help}
 				description={description}
 				action={action ?? trailing}
 			/>

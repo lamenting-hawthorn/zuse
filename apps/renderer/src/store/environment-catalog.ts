@@ -16,6 +16,7 @@ import {
 	WIRE_PROTOCOL_VERSION,
 } from "@zuse/contracts";
 import { Effect } from "effect";
+import { isCloudProjectFolder } from "../lib/cloud-project-folders.ts";
 import {
 	cloudSummaryActiveSessionId,
 	cloudSummaryForChat,
@@ -34,6 +35,13 @@ import { createInitializationGate } from "../lib/initialization-gate.ts";
 import { upsertLatestEntity } from "../lib/latest-entity.ts";
 import { markRendererStartupMilestone } from "../lib/performance-marks.ts";
 import {
+	assertRendererAccountCurrent,
+	rendererAccountSnapshot,
+	subscribeRendererAccount,
+} from "../lib/renderer-account.ts";
+import { rendererWorkspaceSnapshot } from "../lib/renderer-workspace.ts";
+import {
+	environmentBelongsToWorkspace,
 	LOCAL_ENVIRONMENT_KEY,
 	registerApiEnvironment,
 	registerLocalEnvironment,
@@ -136,9 +144,10 @@ export const projectEnvironmentShell = (
 			? options.folderId
 			: options.resetOptimisticState !== true &&
 					previousWorkspace.selectedFolderId !== null &&
-					normalized.folders.some(
-						(folder) => folder.id === previousWorkspace.selectedFolderId,
-					)
+					(isCloudProjectFolder(previousWorkspace.selectedFolderId) ||
+						normalized.folders.some(
+							(folder) => folder.id === previousWorkspace.selectedFolderId,
+						))
 				? previousWorkspace.selectedFolderId
 				: (normalized.folders[0]?.id ?? null);
 
@@ -397,6 +406,7 @@ type EnvironmentCatalogState = {
 };
 
 type EnvironmentShellRuntime = {
+	readonly lifetime: AbortController;
 	readonly ref: { readonly environmentId: EnvironmentId };
 	readonly lease: ResourceLease;
 	readonly unsubscribe: () => void;
@@ -581,6 +591,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 		const shellRuntimes = new Map<string, EnvironmentShellRuntime>();
 		let activeShellKey: string | null = null;
 		const initializeOnce = createInitializationGate();
+		let discoveryRevision = 0;
 		const patchEntry = (
 			key: string,
 			patch: Partial<EnvironmentCatalogEntry>,
@@ -617,7 +628,11 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 							).error
 						: null,
 			});
-			if (view.data !== null && get().activeEnvironmentId === environmentId) {
+			if (
+				view.data !== null &&
+				get().activeEnvironmentId === environmentId &&
+				environmentBelongsToWorkspace(environmentId)
+			) {
 				projectEnvironmentShell(view.data);
 			}
 		};
@@ -640,6 +655,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			const ref = { environmentId: EnvironmentId.make(environmentId) };
 			const retained = retainEnvironmentShell(ref, activation);
 			const runtime: EnvironmentShellRuntime = {
+				lifetime: new AbortController(),
 				ref,
 				lease: retained.lease,
 				unsubscribe: subscribeEnvironmentShell(ref, (view) =>
@@ -655,21 +671,131 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			const runtime = shellRuntimes.get(catalogKey);
 			if (runtime === undefined) return;
 			if (activeShellKey === catalogKey) activeShellKey = null;
+			runtime.lifetime.abort();
 			runtime.unsubscribe();
 			runtime.lease.release();
 			shellRuntimes.delete(catalogKey);
 		};
+		const accountEnvironmentIds = (): Set<string> =>
+			new Set([
+				...apiRecords.keys(),
+				...get()
+					.entries.filter((entry) => entry.connectionKind === "api")
+					.map((entry) => entry.environmentId),
+			]);
+		const removeAccountEnvironments = (
+			environmentIds: ReadonlySet<string>,
+		): void => {
+			if (environmentIds.size === 0) return;
+			const state = get();
+			const removed = state.entries.filter(
+				(entry) =>
+					entry.connectionKind === "api" &&
+					environmentIds.has(entry.environmentId),
+			);
+			const activeTransientRemoved =
+				environmentIds.has(state.activeEnvironmentId) &&
+				shellRuntimes.has(`transient:${state.activeEnvironmentId}`);
+			for (const id of environmentIds) {
+				const key = `transient:${id}`;
+				const transient = shellRuntimes.has(key);
+				stopEntryRuntime(key);
+				apiRecords.delete(id);
+				if (transient || removed.some((entry) => entry.environmentId === id))
+					void removeRendererEnvironment(id).catch(() => undefined);
+			}
+			for (const entry of removed) {
+				stopEntryRuntime(entryKey(entry));
+			}
+			const activeRemoved =
+				activeTransientRemoved ||
+				removed.some(
+					(entry) => entry.environmentId === state.activeEnvironmentId,
+				);
+			const local = state.entries.find(
+				(entry) => entry.connectionKind === "local",
+			);
+			set({
+				entries: state.entries.filter(
+					(entry) =>
+						entry.connectionKind !== "api" ||
+						!environmentIds.has(entry.environmentId),
+				),
+				...(activeRemoved
+					? {
+							activeEnvironmentId:
+								local?.environmentId ?? LOCAL_ENVIRONMENT_KEY,
+						}
+					: {}),
+			});
+			if (activeRemoved) {
+				setActiveEnvironment(local?.environmentId ?? LOCAL_ENVIRONMENT_KEY);
+				const localRuntime =
+					local === undefined ? undefined : shellRuntimes.get(entryKey(local));
+				if (localRuntime !== undefined && local !== undefined) {
+					activeShellKey = entryKey(local);
+					localRuntime.requestedActivation = "connect";
+					void Promise.resolve(localRuntime.lease.activate("connect")).catch(
+						() => undefined,
+					);
+				}
+				activateAnnotationsEnvironment();
+				useUiStore.getState().clearRevealedAnnotation();
+				projectEnvironmentShell(
+					(localRuntime === undefined
+						? null
+						: environmentShellSnapshot(localRuntime.ref).data) ?? {
+						folders: [],
+						originsByFolder: {},
+						chatsByProject: {},
+						sessionsByProject: {},
+						creationOperationsByProject: {},
+					},
+					{ resetOptimisticState: true },
+				);
+			}
+		};
+		const unsubscribeAccount = subscribeRendererAccount(() => {
+			discoveryRevision++;
+			const removed = accountEnvironmentIds();
+			for (const [key, runtime] of shellRuntimes) {
+				if (key.startsWith("transient:"))
+					removed.add(runtime.ref.environmentId);
+			}
+			removeAccountEnvironments(removed);
+			set({ accountDiscoveryError: null });
+			const account = rendererAccountSnapshot();
+			if (get().initialized && typeof account.subject === "string") {
+				void get()
+					.syncAccountEnvironments()
+					.catch((cause) => {
+						if (rendererAccountSnapshot() === account)
+							set({ accountDiscoveryError: errorMessage(cause) });
+					});
+			}
+		});
+		if (import.meta.hot) import.meta.hot.dispose(unsubscribeAccount);
 		const waitForShellData = (
 			runtime: EnvironmentShellRuntime,
 		): Promise<EnvironmentShellData> => {
 			return new Promise((resolve, reject) => {
 				let settled = false;
 				let unsubscribe = (): void => undefined;
+				const abort = (): void => {
+					if (settled) return;
+					settled = true;
+					cleanup();
+					reject(new Error("Environment subscription was removed."));
+				};
+				const cleanup = (): void => {
+					unsubscribe();
+					runtime.lifetime.signal.removeEventListener("abort", abort);
+				};
 				const finish = (view: ResourceView<EnvironmentShellData>): void => {
 					if (settled) return;
 					if (view.data !== null) {
 						settled = true;
-						unsubscribe();
+						cleanup();
 						resolve(normalizeEnvironmentShellData(view.data));
 						return;
 					}
@@ -680,7 +806,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						view.connection === "revoked"
 					) {
 						settled = true;
-						unsubscribe();
+						cleanup();
 						reject(
 							new Error(
 								getRendererClientBus().connection(runtime.ref.environmentId)
@@ -689,9 +815,17 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						);
 					}
 				};
+				if (runtime.lifetime.signal.aborted) {
+					abort();
+					return;
+				}
+				runtime.lifetime.signal.addEventListener("abort", abort, {
+					once: true,
+				});
 				unsubscribe = subscribeEnvironmentShell(runtime.ref, (view) => {
 					finish(view);
 				});
+				if (settled) cleanup();
 				finish(environmentShellSnapshot(runtime.ref));
 			});
 		};
@@ -702,6 +836,9 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			selection: EnvironmentActivation | undefined,
 			fallback?: EnvironmentShellData,
 		): Promise<Folder["id"] | null> => {
+			const workspace = rendererWorkspaceSnapshot();
+			if (!environmentBelongsToWorkspace(environmentId, workspace.scope))
+				throw new Error("This environment belongs to another workspace.");
 			runtime.requestedActivation = "connect";
 			await runtime.lease.activate("connect");
 			const data = await waitForShellData(runtime).catch((cause) => {
@@ -711,7 +848,13 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			});
 			// Connection work can finish after the user has opened another draft.
 			// Check before changing either the active environment or its selection.
-			if (selection?.isCurrent?.() === false) return null;
+			if (
+				selection?.isCurrent?.() === false ||
+				rendererWorkspaceSnapshot() !== workspace
+			)
+				return null;
+			if (shellRuntimes.get(catalogKey) !== runtime)
+				throw new Error("Environment activation was superseded.");
 			if (activeShellKey !== null && activeShellKey !== catalogKey) {
 				const previous = shellRuntimes.get(activeShellKey);
 				if (previous !== undefined) {
@@ -850,15 +993,19 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 			localEnvironmentId: string,
 			replace = false,
 		): Promise<void> => {
+			const account = rendererAccountSnapshot();
 			const catalogKey = `api:${environment.environmentId}`;
 			return connectionAttempts.run(
-				catalogKey,
-				async (isCurrent) => {
+				`${catalogKey}:account:${account.epoch}`,
+				async (isAttemptCurrent) => {
+					const isCurrent = () =>
+						isAttemptCurrent() && rendererAccountSnapshot() === account;
 					try {
 						const { grant, localClient } = await (async () => {
 							try {
 								const localClient =
 									await runtimeOperationClient(localEnvironmentId);
+								assertRendererAccountCurrent(account);
 								const grant = await Effect.runPromise(
 									localClient["environments.connect"]({
 										environmentId: environment.environmentId,
@@ -881,6 +1028,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 										}),
 									),
 								),
+							account,
 						);
 						try {
 							await completeConnection({
@@ -952,36 +1100,52 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						const localRuntime = retainShell(
 							entryKey(localEntry),
 							localEntry.environmentId,
-							"connect",
+							"cache-only",
 						);
-						await activateRuntime(
-							entryKey(localEntry),
-							localRuntime,
-							localEntry.environmentId,
-							undefined,
-						);
+						// Discover the desktop in any workspace, but only activate its
+						// Personal shell while that workspace is selected.
+						if (environmentBelongsToWorkspace(localEntry.environmentId)) {
+							await activateRuntime(
+								entryKey(localEntry),
+								localRuntime,
+								localEntry.environmentId,
+								undefined,
+							);
+						} else {
+							useWorkspaceStore.setState({ loading: false, error: null });
+						}
 						set({ initialized: true, initializationError: null });
 
 						// Remote catalogs are optional. A corrupt saved profile or an
 						// unavailable account service must never hide the local workspace.
+						const account = rendererAccountSnapshot();
+						const revision = ++discoveryRevision;
 						const { profiles, tailnetProfiles, apiEnvironments, apiError } =
 							await loadOptionalEnvironmentSources({
 								sshProfiles:
 									window.zuse?.ssh?.listProfiles() ?? Promise.resolve([]),
 								tailnetProfiles:
 									window.zuse?.tailnet?.listProfiles() ?? Promise.resolve([]),
-								apiEnvironments: Effect.runPromise(
-									localClient["environments.list"](),
-								),
+								apiEnvironments:
+									typeof account.subject === "string"
+										? Effect.runPromise(localClient["environments.list"]())
+										: Promise.resolve({ environments: [] }),
 							});
-						const profileEnvironmentIds = new Set(
+						const profileEnvironmentIds = new Set<string>(
 							[...profiles, ...tailnetProfiles].map(
 								(profile) => profile.environmentId,
 							),
 						);
 						const hiddenApiIds = new Set(hiddenApiEnvironmentIds);
+						// A sign-in refresh can finish before saved device profiles load.
+						// Retire any API route before the same host becomes device-owned.
+						removeAccountEnvironments(profileEnvironmentIds);
+						const currentDiscovery =
+							rendererAccountSnapshot() === account &&
+							discoveryRevision === revision;
 						const accountApiEnvironments = apiEnvironments.filter(
 							(environment) =>
+								currentDiscovery &&
 								environment.environmentId !== descriptor.environmentId &&
 								!profileEnvironmentIds.has(environment.environmentId),
 						);
@@ -998,10 +1162,16 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 							...tailnetProfiles.map(tailnetProfileEntry),
 						];
 						set((state) => ({
-							accountDiscoveryError: apiError,
+							accountDiscoveryError: currentDiscovery
+								? apiError
+								: state.accountDiscoveryError,
 							entries: orderEnvironmentCatalog([
 								...state.entries.filter(
-									(entry) => entry.connectionKind === "local",
+									(entry) =>
+										entry.connectionKind === "local" ||
+										(!currentDiscovery &&
+											entry.connectionKind === "api" &&
+											!profileEnvironmentIds.has(entry.environmentId)),
 								),
 								...optionalEntries,
 							]),
@@ -1020,6 +1190,12 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				});
 			},
 			syncAccountEnvironments: async () => {
+				const account = rendererAccountSnapshot();
+				if (typeof account.subject !== "string") return;
+				const revision = ++discoveryRevision;
+				const isCurrent = () =>
+					rendererAccountSnapshot() === account &&
+					discoveryRevision === revision;
 				const local = get().entries.find(
 					(entry) => entry.connectionKind === "local",
 				);
@@ -1029,9 +1205,14 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				}
 
 				const localClient = await runtimeOperationClient(local.environmentId);
+				if (!isCurrent()) return;
 				const result = await Effect.runPromise(
 					localClient["environments.list"](),
-				);
+				).catch((cause) => {
+					if (isCurrent()) throw cause;
+					return null;
+				});
+				if (result === null || !isCurrent()) return;
 				set({ accountDiscoveryError: null });
 				const profileEnvironmentIds = new Set(
 					get()
@@ -1047,6 +1228,14 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 					(environment) =>
 						environment.environmentId !== local.environmentId &&
 						!profileEnvironmentIds.has(environment.environmentId),
+				);
+				const available = new Set<string>(
+					accountEnvironments.map((environment) => environment.environmentId),
+				);
+				removeAccountEnvironments(
+					new Set(
+						[...accountEnvironmentIds()].filter((id) => !available.has(id)),
+					),
 				);
 				for (const environment of accountEnvironments) {
 					apiRecords.set(environment.environmentId, environment);
@@ -1387,10 +1576,20 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 				}
 			},
 			activate: async (environmentId, selection) => {
+				const account = rendererAccountSnapshot();
+				const workspace = rendererWorkspaceSnapshot();
+				if (!environmentBelongsToWorkspace(environmentId, workspace.scope))
+					throw new Error("This environment belongs to another workspace.");
 				let entry = get().entries.find(
 					(item) => item.environmentId === environmentId,
 				);
-				if (entry === undefined) return null;
+				if (entry === undefined) {
+					const catalogKey = `transient:${environmentId}`;
+					const runtime = shellRuntimes.get(catalogKey);
+					return runtime === undefined
+						? null
+						: activateRuntime(catalogKey, runtime, environmentId, selection);
+				}
 				if (entry.connectionKind === "ssh" && entry.profileId !== null) {
 					await connectProfile(entry.profileId);
 				} else if (
@@ -1407,6 +1606,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 						throw new Error("API environment is unavailable.");
 					}
 					await connectApi(api, local.environmentId);
+					assertRendererAccountCurrent(account);
 				}
 				entry = get().entries.find(
 					(item) => item.environmentId === environmentId,
@@ -1415,6 +1615,7 @@ export const useEnvironmentCatalogStore = create<EnvironmentCatalogState>(
 					throw new Error(entry?.error ?? "Unable to connect to environment.");
 				}
 				const catalogKey = entryKey(entry);
+				if (rendererWorkspaceSnapshot() !== workspace) return null;
 				const runtime = retainShell(catalogKey, environmentId, "connect");
 				return activateRuntime(catalogKey, runtime, environmentId, selection);
 			},

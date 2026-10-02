@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { ChipRange } from "../../src/lib/codemirror/composer-chips.ts";
 import {
+	composerDraftKeyForLanding,
 	composerDraftKeyForSession,
 	useComposerDraftsStore,
 } from "../../src/store/composer-drafts.ts";
@@ -19,7 +20,39 @@ const secondKey = composerDraftKeyForSession({
 
 describe("composer drafts store", () => {
 	beforeEach(() => {
-		useComposerDraftsStore.setState({ draftsByKey: {} });
+		useComposerDraftsStore.setState({ draftsByKey: {}, contextsByKey: {} });
+	});
+
+	it("keeps Personal and organization landing drafts and context chips separate", () => {
+		const scopes = [
+			{ kind: "personal" },
+			{ kind: "organization", organizationId: "org:a" },
+			{ kind: "organization", organizationId: "org:b" },
+		] as const;
+		const keys = scopes.map((scope) =>
+			composerDraftKeyForLanding(localEnvironmentId, null, scope),
+		);
+		expect(new Set(keys).size).toBe(3);
+		for (const [index, key] of keys.entries()) {
+			useComposerDraftsStore
+				.getState()
+				.save(key, { doc: `draft ${index}`, chips: [] });
+			useComposerDraftsStore.getState().addContext(key, {
+				sourceKey: "same-source",
+				label: "context",
+				text: `context ${index}`,
+			});
+		}
+		for (const [index, scope] of scopes.entries()) {
+			const key = composerDraftKeyForLanding(localEnvironmentId, null, scope);
+			expect(useComposerDraftsStore.getState().draftsByKey[key]?.doc).toBe(
+				`draft ${index}`,
+			);
+			expect(
+				useComposerDraftsStore.getState().contextsByKey[key]?.[0]?.text,
+			).toBe(`context ${index}`);
+		}
+		expect(keys[0]).toBe(composerDraftKeyForLanding(localEnvironmentId, null));
 	});
 
 	it("saves independent drafts by key", () => {

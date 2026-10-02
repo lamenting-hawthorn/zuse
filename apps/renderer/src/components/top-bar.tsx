@@ -3,6 +3,7 @@ import { useGitPrState } from "../lib/use-git-pr-state.ts";
 import { CopyButton } from "./copy-button.tsx";
 import { GitStackMenu } from "./git-stack-menu.tsx";
 import { PreviewPortsMenu } from "./preview-ports-menu.tsx";
+import { WorkspaceSharingButton } from "./workspace-sharing-button.tsx";
 import "@zuse/i18n/english/projects";
 import { isInputComposing } from "../lib/input-composition.ts";
 import { CreateBranchDialog } from "./create-branch-dialog.tsx";
@@ -65,7 +66,10 @@ import {
 	cloudSummaryForChat,
 	useCloudChatCatalogStore,
 } from "../lib/cloud-workspace-catalog.ts";
-import { useActiveEnvironmentEntities } from "../lib/environment-entity-hooks.ts";
+import {
+	useActiveEnvironmentEntities,
+	useEnvironmentChat,
+} from "../lib/environment-entity-hooks.ts";
 import {
 	dispatchGitWorkspaceCommand,
 	refreshGitWorkspace,
@@ -250,6 +254,7 @@ export function TopBarMain() {
 			: { environmentId, chatId: selectedChatId };
 	const selectedChatKey =
 		selectedChatRef === null ? null : rightPaneKey(selectedChatRef);
+	const readOnly = useEnvironmentChat(selectedChatRef)?.readOnly === true;
 	const registeredCloudSummaryCandidate =
 		selectedChatId === null ? null : cloudSummaryForChat(selectedChatId);
 	const registeredCloudSummary =
@@ -330,7 +335,7 @@ export function TopBarMain() {
 		showLeftToggle && isMacHost() && !isFullScreen ? "pl-20" : "pl-2";
 
 	const refreshBranches = async (): Promise<void> => {
-		if (executionRef === null || folderId === null) return;
+		if (readOnly || executionRef === null || folderId === null) return;
 		setBranchesLoading(true);
 		setBranchError(null);
 		try {
@@ -354,10 +359,16 @@ export function TopBarMain() {
 	useEffect(() => {
 		void refreshBranches();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [folderId, worktreeId, branchLabel]);
+	}, [folderId, worktreeId, branchLabel, readOnly]);
 
 	const switchToBranch = async (branch: GitBranchInfo): Promise<void> => {
-		if (executionRef === null || folderId === null || branch.current) return;
+		if (
+			readOnly ||
+			executionRef === null ||
+			folderId === null ||
+			branch.current
+		)
+			return;
 		if (
 			status !== null &&
 			status.dirtyFiles > 0 &&
@@ -445,7 +456,7 @@ export function TopBarMain() {
 											.toUpperCase()}
 									</AvatarFallback>
 								</Avatar>
-								{branchIsCached || isCloudWorkspace ? (
+								{branchIsCached || isCloudWorkspace || readOnly ? (
 									<span
 										className="min-w-0 max-w-36 truncate px-1 text-muted-foreground"
 										title={branchLabel}
@@ -482,7 +493,8 @@ export function TopBarMain() {
 					</nav>
 				) : null}
 			</div>
-			{renameOpen &&
+			{!readOnly &&
+			renameOpen &&
 			executionRef !== null &&
 			folderId !== null &&
 			worktreeId !== null &&
@@ -503,7 +515,13 @@ export function TopBarMain() {
 					/>
 				</Suspense>
 			) : null}
-			{hasSession ? (
+			{selectedChatRef !== null && (
+				<WorkspaceSharingButton
+					key={selectedChatKey}
+					chatRef={selectedChatRef}
+				/>
+			)}
+			{hasSession && !readOnly ? (
 				cloudSummary !== null ? (
 					<div className="flex items-center gap-1">
 						<PreviewPortsMenu environmentId={cloudSummary.workspaceId} />

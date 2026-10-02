@@ -3,12 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createHostedEndpointLease,
 	hostedAccessToken,
+	hostedAccountRequest,
 	hostedAccountUser,
+	hostedAuthState,
 	hostedAuthTokenEndpoint,
+	hostedSignedIn,
 	isHostedProduct,
+	listHostedEnvironments,
 	removeHostedComputer,
 	resolveHostedWorkosClientId,
+	subscribeHostedAuth,
 } from "../../src/lib/hosted-connect.ts";
+import {
+	observeRendererAccount,
+	rendererAccountSnapshot,
+} from "../../src/lib/renderer-account.ts";
 
 const sessionKey = "zuse.hosted.session.v1";
 const storageMock = (entries: [string, string][] = []) => {
@@ -29,6 +38,183 @@ beforeEach(() => {
 });
 const STAGING_CLIENT_ID = "client_01KW6ZEZKVMZ0G429A89XZD83Q";
 const PRODUCTION_CLIENT_ID = "client_01KWGQ818571ARFATQ3G9AR2Y2";
+
+describe("hosted account ownership", () => {
+	const key = "zuse.hosted.session.v1";
+	const user = {
+		id: "guest",
+		email: "guest@example.test",
+		firstName: "Guest",
+		lastName: null,
+		profilePictureUrl: null,
+	};
+	const token = `header.${btoa(JSON.stringify({ sub: user.id, exp: 9_999_999_999 }))}.signature`;
+	beforeEach(() => {
+		const items = new Map<string, string>();
+		vi.stubGlobal("sessionStorage", {
+			getItem: (key: string) => items.get(key) ?? null,
+			setItem: (key: string, value: string) => items.set(key, value),
+			removeItem: (key: string) => items.delete(key),
+		});
+	});
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllGlobals();
+	});
+	it("routes organization HTTP requests through the versioned namespace and rejects invalid scopes", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		await hostedSignedIn();
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(Response.json({}));
+		await hostedAccountRequest(
+			"/v1/cloud/workspaces/workspace/sharing",
+			{ audience: "private" },
+			{
+				method: "PUT",
+				workspace: { kind: "organization", organizationId: "org_a" },
+			},
+		);
+		expect(fetch).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"/v1/organization-workspaces/org_a/v1/cloud/workspaces/workspace/sharing",
+			),
+			expect.objectContaining({
+				method: "PUT",
+				headers: expect.objectContaining({
+					"x-zuse-workspace": "organization:org_a",
+				}),
+				body: JSON.stringify({ audience: "private" }),
+			}),
+		);
+		await expect(
+			hostedAccountRequest("/v1/cloud/chats", undefined, {
+				workspace: { kind: "organization", organizationId: "../other" },
+			}),
+		).rejects.toThrow();
+		expect(fetch).toHaveBeenCalledOnce();
+	});
+	it("uses the browser profile and publishes its identity without asking the host", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		const fetch = vi.spyOn(globalThis, "fetch");
+		const listener = vi.fn();
+		const unsubscribe = subscribeHostedAuth(listener);
+		await expect(hostedSignedIn()).resolves.toBe(true);
+		expect(rendererAccountSnapshot().subject).toBe("guest");
+		expect(hostedAuthState()).toMatchObject({
+			_tag: "SignedIn",
+			session: { user },
+		});
+		expect(hostedAuthState()).toBe(hostedAuthState());
+		expect(fetch).not.toHaveBeenCalled();
+		expect(listener).toHaveBeenCalledOnce();
+		unsubscribe();
+	});
+	it("refreshes legacy token-only sessions through the existing account endpoint", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(
+				Response.json({ access_token: token, refresh_token: "rotated", user }),
+			);
+		await expect(hostedSignedIn()).resolves.toBe(true);
+		expect(fetch).toHaveBeenCalledOnce();
+		expect(hostedAuthState()).toMatchObject({ session: { user } });
+	});
+	it("does not adopt a cached host profile for a different token subject", () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user: { ...user, id: "owner" },
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		expect(hostedAuthState()).toEqual({ _tag: "SignedOut" });
+	});
+	it("does not resurrect a session cleared during refresh", async () => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 0,
+			}),
+		);
+		const response = Promise.withResolvers<Response>();
+		vi.spyOn(globalThis, "fetch").mockReturnValue(response.promise);
+		const pending = hostedSignedIn();
+		localStorage.setItem(key, "null");
+		response.resolve(
+			Response.json({ access_token: token, refresh_token: "rotated", user }),
+		);
+		await expect(pending).resolves.toBe(false);
+		expect(sessionStorage.getItem(key)).toBeNull();
+		expect(rendererAccountSnapshot().subject).toBeNull();
+	});
+	it.each([
+		"headers",
+		"body",
+	])("discards an environment list when the account changes during %s", async (phase) => {
+		sessionStorage.setItem(
+			key,
+			JSON.stringify({
+				user,
+				accessToken: token,
+				refreshToken: "refresh",
+				expiresAt: 9_999_999_999_000,
+			}),
+		);
+		await hostedSignedIn();
+		const headers = Promise.withResolvers<Response>();
+		const body = Promise.withResolvers<unknown>();
+		const response = Response.json({ environments: [] });
+		const json = vi.spyOn(response, "json").mockReturnValue(body.promise);
+		const fetch = vi
+			.spyOn(globalThis, "fetch")
+			.mockReturnValue(headers.promise);
+		const pending = listHostedEnvironments();
+		const rejected = expect(pending).rejects.toThrow(
+			"The connection account changed",
+		);
+		await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+		if (phase === "body") {
+			headers.resolve(response);
+			await vi.waitFor(() => expect(json).toHaveBeenCalledOnce());
+		}
+		// Returning to the same subject must not revive the earlier request.
+		observeRendererAccount("another-account");
+		observeRendererAccount(user.id);
+		headers.resolve(response);
+		body.resolve({ environments: [] });
+		await rejected;
+	});
+});
 
 describe("hosted authentication", () => {
 	it("exchanges browser tokens through the configured api", () => {
@@ -55,21 +241,79 @@ describe("hosted authentication", () => {
 	});
 
 	it("uses each connect grant once and refreshes it for reconnects", async () => {
-		const lease = createHostedEndpointLease();
-		const refresh = vi.fn(async (environmentId: string) => {
-			lease.set(environmentId, "wss://host.example/rpc?token=fresh");
-		});
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockResolvedValueOnce("wss://host.example/rpc?token=initial")
+			.mockResolvedValue("wss://host.example/rpc?token=fresh");
+		const lease = createHostedEndpointLease(refresh);
+		await lease.select("env-1");
 
-		lease.set("env-1", "wss://host.example/rpc?token=initial");
-
-		await expect(lease.next(refresh)).resolves.toBe(
+		await expect(lease.next()).resolves.toBe(
 			"wss://host.example/rpc?token=initial",
 		);
-		await expect(lease.next(refresh)).resolves.toBe(
+		await expect(lease.next()).resolves.toBe(
 			"wss://host.example/rpc?token=fresh",
 		);
-		expect(refresh).toHaveBeenCalledOnce();
+		expect(refresh).toHaveBeenCalledTimes(2);
 		expect(refresh).toHaveBeenCalledWith("env-1");
+	});
+	it.each([
+		"select",
+		"reconnect",
+	])("discards a pending %s after selecting another environment", async (phase) => {
+		const stale = Promise.withResolvers<string>();
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockResolvedValueOnce("initial");
+		const lease = createHostedEndpointLease(refresh);
+		await lease.select("old");
+		await lease.next();
+		refresh.mockReturnValueOnce(stale.promise).mockResolvedValue("new");
+		const pending = phase === "select" ? lease.select("old") : lease.next();
+		const rejected = expect(pending).rejects.toThrow(
+			"hosted_environment_changed",
+		);
+		await lease.select("new");
+		stale.resolve("stale");
+		await rejected;
+		await expect(lease.next()).resolves.toBe("new");
+	});
+	it("does not revive a cleared selection, even when the same environment is selected again", async () => {
+		const stale = Promise.withResolvers<string>();
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockReturnValueOnce(stale.promise)
+			.mockResolvedValue("new");
+		const lease = createHostedEndpointLease(refresh);
+		const pending = lease.select("env-1");
+		const rejected = expect(pending).rejects.toThrow(
+			"hosted_environment_changed",
+		);
+		lease.clear();
+		await expect(lease.next()).rejects.toThrow(
+			"hosted_environment_not_selected",
+		);
+		await lease.select("env-1");
+		stale.resolve("stale");
+		await rejected;
+		await expect(lease.next()).resolves.toBe("new");
+	});
+	it("gives simultaneous reconnects distinct one-use grants", async () => {
+		const first = Promise.withResolvers<string>();
+		const second = Promise.withResolvers<string>();
+		const refresh = vi
+			.fn<(environmentId: string) => Promise<string>>()
+			.mockResolvedValueOnce("initial")
+			.mockReturnValueOnce(first.promise)
+			.mockReturnValueOnce(second.promise);
+		const lease = createHostedEndpointLease(refresh);
+		await lease.select("env-1");
+		await lease.next();
+		const one = lease.next();
+		const two = lease.next();
+		second.resolve("second");
+		first.resolve("first");
+		await expect(Promise.all([one, two])).resolves.toEqual(["first", "second"]);
 	});
 });
 
@@ -160,7 +404,13 @@ it("keeps the refresh credential through a temporary network failure", async () 
 				Response.json({
 					access_token: "recovered",
 					refresh_token: "rotated",
-					user: null,
+					user: {
+						id: "recovered-user",
+						email: "test@example.test",
+						firstName: null,
+						lastName: null,
+						profilePictureUrl: null,
+					},
 				}),
 			),
 	);

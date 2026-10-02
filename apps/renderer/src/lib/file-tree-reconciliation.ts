@@ -95,9 +95,19 @@ export const reconcileFileTreePaths = async (input: {
 		enqueue(parentPath(changedPath));
 		if (next.has(`${stripSlash(changedPath)}/`)) enqueue(changedPath);
 	}
+	// Watcher batches may list descendants before a deleted parent. Reconcile
+	// ancestors first so their confirmed removals suppress stale child reads.
+	pending.sort();
 
 	let processed = 0;
 	while (pending.length > 0) {
+		const directory = pending.shift() ?? "";
+		if (
+			directory !== "" &&
+			input.knownPaths.has(`${directory}/`) &&
+			!next.has(`${directory}/`)
+		)
+			continue;
 		if (processed >= maxDirectories) {
 			return {
 				paths: input.knownPaths,
@@ -107,7 +117,6 @@ export const reconcileFileTreePaths = async (input: {
 			};
 		}
 		processed += 1;
-		const directory = pending.shift() ?? "";
 		const entries = await input.listDirectory(directory);
 
 		const serverChildren = new Map(

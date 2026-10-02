@@ -86,14 +86,14 @@ describe("MCP display grouping", () => {
 					availableProviders: ["claude"],
 				}),
 			),
-		).toBe("Claude Code");
+		).toBe("Claude");
 		expect(
 			mcpProviderAvailabilityLabel(
 				descriptor("builtin:zuse", {
 					availableProviders: ["claude", "codex"],
 				}),
 			),
-		).toBe("Claude Code, Codex");
+		).toBe("Claude, Codex");
 	});
 
 	it("shows only entries available to the active provider", () => {
