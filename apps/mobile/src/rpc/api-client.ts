@@ -3,8 +3,11 @@ import {
 	makeCloudControlClient,
 } from "@zuse/client-runtime/cloud-control-client";
 import {
+	type AccountControlRequest,
+	makeAccountControlRequest,
+} from "@zuse/client-runtime/cloud-control-request";
+import {
 	cloudControlError,
-	controlApiErrorCode,
 	organizationControlError,
 } from "@zuse/client-runtime/control-api-error";
 import { makeOrganizationControlClient } from "@zuse/client-runtime/organization-control-client";
@@ -21,7 +24,7 @@ import {
 	WORKSPACE_SCOPE_HEADER,
 	WorkspaceScope,
 } from "@zuse/contracts";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { apiBaseUrl } from "../auth/config.ts";
 import { devicePublicJwk, signDpopProof } from "../auth/dpop.ts";
@@ -291,27 +294,13 @@ export const resetApiAccessToken = (): void => {
 };
 
 /** Cloud control-plane access is account-owned, never proxied through a Mac. */
-const decodeCloudFailure = Schema.decodeUnknownOption(
-	Schema.Struct({
-		error: Schema.optional(Schema.String),
-		code: Schema.optional(Schema.String),
-	}),
-);
-
-type AccountControlRequest<E> = <A>(
-	path: string,
-	schema: Schema.Codec<A, unknown>,
-	method?: string,
-	body?: unknown,
-) => Effect.Effect<A, E>;
-
 const accountControlRequest =
 	<E>(
 		scope: WorkspaceScope,
 		toError: (code: MachineErrorCode) => E,
 		accountEpoch?: number,
 	): AccountControlRequest<E> =>
-	(path, schema, method = "GET", body) =>
+	(path, schema, method, body) =>
 		Effect.gen(function* () {
 			const epoch = accountEpoch ?? apiAuthState.epoch;
 			if (epoch !== apiAuthState.epoch)
@@ -320,10 +309,10 @@ const accountControlRequest =
 				try: getWorkosToken,
 				catch: () => toError("not-allowed"),
 			});
-			if (epoch !== apiAuthState.epoch)
-				return yield* Effect.fail(toError("not-allowed"));
-			const response = yield* Effect.tryPromise({
-				try: (signal) =>
+			return yield* makeAccountControlRequest({
+				isCurrent: () => epoch === apiAuthState.epoch,
+				toError,
+				send: (path, method, body, signal) =>
 					fetch(
 						url(
 							scope.kind === "organization"
@@ -346,35 +335,7 @@ const accountControlRequest =
 							body: body === undefined ? undefined : JSON.stringify(body),
 						},
 					),
-				catch: () => toError("provider-unavailable"),
-			});
-			if (epoch !== apiAuthState.epoch)
-				return yield* Effect.fail(toError("not-allowed"));
-			const payload: unknown = yield* Effect.tryPromise({
-				try: () => response.json(),
-				catch: () => toError("provider-unavailable"),
-			}).pipe(
-				Effect.catch((cause) =>
-					response.ok ? Effect.fail(cause) : Effect.succeed(null),
-				),
-			);
-			if (epoch !== apiAuthState.epoch)
-				return yield* Effect.fail(toError("not-allowed"));
-			if (!response.ok) {
-				const failure = Option.getOrUndefined(decodeCloudFailure(payload));
-				return yield* Effect.fail(
-					toError(
-						controlApiErrorCode(
-							response.status,
-							failure?.error ?? failure?.code,
-							path,
-						),
-					),
-				);
-			}
-			return yield* Schema.decodeUnknownEffect(schema)(payload).pipe(
-				Effect.mapError(() => toError("invalid-request")),
-			);
+			})(path, schema, method, body);
 		});
 
 // The server long-poll is bounded at 25s. Bound the native fetch too, so a

@@ -1,5 +1,5 @@
 import { CloudWorkspaceOpError } from "@zuse/contracts";
-import { Effect, Schema } from "effect";
+import { Deferred, Effect, Schema } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeCloudControlRequest } from "../../src/cloud-control-request.ts";
 
@@ -53,6 +53,7 @@ describe("account-owned cloud HTTP", () => {
 	});
 	it.each([
 		[401, "expired", "not-allowed"],
+		[403, "forbidden", "access-denied"],
 		[409, "cloud_branch_in_use:feature/demo", "branch-in-use"],
 		[409, "other_conflict", "conflict"],
 		[403, "cloud_entitlement_required", "entitlement-required"],
@@ -85,5 +86,32 @@ describe("account-owned cloud HTTP", () => {
 			(await Effect.runPromise(Effect.flip(request("/test", resultSchema))))
 				.code,
 		).toBe("invalid-request");
+	});
+
+	it("rejects a response whose body finishes after the account changes", async () => {
+		let epoch = 0;
+		const body = Deferred.makeUnsafe<unknown>();
+		const reading = Deferred.makeUnsafe<void>();
+		const response = Response.json({ ok: true });
+		vi.spyOn(response, "json").mockImplementation(() => {
+			Effect.runSync(Deferred.succeed(reading, undefined));
+			return Effect.runPromise(Deferred.await(body));
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => response),
+		);
+		const request = makeCloudControlRequest({
+			token: async () => "token",
+			url: (path) => path,
+			epoch: () => epoch,
+		});
+		const result = Effect.runPromise(
+			Effect.flip(request("/test", resultSchema)),
+		);
+		await Effect.runPromise(Deferred.await(reading));
+		epoch++;
+		Effect.runSync(Deferred.succeed(body, { ok: true }));
+		expect((await result).code).toBe("not-allowed");
 	});
 });

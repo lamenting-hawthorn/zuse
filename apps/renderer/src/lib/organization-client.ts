@@ -1,10 +1,8 @@
-import {
-	controlApiErrorCode,
-	organizationControlError,
-} from "@zuse/client-runtime/control-api-error";
+import { makeAccountControlRequest } from "@zuse/client-runtime/cloud-control-request";
+import { organizationControlError } from "@zuse/client-runtime/control-api-error";
 import { makeOrganizationControlClient } from "@zuse/client-runtime/organization-control-client";
-import { type MemoizeRpcs, OrganizationError } from "@zuse/contracts";
-import { Effect, Schema } from "effect";
+import type { MemoizeRpcs } from "@zuse/contracts";
+import { Effect } from "effect";
 import type { Rpc, RpcGroup } from "effect/unstable/rpc";
 import { runControlPlane } from "./control-plane-client.ts";
 import { isHostedProduct } from "./platform-capabilities.ts";
@@ -36,40 +34,18 @@ type OrganizationClient = {
 const makeHostedClient = (
 	account: RendererAccountSnapshot,
 ): OrganizationClient => {
-	const request = Effect.fn("Organizations.request")(function* <A, I>(
-		path: string,
-		schema: Schema.Codec<A, I>,
-		body?: unknown,
-	) {
-		const response = yield* Effect.tryPromise({
-			try: async () => {
-				const { hostedAccountRequest } = await import("./hosted-connect.ts");
-				assertRendererAccountCurrent(account);
-				return hostedAccountRequest(path, body);
-			},
-			catch: () => new OrganizationError({ code: "unavailable" }),
-		});
-		if (!response.ok) {
-			const payload = yield* Effect.promise(() =>
-				response.json().catch(() => null),
-			);
-			const code = Schema.is(Schema.Struct({ error: Schema.String }))(payload)
-				? payload.error
-				: undefined;
-			return yield* organizationControlError(
-				controlApiErrorCode(response.status, code, path),
-			);
-		}
-		const value = yield* Effect.tryPromise({
-			try: () => response.json(),
-			catch: () => new OrganizationError({ code: "unavailable" }),
-		});
-		return yield* Schema.decodeUnknownEffect(schema)(value).pipe(
-			Effect.mapError(() => new OrganizationError({ code: "unavailable" })),
-		);
+	const request = makeAccountControlRequest({
+		isCurrent: () => rendererAccountSnapshot() === account,
+		toError: organizationControlError,
+		send: async (path, method, body, signal) => {
+			const { hostedAccountRequest } = await import("./hosted-connect.ts");
+			assertRendererAccountCurrent(account);
+			return hostedAccountRequest(path, body, { method, signal });
+		},
 	});
-
-	return makeOrganizationControlClient(request);
+	return makeOrganizationControlClient((path, schema, body) =>
+		request(path, schema, body === undefined ? "GET" : "POST", body),
+	);
 };
 
 /** Organization administration belongs to the user's account, not the selected host. */

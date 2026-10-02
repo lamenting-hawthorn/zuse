@@ -46,7 +46,6 @@ export const hostedCacheDatabaseName = (base: string): string =>
 	isHostedProduct() ? `${base}:hosted:${hostedAccountId()}` : base;
 
 let sessionEpoch = 0;
-export const hostedSessionEpoch = (): number => sessionEpoch;
 
 const WORKOS_API = "https://api.workos.com";
 const PKCE_KEY = "zuse.hosted.pkce.v1";

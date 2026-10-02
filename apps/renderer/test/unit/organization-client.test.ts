@@ -46,7 +46,11 @@ it("loads the browser account's organizations without any selected-host RPC", as
 	await expect(
 		runOrganizations((client) => client["organizations.list"]({})),
 	).resolves.toMatchObject([{ id: "org", name: "Team" }]);
-	expect(mocks.request).toHaveBeenCalledWith(ApiPaths.organizations, undefined);
+	expect(mocks.request).toHaveBeenCalledWith(
+		ApiPaths.organizations,
+		undefined,
+		expect.objectContaining({ method: "GET", signal: expect.any(AbortSignal) }),
+	);
 	expect(mocks.control).not.toHaveBeenCalled();
 });
 
@@ -73,7 +77,7 @@ it("routes member and invitation mutations through the same authenticated accoun
 			invitationId: "invite",
 		}),
 	);
-	expect(mocks.request.mock.calls).toEqual([
+	expect(mocks.request.mock.calls.map(([path, body]) => [path, body])).toEqual([
 		[
 			ApiPaths.organizationSetRole,
 			{ organizationId: "org", memberId: "member", role: "member" },
@@ -129,7 +133,7 @@ it("creates, loads, and invites using the existing contracts", async () => {
 			}),
 		),
 	).resolves.toMatchObject(invite);
-	expect(mocks.request.mock.calls).toEqual([
+	expect(mocks.request.mock.calls.map(([path, body]) => [path, body])).toEqual([
 		[
 			ApiPaths.organizations,
 			{ name: "Team", operationId: "b4a97770-c98d-483b-87a0-aea06d585c50" },
@@ -161,7 +165,7 @@ it("validates response contracts before publishing organization data", async () 
 	mocks.request.mockResolvedValue(Response.json([{ id: "org" }]));
 	await expect(
 		runOrganizations((client) => client["organizations.list"]({})),
-	).rejects.toMatchObject({ code: "unavailable" });
+	).rejects.toMatchObject({ code: "invalid-request" });
 });
 
 it("preserves auth failures even when the server returns a non-JSON body", async () => {
