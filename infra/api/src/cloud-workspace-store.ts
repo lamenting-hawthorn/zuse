@@ -1,5 +1,6 @@
 import {
 	CLOUD_COMMAND_PROTOCOL_VERSION,
+	CloudAuthStatus,
 	type CloudProjectBuildState,
 	type CloudProjectState,
 	type CloudWorkspaceDesiredState,
@@ -58,6 +59,7 @@ export interface CloudGithubInstallationRecord {
 }
 
 export interface CloudAuthAuthorityRecord {
+	readonly status?: CloudAuthStatus;
 	readonly accountId: string;
 	readonly provider: string;
 	readonly providerSandboxId?: string;
@@ -523,6 +525,11 @@ export interface CloudWorkspaceStoreApi {
 	readonly getCloudAuthAuthority: (
 		accountId: string,
 	) => Effect.Effect<CloudAuthAuthorityRecord | null>;
+	readonly saveCloudAuthStatus: (input: {
+		readonly accountId: string;
+		readonly expectedRevision: number;
+		readonly status: CloudAuthStatus;
+	}) => Effect.Effect<void>;
 	readonly claimCloudAuthAuthority: (input: {
 		readonly accountId: string;
 		readonly provider: string;
@@ -1591,6 +1598,22 @@ export const CloudWorkspaceStoreMemory = Layer.effect(
 						(current) => current.authAuthorities.get(accountId) ?? null,
 					),
 				),
+			saveCloudAuthStatus: (input) =>
+				Ref.update(state, (current) => {
+					const existing = current.authAuthorities.get(input.accountId);
+					if (existing?.revision !== input.expectedRevision) return current;
+					return {
+						...current,
+						authAuthorities: new Map(current.authAuthorities).set(
+							input.accountId,
+							{
+								...existing,
+								status: input.status,
+								revision: existing.revision + 1,
+							},
+						),
+					};
+				}),
 			claimCloudAuthAuthority: (input) =>
 				Ref.modify(
 					state,
@@ -3812,6 +3835,9 @@ const buildFromRow = (row: Row): CloudProjectBuildRecord => ({
 	updatedAtMs: numberValue(row.updated_at),
 });
 const authAuthorityFromRow = (row: Row): CloudAuthAuthorityRecord => ({
+	...(row.status == null
+		? {}
+		: { status: Schema.decodeUnknownSync(CloudAuthStatus)(row.status) }),
 	accountId: String(row.account_id),
 	provider: String(row.provider),
 	providerSandboxId: optionalString(row.provider_sandbox_id),
@@ -4119,6 +4145,12 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 			);
 		};
 		return CloudWorkspaceStore.of({
+			saveCloudAuthStatus: (input) =>
+				orDie(
+					sql`UPDATE api_cloud_auth_authorities SET status=${JSON.stringify(input.status)}::jsonb, revision=revision + 1 WHERE account_id=${input.accountId} AND revision=${input.expectedRevision}`.pipe(
+						Effect.asVoid,
+					),
+				),
 			getCloudAuthAuthority: (accountId) =>
 				orDie(
 					sql`SELECT * FROM api_cloud_auth_authorities WHERE account_id=${accountId}`.pipe(
@@ -4141,6 +4173,7 @@ export const CloudWorkspaceStorePg: Layer.Layer<
 								${input.leaseExpiresAtMs}, 0, ${input.nowMs}, ${input.nowMs})
 							ON CONFLICT (account_id) DO UPDATE SET
 								provider=EXCLUDED.provider,
+								status=NULL,
 								provider_sandbox_id=CASE WHEN ${input.replaceReady === true} THEN NULL ELSE api_cloud_auth_authorities.provider_sandbox_id END,
 								storage_incarnation_id=CASE WHEN ${input.replaceReady === true} THEN EXCLUDED.storage_incarnation_id ELSE api_cloud_auth_authorities.storage_incarnation_id END,
 								auth_epoch=CASE WHEN ${input.replaceReady === true} THEN api_cloud_auth_authorities.auth_epoch + 1 ELSE api_cloud_auth_authorities.auth_epoch END,

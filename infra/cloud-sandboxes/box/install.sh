@@ -25,11 +25,11 @@ for launcher in pnpm pnpx yarn yarnpkg corepack bun bunx; do
 	rm -f "/usr/local/bin/$launcher"
 done
 
-"$provision_dir/provision.sh" packages runtime-tools runtime layout
+"$provision_dir/provision.sh" packages runtime-tools grok runtime layout
 
-# Fail publication if Boat's agents cannot run as the unprivileged runtime user.
-# Do not replace them with our pinned versions on failure.
-for agent in claude codex; do
+# Keep Boat's Claude/Codex versions; verify those and our pinned Grok as the
+# unprivileged runtime user before publishing the template.
+for agent in claude codex grok; do
 	runuser -u zuse -- "$agent" --version
 done
 
