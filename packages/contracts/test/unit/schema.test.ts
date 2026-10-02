@@ -719,6 +719,8 @@ describe("SettingsFile round-trip", () => {
 				opencode2: "opencode/claude-sonnet-5",
 				kiro: "auto",
 				pi: "auto",
+
+				zuse: "",
 			},
 			defaultRuntimeMode: "approval-required",
 			defaultAutoCreateWorktree: false,
@@ -737,6 +739,8 @@ describe("SettingsFile round-trip", () => {
 				opencode2: true,
 				kiro: true,
 				pi: true,
+
+				zuse: true,
 			},
 			modelEnabledByProvider: {
 				...defaultModelEnabledByProvider(),
@@ -751,6 +755,8 @@ describe("SettingsFile round-trip", () => {
 				opencode2: [],
 				kiro: [],
 				pi: [],
+
+				zuse: [],
 			},
 			opencodeProviderVisible: { openai: true, openrouter: false },
 			opencodeModelVisibleByProvider: {
@@ -793,6 +799,8 @@ describe("SettingsFile round-trip", () => {
 					opencode2: "opencode/claude-sonnet-5",
 					kiro: "auto",
 					pi: "auto",
+
+					zuse: "",
 				},
 				defaultRuntimeMode: "approval-required",
 				defaultAutoCreateWorktree: false,
@@ -810,6 +818,8 @@ describe("SettingsFile round-trip", () => {
 					opencode2: true,
 					kiro: true,
 					pi: true,
+
+					zuse: true,
 				},
 				modelEnabledByProvider: defaultModelEnabledByProvider(),
 				subagents: { enableForNewSessions: true, presets: {} },
@@ -837,6 +847,8 @@ describe("SettingsFile round-trip", () => {
 					opencode2: "opencode/claude-sonnet-5",
 					kiro: "auto",
 					pi: "auto",
+
+					zuse: "",
 				},
 				defaultRuntimeMode: "approval-required",
 				defaultAutoCreateWorktree: false,
@@ -854,6 +866,8 @@ describe("SettingsFile round-trip", () => {
 					opencode2: true,
 					kiro: true,
 					pi: true,
+
+					zuse: true,
 				},
 				modelEnabledByProvider: defaultModelEnabledByProvider(),
 				subagents: { enableForNewSessions: true, presets: {} },

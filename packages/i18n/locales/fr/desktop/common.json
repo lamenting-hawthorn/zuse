@@ -51,5 +51,6 @@
 	"cloud_workspace_settings": "Paramètres de l’espace de travail cloud",
 	"recording_shortcut": "Enregistrement du raccourci pour {{label}}",
 	"recording_new_shortcut": "Enregistrement du raccourci pour une nouvelle action",
-	"provider_settings": "Paramètres du fournisseur"
+	"provider_settings": "Paramètres du fournisseur",
+	"copy_failed": "Échec de la copie"
 }

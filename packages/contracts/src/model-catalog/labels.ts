@@ -14,6 +14,7 @@ export const PROVIDER_LABELS: Readonly<Record<ProviderId, string>> = {
 	opencode2: "OpenCode 2",
 	kiro: "Kiro",
 	pi: "Pi",
+	zuse: "Zuse (Experimental)",
 };
 
 export const providerLabel = (providerId: ProviderId): string =>
