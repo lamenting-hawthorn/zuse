@@ -36,7 +36,7 @@ export function SessionActionsMenu({
 	onTerminal?: () => void;
 	onOpenOnDesktop?: () => void;
 	onShare?: () => void;
-	onArchive: () => void;
+	onArchive?: () => void;
 }) {
 	return (
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -134,13 +134,15 @@ export function SessionActionsMenu({
 							onPress={onOpenOnDesktop}
 						/>
 					) : null}
-					{/* biome-ignore lint/a11y/useValidAriaRole: SwiftUI maps this to UIMenu destructive styling. */}
-					<NativeButton
-						label="Archive"
-						systemImage={sf("archivebox")}
-						role="destructive"
-						onPress={onArchive}
-					/>
+					{onArchive !== undefined ? (
+						/* biome-ignore lint/a11y/useValidAriaRole: SwiftUI maps this to UIMenu destructive styling. */
+						<NativeButton
+							label="Archive"
+							systemImage={sf("archivebox")}
+							role="destructive"
+							onPress={onArchive}
+						/>
+					) : null}
 				</Menu>
 			</Host>
 		</View>

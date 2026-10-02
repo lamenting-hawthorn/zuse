@@ -13,7 +13,7 @@ export function SessionActionsMenu(props: {
 	onTerminal?: () => void;
 	onOpenOnDesktop?: () => void;
 	onShare?: () => void;
-	onArchive: () => void;
+	onArchive?: () => void;
 }) {
 	const actions = [
 		["new", "New chat", props.onNewChat],

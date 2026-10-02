@@ -4,6 +4,7 @@
 	"private": true,
 	"type": "module",
 	"exports": {
+		"./chat-sharing": "./src/chat-sharing.ts",
 		"./attachment-upload": "./src/attachment-upload.ts",
 		"./chat-recency": "./src/chat-recency.ts",
 		"./cloud-gateway-recovery": "./src/cloud-gateway-recovery.ts",

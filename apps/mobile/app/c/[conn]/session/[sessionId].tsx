@@ -299,6 +299,7 @@ function ThreadScreen() {
 		return (status ?? thread.status) === "running";
 	}).length;
 	const title = detail?.chat?.title ?? detail?.session.title ?? "Thread";
+	const canEdit = detail !== null && detail.chat?.readOnly !== true;
 	const sessionStatus = resolveSessionStatus(
 		statusBySession[stateKey] ?? detail?.session.status,
 		turnActivity,
@@ -613,8 +614,8 @@ function ThreadScreen() {
 		questionsByItemId,
 		toolResultsByItemId,
 		sessionRunning: sessionActive,
-		onAnswerQuestion,
-		onForkFromMessage,
+		onAnswerQuestion: canEdit ? onAnswerQuestion : undefined,
+		onForkFromMessage: canEdit ? onForkFromMessage : undefined,
 	};
 
 	useEffect(() => {
@@ -1073,15 +1074,20 @@ function ThreadScreen() {
 									? undefined
 									: () => void togglePinnedChat(currentPinKey)
 							}
-							onRenameChat={chatId === null ? undefined : onRenameChat}
-							onRenameSession={detail === null ? undefined : onRenameSession}
+							onRenameChat={
+								canEdit && chatId !== null ? onRenameChat : undefined
+							}
+							onRenameSession={canEdit ? onRenameSession : undefined}
 							onRenameBranch={
-								detail?.session.worktreeId == null ? undefined : onRenameBranch
+								canEdit && detail?.session.worktreeId != null
+									? onRenameBranch
+									: undefined
 							}
 							onThreads={openThreads}
 							onChanges={openChanges}
 							onFiles={openFiles}
 							onTerminal={
+								canEdit &&
 								mobileReleaseFeatures.terminal &&
 								(options?.cloudWorkspaceId !== undefined ||
 									connectionSupports(connectionRecord, "mobile-terminal-v1"))
@@ -1093,7 +1099,7 @@ function ThreadScreen() {
 									? openOnDesktop
 									: undefined
 							}
-							onArchive={onArchive}
+							onArchive={canEdit ? onArchive : undefined}
 						/>
 					),
 				}}
@@ -1334,7 +1340,7 @@ function ThreadScreen() {
 					onLayout={onBottomAccessoryLayout}
 					pointerEvents="box-none"
 				>
-					{options === null ? null : bottomState.blocking?.kind ===
+					{options === null || !canEdit ? null : bottomState.blocking?.kind ===
 						"permission" ? (
 						renderPermissionAccessory(bottomState.blocking.requests)
 					) : bottomState.blocking?.kind === "question" ? (
@@ -1358,7 +1364,12 @@ function ThreadScreen() {
 							onAction={runPlanAction}
 						/>
 					) : null}
-					{options === null ? null : (
+					{detail?.chat?.readOnly ? (
+						<Text className="px-4 py-3 text-center text-sm text-muted-foreground">
+							Read-only shared session
+						</Text>
+					) : null}
+					{options === null || !canEdit ? null : (
 						<View
 							pointerEvents="box-none"
 							style={

@@ -1,5 +1,6 @@
 import "@zuse/i18n/english/common";
 import "@zuse/i18n/english/settings";
+import { fixedChatEditAccess } from "@zuse/client-runtime/chat-sharing";
 import { cloudChatRoute } from "@zuse/client-runtime/environment-scope";
 import type {
 	ChatSharingPolicy,
@@ -177,12 +178,7 @@ export default function CloudChatSharingDialog({
 								(member) => member.role === "admin" || member.role === "member",
 							)
 							.map((member) => {
-								const fixedAccess =
-									member.role === "admin" ||
-									(draft.audience === "organization" &&
-										draft.permission === "edit") ||
-									(member.id === draft.creatorMembershipId &&
-										member.userId === draft.creatorSubject);
+								const fixedAccess = fixedChatEditAccess(draft, member);
 								const grant = draft.grants.find(
 									(entry) => entry.membershipId === member.id,
 								);

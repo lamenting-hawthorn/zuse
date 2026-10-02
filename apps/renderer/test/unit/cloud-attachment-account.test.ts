@@ -63,6 +63,7 @@ import {
 	watchCloudChatCatalog,
 } from "../../src/lib/cloud-workspaces.ts";
 import { environmentShellResourceKey } from "../../src/lib/environment-shell-client-bus.ts";
+import { useOrganizationWorkspaces } from "../../src/lib/organization-workspaces.ts";
 import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 import { getRendererClientBus } from "../../src/lib/session-timeline-client-bus.ts";
@@ -129,13 +130,35 @@ it("removes cached catalog entries on an authoritative denial, but not a service
 	expect(useCloudChatCatalogStore.getState().summaries).toEqual([]);
 });
 
-it("stops catalog retries and removes entries when the live feed denies access", async () => {
+it("does not start catalog requests for a billing-only organization", async () => {
+	observeRendererAccount("finance-reader");
+	useOrganizationWorkspaces.setState({
+		organizations: [{ id: "finance-org", name: "Finance", role: "billing" }],
+	});
+	selectRendererWorkspace({
+		kind: "organization",
+		organizationId: "finance-org",
+	});
+	await useCloudChatsStore.getState().hydrate();
+	mocks.list.mockClear();
+	const stop = watchCloudChatCatalog();
+	try {
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(mocks.list).not.toHaveBeenCalled();
+		expect(mocks.watch).not.toHaveBeenCalled();
+	} finally {
+		stop();
+	}
+});
+
+it.each([
+	"not-allowed",
+	"access-denied",
+] as const)("stops catalog retries and removes entries for %s", async (code) => {
 	observeRendererAccount("catalog-revoked");
 	await useCloudChatsStore.getState().hydrate();
 	mocks.list.mockReturnValue(Effect.succeed({ chats: [summary] }));
-	mocks.watch.mockReturnValue(
-		Stream.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
-	);
+	mocks.watch.mockReturnValue(Stream.fail(new CloudWorkspaceOpError({ code })));
 	const stop = watchCloudChatCatalog();
 	try {
 		await vi.waitFor(() => expect(mocks.watch).toHaveBeenCalledOnce());

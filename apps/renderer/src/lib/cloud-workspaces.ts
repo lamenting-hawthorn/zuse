@@ -2,6 +2,7 @@ import {
 	cloudChatPlaceholder,
 	cloudSessionPlaceholder,
 } from "@zuse/client-runtime/cloud-catalog";
+import { cloudFailurePresentation } from "@zuse/client-runtime/cloud-failure-presentation";
 import {
 	openCloudTranscriptCheckpoint,
 	openCloudTranscriptPage,
@@ -32,7 +33,6 @@ import {
 import { overlayActiveEnvironmentShell } from "../lib/environment-entities.ts";
 import { formatError } from "../lib/format-error.ts";
 import {
-	isAuthCodedConnectionError,
 	refreshCloudWorkspaceConnectionWithRecovery,
 	registerCloudWorkspace,
 } from "../lib/rpc-client.ts";
@@ -84,6 +84,7 @@ import {
 } from "./environment-shell-client-bus.ts";
 import { isHostedProduct } from "./hosted-connect.ts";
 import { hostedProjectFolderId } from "./hosted-workspace.ts";
+import { useOrganizationWorkspaces } from "./organization-workspaces.ts";
 import {
 	assertRendererAccountCurrent,
 	type RendererAccountSnapshot,
@@ -102,6 +103,27 @@ type CloudChatsState = {
 	readonly error: string | null;
 	readonly hydrate: () => Promise<void>;
 	readonly archive: (summary: CloudChatSummary) => Promise<void>;
+};
+
+// Permission denial ends this workspace's feed without treating the account
+// credential as expired. Retrying cannot restore membership or billing access.
+const catalogAccessDenied = (cause: unknown): boolean => {
+	const kind = cloudFailurePresentation({ cause })?.kind;
+	return kind === "sign-in-required" || kind === "cloud-access-required";
+};
+
+const billingOnlyWorkspace = (): boolean => {
+	const { scope } = rendererWorkspaceSnapshot();
+	return (
+		scope.kind === "organization" &&
+		useOrganizationWorkspaces
+			.getState()
+			.organizations.some(
+				(organization) =>
+					organization.id === scope.organizationId &&
+					organization.role === "billing",
+			)
+	);
 };
 
 const opening = new Map<
@@ -739,6 +761,11 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 		const account = rendererAccountSnapshot();
 		const workspace = rendererWorkspaceSnapshot();
 		if (typeof account.subject !== "string") return;
+		if (billingOnlyWorkspace()) {
+			removeDeletedCloudPlaceholders(reconcileCloudChatCatalog([]));
+			set({ loading: false, error: null });
+			return;
+		}
 		if (hydration !== null) return hydration;
 		const generation = catalogGeneration;
 		const pending = (async () => {
@@ -801,7 +828,7 @@ export const useCloudChatsStore = create<CloudChatsState>((set) => ({
 					rendererAccountSnapshot() === account &&
 					generation === catalogGeneration
 				) {
-					if (isAuthCodedConnectionError(cause))
+					if (catalogAccessDenied(cause))
 						removeDeletedCloudPlaceholders(reconcileCloudChatCatalog([]));
 					set({ error: formatError(cause), loading: false });
 				}
@@ -915,6 +942,7 @@ export const useCloudChatSummaryForSession = (
 
 /** One account catalog feed owned by the signed-in sidebar lifecycle. */
 export const watchCloudChatCatalog = (): (() => void) => {
+	if (billingOnlyWorkspace()) return () => {};
 	const workspace = rendererWorkspaceSnapshot();
 	let stopped = false;
 	let cursor: number | undefined;
@@ -938,7 +966,7 @@ export const watchCloudChatCatalog = (): (() => void) => {
 							Duration.millis(Math.min(Duration.toMillis(duration), 10_000)),
 						),
 					),
-					Schedule.while(({ input }) => !isAuthCodedConnectionError(input)),
+					Schedule.while(({ input }) => !catalogAccessDenied(input)),
 				),
 			),
 		);
@@ -996,7 +1024,7 @@ export const watchCloudChatCatalog = (): (() => void) => {
 				Effect.catch((error) =>
 					Effect.sync(() => {
 						if (!stopped && rendererWorkspaceSnapshot() === workspace) {
-							if (isAuthCodedConnectionError(error))
+							if (catalogAccessDenied(error))
 								removeDeletedCloudPlaceholders(reconcileCloudChatCatalog([]));
 							useCloudChatsStore.setState({ error: formatError(error) });
 						}

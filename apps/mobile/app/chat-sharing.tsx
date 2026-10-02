@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { fixedChatEditAccess } from "@zuse/client-runtime/chat-sharing";
 import type { ChatSharingPolicy } from "@zuse/contracts";
 import * as Clipboard from "expo-clipboard";
 import { Stack, useLocalSearchParams } from "expo-router";
@@ -158,9 +159,7 @@ function ShareContent({ workspaceId }: { workspaceId: string }) {
 							(member) => member.role === "admin" || member.role === "member",
 						)
 						.map((member) => {
-							const fixed =
-								member.role === "admin" ||
-								member.id === draft.creatorMembershipId;
+							const fixed = fixedChatEditAccess(draft, member);
 							const grant = draft.grants.find(
 								(entry) => entry.membershipId === member.id,
 							);
@@ -178,9 +177,11 @@ function ShareContent({ workspaceId }: { workspaceId: string }) {
 									</Text>
 									{fixed ? (
 										<Text className="text-sm text-muted-foreground">
-											{member.role === "admin"
+											{fixed === "admin"
 												? "Administrator · Edit"
-												: "Creator · Edit"}
+												: fixed === "creator"
+													? "Creator · Edit"
+													: "Organization · Edit"}
 										</Text>
 									) : (
 										<SelectorRow
