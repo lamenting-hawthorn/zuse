@@ -121,6 +121,7 @@ export class SettingsFile extends Schema.Class<SettingsFile>("SettingsFile")({
 				opencode2: [],
 				kiro: [],
 				pi: [],
+				zuse: [],
 			}),
 		),
 	),

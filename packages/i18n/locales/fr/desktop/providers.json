@@ -130,5 +130,15 @@
 	"pi_setup_hint": "Pi gère l’authentification et les autorisations des outils. Lancez <part0>pi</part0> dans un terminal et utilisez <part1>/login</part1> pour vous connecter.",
 	"pi_binary_path": "Chemin de l’exécutable Pi",
 	"pi_binary_placeholder": "Rechercher pi dans PATH",
-	"pi_binary_help": "Indiquez un chemin absolu vers l’exécutable ou laissez ce champ vide pour rechercher dans PATH."
+	"pi_binary_help": "Indiquez un chemin absolu vers l’exécutable ou laissez ce champ vide pour rechercher dans PATH.",
+	"provider_row_configure": "Configurer {{label}}",
+	"updating": "Mise à jour…",
+	"updated": "Mis à jour",
+	"update_failed": "Échec",
+	"cancel_update": "Annuler la mise à jour",
+	"update_to_version": "Mettre {{name}} à jour vers v{{version}}",
+	"update_to_latest": "Mettre {{name}} à jour vers la dernière version",
+	"sign_in_failed": "Échec de la connexion.",
+	"sign_in_incomplete": "La connexion s’est interrompue.",
+	"update_incomplete": "La mise à jour s’est interrompue."
 }

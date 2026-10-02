@@ -2614,7 +2614,8 @@ function ContextStatusPopover({
 		> | null = null;
 		let latestCompactIndex = -1;
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const content = messages[i]!.content;
+			const content = messages[i]?.content;
+			if (!content) continue;
 			if (
 				content._tag === "context_usage" &&
 				content.providerId === session.providerId
@@ -2625,7 +2626,8 @@ function ContextStatusPopover({
 			}
 		}
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const content = messages[i]!.content;
+			const content = messages[i]?.content;
+			if (!content) continue;
 			if (
 				content._tag === "context_compaction" &&
 				content.providerId === session.providerId &&
@@ -2643,7 +2645,10 @@ function ContextStatusPopover({
 				providerId: latestCompact.providerId,
 				usedTokens: latestCompact.afterTokens,
 				windowTokens: latestUsage?.windowTokens ?? null,
-				precision: "exact" as const,
+				precision:
+					latestCompact.providerId === "zuse"
+						? ("estimated" as const)
+						: ("exact" as const),
 				source: "Context compaction",
 			};
 		}
@@ -2656,7 +2661,8 @@ function ContextStatusPopover({
 			Extract<Message["content"], { _tag: "usage_limit" }>
 		>();
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const content = messages[i]!.content;
+			const content = messages[i]?.content;
+			if (!content) continue;
 			if (
 				content._tag === "usage_limit" &&
 				content.providerId === session.providerId
@@ -2672,6 +2678,30 @@ function ContextStatusPopover({
 		}
 		return [...latestByKey.values()].reverse();
 	}, [messages, session.providerId, uiMessage]);
+
+	const latestCompaction = useMemo(
+		() =>
+			messages.findLast(
+				(message) =>
+					message.content._tag === "context_compaction" &&
+					message.content.providerId === session.providerId,
+			)?.content,
+		[messages, session.providerId],
+	);
+	if (
+		latestCompaction?._tag === "context_compaction" &&
+		latestCompaction.status === "in_progress"
+	) {
+		return (
+			<span
+				role="status"
+				className="flex items-center gap-1.5 px-2 text-xs text-muted-foreground"
+			>
+				<Spinner className="size-3" />
+				{uiMessage("chat:message_row_compacting")}
+			</span>
+		);
+	}
 
 	const usedTokens = latestContext?.usedTokens ?? null;
 	const reportedWindowTokens = latestContext?.windowTokens ?? null;
@@ -2705,7 +2735,7 @@ function ContextStatusPopover({
 			? `${formatTokens(usedTokens)} / ${formatTokens(windowTokens)}`
 			: windowTokens !== null
 				? formatTokens(windowTokens)
-				: formatTokens(usedTokens!);
+				: formatTokens(usedTokens ?? 0);
 
 	return (
 		<Tooltip>

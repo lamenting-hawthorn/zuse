@@ -63,5 +63,6 @@
 	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "로컬 서버를 사용할 수 없습니다. 귀하의 데이터는 여전히 디스크에 있습니다.",
 	"startup_surface_try_again": "다시 시도하세요",
 	"startup_surface_reload": "새로고침",
-	"startup_surface_copy_details": "세부정보 복사"
+	"startup_surface_copy_details": "세부정보 복사",
+	"copy_failed": "복사 실패"
 }

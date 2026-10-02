@@ -688,6 +688,7 @@
 	"fork_menu_new_machine_description": "Klonen Sie diesen Rechner und setzen Sie die Unterhaltung in einem separaten Chat fort.",
 	"fork_menu_forking_in_new_machine": "Neuer Rechner wird geforkt",
 	"workspace_sharing_button": "Share",
+	"message_row_compaction_failed": "Kontextkomprimierung gestoppt",
 	"runtime_mode_ask_for_approval": "Genehmigung anfordern",
 	"runtime_mode_approve_for_me": "Für mich genehmigen",
 	"runtime_mode_auto_description": "Der Agent prüft Aktionen und fragt bei Bedarf nach.",

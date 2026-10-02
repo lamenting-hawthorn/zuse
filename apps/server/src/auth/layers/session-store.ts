@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, constants } from "node:fs";
+import { constants } from "node:fs";
 import {
 	chmod,
 	link,
@@ -12,11 +12,12 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 
 import { WORKOS_PUBLIC_CLIENT_ID } from "@zuse/contracts";
 import { Effect, Layer } from "effect";
 
+import { acquireProcessLock as acquireSharedProcessLock } from "../../process/process-lock.ts";
 import { SessionStoreError } from "../errors.ts";
 import { SessionStore } from "../services/session-store.ts";
 import { parseSessionBundle, type SessionBundle } from "./workos.ts";
@@ -224,44 +225,13 @@ export const sessionLockIsStale = (raw: string): boolean => {
 const acquireProcessLock = (): Effect.Effect<DatabaseSync, SessionStoreError> =>
 	Effect.gen(function* () {
 		yield* ensureAuthDir();
-		const path = `${lockFile()}.sqlite`;
-		for (let attempt = 0; attempt < LOCK_MAX_ATTEMPTS; attempt++) {
-			const result = yield* Effect.try({
-				try: () => {
-					const database = new DatabaseSync(path);
-					try {
-						// Let SQLite manage every descriptor for this file. Closing an
-						// unrelated descriptor can release POSIX locks held by this process.
-						chmodSync(path, 0o600);
-						// Waiting synchronously would block the owner in this same event loop.
-						database.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE");
-						return database;
-					} catch (cause) {
-						database.close();
-						throw cause;
-					}
-				},
-				catch: (cause) => cause,
-			}).pipe(Effect.result);
-			if (result._tag === "Success") return result.success;
-			const cause = result.failure;
-			if (
-				!(
-					typeof cause === "object" &&
-					cause !== null &&
-					"errcode" in cause &&
-					typeof cause.errcode === "number" &&
-					(cause.errcode & 255) === 5
-				)
-			) {
-				return yield* Effect.fail(
-					failStore("Failed to acquire auth process lock.", cause),
-				);
-			}
-			yield* Effect.sleep("150 millis");
-		}
-		return yield* Effect.fail(
-			failStore("Timed out waiting for auth process lock."),
+		return yield* acquireSharedProcessLock(
+			`${lockFile()}.sqlite`,
+			LOCK_MAX_ATTEMPTS,
+		).pipe(
+			Effect.mapError((cause) =>
+				failStore("Failed to acquire auth process lock.", cause),
+			),
 		);
 	});
 

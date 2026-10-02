@@ -61,7 +61,8 @@ import { Migration0057DeviceBridgeDefaultAccess } from "./migrations/0057_device
 import { Migration0058QuestionAnswerDeliveries } from "./migrations/0058_question_answer_deliveries.ts";
 import { Migration0059EventSequenceIndex } from "./migrations/0059_event_sequence_index.ts";
 import { Migration0060ChatUserMessageTime } from "./migrations/0060_chat_user_message_time.ts";
-import { Migration0061SharedHostCompatibility } from "./migrations/0061_shared_host_compatibility.ts";
+import { Migration0061HarnessExecutions } from "./migrations/0061_harness_executions.ts";
+import { Migration0062ModelConnections } from "./migrations/0062_model_connections.ts";
 
 /**
  * Runs every numbered migration on boot. `fromRecord` keys must match
@@ -152,7 +153,8 @@ const MigrationDefinitionsThrough0059 = {
 const MigrationDefinitions = {
 	...MigrationDefinitionsThrough0059,
 	"0060_chat_user_message_time": Migration0060ChatUserMessageTime,
-	"0061_collaboration_foundation": Migration0061SharedHostCompatibility,
+	"0061_harness_executions": Migration0061HarnessExecutions,
+	"0062_model_connections": Migration0062ModelConnections,
 } as const;
 
 /** Shipped 0.16 schema boundary, exported for upgrade compatibility tests. */
@@ -204,6 +206,17 @@ export const MigrationsLive = Layer.effectDiscard(
 						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (60, 'chat_user_message_time')`;
 					}
 					yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (61, 'collaboration_foundation')`;
+				}),
+			);
+			// Slot 61 belonged to shared-host tables in organization previews.
+			// Keep those tables, but apply main's schema before repairing its ledger.
+			yield* sql.withTransaction(
+				Effect.gen(function* () {
+					const legacy =
+						yield* sql`SELECT migration_id FROM effect_sql_migrations WHERE migration_id = 61 AND name = 'collaboration_foundation'`;
+					if (legacy.length === 0) return;
+					yield* Migration0061HarnessExecutions;
+					yield* sql`UPDATE effect_sql_migrations SET name = 'harness_executions' WHERE migration_id = 61`;
 				}),
 			);
 		}

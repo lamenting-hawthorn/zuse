@@ -93,6 +93,7 @@ export const ResumeStrategy = Schema.Literals([
 	"opencode2-session-id",
 	"kiro-session-id",
 	"pi-session-file",
+	"zuse-execution-id",
 	"none",
 ]);
 export type ResumeStrategy = typeof ResumeStrategy.Type;
@@ -330,7 +331,7 @@ const ContextCompactionContent = Schema.TaggedStruct("context_compaction", {
 	durationMs: Schema.Number,
 	beforeTokens: Schema.NullOr(Schema.Number),
 	afterTokens: Schema.NullOr(Schema.Number),
-	status: Schema.Literals(["in_progress", "completed"]).pipe(
+	status: Schema.Literals(["in_progress", "completed", "failed"]).pipe(
 		Schema.withDecodingDefaultType(Effect.succeed("completed" as const)),
 	),
 });

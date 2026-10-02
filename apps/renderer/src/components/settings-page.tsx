@@ -2,6 +2,7 @@ import { formatDate as formatUiDate } from "@zuse/i18n";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import { refreshHostedProjects } from "../lib/hosted-workspace.ts";
 import { isInputComposing } from "../lib/input-composition.ts";
+import { ModelConnectionsPane } from "./settings/model-connections-pane.tsx";
 import { WallpaperSettings } from "./settings/wallpaper-settings";
 import "@zuse/i18n/english/settings";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -81,8 +82,7 @@ import { BlurredEmail } from "./blurred-email.tsx";
 import { BrowserProfileSelect } from "./browser-profile-select.tsx";
 import { LanguageSelector } from "./language-selector.tsx";
 import { ModelPicker } from "./model-picker.tsx";
-import { ProviderCard } from "./provider-card.tsx";
-import { ProviderIcon } from "./provider-icons.tsx";
+import { ProviderSettingsRow } from "./provider-card.tsx";
 import { MODE_META, MODES_ORDER } from "./runtime-mode-meta.ts";
 import { CloudWorkspacePool } from "./settings/cloud-workspace-pool.tsx";
 import { DeveloperPane } from "./settings/developer-pane.tsx";
@@ -108,7 +108,6 @@ import {
 } from "./ui/alert-dialog.tsx";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar.tsx";
 import { Button } from "./ui/button.tsx";
-import { SegmentedTabs } from "./ui/segmented-tabs.tsx";
 import {
 	SettingsCard,
 	SettingsGroup,
@@ -1738,14 +1737,23 @@ function ProvidersPane() {
 		return latest;
 	}, [availability, uiMessage]);
 
-	const providers = PROVIDER_IDS;
-	const [selectedProvider, setSelectedProvider] =
-		useState<ProviderId>("claude");
+	// One row opens at a time; the choice survives leaving and reopening settings.
+	const [expandedProvider, setExpandedProvider] = useState<ProviderId | null>(
+		() => lastExpandedProvider,
+	);
+	const expand = (providerId: ProviderId | null) => {
+		lastExpandedProvider = providerId;
+		setExpandedProvider(providerId);
+	};
 	const availabilityById = useMemo(() => {
 		const map = new Map<ProviderId, (typeof availability)[number]>();
 		for (const a of availability) map.set(a.providerId, a);
 		return map;
-	}, [availability, uiMessage]);
+	}, [availability]);
+	const initialLoading = isInitialProviderAvailabilityLoading(
+		loading,
+		availabilityLoaded,
+	);
 
 	const statusLabel = loading
 		? "Checking…"
@@ -1758,70 +1766,53 @@ function ProvidersPane() {
 					: "Not checked yet";
 
 	return (
-		<SettingsFrame
-			title={uiMessage("settings:settings_page_agent_providers")}
-			description={uiMessage(
-				"settings:settings_page_enable_the_coding_agents_you_use_verify_their_local_setup_and_control",
-			)}
-			flush
-			trailing={
-				<div className="flex items-center gap-2">
-					<span className="max-w-48 truncate text-[10px] text-muted-foreground">
-						{statusLabel}
-					</span>
-					<Button
-						variant="ghost"
-						size="icon-xs"
-						onClick={() => void refresh()}
-						disabled={loading}
-						aria-label={uiMessage(
-							"settings:settings_page_refresh_provider_status",
-						)}
-					>
-						<RefreshIcon
-							className={cn("size-3.5", loading && "animate-spin")}
-							aria-hidden
-						/>
-					</Button>
-				</div>
-			}
-		>
-			<div className="flex min-h-10 items-center border-b border-border/60 px-3 py-1.5">
-				<div className="min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-					<SegmentedTabs
-						value={selectedProvider}
-						onValueChange={setSelectedProvider}
-						ariaLabel={uiMessage("common:provider_settings")}
-						equalWidth={false}
-						className="w-max min-w-full"
-						options={providers.map((pid) => ({
-							value: pid,
-							label: (
-								<>
-									<ProviderIcon providerId={pid} className="size-3.5" />
-									<span>{PROVIDER_LABEL[pid]}</span>
-								</>
-							),
-						}))}
+		<div className="flex flex-col gap-4">
+			<SettingsGroup
+				title={uiMessage("settings:settings_page_agent_providers")}
+				description={uiMessage(
+					"settings:settings_page_enable_the_coding_agents_you_use_verify_their_local_setup_and_control",
+				)}
+				action={
+					<div className="flex items-center gap-1.5">
+						<span className="max-w-48 truncate text-[10px] text-muted-foreground">
+							{statusLabel}
+						</span>
+						<Button
+							variant="ghost"
+							size="icon-sm"
+							className="h-7 w-7"
+							onClick={() => void refresh()}
+							disabled={loading}
+							aria-label={uiMessage(
+								"settings:settings_page_refresh_provider_status",
+							)}
+						>
+							<RefreshIcon
+								className={cn("size-3.5", loading && "animate-spin")}
+								aria-hidden
+							/>
+						</Button>
+					</div>
+				}
+			>
+				{PROVIDER_IDS.filter((pid) => pid !== "zuse").map((pid) => (
+					<ProviderSettingsRow
+						key={pid}
+						environmentId={environmentId}
+						providerId={pid}
+						availability={availabilityById.get(pid)}
+						loading={initialLoading}
+						expanded={expandedProvider === pid}
+						onExpandedChange={(open) => expand(open ? pid : null)}
 					/>
-				</div>
-			</div>
-
-			<div className="min-h-0 px-4 pb-1">
-				<ProviderCard
-					environmentId={environmentId}
-					providerId={selectedProvider}
-					availability={availabilityById.get(selectedProvider)}
-					loading={isInitialProviderAvailabilityLoading(
-						loading,
-						availabilityLoaded,
-					)}
-					layout="page"
-				/>
-			</div>
-		</SettingsFrame>
+				))}
+			</SettingsGroup>
+			<ModelConnectionsPane environmentId={environmentId} />
+		</div>
 	);
 }
+
+let lastExpandedProvider: ProviderId | null = null;
 
 // ---------------------------------------------------------------------------
 // Shared building blocks

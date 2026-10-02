@@ -591,6 +591,8 @@ const runtimeLabel = (value: ModelModeValue): string =>
 
 const providerSystemImage = (providerId: ProviderId): string => {
 	switch (providerId) {
+		case "zuse":
+			return "bolt";
 		case "claude":
 			return "cloud";
 		case "codex":

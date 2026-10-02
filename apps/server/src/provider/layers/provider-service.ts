@@ -36,16 +36,26 @@ import {
 	type FolderId,
 	type PermissionDecision,
 	type PermissionKind,
+	PROVIDER_CAPABILITIES,
 	type ProviderEventEnvelope,
 	type ProviderId,
 	type ThreadGoalSetInput,
 	type UserQuestion,
 } from "@zuse/contracts";
 import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
-import { Cache, Effect, FileSystem, Layer, Semaphore, Stream } from "effect";
+import {
+	Cache,
+	Effect,
+	FileSystem,
+	Layer,
+	Option,
+	Semaphore,
+	Stream,
+} from "effect";
 import { ChildProcessSpawner as CommandExecutor } from "effect/unstable/process";
 import { AnalyticsService } from "../../analytics/services/analytics-service.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
+import { HarnessProvider } from "../../harness/provider.ts";
 import {
 	legacyAppOwnedCodexServerNames,
 	readNativeServers,
@@ -102,6 +112,7 @@ export const ProviderServiceLive = Layer.effect(
 	Effect.gen(function* () {
 		const executor = yield* CommandExecutor.ChildProcessSpawner;
 		const fs = yield* FileSystem.FileSystem;
+		const harness = yield* Effect.serviceOption(HarnessProvider);
 		const credentials = yield* CredentialsService;
 		const runtimeCredentials = yield* RuntimeProviderCredentials;
 		const modelCatalog = yield* ModelCatalogService;
@@ -297,7 +308,10 @@ export const ProviderServiceLive = Layer.effect(
 					(yield* configStore.getSettings()).providerBinaryPaths ?? {},
 				);
 				if (refresh) yield* Cache.invalidate(availabilityCache, key);
-				return yield* Cache.get(availabilityCache, key);
+				const list = yield* Cache.get(availabilityCache, key);
+				return Option.isSome(harness)
+					? [...list, yield* harness.value.availability()]
+					: list;
 			});
 
 		const lookup = (
@@ -413,12 +427,16 @@ export const ProviderServiceLive = Layer.effect(
 						...(modelDescriptor !== undefined ? { modelDescriptor } : {}),
 						workspaceInstructions: zuseWorkspaceInstructions({
 							projectPath: folder.path,
-							includeAppTools: input.providerId !== "pi",
+							includeAppTools: PROVIDER_CAPABILITIES[input.providerId].appTools,
 							cwd,
 						}),
 					};
 					const brokeredCredential = yield* Effect.tryPromise({
-						try: () => runtimeCredentials.resolve(input.providerId),
+						try: () =>
+							PROVIDER_CAPABILITIES[input.providerId].credentialSource ===
+							"connections"
+								? Promise.resolve(null)
+								: runtimeCredentials.resolve(input.providerId),
 						catch: (cause) =>
 							new AgentSessionStartError({
 								providerId: input.providerId,
@@ -443,7 +461,20 @@ export const ProviderServiceLive = Layer.effect(
 							? managedCredential.secret
 							: null;
 					let providerHandle: ProviderSessionHandle;
-					if (input.providerId === "gemini") {
+					if (input.providerId === "zuse") {
+						if (Option.isNone(harness))
+							return yield* new AgentSessionStartError({
+								providerId: "zuse",
+								reason: "Zuse runtime is unavailable.",
+							});
+						providerHandle = yield* harness.value.start(
+							driverInput,
+							cwd,
+							sessionId,
+							resumeCursor,
+							runtimeModeGetter,
+						);
+					} else if (input.providerId === "gemini") {
 						// Same story as Grok: hand the driver the user's installed
 						// `gemini` binary. Surface a clean install message rather than
 						// letting spawn fail with ENOENT inside the driver.

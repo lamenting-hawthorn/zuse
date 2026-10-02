@@ -130,5 +130,15 @@
 	"pi_setup_hint": "Pi が認証とツールの権限を管理します。ターミナルで <part0>pi</part0> を実行し、<part1>/login</part1> でログインしてください。",
 	"pi_binary_path": "Pi 実行ファイルのパス",
 	"pi_binary_placeholder": "PATH から pi を検索",
-	"pi_binary_help": "実行ファイルの絶対パスを入力するか、空欄にして PATH を検索します。"
+	"pi_binary_help": "実行ファイルの絶対パスを入力するか、空欄にして PATH を検索します。",
+	"provider_row_configure": "{{label}} を設定",
+	"updating": "更新中…",
+	"updated": "更新済み",
+	"update_failed": "失敗",
+	"cancel_update": "更新をキャンセル",
+	"update_to_version": "{{name}} を v{{version}} に更新",
+	"update_to_latest": "{{name}} を最新バージョンに更新",
+	"sign_in_failed": "サインインに失敗しました。",
+	"sign_in_incomplete": "サインインが完了前に終了しました。",
+	"update_incomplete": "更新が完了前に終了しました。"
 }

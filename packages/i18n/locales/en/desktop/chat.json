@@ -688,6 +688,7 @@
 	"fork_menu_new_machine_description": "Clone this machine and continue the conversation in a separate chat.",
 	"fork_menu_forking_in_new_machine": "Forking in new machine",
 	"workspace_sharing_button": "Share",
+	"message_row_compaction_failed": "Compaction stopped",
 	"runtime_mode_ask_for_approval": "Ask for approval",
 	"runtime_mode_approve_for_me": "Approve for me",
 	"runtime_mode_auto_description": "The agent reviews actions and asks when needed.",
