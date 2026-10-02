@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 import {
 	CloudApiKeyList,
+	CloudApiKeys,
 	formatApiKeyError,
 } from "../../src/components/settings/cloud-api-keys.tsx";
 
@@ -23,6 +24,21 @@ const renderList = (
 	);
 
 describe("Cloud API key settings", () => {
+	test("does not mount Personal-only API key management in an organization", () => {
+		expect(
+			renderToStaticMarkup(
+				<CloudApiKeys
+					scope={{ kind: "organization", organizationId: "org_test" }}
+				/>,
+			),
+		).toBe("");
+	});
+
+	test("keeps API key management available in Personal", () => {
+		expect(
+			renderToStaticMarkup(<CloudApiKeys scope={{ kind: "personal" }} />),
+		).toContain("Loading API keys");
+	});
 	test("does not claim an empty account after a failed initial load", () => {
 		expect(renderList(null)).toBe("");
 		expect(renderList(null, true)).toContain("Loading API keys");

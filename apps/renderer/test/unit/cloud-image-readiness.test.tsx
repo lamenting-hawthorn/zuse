@@ -142,5 +142,7 @@ it("prevents another rebuild while requests are being dispatched", () => {
 			onBuild={() => undefined}
 		/>,
 	);
-	expect(markup.match(/<button[^>]*>/)?.[0]).toContain("disabled");
+	expect(markup).toContain("Starting build");
+	expect(markup).not.toContain("Cloud image ready");
+	expect(markup).not.toContain("<button");
 });

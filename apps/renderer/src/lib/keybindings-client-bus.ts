@@ -19,7 +19,12 @@ import {
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
+import {
+	updateBrowserDevicePreferences,
+	useBrowserDevicePreferences,
+} from "./browser-device-preferences.ts";
 import { mergeWithDefaults } from "./default-keybindings.ts";
+import { isHostedProduct } from "./platform-capabilities.ts";
 import type { MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
@@ -202,11 +207,16 @@ const activeResource = () => {
 };
 
 export const keybindingsSnapshot = (): EnvironmentKeybindingsData => {
+	if (isHostedProduct())
+		return resolveRules([
+			...(useBrowserDevicePreferences.getState().keybindings ?? []),
+		]);
 	const { bus, key } = activeResource();
 	return bus.snapshot(key)?.data ?? FALLBACK;
 };
 
 export const subscribeKeybindings = (listener: () => void): (() => void) => {
+	if (isHostedProduct()) return useBrowserDevicePreferences.subscribe(listener);
 	const { bus, key } = activeResource();
 	return bus.subscribe(key, listener);
 };
@@ -218,6 +228,10 @@ export const setUserKeybindings = async (
 		rules.length > MAX_KEYBINDING_RULES
 			? rules.slice(rules.length - MAX_KEYBINDING_RULES)
 			: rules;
+	if (isHostedProduct()) {
+		updateBrowserDevicePreferences({ keybindings: clamped });
+		return;
+	}
 	const { environmentId, key, bus } = activeResource();
 	const receipt = await bus.dispatch<KeybindingsFile>({
 		kind: "keybindings.replace",
@@ -261,23 +275,35 @@ const ACTIONS = {
 export const useKeybindings = <Selected>(
 	selector: (state: KeybindingsState) => Selected,
 ): Selected => {
+	const hosted = isHostedProduct();
+	const browserRules = useBrowserDevicePreferences(
+		(state) => state.keybindings,
+	);
+	const browserData = useMemo(
+		() => resolveRules([...(browserRules ?? [])]),
+		[browserRules],
+	);
 	const environmentId = EnvironmentId.make(
 		useEnvironmentCatalogStore((state) => state.activeEnvironmentId),
 	);
 	const key = useMemo(() => keyFor(environmentId), [environmentId]);
 	const bus = getRendererClientBus();
 	useEffect(
-		() => bus.retain(key, { activation: "connect" }).release,
-		[bus, key],
+		() =>
+			hosted ? undefined : bus.retain(key, { activation: "connect" }).release,
+		[bus, key, hosted],
 	);
 	const view = useSyncExternalStore(
 		(listener) => bus.subscribe(key, listener),
 		() => bus.snapshot(key),
 	);
 	return selector({
-		...(view.data ?? FALLBACK),
+		...(hosted ? browserData : (view.data ?? FALLBACK)),
 		...ACTIONS,
-		loaded: view.data !== null,
-		error: view.sync === "failed" ? "Unable to synchronize keybindings" : null,
+		loaded: hosted || view.data !== null,
+		error:
+			!hosted && view.sync === "failed"
+				? "Unable to synchronize keybindings"
+				: null,
 	});
 };

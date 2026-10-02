@@ -1,4 +1,5 @@
 import "@zuse/i18n/english/shell";
+import { parseEnvironmentRoute } from "@zuse/client-runtime/environment-scope";
 import type { ConnectionSnapshot } from "@zuse/client-runtime/supervisor";
 import { message as uiMessage } from "@zuse/i18n";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
@@ -19,8 +20,11 @@ import {
 import {
 	beginHostedSignIn,
 	completeHostedSignIn,
+	connectHostedEnvironment,
 	hostedSignedIn,
 	isHostedProduct,
+	listHostedEnvironments,
+	registerHostedClient,
 	watchHostedAccountChanges,
 } from "../lib/hosted-connect.ts";
 import { rendererPlatformCapabilities } from "../lib/platform-capabilities.ts";
@@ -315,6 +319,36 @@ function HostedAccessCard({
 	);
 }
 
+export const resolveHostedAccess = async (
+	pathname: string,
+): Promise<HostedAccessState> => {
+	const completedSignIn = await completeHostedSignIn();
+	const targetPath = completedSignIn ? window.location.pathname : pathname;
+	if (!(await hostedSignedIn())) return { status: "signedOut" };
+	const route = parseEnvironmentRoute(targetPath);
+	if (route !== null) {
+		const catalog = await listHostedEnvironments();
+		if (
+			!catalog.environments.some(
+				(environment) => environment.environmentId === route.environmentId,
+			)
+		)
+			return {
+				status: "error",
+				description: uiMessage(
+					"shell:browser_access_gate_this_computer_is_not_linked_to_your_account_it_may_have_been_remo",
+				),
+			};
+	}
+	await registerHostedClient();
+	if (route !== null) await connectHostedEnvironment(route.environmentId);
+	else if (targetPath.startsWith("/w/")) {
+		const { openCloudChatLink } = await import("../lib/cloud-chat-link.ts");
+		await openCloudChatLink(targetPath);
+	}
+	return { status: "ready" };
+};
+
 function HostedAccessGate({ children }: { readonly children: ReactNode }) {
 	const [state, setState] = useState<HostedAccessState>({
 		status: "loading",
@@ -322,17 +356,21 @@ function HostedAccessGate({ children }: { readonly children: ReactNode }) {
 	const connect = useCallback(async () => {
 		setState({ status: "loading" });
 		try {
-			await completeHostedSignIn();
-			if (!(await hostedSignedIn())) {
-				setState({ status: "signedOut" });
-				return;
-			}
-
-			setState({ status: "ready" });
-		} catch {
+			setState(await resolveHostedAccess(window.location.pathname));
+		} catch (cause) {
+			const reason = cause instanceof Error ? cause.message : String(cause);
 			setState({
 				status: "error",
-				description: uiMessage("shell:hosted_sign_in_failed"),
+				description:
+					reason === "chat_link_unavailable"
+						? uiMessage("shell:chat_link_unavailable")
+						: reason === "chat_link_update_required"
+							? uiMessage("shell:chat_link_update_required")
+							: reason === "computer_limit_reached"
+								? "This account has reached its served-computer limit."
+								: reason === "version_incompatible"
+									? "This computer needs a Zuse Serve update before it can connect."
+									: uiMessage("shell:hosted_connection_retry"),
 			});
 		}
 	}, []);
@@ -343,7 +381,14 @@ function HostedAccessGate({ children }: { readonly children: ReactNode }) {
 	if (state.status !== "ready") {
 		return <HostedAccessCard retry={() => void connect()} state={state} />;
 	}
-	return <>{children}</>;
+	return (
+		<>
+			{children}
+			{parseEnvironmentRoute(window.location.pathname) !== null ? (
+				<ConnectionBanner />
+			) : null}
+		</>
+	);
 }
 
 function DirectBrowserAccessGate({

@@ -109,6 +109,9 @@ export function CloudImageProviders({
 							>
 								{!onSelectProvider ? providerName(provider.providerId) : null}
 								{status(image)}
+								<span className="text-[11px] text-muted-foreground">
+									{message("settings:diagnostics_pane_open_logs")}
+								</span>
 								<ChevronRight
 									className="size-3.5 text-muted-foreground"
 									aria-hidden
@@ -124,17 +127,20 @@ export function CloudImageProviders({
 					if (!open) setSelected(null);
 				}}
 			>
-				<DialogPopup className="max-w-2xl">
+				<DialogPopup className="max-w-xl">
 					<DialogHeader>
 						<DialogTitle>
-							{selected === null ? "" : cloudProviderLabel(selected)}
+							{selected === null
+								? ""
+								: message("settings:cloud_images_view_logs", {
+										provider: cloudProviderLabel(selected),
+									})}
 						</DialogTitle>
-						<DialogDescription>
+						<DialogDescription className="sr-only">
 							{message("settings:cloud_images_details_description")}
 						</DialogDescription>
 					</DialogHeader>
-					<DialogPanel>
-						<div className="px-3 py-2">{status(selectedImage)}</div>
+					<DialogPanel className="px-1 pb-2">
 						{selectedImage !== undefined && selectedImage.builds.length > 0 ? (
 							<CloudImageBuildHistory
 								key={selected}

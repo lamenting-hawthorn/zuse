@@ -4,10 +4,15 @@ import {
 	type SessionId,
 	type WorktreeId,
 } from "@zuse/contracts";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useCloudChatSummaryForSelection } from "../lib/cloud-workspaces.ts";
 import { useActiveEnvironmentEntities } from "../lib/environment-entity-hooks.ts";
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "../lib/renderer-workspace.ts";
+import { environmentBelongsToWorkspace } from "../lib/rpc-client.ts";
 import { useChatsStore } from "./chats.ts";
 import { useEnvironmentCatalogStore } from "./environment-catalog.ts";
 import { useSessionsStore } from "./sessions.ts";
@@ -76,17 +81,17 @@ const useSelectedWorkspaceBinding = (folderId: FolderId | null) => {
 	// The current panels must follow the same session selection as the transcript.
 	// The per-project slot is navigation history and can lag a newly selected tab.
 	const sessionId = useSessionsStore((s) =>
-		folderId === null
-			? null
-			: folderId === selectedFolderId
-				? s.selectedSessionId
+		folderId === selectedFolderId
+			? s.selectedSessionId
+			: folderId === null
+				? null
 				: (s.selectedSessionByProject[folderId] ?? null),
 	);
 	const selectedChatId = useChatsStore((s) =>
-		folderId === null
-			? null
-			: folderId === selectedFolderId
-				? s.selectedChatId
+		folderId === selectedFolderId
+			? s.selectedChatId
+			: folderId === null
+				? null
 				: (s.selectedChatByProject[folderId] ?? null),
 	);
 	const pendingCreation = useChatsStore((s) =>
@@ -151,6 +156,11 @@ const useSelectedWorkspaceBinding = (folderId: FolderId | null) => {
  * dependency arrays without re-firing on unrelated store updates.
  */
 export const useActiveContext = (): ActiveContext => {
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+		rendererWorkspaceSnapshot,
+	);
 	const activeEnvironmentId = useEnvironmentCatalogStore(
 		(state) => state.activeEnvironmentId,
 	);
@@ -172,6 +182,11 @@ export const useActiveContext = (): ActiveContext => {
 		chatId: selectedChatId,
 		sessionId,
 	});
+	const cloudWorkspaceId = cloudSummary?.workspaceId ?? null;
+	const visible = environmentBelongsToWorkspace(
+		cloudWorkspaceId ?? activeEnvironmentId,
+		workspace.scope,
+	);
 	const worktreePath = useWorktreesStore((s) => {
 		if (selectedFolderId === null || activeWorktreeId === null) return null;
 		const list = s.byProject[selectedFolderId] ?? EMPTY_WORKTREES;
@@ -180,6 +195,7 @@ export const useActiveContext = (): ActiveContext => {
 	const refreshWorktrees = useWorktreesStore((s) => s.refresh);
 	useEffect(() => {
 		if (
+			!visible ||
 			selectedFolderId === null ||
 			activeWorktreeId === null ||
 			worktreePath !== null
@@ -190,22 +206,27 @@ export const useActiveContext = (): ActiveContext => {
 		// worktree row as soon as the selected session names it so the canonical
 		// context cannot remain stuck in `worktree-pending` after creation settles.
 		void refreshWorktrees(selectedFolderId);
-	}, [selectedFolderId, activeWorktreeId, worktreePath, refreshWorktrees]);
-	const cloudWorkspaceId = cloudSummary?.workspaceId ?? null;
+	}, [
+		visible,
+		selectedFolderId,
+		activeWorktreeId,
+		worktreePath,
+		refreshWorktrees,
+	]);
 	const cloudShell = useEnvironmentShellResource(
-		cloudWorkspaceId === null ? null : EnvironmentId.make(cloudWorkspaceId),
+		!visible || cloudWorkspaceId === null
+			? null
+			: EnvironmentId.make(cloudWorkspaceId),
 		cloudWorkspaceId === null ? "cache-only" : "connect",
 	);
 	const cloudFolder = cloudShell.data?.folders[0] ?? null;
 
 	return useMemo<ActiveContext>(() => {
-		if (!foldersLoaded) return { status: "loading" };
-		if (selectedFolderId === null || folderPath === null) {
-			return { status: "empty" };
-		}
+		if (!visible) return { status: "empty" };
 		if (
 			cloudWorkspaceId !== null &&
 			cloudFolder === null &&
+			selectedFolderId !== null &&
 			sessionId !== null
 		) {
 			return {
@@ -240,6 +261,10 @@ export const useActiveContext = (): ActiveContext => {
 				rootKind: "folder",
 				worktreePending: false,
 			};
+		}
+		if (!foldersLoaded) return { status: "loading" };
+		if (selectedFolderId === null || folderPath === null) {
+			return { status: "empty" };
 		}
 		if (
 			workspaceRequested &&
@@ -279,6 +304,7 @@ export const useActiveContext = (): ActiveContext => {
 			worktreePending: false,
 		};
 	}, [
+		visible,
 		foldersLoaded,
 		selectedFolderId,
 		folderPath,

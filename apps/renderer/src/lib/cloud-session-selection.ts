@@ -1,6 +1,25 @@
-import type { CloudChatSummary, Session, SessionId } from "@zuse/contracts";
+import type {
+	CloudChatSummary,
+	FolderId,
+	Session,
+	SessionId,
+} from "@zuse/contracts";
 import { cloudSummaryActiveSessionId } from "./cloud-workspace-catalog.ts";
 import type { EnvironmentShellData } from "./environment-shell-client-bus.ts";
+
+/** Bind a browser selection only to the selected chat's authoritative runtime checkout. */
+export const cloudRuntimeProjectId = (
+	summary: CloudChatSummary,
+	shell: EnvironmentShellData | null,
+): FolderId | null => {
+	const chat = Object.values(shell?.chatsByProject ?? {})
+		.flat()
+		.find((candidate) => candidate.id === summary.chatId);
+	return chat !== undefined &&
+		shell?.folders.some((folder) => folder.id === chat.projectId)
+		? chat.projectId
+		: null;
+};
 
 /** Resolve only against this cloud environment, never the active local computer. */
 export const resolveCloudSession = (
