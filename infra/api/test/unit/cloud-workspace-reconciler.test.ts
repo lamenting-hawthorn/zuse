@@ -17,6 +17,7 @@ import {
 	cloudWorkspaceStartupNeedsObservation,
 	MAILBOX_RUNTIME_STALL_TIMEOUT_MS,
 	RUNTIME_CONNECTION_TIMEOUT_MS,
+	reconcileCloudBuild,
 	reconcileCloudResourceBatch,
 	reconcileCloudResources,
 	reconcileCloudWorkspace,
@@ -65,6 +66,146 @@ const makeTestLayer = (cloudCommandMailboxEnabled = false) =>
 
 const testLayer = makeTestLayer();
 const mailboxEnabledTestLayer = makeTestLayer(true);
+
+test.each([
+	"rejected",
+	"transient",
+] as const)("persists snapshot failure %s instead of leaving a silent lease", async (code) => {
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const workspace = yield* seedWorkspace({
+				workspaceId: "snapshot-error",
+				requestConfig: {},
+				state: "ready",
+				desiredState: "ready",
+				statusCode: "ready",
+			});
+			const store = yield* CloudWorkspaceStore;
+			const build = yield* store.getBuild(workspace.buildId);
+			if (build === null) throw new Error("Missing build");
+			const project = yield* store.getProject(build.projectId);
+			if (project === null) throw new Error("Missing project");
+			yield* store.saveProject({ ...project, state: "preparing" });
+			yield* store.saveBuild({
+				...build,
+				state: "sanitizing",
+				snapshotId: undefined,
+				providerSandboxId: workspace.providerSandboxId,
+				logText: "Setup complete",
+				nextActionAtMs: 0,
+			});
+			const providers = yield* SandboxProviders;
+			const provider = yield* providers.get(build.provider);
+			yield* reconcileCloudBuild(build.buildId).pipe(
+				Effect.provideService(SandboxProviders, {
+					...providers,
+					get: () =>
+						Effect.succeed({
+							...provider,
+							snapshot: () => Effect.fail(new SandboxProviderError({ code })),
+						}),
+				}),
+			);
+			const result = yield* store.getBuild(build.buildId);
+			expect(result?.state).toBe(code === "rejected" ? "failed" : "sanitizing");
+			expect(result?.lastErrorCode).toBe(`snapshot-${code}`);
+			expect(result?.logText).toContain("Setup complete");
+			expect(result?.logText).toContain(`Snapshot publication: ${code}`);
+			expect(result?.nextActionAtMs).toBeGreaterThan(Date.now());
+			if (code === "rejected") {
+				expect(result?.providerSandboxId).toBeUndefined();
+				expect(yield* provider.inspect("source-snapshot-error")).toBeNull();
+				expect((yield* store.getProject(build.projectId))?.state).toBe(
+					"failed",
+				);
+			}
+		}).pipe(Effect.provide(testLayer)),
+	);
+});
+
+test("resumes a persisted snapshot stage after the original worker exits", async () => {
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const workspace = yield* seedWorkspace({
+				workspaceId: "snapshot-retry",
+				requestConfig: {},
+				state: "ready",
+				desiredState: "ready",
+				statusCode: "ready",
+			});
+			const store = yield* CloudWorkspaceStore;
+			const build = yield* store.getBuild(workspace.buildId);
+			if (build === null) throw new Error("Missing fixture build");
+			yield* store.saveBuild({
+				...build,
+				state: "sanitizing",
+				snapshotId: undefined,
+				providerSandboxId: workspace.providerSandboxId,
+				logText: "Repositories prepared",
+				nextActionAtMs: 0,
+			});
+			yield* reconcileCloudBuild(build.buildId);
+			const resumed = yield* store.getBuild(build.buildId);
+			expect(resumed?.state).toBe("ready");
+			expect(resumed?.snapshotId).toBeDefined();
+			expect(resumed?.logText).toContain("Repositories prepared");
+		}).pipe(Effect.provide(testLayer)),
+	);
+});
+
+test("recovers snapshot promotion after the worker exits during sandbox cleanup", async () => {
+	await Effect.runPromise(
+		Effect.gen(function* () {
+			const workspace = yield* seedWorkspace({
+				workspaceId: "snapshot-cleanup",
+				requestConfig: {},
+				state: "ready",
+				desiredState: "ready",
+				statusCode: "ready",
+			});
+			const store = yield* CloudWorkspaceStore;
+			const build = yield* store.getBuild(workspace.buildId);
+			if (build === null) throw new Error("Missing build");
+			yield* store.saveBuild({
+				...build,
+				state: "sanitizing",
+				snapshotId: undefined,
+				providerSandboxId: workspace.providerSandboxId,
+				nextActionAtMs: 0,
+			});
+			const providers = yield* SandboxProviders;
+			const provider = yield* providers.get(build.provider);
+			const snapshot = vi.fn(provider.snapshot);
+			yield* reconcileCloudBuild(build.buildId).pipe(
+				Effect.provideService(SandboxProviders, {
+					...providers,
+					get: () =>
+						Effect.succeed({
+							...provider,
+							snapshot,
+							kill: (id) =>
+								provider
+									.kill(id)
+									.pipe(Effect.andThen(Effect.die("worker exited"))),
+						}),
+				}),
+				Effect.exit,
+			);
+			expect((yield* store.getBuild(build.buildId))?.snapshotId).toBeDefined();
+			yield* reconcileCloudBuild(build.buildId).pipe(
+				Effect.provideService(SandboxProviders, {
+					...providers,
+					get: () => Effect.succeed({ ...provider, snapshot }),
+				}),
+			);
+			expect(snapshot).toHaveBeenCalledTimes(1);
+			expect((yield* store.getBuild(build.buildId))?.state).toBe("ready");
+			expect(
+				(yield* store.getBuild(build.buildId))?.providerSandboxId,
+			).toBeUndefined();
+		}).pipe(Effect.provide(testLayer)),
+	);
+});
 
 const seedWorkspace = Effect.fn("seedArchiveWorkspace")(function* (
 	input: Pick<
@@ -673,6 +814,7 @@ describe("cloud workspace reconciler", () => {
 				);
 				const args = start.mock.calls[0]?.[1].args?.join(" ") ?? "";
 				expect(args).toContain("runtime-updater.mjs");
+				expect(args).toContain("ensure_workspace_runtime 1\nexec /bin/bash");
 				expect(args.indexOf("runtime-updater.mjs")).toBeLessThan(
 					args.indexOf("exec /bin/bash"),
 				);

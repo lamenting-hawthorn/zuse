@@ -524,7 +524,7 @@ const issueWorkspaceRuntimeBoot = Effect.fn("issueWorkspaceRuntimeBoot")(
 const saveAccountProjectState = Effect.fn("saveAccountProjectState")(function* (
 	accountId: string,
 	state: "ready" | "failed",
-	lastErrorCode: string,
+	lastErrorCode: string | undefined,
 	nowMs: number,
 ) {
 	const store = yield* CloudWorkspaceStore;
@@ -587,6 +587,7 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 		}
 		if (
 			(build.state === "building" || build.state === "sanitizing") &&
+			build.snapshotId === undefined &&
 			(build.providerSandboxId === undefined ||
 				(yield* provider
 					.inspect(build.providerSandboxId)
@@ -1051,37 +1052,99 @@ const reconcileBuildRecord = Effect.fn("reconcileCloudAccountImageBuild")(
 			const sanitizing = {
 				...build,
 				sourceCommit,
+				logText,
 				state: "sanitizing" as const,
 				nextActionAtMs: nowMs,
 				revision: build.revision + 1,
 				updatedAtMs: nowMs,
 			};
 			yield* store.saveBuild(sanitizing);
-			const snapshotId = yield* provider
-				.snapshot(
-					build.providerSandboxId,
-					`${project.projectId}-${build.buildId}`,
-				)
-				.pipe(Effect.orDie);
-			yield* provider.kill(build.providerSandboxId).pipe(Effect.ignore);
+			build = sanitizing;
+		}
+		// Snapshot creation is idempotent by build name. A worker can exit after
+		// saving this stage; retries must resume the same snapshot, not re-run setup.
+		if (build.state === "sanitizing" && build.providerSandboxId !== undefined) {
+			const providerSandboxId = build.providerSandboxId;
+			const snapshotId =
+				build.snapshotId ??
+				(yield* provider
+					.snapshot(
+						build.providerSandboxId,
+						`${project.projectId}-${build.buildId}`,
+					)
+					.pipe(
+						Effect.catchTag("SandboxProviderError", (error) =>
+							Effect.gen(function* () {
+								const retry =
+									error.code === "transient" &&
+									Date.now() - build.createdAtMs < PROJECT_BUILD_TIMEOUT_MS;
+								const diagnostic = `Snapshot publication: ${error.code}. ${retry ? "Retrying automatically." : "Check the sandbox provider configuration and permissions before retrying."}`;
+								if (!retry) {
+									// Keep the pending build until cleanup succeeds, so failures retry.
+									yield* provider.kill(providerSandboxId).pipe(Effect.orDie);
+									const previous = yield* store.getActiveAccountBuild(
+										build.accountId,
+										build.provider,
+									);
+									yield* saveAccountProjectState(
+										build.accountId,
+										previous === null ? "failed" : "ready",
+										`snapshot-${error.code}`,
+										Date.now(),
+									);
+								}
+								yield* store.saveBuild({
+									...build,
+									providerSandboxId: retry
+										? build.providerSandboxId
+										: undefined,
+									state: retry ? "sanitizing" : "failed",
+									lastErrorCode: `snapshot-${error.code}`,
+									logText: build.logText?.includes(diagnostic)
+										? build.logText
+										: [build.logText, diagnostic].filter(Boolean).join("\n"),
+									nextActionAtMs: retry
+										? Date.now() + RETRY_MS
+										: Number.MAX_SAFE_INTEGER,
+									updatedAtMs: Date.now(),
+									revision: build.revision + 1,
+								});
+								return undefined;
+							}),
+						),
+					));
+			if (snapshotId === undefined) return;
+			// Persist the recoverable snapshot before deleting its source sandbox.
+			if (build.snapshotId === undefined) {
+				build = {
+					...build,
+					snapshotId,
+					revision: build.revision + 1,
+					updatedAtMs: nowMs,
+				};
+				yield* store.saveBuild(build);
+			}
+			if (
+				(yield* provider.inspect(providerSandboxId).pipe(Effect.orDie)) !== null
+			)
+				yield* provider.kill(providerSandboxId).pipe(Effect.orDie);
+			yield* saveAccountProjectState(
+				build.accountId,
+				"ready",
+				undefined,
+				nowMs,
+			);
 			const promoted = {
-				...sanitizing,
+				...build,
+				lastErrorCode: undefined,
 				snapshotId,
 				providerSandboxId: undefined,
 				state: "ready",
-				logText,
 				nextActionAtMs: Number.MAX_SAFE_INTEGER,
-				revision: sanitizing.revision + 1,
+				revision: build.revision + 1,
 				updatedAtMs: nowMs,
 			} as const;
 			yield* store.saveBuild(promoted);
-			for (const accountProject of yield* store.listProjects(build.accountId))
-				yield* store.saveProject({
-					...accountProject,
-					state: "ready",
-					lastErrorCode: undefined,
-					updatedAtMs: nowMs,
-				});
 			const superseded = (yield* store.listAccountBuilds(
 				build.accountId,
 				build.provider,
@@ -1113,13 +1176,14 @@ const recordLifecycle = (
 	Effect.gen(function* () {
 		const store = yield* CloudWorkspaceStore;
 		yield* store.recordUsage({
-			eventId: `${workspace.workspaceId}:${kind}:${workspace.revision}`,
+			// Retain the old receipt key across the classification migration.
+			eventId: `${workspace.workspaceId}:${kind === "lifecycle-elapsed-seconds" ? "runtime-seconds" : kind}:${workspace.revision}`,
 			workspaceId: workspace.workspaceId,
 			accountId: workspace.accountId,
 			provider: workspace.provider,
 			kind,
 			quantity:
-				kind === "runtime-seconds"
+				kind === "lifecycle-elapsed-seconds"
 					? Math.max(
 							0,
 							Math.floor((nowMs - (workspace.runningSinceMs ?? nowMs)) / 1_000),
@@ -1139,7 +1203,9 @@ const pauseWorkspace = (
 	Effect.gen(function* () {
 		if (workspace.providerSandboxId !== undefined)
 			yield* provider.pause(workspace.providerSandboxId);
-		yield* recordLifecycle(workspace, "runtime-seconds", nowMs);
+		// Lifecycle wall time can include provider auto-pause. It is not compute
+		// usage; provider settlement and observed runtime use their own ledger.
+		yield* recordLifecycle(workspace, "lifecycle-elapsed-seconds", nowMs);
 		yield* recordLifecycle(workspace, archived ? "archive" : "pause", nowMs);
 		yield* saveWorkspace({
 			...workspace,
@@ -1636,7 +1702,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 				return;
 			}
 			if (workspace.runningSinceMs !== undefined)
-				yield* recordLifecycle(workspace, "runtime-seconds", nowMs);
+				yield* recordLifecycle(workspace, "lifecycle-elapsed-seconds", nowMs);
 			yield* deleteCloudTranscriptObjects(workspace.workspaceId);
 			yield* store.deleteTranscriptCheckpoints(workspace.workspaceId);
 			yield* store.deleteLaunchIntent(workspace.workspaceId);
@@ -2000,7 +2066,7 @@ const reconcileWorkspaceRecord = Effect.fn("reconcileCloudWorkspace")(
 					"-lc",
 					`set -e
 ${WORKSPACE_RUNTIME_UPDATE_SCRIPT}
-ensure_workspace_runtime
+ensure_workspace_runtime 1
 exec /bin/bash ${WORKSPACE_BOOTSTRAP_FILE}`,
 				],
 				tag: WORKSPACE_RUNTIME_PROCESS.tag,
