@@ -1,5 +1,8 @@
+import { CloudWorkspaceOpError } from "@zuse/contracts";
 import { Effect } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
+import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 
 vi.mock("../../src/lib/hosted-connect.ts", () => ({
 	isHostedProduct: () => false,
@@ -238,7 +241,7 @@ describe("persistent display cache", () => {
 		expect(await runCachedControlPlane(key, fetch, { decode })).toEqual({
 			connected: true,
 		});
-		expect(fetch).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
 		finish({ connected: false });
 		await vi.waitFor(() =>
 			expect(peekControlPlaneCache(key, decode)).toEqual({ connected: false }),
@@ -281,6 +284,21 @@ describe("persistent display cache", () => {
 		expect(await save()).toEqual({ connected: true });
 	});
 
+	it("discards memory and persisted display data when access is revoked", async () => {
+		await save();
+		await expect(
+			runCachedControlPlane(
+				key,
+				() => Effect.fail(new CloudWorkspaceOpError({ code: "not-allowed" })),
+				{ decode, refresh: true },
+			),
+		).rejects.toMatchObject({ code: "not-allowed" });
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+		clearControlPlaneSessionCache();
+		expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+		expect(stored.size).toBe(0);
+	});
+
 	it("throttles revalidation for five minutes without expiring the display snapshot", async () => {
 		vi.useFakeTimers();
 		await save();
@@ -305,5 +323,33 @@ describe("persistent display cache", () => {
 		});
 		expect(await save()).toEqual({ connected: true });
 		expect(peekControlPlaneCache(key, decode)).toEqual({ connected: true });
+	});
+
+	it("keeps persisted organization snapshots separate from Personal and other organizations", async () => {
+		observeRendererAccount("account-a");
+		try {
+			await save();
+			selectRendererWorkspace({
+				kind: "organization",
+				organizationId: "org-a",
+			});
+			expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+			await runCachedControlPlane(
+				key,
+				() => Effect.succeed({ connected: false }),
+				{ decode },
+			);
+			clearControlPlaneSessionCache();
+			expect(peekControlPlaneCache(key, decode)).toEqual({ connected: false });
+			selectRendererWorkspace({
+				kind: "organization",
+				organizationId: "org-b",
+			});
+			expect(peekControlPlaneCache(key, decode)).toBeUndefined();
+			selectRendererWorkspace({ kind: "personal" });
+			expect(peekControlPlaneCache(key, decode)).toEqual({ connected: true });
+		} finally {
+			observeRendererAccount(null);
+		}
 	});
 });

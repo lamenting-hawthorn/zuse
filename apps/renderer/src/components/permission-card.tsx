@@ -21,6 +21,7 @@ import {
 	denyEnvironmentPermissionAndInterrupt,
 } from "../lib/environment-permissions-client-bus.ts";
 import { formatError } from "../lib/format-error.ts";
+import { isCloudWorkspaceEnvironment } from "../lib/rpc-client.ts";
 import { Button } from "./ui/button.tsx";
 
 const kindHeadline = (kind: PermissionKind): string => {
@@ -98,6 +99,7 @@ export function PermissionCard({
 			queueSize={queueSize}
 			expired={head.recoveryState === "expired"}
 			persistentDisabled={head.forcePrompt}
+			allowFolderRule={!isCloudWorkspaceEnvironment(environmentId)}
 			onDecision={async (_requestId, decision) => {
 				if (decision._tag === "Deny" && head.recoveryState !== "expired")
 					await denyEnvironmentPermissionAndInterrupt(head, environmentId);
@@ -114,6 +116,7 @@ export function PermissionPrompt({
 	queueSize,
 	expired = false,
 	persistentDisabled = false,
+	allowFolderRule = true,
 	onDecision,
 	headline,
 	context,
@@ -126,6 +129,7 @@ export function PermissionPrompt({
 	queueSize: number;
 	expired?: boolean;
 	persistentDisabled?: boolean;
+	allowFolderRule?: boolean;
 	onDecision: (
 		requestId: string,
 		decision: PermissionDecision,
@@ -278,18 +282,20 @@ export function PermissionPrompt({
 						>
 							{uiMessage("chat:permission_card_allow_for_session")}
 						</Button>
-						<Button
-							size="xs"
-							variant="ghost"
-							disabled={persistentDisabled || pending}
-							onClick={() => void decide(requestId, ALWAYS_ALLOW_FOLDER)}
-							className={cn(
-								"h-7",
-								persistentDisabled && "pointer-events-none opacity-40",
-							)}
-						>
-							{uiMessage("chat:permission_card_always_allow")}
-						</Button>
+						{allowFolderRule && (
+							<Button
+								size="xs"
+								variant="ghost"
+								disabled={persistentDisabled || pending}
+								onClick={() => void decide(requestId, ALWAYS_ALLOW_FOLDER)}
+								className={cn(
+									"h-7",
+									persistentDisabled && "pointer-events-none opacity-40",
+								)}
+							>
+								{uiMessage("chat:permission_card_always_allow")}
+							</Button>
+						)}
 						<Button
 							size="xs"
 							disabled={pending}

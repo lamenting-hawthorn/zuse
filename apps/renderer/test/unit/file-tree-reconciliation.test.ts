@@ -84,10 +84,18 @@ describe("file tree reconciliation", () => {
 		expect(result.operations).toEqual([]);
 	});
 
-	it("removes a deleted directory and its known descendants locally", async () => {
-		const listDirectory = vi.fn(async () => [file("README.md")]);
+	it.each([
+		{ changedPaths: ["src"] },
+		{ changedPaths: ["src/app.ts", "src"] },
+	])("removes deleted directories without listing them: $changedPaths", async ({
+		changedPaths,
+	}) => {
+		const listDirectory = vi.fn(async (path: string) => {
+			if (path !== "") throw new Error("directory no longer exists");
+			return [file("README.md")];
+		});
 		const result = await reconcileFileTreePaths({
-			changedPaths: ["src"],
+			changedPaths,
 			knownPaths: new Set([
 				"src/",
 				"src/app.ts",
@@ -105,6 +113,7 @@ describe("file tree reconciliation", () => {
 			{ type: "remove", path: "src/" },
 		]);
 		expect([...result.paths]).toEqual(["README.md"]);
+		expect(listDirectory.mock.calls).toEqual([[""]]);
 	});
 
 	it("walks a newly added directory without rescanning unrelated paths", async () => {

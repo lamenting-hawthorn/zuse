@@ -1,9 +1,14 @@
-import { hostedAccountId, isHostedProduct } from "../lib/hosted-connect.ts";
+import { hostedAccountId } from "../lib/hosted-connect.ts";
 import "@zuse/i18n/english/connections";
 import { type AuthState, CommandId, EnvironmentId } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 import { toastManager } from "../components/ui/toast.tsx";
 import { environmentAuthResourceKey } from "../lib/auth-client-bus.ts";
+import { isHostedProduct } from "../lib/platform-capabilities.ts";
+import {
+	observeRendererAccount,
+	rendererAccountSnapshot,
+} from "../lib/renderer-account.ts";
 import { LOCAL_ENVIRONMENT_KEY } from "../lib/rpc-client.ts";
 import { getRendererClientBus } from "../lib/session-timeline-client-bus.ts";
 import {
@@ -60,7 +65,7 @@ const writeDisplayName = (value: string): void => {
 
 const SIGNED_OUT = { _tag: "SignedOut" } as const;
 
-const signInFailureMessage = (err: unknown): string =>
+const authFailureMessage = (err: unknown): string =>
 	typeof err === "object" &&
 	err !== null &&
 	"_tag" in err &&
@@ -105,6 +110,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 			),
 		});
 		try {
+			if (isHostedProduct()) {
+				const { beginHostedSignIn } = await import("../lib/hosted-connect.ts");
+				await beginHostedSignIn();
+				set({ signingIn: false });
+				return;
+			}
 			const { environmentId, key } = activeAuthResource();
 			const bus = getRendererClientBus();
 			const receipt = await bus.dispatch<AuthState>({
@@ -117,6 +128,11 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 				createdAt: Date.now(),
 			});
 			bus.overlay(key, { update: () => ({ state: receipt.result }) });
+			observeRendererAccount(
+				receipt.result._tag === "SignedIn"
+					? receipt.result.session.user.id
+					: null,
+			);
 			if (receipt.result._tag === "SignedIn") {
 				// Auth faults park cloud runtimes and their durable command outboxes.
 				// A successful sign-in is the shared recovery edge regardless of which
@@ -125,7 +141,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 			}
 			set({ signingIn: false, error: null });
 		} catch (err) {
-			const message = signInFailureMessage(err);
+			const message = authFailureMessage(err);
 			set({ signingIn: false, error: message });
 			toastManager.add({
 				type: "error",
@@ -135,10 +151,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 		}
 	},
 	signOut: async () => {
+		if (isHostedProduct()) {
+			const { signOutHostedProduct } = await import("../lib/hosted-connect.ts");
+			return signOutHostedProduct();
+		}
 		const { environmentId, key } = activeAuthResource();
 		const bus = getRendererClientBus();
-		const previous = bus.snapshot(key)?.data ?? undefined;
 		bus.overlay(key, { update: () => ({ state: SIGNED_OUT }) });
+		observeRendererAccount(null);
+		const transition = rendererAccountSnapshot();
 		try {
 			await bus.dispatch({
 				kind: "auth.signOut",
@@ -149,10 +170,12 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 				retry: "never",
 				createdAt: Date.now(),
 			});
-		} catch {
-			if (previous !== undefined) {
-				bus.overlay(key, { update: () => previous });
-			}
+		} catch (cause) {
+			if (rendererAccountSnapshot() !== transition) return;
+			// A lost response does not prove logout failed on the server. Reopen
+			// the canonical auth stream instead of restoring a stale account.
+			set({ error: authFailureMessage(cause) });
+			bus.restart(key);
 		}
 	},
 	setDisplayName: (value) => {

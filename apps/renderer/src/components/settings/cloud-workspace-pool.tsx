@@ -1,7 +1,9 @@
 import { formatNumber as formatUiNumber } from "@zuse/i18n";
+import { githubInstallationSettingsUrl } from "@zuse/utils/github-installation";
 import {
 	cloudImageGroupStatus,
 	rebuildCloudImages,
+	reconcileCloudImages,
 } from "../../lib/cloud-image-group.ts";
 import {
 	refreshCloudImages,
@@ -26,10 +28,17 @@ import {
 	type CloudWorkspace,
 	CloudWorkspaceOpError,
 	type GithubRepoSummary,
+	type WorkspaceScope,
 } from "@zuse/contracts";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Cloud } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { useAuth } from "../../hooks/use-auth.ts";
 import {
 	cloudProviderLabel,
@@ -49,10 +58,15 @@ import {
 	loadCloudWorkspaces,
 } from "../../lib/cloud-workspace-session-cache.ts";
 import {
-	runControlPlane,
+	runCloudControl,
 	subscribeControlPlaneSessionCache,
 } from "../../lib/control-plane-client.ts";
+import { useOrganizationWorkspaces } from "../../lib/organization-workspaces.ts";
 import { openExternal } from "../../lib/platform-capabilities.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "../../lib/renderer-workspace.ts";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Input } from "../ui/input.tsx";
@@ -88,17 +102,67 @@ const formatUsdMicros = (micros: number): string =>
 		maximumFractionDigits: 2,
 	});
 
-export function CloudWorkspacePool({
-	onboarding,
-}: {
-	readonly onboarding?: {
+type CloudWorkspacePoolProps = {
+	section?: "all" | "repositories" | "image" | "agents" | "billing";
+	onboarding?: {
 		readonly step: CloudSetupStep;
 		readonly onProgress: (
 			progress: CloudSetupProgress,
 			loaded: boolean,
 		) => void;
 	};
-} = {}) {
+};
+
+export function CloudWorkspacePool({
+	section = "all",
+	onboarding,
+}: CloudWorkspacePoolProps = {}) {
+	const { message } = useUiMessages(["settings"]);
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+		rendererWorkspaceSnapshot,
+	);
+	const organization = useOrganizationWorkspaces((state) =>
+		state.organizations.find(
+			(entry) =>
+				workspace.scope.kind === "organization" &&
+				entry.id === workspace.scope.organizationId,
+		),
+	);
+	const name =
+		workspace.scope.kind === "personal"
+			? message("settings:workspace_personal")
+			: (organization?.name ?? workspace.scope.organizationId);
+	const canManageBilling =
+		workspace.scope.kind === "personal" ||
+		organization?.role === "admin" ||
+		organization?.role === "billing";
+	return (
+		<ScopedCloudWorkspacePool
+			key={`${workspace.key}:${workspace.epoch}`}
+			section={organization?.role === "billing" ? "billing" : section}
+			workspaceName={name}
+			workspaceScope={workspace.scope}
+			canManageBilling={canManageBilling}
+			onboarding={onboarding}
+		/>
+	);
+}
+
+function ScopedCloudWorkspacePool({
+	onboarding,
+	section,
+	workspaceName,
+	workspaceScope,
+	canManageBilling,
+}: {
+	onboarding?: CloudWorkspacePoolProps["onboarding"];
+	section: NonNullable<CloudWorkspacePoolProps["section"]>;
+	workspaceName: string;
+	workspaceScope: WorkspaceScope;
+	canManageBilling: boolean;
+}) {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
 	const { isLoading: authLoading, isSignedIn, signIn, signingIn } = useAuth();
@@ -113,7 +177,13 @@ export function CloudWorkspacePool({
 	const [providerImages, setProviderImages] = useState<
 		readonly CloudAccountImage[]
 	>([]);
-	useEffect(() => subscribeCloudImages(setProviderImages), []);
+	useEffect(
+		() =>
+			subscribeCloudImages((images) =>
+				setProviderImages((current) => reconcileCloudImages(current, images)),
+			),
+		[],
+	);
 	const [chosenProvider, setChosenProvider] = useState<string | null>(null);
 	const selectedProvider = selectedCloudProvider(providers, chosenProvider);
 	const accountImage = cloudImageGroupStatus(
@@ -189,22 +259,25 @@ export function CloudWorkspacePool({
 		async (refresh = false) => {
 			if (!isSignedIn) return;
 			const requestSequence = ++loadSequence.current;
+			const workspaceData =
+				section === "billing"
+					? undefined
+					: Promise.allSettled([
+							loadCloudProviders(refresh),
+							loadCloudProjects(refresh),
+							loadCloudWorkspaces(refresh),
+							loadCloudProviders(refresh).then(({ providers }) =>
+								loadCloudProviderImages(providers, refresh),
+							),
+						]);
 			let loadedSubscribed = false;
-			const workspaceData = Promise.allSettled([
-				loadCloudProviders(refresh),
-				loadCloudProjects(refresh),
-				loadCloudWorkspaces(refresh),
-				loadCloudProviders(refresh).then(({ providers }) =>
-					loadCloudProviderImages(providers, refresh),
-				),
-			]);
 			try {
 				try {
 					const entitlements = await loadCloudEntitlements(refresh);
 					if (requestSequence !== loadSequence.current) return;
 					loadedSubscribed = hasCloudEntitlement(entitlements);
 					setEntitlementSubscribed(loadedSubscribed);
-					if (loadedSubscribed) {
+					if (loadedSubscribed && canManageBilling) {
 						const [summary, usage] = await Promise.all([
 							loadCloudBillingSummary(refresh),
 							loadCloudBillingUsage(refresh),
@@ -223,6 +296,10 @@ export function CloudWorkspacePool({
 					}
 				}
 
+				if (workspaceData === undefined) {
+					setServiceAvailable(true);
+					return;
+				}
 				const [providerResult, projectResult, workspaceResult, imageResult] =
 					await workspaceData;
 				if (requestSequence !== loadSequence.current) return;
@@ -244,7 +321,9 @@ export function CloudWorkspacePool({
 				if (workspaceResult.status === "fulfilled")
 					setWorkspaces(workspaceResult.value.workspaces);
 				if (imageResult.status === "fulfilled")
-					setProviderImages(imageResult.value.images);
+					setProviderImages((current) =>
+						reconcileCloudImages(current, imageResult.value.images),
+					);
 				setFailedImageProviders(
 					imageResult.status === "fulfilled" &&
 						providerResult.status === "fulfilled"
@@ -288,18 +367,19 @@ export function CloudWorkspacePool({
 				if (requestSequence === loadSequence.current) setSetupLoading(false);
 			}
 		},
-		[isSignedIn],
+		[isSignedIn, section, canManageBilling],
 	);
 
 	useEffect(() => {
 		if (authLoading || !isSignedIn) return;
 		void load();
-		void loadGithubRepos();
+		if (section !== "billing") void loadGithubRepos();
 		return subscribeControlPlaneSessionCache((key) => {
-			if (key === "cloud-workspace:github") void loadGithubRepos();
+			if (key === "cloud-workspace:github" && section !== "billing")
+				void loadGithubRepos();
 			else if (key.startsWith("cloud-workspace:")) void load();
 		});
-	}, [authLoading, isSignedIn, load, loadGithubRepos]);
+	}, [authLoading, isSignedIn, load, loadGithubRepos, section]);
 
 	const githubReady = githubAuthenticated && projects.length > 0;
 	const authReady = providerImages.some((image) =>
@@ -325,14 +405,32 @@ export function CloudWorkspacePool({
 		githubStatus !== null,
 	]);
 	useEffect(() => {
-		if (onboarding === undefined) return;
+		if (authLoading || !isSignedIn) return;
 		const refresh = () => {
 			void load(true);
-			void loadGithubRepos(true);
+			if (section !== "billing") void loadGithubRepos(true);
 		};
 		window.addEventListener("focus", refresh);
-		return () => window.removeEventListener("focus", refresh);
-	}, [onboarding !== undefined, load, loadGithubRepos]);
+		window.addEventListener("online", refresh);
+		return () => {
+			window.removeEventListener("focus", refresh);
+			window.removeEventListener("online", refresh);
+		};
+	}, [authLoading, isSignedIn, section, load, loadGithubRepos]);
+	useEffect(() => {
+		if (
+			authLoading ||
+			!isSignedIn ||
+			(section !== "repositories" && section !== "all")
+		)
+			return;
+		// Webhooks update the existing API state. Reuse its scoped cache instead
+		// of introducing a second realtime transport for settings.
+		const timer = window.setInterval(() => {
+			if (document.visibilityState === "visible") void loadGithubRepos();
+		}, 30_000);
+		return () => window.clearInterval(timer);
+	}, [authLoading, isSignedIn, section, loadGithubRepos]);
 
 	const run = async (
 		name: string,
@@ -345,7 +443,8 @@ export function CloudWorkspacePool({
 		try {
 			await operation();
 			await load(true);
-			void refreshCloudImages().catch(() => undefined);
+			if (section !== "billing")
+				void refreshCloudImages().catch(() => undefined);
 		} catch (cause) {
 			const message =
 				cause instanceof CloudWorkspaceOpError &&
@@ -364,20 +463,22 @@ export function CloudWorkspacePool({
 	};
 
 	const checkout = () =>
-		run("checkout", async () => {
-			const result = await runControlPlane((client) =>
-				client["machines.checkout"]({ offerId: CLOUD_WORKSPACE_OFFER_ID }),
-			);
-			window.dispatchEvent(new Event(CLOUD_CHECKOUT_STARTED));
-			await openExternal(result.checkoutUrl);
-		});
+		run("checkout", () =>
+			openExternal(async () => {
+				const result = await runCloudControl((client) =>
+					client["machines.checkout"]({ offerId: CLOUD_WORKSPACE_OFFER_ID }),
+				);
+				window.dispatchEvent(new Event(CLOUD_CHECKOUT_STARTED));
+				return result.checkoutUrl;
+			}),
+		);
 
 	const saveOverageCap = () =>
 		run("billing-cap", async () => {
 			const micros = Math.round(Number(capDollars) * 1_000_000);
 			if (!Number.isSafeInteger(micros) || micros < 0)
 				throw new Error("invalid cap");
-			const summary = await runControlPlane((client) =>
+			const summary = await runCloudControl((client) =>
 				client["cloud.billing.setCap"]({
 					overageCapMicros: micros,
 					idempotencyKey: `settings-cap:${crypto.randomUUID()}`,
@@ -387,35 +488,39 @@ export function CloudWorkspacePool({
 		});
 
 	const openBillingPortal = () =>
-		run("billing-portal", async () => {
-			const portal = await runControlPlane((client) =>
-				client["machines.billingPortal"](),
-			);
-			await openExternal(portal.portalUrl);
-		});
+		run("billing-portal", () =>
+			openExternal(async () => {
+				const portal = await runCloudControl((client) =>
+					client["machines.billingPortal"](),
+				);
+				return portal.portalUrl;
+			}),
+		);
 
 	const installGithub = () =>
-		run("github-install", async () => {
-			const result = await runControlPlane((client) =>
-				client["cloud.github.install"](),
-			);
-			await openExternal(result.url);
-		});
+		run("github-install", () =>
+			openExternal(async () => {
+				const result = await runCloudControl((client) =>
+					client["cloud.github.install"](),
+				);
+				return result.url;
+			}),
+		);
 
 	const manageGithub = (installationId: number) => {
 		const installation = githubStatus?.installations.find(
 			(item) => item.installationId === installationId,
 		);
-		const settingsUrl =
-			installation?.accountType === "Organization"
-				? `https://github.com/organizations/${encodeURIComponent(installation.accountLogin)}/settings/installations/${installationId}`
-				: `https://github.com/settings/installations/${installationId}`;
+		const settingsUrl = githubInstallationSettingsUrl(
+			installationId,
+			installation,
+		);
 		return openExternal(settingsUrl);
 	};
 
 	const disconnectGithub = (installationId: number) =>
 		run(`github-disconnect:${installationId}`, async () => {
-			await runControlPlane((client) =>
+			await runCloudControl((client) =>
 				client["cloud.github.disconnect"]({ installationId }),
 			);
 			await loadGithubRepos(true);
@@ -431,7 +536,7 @@ export function CloudWorkspacePool({
 				);
 				const results = await Promise.allSettled(
 					chosen.map((repo) =>
-						runControlPlane((client) =>
+						runCloudControl((client) =>
 							client["cloud.projects.connect"]({
 								repositoryUrl: repo.httpsUrl,
 								defaultBranch: repo.defaultBranch,
@@ -481,7 +586,7 @@ export function CloudWorkspacePool({
 				const result = await rebuildCloudImages(
 					selectedProvider === null ? [] : [selectedProvider],
 					(providerId) =>
-						runControlPlane((client) =>
+						runCloudControl((client) =>
 							client["cloud.image.build"]({
 								mode,
 								providerId,
@@ -489,15 +594,17 @@ export function CloudWorkspacePool({
 							}),
 						),
 				);
-				setProviderImages((current) => [
-					...current.filter(
-						(image) =>
-							!result.images.some(
-								(next) => next.providerId === image.providerId,
-							),
-					),
-					...result.images,
-				]);
+				setProviderImages((current) =>
+					reconcileCloudImages(current, [
+						...current.filter(
+							(image) =>
+								!result.images.some(
+									(next) => next.providerId === image.providerId,
+								),
+						),
+						...result.images,
+					]),
+				);
 				setBuildError(
 					result.failedProviderIds.length === 0
 						? null
@@ -516,7 +623,7 @@ export function CloudWorkspacePool({
 		run(
 			`remove:${project.projectId}`,
 			async () => {
-				await runControlPlane((client) =>
+				await runCloudControl((client) =>
 					client["cloud.projects.remove"]({ projectId: project.projectId }),
 				);
 				setProjects((current) =>
@@ -589,6 +696,16 @@ export function CloudWorkspacePool({
 					{uiMessage("common:loading")}
 				</p>
 			) : null}
+			<p className="text-xs font-medium text-foreground">
+				{uiMessage("settings:workspace_billing_identity", {
+					workspace: workspaceName,
+				})}
+			</p>
+			{!canManageBilling && (
+				<p className="text-xs text-muted-foreground">
+					{uiMessage("settings:workspace_billing_managers_only")}
+				</p>
+			)}
 			{error === null ? null : (
 				<div
 					role="alert"
@@ -610,7 +727,7 @@ export function CloudWorkspacePool({
 									? uiMessage("settings:cloud_workspace_pool_active")
 									: uiMessage("settings:cloud_workspace_pool_update_required")}
 							</Badge>
-						) : (
+						) : canManageBilling ? (
 							<Button
 								size="xs"
 								className={COMPACT_CLOUD_ACTION}
@@ -619,7 +736,7 @@ export function CloudWorkspacePool({
 							>
 								{uiMessage("settings:cloud_workspace_pool_subscribe_40_month")}
 							</Button>
-						)
+						) : null
 					}
 				>
 					<CloudSettingsRow
@@ -642,7 +759,10 @@ export function CloudWorkspacePool({
 				</CloudSettingsGroup>
 			) : null}
 
-			{onboarding === undefined && subscribed && serviceAvailable ? (
+			{onboarding === undefined &&
+			subscribed &&
+			serviceAvailable &&
+			section === "all" ? (
 				<SegmentedTabs
 					value={view}
 					onValueChange={setView}
@@ -650,15 +770,21 @@ export function CloudWorkspacePool({
 					className="max-w-sm"
 					options={[
 						{ value: "setup", label: "Setup" },
-						{ value: "usage", label: "Usage" },
+						...(canManageBilling
+							? [{ value: "usage" as const, label: "Usage" }]
+							: []),
 						{ value: "activity", label: "Activity" },
 					]}
 				/>
 			) : null}
 
-			{subscribed && serviceAvailable && view === "setup" ? (
+			{subscribed &&
+			serviceAvailable &&
+			section !== "billing" &&
+			(section !== "all" || view === "setup") ? (
 				<>
-					{onboarding === undefined || onboarding.step === "github" ? (
+					{(section === "all" || section === "repositories") &&
+					(onboarding === undefined || onboarding.step === "github") ? (
 						<>
 							<CloudWorkspaceGithub
 								status={githubStatus}
@@ -684,13 +810,15 @@ export function CloudWorkspacePool({
 							/>
 						</>
 					) : null}
-					{onboarding === undefined || onboarding.step === "auth" ? (
+					{(section === "all" || section === "agents") &&
+					(onboarding === undefined || onboarding.step === "auth") ? (
 						<>
 							<CloudWorkspaceAuth />
-							<CloudApiKeys />
+							<CloudApiKeys scope={workspaceScope} />
 						</>
 					) : null}
-					{onboarding === undefined || onboarding.step === "image" ? (
+					{(section === "all" || section === "image") &&
+					(onboarding === undefined || onboarding.step === "image") ? (
 						<CloudSettingsGroup
 							title={uiMessage("settings:cloud_workspace_pool_cloud_image")}
 							description={uiMessage(
@@ -764,7 +892,33 @@ export function CloudWorkspacePool({
 				</>
 			) : null}
 
-			{subscribed && serviceAvailable && view === "usage" ? (
+			{canManageBilling &&
+			(section === "billing" || (section === "all" && view === "usage")) ? (
+				<CloudSettingsGroup title={uiMessage("settings:workspace_billing")}>
+					<CloudSettingsRow
+						title={uiMessage("settings:cloud_workspace_pool_invoices")}
+						description={uiMessage(
+							"settings:cloud_machines_pane_manage_payment_details_and_invoices_in_the_billing_portal",
+						)}
+						action={
+							<Button
+								size="xs"
+								variant="ghost"
+								className={COMPACT_CLOUD_ACTION}
+								loading={busy === "billing-portal"}
+								onClick={() => void openBillingPortal()}
+							>
+								{uiMessage("settings:cloud_workspace_pool_invoices")}
+							</Button>
+						}
+					/>
+				</CloudSettingsGroup>
+			) : null}
+
+			{subscribed &&
+			serviceAvailable &&
+			canManageBilling &&
+			(section === "billing" || (section === "all" && view === "usage")) ? (
 				billing === null ? (
 					<CloudSettingsGroup
 						title={uiMessage("settings:cloud_workspace_pool_usage_and_billing")}
@@ -886,23 +1040,15 @@ export function CloudWorkspacePool({
 											)
 											.join(" · ")
 							}
-							action={
-								<Button
-									size="xs"
-									variant="ghost"
-									className={COMPACT_CLOUD_ACTION}
-									loading={busy === "billing-portal"}
-									onClick={() => void openBillingPortal()}
-								>
-									{uiMessage("settings:cloud_workspace_pool_invoices")}
-								</Button>
-							}
 						/>
 					</CloudSettingsGroup>
 				)
 			) : null}
 
-			{subscribed && serviceAvailable && view === "activity" ? (
+			{subscribed &&
+			serviceAvailable &&
+			section === "all" &&
+			view === "activity" ? (
 				<CloudSettingsGroup
 					title={uiMessage("settings:cloud_workspace_pool_workspace_activity")}
 					description={uiMessage(

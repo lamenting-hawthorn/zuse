@@ -50,7 +50,11 @@ export const loadCloudProviders = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.providers,
 		(client) => client["cloud.providers"](),
-		{ refresh, decode: Schema.decodeUnknownSync(CloudProviderList) },
+		{
+			refresh,
+			maxAgeMs: 30_000,
+			decode: Schema.decodeUnknownSync(CloudProviderList),
+		},
 	);
 
 export const invalidateCloudProjects = () =>
@@ -67,7 +71,7 @@ export const loadCloudEntitlements = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.entitlements,
 		(client) => client["machines.entitlements"](),
-		{ refresh },
+		{ refresh, maxAgeMs: 30_000 },
 	);
 
 export const loadCloudImage = (providerId?: string, refresh = false) =>
@@ -81,7 +85,11 @@ export const loadCloudGithub = (refresh = false) =>
 	runCachedControlPlane(
 		cloudWorkspaceCacheKeys.github,
 		(client) => client["cloud.github.status"](),
-		{ refresh, decode: Schema.decodeUnknownSync(CloudGithubStatus) },
+		{
+			refresh,
+			maxAgeMs: 30_000,
+			decode: Schema.decodeUnknownSync(CloudGithubStatus),
+		},
 	);
 
 export const loadCloudWorkspaces = (refresh = false) =>
@@ -143,10 +151,9 @@ export const loadCloudProviderImages = async (
 export const loadCloudWorkspacePlacement = async (
 	refresh = false,
 ): Promise<CloudWorkspacePlacementSnapshot> => {
-	const [providerResult, projectResult, entitlementResult] = await Promise.all([
+	const [providerResult, projectResult] = await Promise.all([
 		loadCloudProviders(refresh),
 		loadCloudProjects(refresh),
-		loadCloudEntitlements(refresh),
 	]);
 	const { images } = await loadCloudProviderImages(
 		providerResult.providers,
@@ -156,7 +163,9 @@ export const loadCloudWorkspacePlacement = async (
 		providers: providerResult.providers,
 		projects: projectResult.projects,
 		images,
-		subscribed: hasCloudEntitlement(entitlementResult),
+		subscribed:
+			providerResult.entitled ??
+			hasCloudEntitlement(await loadCloudEntitlements(refresh)),
 	};
 };
 
