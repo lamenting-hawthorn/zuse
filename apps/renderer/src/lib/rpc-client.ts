@@ -1,5 +1,5 @@
+import type { CloudControlClient } from "@zuse/client-runtime/cloud-control-client";
 import {
-	isRpcCredentialExpired,
 	makeRpcClientSession,
 	withWireProtocolVersion,
 } from "@zuse/client-runtime/connection";
@@ -15,9 +15,8 @@ import {
 	type CloudWorkspaceConnection,
 	MemoizeRpcs,
 	WIRE_PROTOCOL_VERSION,
-	type WorkspaceScope,
 } from "@zuse/contracts";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, type Stream } from "effect";
 import {
 	type RpcClient,
 	type RpcGroup,
@@ -29,24 +28,13 @@ import { requestBrowserWebSocketUrl } from "./browser-session.ts";
 import { cloudFailurePresentation } from "./cloud-failure-presentation.ts";
 import { recordDiagnosticEvent } from "./diagnostics-recorder.ts";
 import { electronClientProtocolLayer } from "./electron-client-protocol.ts";
+import { isHostedProduct } from "./hosted-connect.ts";
 import { isPlatformOnline, subscribePlatformOnline } from "./network-status.ts";
-import { isHostedProduct } from "./platform-capabilities.ts";
-import {
-	assertRendererAccountCurrent,
-	type RendererAccountSnapshot,
-	rendererAccountSnapshot,
-	subscribeRendererAccount,
-} from "./renderer-account.ts";
 import {
 	LOCAL_RENDERER_STORAGE_SCOPE,
 	setActiveEnvironmentStorageScope,
 } from "./renderer-environment-scope.ts";
-import {
-	rendererWorkspaceSnapshot,
-	workspaceScopeKey,
-} from "./renderer-workspace.ts";
 import { instrumentRendererRpcClient } from "./rpc-stall-instrumentation.ts";
-import { withWorkspaceScope } from "./workspace-rpc-client.ts";
 import { wsClientProtocolLayer } from "./ws-client-protocol.ts";
 
 export type MemoizeClient = RpcClient.RpcClient<
@@ -65,7 +53,6 @@ type RendererConnectionOptions =
 			readonly kind: "websocket";
 			readonly wsUrl: string;
 			readonly protocols?: ReadonlyArray<string>;
-			readonly account?: RendererAccountSnapshot;
 			readonly refreshWsUrl?: () => Promise<string>;
 			readonly refreshConnection?: () => Promise<CloudWorkspaceConnection>;
 	  };
@@ -96,7 +83,6 @@ export const connectionRequiresNetwork = (
 
 const environmentConnections = new Map<string, RendererConnectionOptions>();
 type CloudWorkspaceRegistration = {
-	readonly workspaceScope: WorkspaceScope;
 	connection: CloudWorkspaceConnection | null;
 	refresh: () => Promise<CloudWorkspaceConnection>;
 	readonly refreshStable: () => Promise<CloudWorkspaceConnection>;
@@ -251,7 +237,6 @@ const connectionOptions = (): RendererConnectionOptions => {
 		: {
 				key: rendererConnectionKey(),
 				kind: "websocket",
-				...(isHostedProduct() ? { account: rendererAccountSnapshot() } : {}),
 				...browserWebSocketOptions(),
 			};
 };
@@ -283,27 +268,17 @@ const prepareRendererConnectionOptions = async (
 	options: RendererConnectionOptions,
 ): Promise<RendererConnectionOptions> => {
 	if (options.kind !== "websocket") return options;
-	assertConnectionAccount(options);
 	if (options.refreshConnection !== undefined) {
 		const connection = await options.refreshConnection();
-		assertConnectionAccount(options);
 		return {
 			...options,
 			wsUrl: connection.wsUrl,
 			protocols: [connection.protocol, connection.credential],
 		};
 	}
-	const prepared =
-		options.refreshWsUrl === undefined
-			? options
-			: { ...options, wsUrl: await options.refreshWsUrl() };
-	assertConnectionAccount(options);
-	return prepared;
-};
-
-const assertConnectionAccount = (options: RendererConnectionOptions): void => {
-	if (options.kind === "websocket" && options.account !== undefined)
-		assertRendererAccountCurrent(options.account);
+	return options.refreshWsUrl === undefined
+		? options
+		: { ...options, wsUrl: await options.refreshWsUrl() };
 };
 
 export const RENDERER_WEBSOCKET_OPEN_TIMEOUT = "3 seconds" as const;
@@ -342,13 +317,6 @@ const makeRendererRpcSession = async (
 	options: RendererConnectionOptions,
 	onClose: (event: WebSocketCloseInfo) => void,
 ): Promise<RendererRpcSession> => {
-	assertConnectionAccount(options);
-	let closed = false;
-	const notifyClose = (event: WebSocketCloseInfo): void => {
-		if (closed) return;
-		closed = true;
-		onClose(event);
-	};
 	const protocolLayer =
 		options.kind === "electron"
 			? electronClientProtocolLayer(options.bridge).pipe(
@@ -368,40 +336,15 @@ const makeRendererRpcSession = async (
 										new globalThis.WebSocket(url, [
 											...(options.protocols ?? []),
 										]),
-						onClose: notifyClose,
+						onClose,
 					},
 				);
-	assertConnectionAccount(options);
-	const session = instrumentRendererRpcClient(
+	return instrumentRendererRpcClient(
 		await makeRpcClientSession(protocolLayer, MemoizeRpcs, {
 			protocolVersion: WIRE_PROTOCOL_VERSION,
 			perform: (client, hello) => client["connect.handshake"](hello),
 		}),
 	);
-	try {
-		assertConnectionAccount(options);
-	} catch (cause) {
-		await session.dispose();
-		throw cause;
-	}
-	if (options.kind !== "websocket" || options.account === undefined)
-		return session;
-	let disposal: Promise<void> | undefined;
-	const dispose = (): Promise<void> => {
-		unsubscribe();
-		disposal ??= session.dispose();
-		return disposal;
-	};
-	const unsubscribe = subscribeRendererAccount(() => {
-		if (options.account === rendererAccountSnapshot()) return;
-		void dispose().catch(() => undefined);
-		notifyClose({
-			code: 1000,
-			reason: "Connection account changed",
-			wasClean: true,
-		});
-	});
-	return { client: session.client, dispose };
 };
 
 const supervisor = createConnectionSupervisor<
@@ -481,7 +424,6 @@ export function shouldReconnectRendererConnection(
 	if (previous.kind !== next.kind) return true;
 	if (previous.kind !== "websocket" || next.kind !== "websocket") return false;
 	return (
-		previous.account !== next.account ||
 		previous.wsUrl !== next.wsUrl ||
 		previous.protocols?.join("\u0000") !== next.protocols?.join("\u0000") ||
 		previous.refreshConnection !== next.refreshConnection
@@ -512,7 +454,6 @@ const getRendererEntry = (
 };
 
 export function isRpcClientTransportError(cause: unknown): boolean {
-	if (isRpcCredentialExpired(cause)) return true;
 	if (isIgnorableRendererFailure(cause)) return true;
 	if (
 		typeof cause !== "object" ||
@@ -631,52 +572,20 @@ export const getVerifiedRpcClient = async (
  * Account operations use hosted HTTP on web and the owning desktop elsewhere,
  * independently of the runtime selected for a chat.
  */
-export const getControlPlaneRpcClient = async (
-	scope: WorkspaceScope = rendererWorkspaceSnapshot().scope,
-): Promise<MemoizeClient> => {
-	const account = rendererAccountSnapshot();
-	const client = await getRpcClient(localEnvironmentId);
-	if (scope.kind === "organization") {
-		const welcome = await Effect.runPromise(
-			client["connect.handshake"]({ protocolVersion: WIRE_PROTOCOL_VERSION }),
-		);
-		if (welcome.workspaceScopeProtocol !== 1)
-			throw new Error(
-				"Update Zuse on this computer before using organization workspaces.",
-			);
-	}
-	assertRendererAccountCurrent(account);
-	return withWorkspaceScope(client, scope);
+export type ControlPlaneClient = {
+	[K in keyof CloudControlClient]: (
+		...args: Parameters<CloudControlClient[K]>
+	) => ReturnType<CloudControlClient[K]> extends Effect.Effect<infer A, unknown>
+		? Effect.Effect<A, unknown>
+		: ReturnType<CloudControlClient[K]> extends Stream.Stream<infer A, unknown>
+			? Stream.Stream<A, unknown>
+			: never;
 };
-
-/** Background command recovery follows the runtime owner, never the selected UI. */
-export const getCloudWorkspaceScope = (
-	workspaceId: string,
-): WorkspaceScope | undefined =>
-	cloudWorkspaceRegistrations.get(workspaceId)?.workspaceScope;
-
-/** Local/legacy device connections remain Personal until explicitly enrolled. */
-export const environmentBelongsToWorkspace = (
-	environmentId: string,
-	scope: WorkspaceScope = rendererWorkspaceSnapshot().scope,
-): boolean =>
-	(environmentId === LOCAL_ENVIRONMENT_KEY && isHostedProduct()) ||
-	workspaceScopeKey(
-		getCloudWorkspaceScope(environmentId) ?? { kind: "personal" },
-	) === workspaceScopeKey(scope);
-
-const assertCloudConnectionOwner = (
-	workspaceId: string,
-	scope: WorkspaceScope,
-	connection: CloudWorkspaceConnection,
-): void => {
-	if (
-		connection.workspaceId !== workspaceId ||
-		workspaceScopeKey(connection.workspaceScope ?? { kind: "personal" }) !==
-			workspaceScopeKey(scope)
-	)
-		throw new Error("Cloud workspace connection ownership changed.");
-};
+export const getControlPlaneRpcClient =
+	async (): Promise<ControlPlaneClient> =>
+		isHostedProduct()
+			? (await import("./hosted-control-client.ts")).hostedControlClient
+			: getRpcClient(localEnvironmentId);
 
 export const registerWebSocketEnvironment = (
 	environmentId: string,
@@ -693,15 +602,12 @@ export const registerApiEnvironment = (
 	environmentId: string,
 	initialWsUrl: string,
 	refreshWsUrl: () => Promise<string>,
-	account: RendererAccountSnapshot,
 ): void => {
-	assertRendererAccountCurrent(account);
 	let initial: string | null = initialWsUrl;
 	environmentConnections.set(environmentId, {
 		key: `environment:${environmentId}`,
 		kind: "websocket",
 		wsUrl: initialWsUrl,
-		account,
 		refreshWsUrl: async () => {
 			if (initial !== null) {
 				const value = initial;
@@ -718,19 +624,11 @@ export const registerCloudWorkspace = (
 	workspaceId: string,
 	initial: CloudWorkspaceConnection,
 	refreshConnection: () => Promise<CloudWorkspaceConnection>,
-	account: RendererAccountSnapshot,
 ): void => {
-	assertRendererAccountCurrent(account);
 	const existingEntry = rendererEntries.get(workspaceId);
 	let registration = cloudWorkspaceRegistrations.get(workspaceId);
-	const scope = registration?.workspaceScope ??
-		initial.workspaceScope ?? {
-			kind: "personal",
-		};
-	assertCloudConnectionOwner(workspaceId, scope, initial);
 	if (registration === undefined) {
 		const created: CloudWorkspaceRegistration = {
-			workspaceScope: scope,
 			connection: initial,
 			refresh: refreshConnection,
 			refreshStable: async () => {
@@ -740,11 +638,6 @@ export const registerCloudWorkspace = (
 				if (canReuseCloudWorkspaceTicket(current.connection))
 					return current.connection;
 				const refreshed = await current.refresh();
-				assertCloudConnectionOwner(
-					workspaceId,
-					current.workspaceScope,
-					refreshed,
-				);
 				current.connection = refreshed;
 				return refreshed;
 			},
@@ -755,7 +648,6 @@ export const registerCloudWorkspace = (
 			key: `workspace:${workspaceId}`,
 			kind: "websocket",
 			wsUrl: initial.wsUrl,
-			account,
 			protocols: [initial.protocol, initial.credential],
 			refreshConnection: created.refreshStable,
 		});
@@ -807,22 +699,6 @@ export const getActiveEnvironment = (): string => activeEnvironmentId;
  */
 export const getLocalEnvironmentId = (): string => localEnvironmentId;
 
-/** Device profiles retain independent authority; unknown routes are not trusted. */
-export const rendererEnvironmentCommandAuthority = (
-	environmentId: string,
-): "device" | RendererAccountSnapshot | undefined => {
-	const options = environmentConnections.get(environmentId);
-	if (options !== undefined)
-		return options.kind === "websocket" && options.account !== undefined
-			? options.account
-			: "device";
-	return environmentId === LOCAL_ENVIRONMENT_KEY
-		? isHostedProduct()
-			? rendererAccountSnapshot()
-			: "device"
-		: undefined;
-};
-
 /** Whether this environment id belongs to a registered cloud workspace. */
 export const isCloudWorkspaceEnvironment = (environmentId: string): boolean =>
 	cloudWorkspaceRegistrations.has(environmentId);
@@ -844,15 +720,6 @@ export const removeRendererEnvironment = async (
 	}
 	await entry?.remove();
 };
-
-const unsubscribeConnectionAccount = subscribeRendererAccount(() => {
-	for (const [environmentId, options] of environmentConnections) {
-		if (options.kind !== "websocket" || options.account === undefined) continue;
-		if (options.account === rendererAccountSnapshot()) continue;
-		void removeRendererEnvironment(environmentId).catch(() => undefined);
-	}
-});
-if (import.meta.hot) import.meta.hot.dispose(unsubscribeConnectionAccount);
 
 export const reportRendererRpcFailure = (
 	cause: unknown,

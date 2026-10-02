@@ -3,9 +3,6 @@ import {
 	BillingCheckout,
 	type BillingCheckoutRequest,
 	BillingPortal,
-	ChatSharingDefaults,
-	ChatSharingState,
-	type ChatSharingUpdate,
 	CloudAccountImage,
 	type CloudAccountImageBuildRequest,
 	CloudApiKey,
@@ -22,7 +19,6 @@ import {
 	CloudChatChanges,
 	CloudChatList,
 	type CloudCommandEnvelope,
-	CloudGithubInstallResult,
 	CloudGithubStatus,
 	CloudProject,
 	type CloudProjectConnectRequest,
@@ -47,10 +43,13 @@ import {
 	type DeviceBridgeAction,
 	DeviceBridgeResult,
 	EntitlementList,
+	type MachineCreateRequest,
+	type MachineDestroyRequest,
+	MachineList,
+	MachineOfferList,
+	MachineRecord,
 	type SessionId,
 	type SessionStreamCursor,
-	WorkspaceSettings,
-	type WorkspaceSettingsUpdate,
 } from "@zuse/contracts";
 import { Duration, Effect, Schedule, Schema, Stream } from "effect";
 
@@ -70,7 +69,12 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 		request(ApiPaths.cloudProject(input.projectId), CloudProject, "DELETE"),
 	"cloud.github.status": () => request(ApiPaths.cloudGithub, CloudGithubStatus),
 	"cloud.github.install": () =>
-		request(ApiPaths.cloudGithubInstall, CloudGithubInstallResult, "POST", {}),
+		request(
+			ApiPaths.cloudGithubInstall,
+			Schema.Struct({ url: Schema.String }),
+			"POST",
+			{},
+		),
 	"cloud.github.disconnect": (input: { installationId: number }) =>
 		request(
 			ApiPaths.cloudGithubDisconnect(input.installationId),
@@ -124,8 +128,36 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 			"DELETE",
 			{ port: input.port },
 		),
+	"cloud.workspaces.watch": (input: {
+		workspaceId: string;
+		afterRevision?: number;
+	}) =>
+		streamCloudWorkspaceLifecycle(
+			request(ApiPaths.cloudWorkspace(input.workspaceId), CloudWorkspace),
+			input.afterRevision,
+		),
 	"machines.entitlements": () =>
 		request(ApiPaths.billingEntitlements, EntitlementList),
+	"machines.offers": () => request(ApiPaths.machineOffers, MachineOfferList),
+	"machines.list": () => request(ApiPaths.machines, MachineList),
+	"machines.create": (input: MachineCreateRequest) =>
+		request(ApiPaths.machines, MachineRecord, "POST", input),
+	"machines.cancel": (input: { machineId: string }) =>
+		request(ApiPaths.machineCancel(input.machineId), MachineRecord, "POST", {}),
+	"machines.recover": (input: { machineId: string }) =>
+		request(
+			ApiPaths.machineRecover(input.machineId),
+			MachineRecord,
+			"POST",
+			{},
+		),
+	"machines.destroy": (input: MachineDestroyRequest) =>
+		request(
+			ApiPaths.machineDestroy(input.machineId),
+			MachineRecord,
+			"POST",
+			input,
+		),
 	"machines.checkout": (input: BillingCheckoutRequest) =>
 		request(ApiPaths.billingCheckout, BillingCheckout, "POST", input),
 	"machines.billingPortal": () =>
@@ -141,10 +173,6 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 			"POST",
 			{ action: input.action, targetDeviceId: input.targetDeviceId },
 		),
-	"cloud.settings.get": () =>
-		request(ApiPaths.cloudSettings, WorkspaceSettings),
-	"cloud.settings.update": (input: WorkspaceSettingsUpdate) =>
-		request(ApiPaths.cloudSettings, WorkspaceSettings, "PUT", input),
 	"cloud.chats.watch": (input: { cursor?: number }) =>
 		streamCloudCatalogChanges(
 			(cursor) =>
@@ -206,42 +234,13 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 			CloudAuthProviderStatus,
 			"DELETE",
 		),
-	"cloud.workspaces.list": (input: { projectId?: string } = {}) =>
+	"cloud.workspaces.list": (input: { projectId?: string }) =>
 		request(
-			input.projectId === undefined
-				? ApiPaths.cloudWorkspaces
-				: `${ApiPaths.cloudWorkspaces}?projectId=${encodeURIComponent(input.projectId)}`,
+			`${ApiPaths.cloudWorkspaces}${input.projectId === undefined ? "" : `?projectId=${encodeURIComponent(input.projectId)}`}`,
 			CloudWorkspaceList,
 		),
 	"cloud.workspaces.get": (input: { workspaceId: string }) =>
 		request(ApiPaths.cloudWorkspace(input.workspaceId), CloudWorkspace),
-	"cloud.workspaces.watch": (input: {
-		workspaceId: string;
-		afterRevision?: number;
-	}) =>
-		streamCloudWorkspaceLifecycle(
-			request(ApiPaths.cloudWorkspace(input.workspaceId), CloudWorkspace),
-			input.afterRevision,
-		),
-	"cloud.sharing.get": (input: { workspaceId: string }) =>
-		request(
-			ApiPaths.cloudWorkspaceSharing(input.workspaceId),
-			ChatSharingState,
-		),
-	"cloud.sharing.update": ({
-		workspaceId,
-		...input
-	}: ChatSharingUpdate & { workspaceId: string }) =>
-		request(
-			ApiPaths.cloudWorkspaceSharing(workspaceId),
-			ChatSharingState,
-			"PUT",
-			input,
-		),
-	"cloud.sharing.defaults.get": () =>
-		request(ApiPaths.cloudSharingDefaults, ChatSharingDefaults),
-	"cloud.sharing.defaults.update": (input: ChatSharingDefaults) =>
-		request(ApiPaths.cloudSharingDefaults, ChatSharingDefaults, "PUT", input),
 	"cloud.workspaces.create": (input: CloudWorkspaceCreateRequest) =>
 		request(
 			input.forkSource === undefined
@@ -370,37 +369,6 @@ export const makeCloudControlClient = (request: CloudControlRequest) => ({
 });
 
 export type CloudControlClient = ReturnType<typeof makeCloudControlClient>;
-
-/** One revision-ordered lifecycle stream for desktop RPC and account HTTP clients. */
-export const streamCloudWorkspaceLifecycle = <
-	E extends { readonly code: string },
->(
-	read: Effect.Effect<CloudWorkspace, E>,
-	afterRevision?: number,
-): Stream.Stream<CloudWorkspace, E> =>
-	Stream.fromEffect(read).pipe(
-		Stream.repeat(Schedule.spaced("500 millis")),
-		Stream.retry(
-			Schedule.exponential("250 millis").pipe(
-				Schedule.modifyDelay(({ duration }) =>
-					Effect.succeed(
-						Duration.millis(Math.min(Duration.toMillis(duration), 10_000)),
-					),
-				),
-				Schedule.jittered,
-				Schedule.while(
-					({ input }: { input: E }) => input.code === "provider-unavailable",
-				),
-			),
-		),
-		Stream.mapAccum(
-			() => afterRevision ?? -1,
-			(appliedRevision, workspace) =>
-				workspace.revision <= appliedRevision
-					? [appliedRevision, []]
-					: [workspace.revision, [workspace]],
-		),
-	);
 type CloudCommandMethods = Pick<
 	CloudControlClient,
 	| "cloud.workspaces.get"
@@ -435,4 +403,29 @@ export const streamCloudCatalogChanges = <E>(
 				}),
 			);
 		}),
+	);
+
+export const streamCloudWorkspaceLifecycle = <E>(
+	read: Effect.Effect<CloudWorkspace, E>,
+	afterRevision?: number,
+): Stream.Stream<CloudWorkspace, E> =>
+	Stream.fromEffect(read).pipe(
+		Stream.repeat(Schedule.spaced("500 millis")),
+		Stream.retry(
+			Schedule.exponential("250 millis").pipe(
+				Schedule.modifyDelay(({ duration }) =>
+					Effect.succeed(
+						Duration.millis(Math.min(Duration.toMillis(duration), 10_000)),
+					),
+				),
+				Schedule.jittered,
+			),
+		),
+		Stream.mapAccum(
+			() => afterRevision ?? -1,
+			(appliedRevision, workspace) => {
+				if (workspace.revision <= appliedRevision) return [appliedRevision, []];
+				return [workspace.revision, [workspace]];
+			},
+		),
 	);

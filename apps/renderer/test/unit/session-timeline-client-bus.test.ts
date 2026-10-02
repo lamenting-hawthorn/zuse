@@ -31,7 +31,6 @@ import { Effect, Queue, Schema, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createClientCommandOutbox } from "../../src/lib/client-command-outbox.ts";
 import { cloudCommandTransport } from "../../src/lib/cloud-command-transport.ts";
-import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
 import { sessionMessageCommandReflected } from "../../src/lib/session-message-intent.ts";
 import {
 	addOptimisticSessionMessage,
@@ -45,7 +44,6 @@ import {
 	registerSessionTimelineCheckpointSynchronizer,
 	registerSessionTimelineOlderPageSynchronizer,
 	rehydrateRendererCommandPayload,
-	rendererResourceCacheNamespace,
 	resetSessionTimelineClientBus,
 	resetSessionTimelineClientBusForTest,
 	restartProvisionalSessionTimeline,
@@ -69,36 +67,6 @@ const sessionId = SessionId.make("timeline-session");
 const ref = { environmentId, sessionId } as const;
 
 describe("renderer session timeline ClientBus adapter", () => {
-	it("uses one cache namespace rule for registered accounts and device resources", () => {
-		expect(
-			rendererResourceCacheNamespace(EnvironmentId.make("local")),
-		).toBeUndefined();
-		expect(rendererResourceCacheNamespace(environmentId)).toBeNull();
-		observeRendererAccount("cache-first");
-		const firstRegistration = registerEnvironmentActivationForTest(
-			environmentId,
-			async () => undefined,
-			undefined,
-			"cloud-workspace",
-		);
-		const first = rendererResourceCacheNamespace(environmentId);
-		expect(first).toBe(JSON.stringify(["account", "cache-first"]));
-		observeRendererAccount("cache-second");
-		expect(rendererResourceCacheNamespace(environmentId)).toBeNull();
-		const secondRegistration = registerEnvironmentActivationForTest(
-			environmentId,
-			async () => undefined,
-			undefined,
-			"cloud-workspace",
-		);
-		expect(rendererResourceCacheNamespace(environmentId)).toBe(
-			JSON.stringify(["account", "cache-second"]),
-		);
-		firstRegistration();
-		expect(rendererResourceCacheNamespace(environmentId)).not.toBe(first);
-		secondRegistration();
-		expect(rendererResourceCacheNamespace(environmentId)).toBeNull();
-	});
 	afterEach(() => {
 		vi.restoreAllMocks();
 		resetSessionTimelineClientBusForTest();
@@ -679,7 +647,6 @@ describe("renderer session timeline ClientBus adapter", () => {
 	});
 
 	it("uses the mailbox for a sleeping cloud workspace before gateway attachment", async () => {
-		observeRendererAccount("mailbox-owner");
 		const bus = getRendererClientBus();
 		const flush = vi
 			.spyOn(bus, "flushDurableOutbox")
@@ -1012,7 +979,7 @@ describe("renderer session timeline ClientBus adapter", () => {
 
 	it("routes resource persistence by kind without creating another bus", async () => {
 		const terminalKey = makeResourceKey<{ phase: string }>("terminal", {
-			environmentId: EnvironmentId.make("local"),
+			environmentId,
 			terminalId: PtyId.make("terminal-persistence"),
 		});
 		const stored = new Map<string, PersistedResource<unknown>>();

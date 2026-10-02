@@ -18,14 +18,8 @@ import {
 	type GitDiffResult,
 } from "@zuse/contracts";
 import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
-import {
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { ShimmerText } from "~/components/ui/shimmer-text";
 import { cn } from "~/lib/utils";
 import { useAuth } from "../hooks/use-auth.ts";
@@ -44,16 +38,11 @@ import {
 	writeLocalExternalFile,
 } from "../lib/local-device-client-bus.ts";
 import {
-	rendererWorkspaceSnapshot,
-	subscribeRendererWorkspace,
-} from "../lib/renderer-workspace.ts";
-import {
 	getLocalEnvironmentId,
 	type MemoizeClient,
 } from "../lib/rpc-client.ts";
 import { useActiveWorkspaceRoot } from "../store/active-workspace.ts";
 import { useAnnotationsStore } from "../store/annotations.ts";
-import { fileDraftKey, fileDrafts } from "../store/file-drafts.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import {
 	type FileView,
@@ -373,16 +362,6 @@ function PierreEditBody({
 	const revealedAnnotation = useUiStore((s) => s.revealedAnnotation);
 	const selectedSessionId = useSessionsStore((s) => s.selectedSessionId);
 	const { user: authUser, name: authName } = useAuth();
-	const workspace = useSyncExternalStore(
-		subscribeRendererWorkspace,
-		rendererWorkspaceSnapshot,
-		rendererWorkspaceSnapshot,
-	);
-	const draftKey = fileDraftKey(openFile, {
-		account: authUser?.id,
-		workspace: workspace.key,
-		localEnvironmentId: getLocalEnvironmentId(),
-	});
 	const annotationAuthor = useMemo(() => {
 		const name = authName.trim() || "You";
 		return {
@@ -449,15 +428,9 @@ function PierreEditBody({
 	const savingRef = useRef(false);
 	const fileRef = useRef<EditableFile | null>(openFile);
 	fileRef.current = openFile;
-	const draftKeyRef = useRef(draftKey);
-	draftKeyRef.current = draftKey;
-	const discardOnReloadRef = useRef(false);
-	const loadedKeyRef = useRef<string | null>(null);
 
 	const save = async () => {
 		const file = fileRef.current;
-		const savingKey = draftKeyRef.current;
-		if (loadedKeyRef.current !== savingKey) return;
 		if (file === null) return;
 		if (savingRef.current) return;
 		if (docRef.current === baselineRef.current) return;
@@ -466,7 +439,6 @@ function PierreEditBody({
 		setSaveError(null);
 		try {
 			const content = docRef.current;
-			const expectedMtime = mtimeRef.current;
 			const executionRef =
 				file.kind === "text"
 					? {
@@ -484,7 +456,7 @@ function PierreEditBody({
 							ref: executionRef,
 							path: file.path,
 							content,
-							expectedMtime,
+							expectedMtime: mtimeRef.current,
 						})
 					: null;
 			const result = await (async () => {
@@ -492,7 +464,7 @@ function PierreEditBody({
 					return writeLocalExternalFile<{ readonly mtime: string }>({
 						path: file.absPath,
 						content,
-						expectedMtime,
+						expectedMtime: mtimeRef.current,
 					});
 				}
 				if (executionRef === null || commandId === null) {
@@ -511,28 +483,17 @@ function PierreEditBody({
 							folderId: file.folderId,
 							path: file.path,
 							content,
-							expectedMtime,
+							expectedMtime: mtimeRef.current,
 							worktreeId: file.worktreeId,
 						},
 					})
 				).result;
 			})();
-			fileDrafts.acknowledgeSave(savingKey, content, result.mtime);
-			if (
-				draftKeyRef.current !== savingKey ||
-				loadedKeyRef.current !== savingKey
-			)
-				return;
 			mtimeRef.current = result.mtime;
 			baselineRef.current = content;
-			setFileDirty(docRef.current !== content);
+			setFileDirty(false);
 			setConflict(null);
 		} catch (err) {
-			if (
-				draftKeyRef.current !== savingKey ||
-				loadedKeyRef.current !== savingKey
-			)
-				return;
 			const tag = tagOf(err);
 			if (tag === "FsConflictError" || tag === "FsExternalConflictError") {
 				setConflict(
@@ -551,29 +512,12 @@ function PierreEditBody({
 
 	useEffect(() => {
 		let cancelled = false;
-		let loaded = false;
-		loadedKeyRef.current = null;
-		discardOnReloadRef.current = false;
 		setState({ status: "loading" });
 		setFileDirty(false);
 		setConflict(null);
 		setSaveError(null);
 		void (async () => {
 			try {
-				const draft = fileDrafts.read(draftKey);
-				if (draft !== undefined) {
-					baselineRef.current = draft.baseline;
-					docRef.current = draft.content;
-					mtimeRef.current = draft.mtime;
-					loaded = true;
-					loadedKeyRef.current = draftKey;
-					setFileDirty(true);
-					setState({
-						status: "text",
-						size: new TextEncoder().encode(draft.content).byteLength,
-					});
-					return;
-				}
 				const result =
 					openFile.kind === "external"
 						? await readLocalExternalFile<typeof FsFileContent.Type>(
@@ -609,8 +553,6 @@ function PierreEditBody({
 				baselineRef.current = result.content;
 				docRef.current = result.content;
 				mtimeRef.current = result.mtime;
-				loaded = true;
-				loadedKeyRef.current = draftKey;
 				setState({ status: "text", size: result.size });
 			} catch (err) {
 				if (cancelled) return;
@@ -619,15 +561,8 @@ function PierreEditBody({
 		})();
 		return () => {
 			cancelled = true;
-			loadedKeyRef.current = null;
-			if (loaded && !discardOnReloadRef.current)
-				fileDrafts.retain(draftKey, {
-					content: docRef.current,
-					baseline: baselineRef.current,
-					mtime: mtimeRef.current,
-				});
 		};
-	}, [openFile, draftKey, reloadCount, setFileDirty]);
+	}, [openFile, reloadCount, setFileDirty]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -692,18 +627,13 @@ function PierreEditBody({
 					editorRef.current = editor;
 				},
 				onChange: (nextFile) => {
-					if (
-						draftKeyRef.current !== draftKey ||
-						loadedKeyRef.current !== draftKey
-					)
-						return;
 					docRef.current = nextFile.contents;
 					useUiStore
 						.getState()
 						.setFileDirty(nextFile.contents !== baselineRef.current);
 				},
 			}),
-		[draftKey],
+		[],
 	);
 
 	return (
@@ -716,11 +646,7 @@ function PierreEditBody({
 				<Banner
 					message={conflict ?? saveError ?? ""}
 					actionLabel={conflict ? "Reload" : null}
-					onAction={() => {
-						discardOnReloadRef.current = true;
-						fileDrafts.discard(draftKey);
-						setReloadCount((n) => n + 1);
-					}}
+					onAction={() => setReloadCount((n) => n + 1)}
 					onDismiss={() => {
 						setConflict(null);
 						setSaveError(null);

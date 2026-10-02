@@ -1,11 +1,3 @@
-import { HOSTED_APP_URL } from "@zuse/contracts/deployment";
-
-export const isHostedProduct = (
-	locationOrigin = globalThis.window?.location?.origin ?? "",
-): boolean =>
-	import.meta.env?.VITE_ZUSE_HOSTED === "1" ||
-	locationOrigin === HOSTED_APP_URL;
-
 export type RendererPlatformCapabilities = {
 	readonly desktop: boolean;
 	readonly copyServerFile: boolean;
@@ -37,30 +29,10 @@ export const attachmentUrl = (id: string): string =>
 		? `zuse://attachments/${encodeURIComponent(id)}`
 		: `/assets/attachments/${encodeURIComponent(id)}`;
 
-export const openExternal = async (
-	url: string | (() => Promise<string>),
-): Promise<void> => {
+export const openExternal = async (url: string): Promise<void> => {
 	const bridge = (globalThis.window?.zuse ?? globalThis.window?.memoize)?.app;
 	if (bridge?.openExternal !== undefined) {
-		await bridge.openExternal(typeof url === "string" ? url : await url());
-		return;
-	}
-	if (typeof url !== "string") {
-		// Reserve the tab during the click, before an account request loses browser activation.
-		const pending = window.open("", "_blank");
-		if (pending === null) throw new Error("External window was blocked");
-		pending.opener = null;
-		try {
-			const referrer = pending.document.createElement("meta");
-			referrer.name = "referrer";
-			referrer.content = "no-referrer";
-			pending.document.head.append(referrer);
-			const destination = await url();
-			if (!pending.closed) pending.location.replace(destination);
-		} catch (cause) {
-			pending.close();
-			throw cause;
-		}
+		await bridge.openExternal(url);
 		return;
 	}
 	window.open(url, "_blank", "noopener,noreferrer");

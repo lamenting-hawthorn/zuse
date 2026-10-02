@@ -8,8 +8,6 @@ import type {
 	PersistedResource,
 	ResourcePersistence,
 } from "@zuse/client-runtime/client-persistence";
-import { resourceCacheStorageKey } from "@zuse/client-runtime/client-persistence";
-import { isRpcAccessDenied } from "@zuse/client-runtime/connection";
 import {
 	type ExecutionRef,
 	makeResourceKey,
@@ -21,7 +19,7 @@ import type { EnvironmentId, FsEntry, FsTreeWatchEvent } from "@zuse/contracts";
 import { CommandId } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { reconcileFileTreePaths } from "./file-tree-reconciliation.ts";
-import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
+import type { MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -286,10 +284,6 @@ export const makeFileTreeResourceDriver = (options: {
 				Effect.catchCause((cause) =>
 					Effect.sync(() => {
 						if (!active || Cause.hasInterruptsOnly(cause)) return;
-						if (isRpcAccessDenied(Cause.squash(cause))) {
-							context.emit({ accessDenied: true });
-							return;
-						}
 						options.reportConnectionFailure(
 							ref.environmentId,
 							context.generation,
@@ -349,14 +343,11 @@ class IndexedDbFileTreePersistence implements ResourcePersistence {
 
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
-		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readonly");
 		const row = (await requestResult(
-			transaction
-				.objectStore(STORE_NAME)
-				.get(resourceCacheStorageKey(resourceKeyId(key), namespace)),
+			transaction.objectStore(STORE_NAME).get(resourceKeyId(key)),
 		)) as
 			| (PersistedResource<FileTreeResourceData> & { readonly key: string })
 			| undefined;
@@ -378,26 +369,20 @@ class IndexedDbFileTreePersistence implements ResourcePersistence {
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
-		namespace?: string,
 	): Promise<void> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readwrite");
 		transaction.objectStore(STORE_NAME).put({
-			key: resourceCacheStorageKey(resourceKeyId(key), namespace),
+			key: resourceKeyId(key),
 			...value,
 		});
 		await transactionComplete(transaction);
 	}
 
-	async removeResource(
-		key: ResourceKey<unknown>,
-		namespace?: string,
-	): Promise<void> {
+	async removeResource(key: ResourceKey<unknown>): Promise<void> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readwrite");
-		transaction
-			.objectStore(STORE_NAME)
-			.delete(resourceCacheStorageKey(resourceKeyId(key), namespace));
+		transaction.objectStore(STORE_NAME).delete(resourceKeyId(key));
 		await transactionComplete(transaction);
 	}
 }
@@ -407,7 +392,6 @@ const reportConnectionFailure = (
 	generation: number,
 	cause: unknown,
 ): void => {
-	if (!isRpcClientTransportError(cause)) return;
 	getRendererClientBus().reportConnectionFault(
 		environmentId,
 		{ phase: "failed", message: messageOf(cause) },

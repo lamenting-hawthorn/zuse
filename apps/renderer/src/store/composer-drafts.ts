@@ -2,7 +2,7 @@ import {
 	resourceRefKey,
 	type SessionRef,
 } from "@zuse/client-runtime/resource-ref";
-import type { EnvironmentId, FolderId, WorkspaceScope } from "@zuse/contracts";
+import type { EnvironmentId, FolderId } from "@zuse/contracts";
 import type { ChipRange } from "../lib/codemirror/composer-chips.ts";
 import { createAtomStore as create } from "../state/atom-store.ts";
 
@@ -40,13 +40,8 @@ export const composerDraftKeyForSession = (ref: SessionRef): string =>
 export const composerDraftKeyForLanding = (
 	environmentId: EnvironmentId,
 	folderId: FolderId | null,
-	scope: WorkspaceScope = { kind: "personal" },
-): string => {
-	const key = `landing:${encodeURIComponent(environmentId)}:${encodeURIComponent(folderId ?? "none")}`;
-	return scope.kind === "personal"
-		? key
-		: `organization:${encodeURIComponent(scope.organizationId)}:${key}`;
-};
+): string =>
+	`landing:${encodeURIComponent(environmentId)}:${encodeURIComponent(folderId ?? "none")}`;
 
 export const composerDraftKeyForRemoteLanding = composerDraftKeyForLanding;
 

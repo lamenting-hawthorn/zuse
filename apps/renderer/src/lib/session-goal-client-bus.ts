@@ -7,7 +7,6 @@ import type {
 	PersistedResource,
 	ResourcePersistence,
 } from "@zuse/client-runtime/client-persistence";
-import { resourceCacheStorageKey } from "@zuse/client-runtime/client-persistence";
 import type { ResourceActivation } from "@zuse/client-runtime/environment-runtime";
 import {
 	makeResourceKey,
@@ -26,7 +25,7 @@ import {
 } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useMemo } from "react";
-import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
+import type { MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -49,6 +48,14 @@ const sessionRefFromKey = (key: ResourceKey<unknown>): SessionRef | null =>
 
 const messageOf = (cause: unknown): string =>
 	cause instanceof Error ? cause.message : String(cause);
+
+const isGoalResourceFailure = (cause: unknown): boolean => {
+	const tag =
+		typeof cause === "object" && cause !== null && "_tag" in cause
+			? cause._tag
+			: null;
+	return tag === "GoalUnsupportedError" || tag === "SessionNotFoundError";
+};
 
 let driverStarts = 0;
 
@@ -101,7 +108,7 @@ const makeSessionGoalDriver = (): ResourceDriver<
 						context.emit({ sync: "failed" });
 						// A domain gap belongs to this keyed resource; only transport-level
 						// termination is allowed to restart the shared environment connection.
-						if (!isRpcClientTransportError(failure)) return;
+						if (isGoalResourceFailure(failure)) return;
 						getRendererClientBus().reportConnectionFault(
 							ref.environmentId,
 							{ phase: "failed", message: messageOf(failure) },
@@ -167,14 +174,11 @@ class IndexedDbSessionGoalPersistence implements ResourcePersistence {
 
 	async loadResource<Data>(
 		key: ResourceKey<Data>,
-		namespace?: string,
 	): Promise<PersistedResource<Data> | null> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readonly");
 		const row = (await requestResult(
-			transaction
-				.objectStore(STORE_NAME)
-				.get(resourceCacheStorageKey(resourceKeyId(key), namespace)),
+			transaction.objectStore(STORE_NAME).get(resourceKeyId(key)),
 		)) as
 			| (PersistedResource<SessionGoalData> & { readonly key: string })
 			| undefined;
@@ -197,26 +201,20 @@ class IndexedDbSessionGoalPersistence implements ResourcePersistence {
 	async saveResource<Data>(
 		key: ResourceKey<Data>,
 		value: PersistedResource<Data>,
-		namespace?: string,
 	): Promise<void> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readwrite");
 		transaction.objectStore(STORE_NAME).put({
-			key: resourceCacheStorageKey(resourceKeyId(key), namespace),
+			key: resourceKeyId(key),
 			...value,
 		});
 		await transactionComplete(transaction);
 	}
 
-	async removeResource(
-		key: ResourceKey<unknown>,
-		namespace?: string,
-	): Promise<void> {
+	async removeResource(key: ResourceKey<unknown>): Promise<void> {
 		const database = await this.db();
 		const transaction = database.transaction(STORE_NAME, "readwrite");
-		transaction
-			.objectStore(STORE_NAME)
-			.delete(resourceCacheStorageKey(resourceKeyId(key), namespace));
+		transaction.objectStore(STORE_NAME).delete(resourceKeyId(key));
 		await transactionComplete(transaction);
 	}
 }

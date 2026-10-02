@@ -97,155 +97,147 @@ export function CloudWorkspaceRepositories({
 						repository.description?.toLowerCase().includes(normalizedSearch),
 				);
 
-	const addAction = (
-		<Popover
-			onOpenChange={(open) => {
-				if (open) {
-					setSelected([]);
-					onRefresh();
-				}
-			}}
-		>
-			<PopoverTrigger
-				aria-label={uiMessage(
-					"settings:cloud_workspace_repositories_repository",
-				)}
-				className={`inline-flex items-center justify-center gap-1.5 rounded-md text-xs font-medium hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${projects.length === 0 ? "px-2" : "w-7"} ${COMPACT_CLOUD_ACTION}`}
-				disabled={!githubAuthenticated || loading || busy !== null}
-			>
-				{busy === "connect" ? (
-					<RefreshCw className="size-3.5 animate-spin" aria-hidden />
-				) : (
-					<Plus className="size-3.5" aria-hidden />
-				)}
-				{projects.length === 0
-					? uiMessage("settings:cloud_workspace_repositories_repository")
-					: null}
-			</PopoverTrigger>
-			<PopoverPopup
-				align="end"
-				className="w-[min(34rem,var(--available-width))] min-w-[22rem] [&_[data-slot=popover-viewport]]:p-2"
-			>
-				<div className="flex items-center gap-2">
-					<Input
-						type="search"
-						className="h-7"
-						value={search}
-						onChange={(event) => setSearch(event.currentTarget.value)}
-						placeholder={uiMessage(
-							"settings:cloud_workspace_repositories_search_personal_and_organization_repositories",
-						)}
-						autoFocus
-					/>
-					<Button
-						size="icon"
-						className={`size-7 ${COMPACT_CLOUD_ACTION}`}
-						variant="ghost"
-						aria-label={uiMessage(
-							"settings:cloud_workspace_repositories_refresh_github_repositories",
-						)}
-						loading={loading}
-						onClick={onRefresh}
-					>
-						<RefreshCw aria-hidden />
-					</Button>
-				</div>
-				<div className="mt-2 max-h-72 overflow-y-auto rounded-md bg-muted/30 p-1">
-					{filtered.length === 0 ? (
-						<p className="px-2 py-5 text-center text-[11px] text-muted-foreground">
-							{available.length === 0
-								? uiMessage(
-										"settings:cloud_workspace_repositories_every_available_repository_is_already_included",
-									)
-								: uiMessage(
-										"settings:cloud_workspace_repositories_no_repositories_match_this_search",
-									)}
-						</p>
-					) : (
-						filtered.map((repository) => {
-							const isSelected = selected.includes(repository.nameWithOwner);
-							return (
-								<button
-									key={repository.nameWithOwner}
-									type="button"
-									className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-muted"
-									onClick={() =>
-										setSelected((current) =>
-											isSelected
-												? current.filter(
-														(name) => name !== repository.nameWithOwner,
-													)
-												: [...current, repository.nameWithOwner],
-										)
-									}
-								>
-									<RepositoryAvatar
-										repository={repository}
-										name={repository.nameWithOwner}
-									/>
-									<span className="min-w-0 flex-1 truncate">
-										{repository.nameWithOwner}
-									</span>
-									{repository.isPrivate ? (
-										<Lock
-											className="size-3 text-muted-foreground"
-											aria-label={uiMessage(
-												"settings:cloud_workspace_repositories_private",
-											)}
-										/>
-									) : null}
-									{isSelected ? (
-										<Check className="size-3.5 text-success" aria-hidden />
-									) : null}
-								</button>
-							);
-						})
-					)}
-				</div>
-				<div className="mt-2 flex h-7 items-center justify-between gap-3 px-1">
-					<span className="text-[11px] text-muted-foreground">
-						{selected.length === 0
-							? uiMessage("settings:cloud_workspace_repositories_available", {
-									length: String(available.length),
-								})
-							: uiMessage("settings:cloud_workspace_repositories_selected", {
-									length: String(selected.length),
-								})}
-					</span>
-					<PopoverClose
-						className={`inline-flex items-center rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${COMPACT_CLOUD_ACTION}`}
-						disabled={selected.length === 0 || busy === "connect"}
-						onClick={() => {
-							onAdd(selected);
-							setSelected([]);
-						}}
-					>
-						{uiMessage("settings:cloud_workspace_repositories_add_sentence", {
-							value: selected.length || "",
-						})}
-					</PopoverClose>
-				</div>
-			</PopoverPopup>
-		</Popover>
-	);
 	return (
 		<CloudSettingsGroup
 			title={uiMessage("settings:cloud_workspace_repositories_repositories")}
-			help={uiMessage(
+			description={uiMessage(
 				"settings:cloud_workspace_repositories_choose_the_personal_organization_and_collaborator_repositories_include",
 			)}
-			action={projects.length > 0 ? addAction : undefined}
+			action={
+				<Popover>
+					<PopoverTrigger
+						className={`inline-flex items-center gap-1.5 rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground outline-none hover:bg-primary/90 disabled:opacity-50 ${COMPACT_CLOUD_ACTION}`}
+						disabled={!githubAuthenticated || loading || busy !== null}
+					>
+						{busy === "connect" ? (
+							<RefreshCw className="size-3.5 animate-spin" aria-hidden />
+						) : (
+							<Plus className="size-3.5" aria-hidden />
+						)}
+						{uiMessage("settings:cloud_workspace_repositories_repository")}
+					</PopoverTrigger>
+					<PopoverPopup
+						align="end"
+						className="w-[min(34rem,var(--available-width))] min-w-[22rem] [&_[data-slot=popover-viewport]]:p-2"
+					>
+						<div className="flex items-center gap-2">
+							<Input
+								type="search"
+								className="h-7"
+								value={search}
+								onChange={(event) => setSearch(event.currentTarget.value)}
+								placeholder={uiMessage(
+									"settings:cloud_workspace_repositories_search_personal_and_organization_repositories",
+								)}
+								autoFocus
+							/>
+							<Button
+								size="icon"
+								className={`size-7 ${COMPACT_CLOUD_ACTION}`}
+								variant="ghost"
+								aria-label={uiMessage(
+									"settings:cloud_workspace_repositories_refresh_github_repositories",
+								)}
+								loading={loading}
+								onClick={onRefresh}
+							>
+								<RefreshCw aria-hidden />
+							</Button>
+						</div>
+						<div className="mt-2 max-h-72 overflow-y-auto rounded-md bg-muted/30 p-1">
+							{filtered.length === 0 ? (
+								<p className="px-2 py-5 text-center text-[11px] text-muted-foreground">
+									{available.length === 0
+										? uiMessage(
+												"settings:cloud_workspace_repositories_every_available_repository_is_already_included",
+											)
+										: uiMessage(
+												"settings:cloud_workspace_repositories_no_repositories_match_this_search",
+											)}
+								</p>
+							) : (
+								filtered.map((repository) => {
+									const isSelected = selected.includes(
+										repository.nameWithOwner,
+									);
+									return (
+										<button
+											key={repository.nameWithOwner}
+											type="button"
+											className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-muted"
+											onClick={() =>
+												setSelected((current) =>
+													isSelected
+														? current.filter(
+																(name) => name !== repository.nameWithOwner,
+															)
+														: [...current, repository.nameWithOwner],
+												)
+											}
+										>
+											<RepositoryAvatar
+												repository={repository}
+												name={repository.nameWithOwner}
+											/>
+											<span className="min-w-0 flex-1 truncate">
+												{repository.nameWithOwner}
+											</span>
+											{repository.isPrivate ? (
+												<Lock
+													className="size-3 text-muted-foreground"
+													aria-label={uiMessage(
+														"settings:cloud_workspace_repositories_private",
+													)}
+												/>
+											) : null}
+											{isSelected ? (
+												<Check className="size-3.5 text-success" aria-hidden />
+											) : null}
+										</button>
+									);
+								})
+							)}
+						</div>
+						<div className="mt-2 flex h-7 items-center justify-between gap-3 px-1">
+							<span className="text-[11px] text-muted-foreground">
+								{selected.length === 0
+									? uiMessage(
+											"settings:cloud_workspace_repositories_available",
+											{ length: String(available.length) },
+										)
+									: uiMessage(
+											"settings:cloud_workspace_repositories_selected",
+											{ length: String(selected.length) },
+										)}
+							</span>
+							<PopoverClose
+								className={`inline-flex items-center rounded-md bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 ${COMPACT_CLOUD_ACTION}`}
+								disabled={selected.length === 0 || busy === "connect"}
+								onClick={() => {
+									onAdd(selected);
+									setSelected([]);
+								}}
+							>
+								{uiMessage(
+									"settings:cloud_workspace_repositories_add_sentence",
+									{ value: selected.length || "" },
+								)}
+							</PopoverClose>
+						</div>
+					</PopoverPopup>
+				</Popover>
+			}
 		>
 			<div className="divide-y divide-border/40">
 				{projects.length === 0 ? (
-					<div>
-						<CompactEmptyState
-							title={uiMessage(
-								"settings:cloud_workspace_repositories_no_repositories_included",
-							)}
-						/>
-						<div className="flex justify-center pb-3">{addAction}</div>
-					</div>
+					<CompactEmptyState
+						title={uiMessage(
+							"settings:cloud_workspace_repositories_no_repositories_included",
+						)}
+						description={uiMessage(
+							"settings:cloud_workspace_repositories_use_repository_to_choose_a_personal_or_organization_repo",
+						)}
+					/>
 				) : (
 					projects.map((project) => {
 						const identity = project.repositoryIdentity

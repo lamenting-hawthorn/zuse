@@ -51,12 +51,10 @@ const server = await createServer({
 				if (id === "\0selection-client")
 					return `
                  export const subscribeControlPlaneSessionCache = () => () => {};
-                 export const runCloudControl = fn => fn({'cloud.image.build': async request => {
+                 export const runControlPlane = fn => fn({'cloud.image.build': async request => {
                   window.buildRequests.push(request);
                   const image = window.images.find(i => i.providerId === request.providerId);
-                  window.staleImages = structuredClone(window.images);
                   image.state = 'ready';
-                  image.updatedAt = 100;
                   image.builds = [{buildId:'build',state:'ready',mode:request.mode,active:true,runtimeVersion:'v1',configurationDigest:'config',repositories:[],providers:[],createdAt:1,updatedAt:2,logText:'Build completed successfully'}];
                   return image;
                  }});
@@ -70,7 +68,7 @@ const server = await createServer({
                  export const invalidateCloudProjects = () => { window.cachedProjects = undefined; };
                  export const loadCloudProjects = async () => ({projects:[{projectId:'project',updatedAt:1}]});
                  export const loadCloudWorkspaces = async () => ({workspaces:[]});
-                 export const loadCloudProviderImages = async () => ({images:(window.returnStaleImages && window.staleImages ? window.staleImages : window.images).filter(i => !window.unavailableStatus?.includes(i.providerId)),complete:!window.unavailableStatus?.length});
+                 export const loadCloudProviderImages = async () => ({images:window.images.filter(i => !window.unavailableStatus?.includes(i.providerId)),complete:!window.unavailableStatus?.length});
                  export const peekCloudGithub = () => ({installations:[{suspended:false}],repositories:[]});
                  export const loadCloudGithub = async () => peekCloudGithub();
                  export const loadCloudEntitlements = async () => ({});
@@ -149,17 +147,8 @@ try {
 		.waitFor();
 	await page.getByRole("radio", { name: "E2B", exact: true }).check();
 	await page.waitForFunction(() => window.progress?.image === false);
-	await page.evaluate(() => {
-		window.returnStaleImages = true;
-	});
 	await page.getByRole("button", { name: "Retry build", exact: true }).click();
 	await page.waitForFunction(() => window.progress?.image === true);
-	await page
-		.getByRole("button", { name: "Rebuild image", exact: true })
-		.waitFor();
-	await page.evaluate(() => {
-		window.returnStaleImages = false;
-	});
 	assert.deepEqual(
 		await page.evaluate(() => window.buildRequests.map((r) => r.providerId)),
 		["boxd", "e2b"],

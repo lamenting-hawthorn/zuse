@@ -40,7 +40,7 @@ export function CloudWorkspaceGithub({
 	return (
 		<CloudSettingsGroup
 			title={uiMessage("settings:cloud_workspace_github_github")}
-			help={uiMessage(
+			description={uiMessage(
 				"settings:cloud_workspace_github_configure_the_zuse_github_app_for_your_personal_account_or_organizatio",
 			)}
 			action={
@@ -86,6 +86,9 @@ export function CloudWorkspaceGithub({
 				<CloudSettingsRow
 					title={uiMessage(
 						"settings:cloud_workspace_github_connect_repositories",
+					)}
+					description={uiMessage(
+						"settings:cloud_workspace_github_start_here_so_the_callback_is_signed_and_linked_to_this_zuse_account_o",
 					)}
 					action={
 						<Button

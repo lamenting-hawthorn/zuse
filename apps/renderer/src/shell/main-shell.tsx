@@ -1,4 +1,3 @@
-import { isCloudProjectFolder } from "../lib/cloud-project-folders.ts";
 import { SurfaceFallback } from "./surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
 
@@ -30,27 +29,17 @@ import { useChatDirectoryStatus } from "../hooks/use-chat-directory-status.ts";
 import { useMediaQuery } from "../hooks/use-media-query.ts";
 import { selectChatSurface } from "../lib/chat-surface-selection.ts";
 import { closeActiveChatTab } from "../lib/close-chat-tab.ts";
-import {
-	cloudRuntimeProjectId,
-	resolveCloudSession,
-} from "../lib/cloud-session-selection.ts";
-import {
-	cloudSummaryActiveSessionId,
-	registerCloudChat,
-} from "../lib/cloud-workspace-catalog.ts";
+import { resolveCloudSession } from "../lib/cloud-session-selection.ts";
+import { cloudSummaryActiveSessionId } from "../lib/cloud-workspace-catalog.ts";
 import { cloudTranscriptActivation } from "../lib/cloud-workspace-lifecycle.ts";
 import {
 	cloudSessionPlaceholder,
 	useCloudChatSummaryForSelection,
 } from "../lib/cloud-workspaces.ts";
-import {
-	useActiveSessionById,
-	useEnvironmentChat,
-} from "../lib/environment-entity-hooks.ts";
+import { useActiveSessionById } from "../lib/environment-entity-hooks.ts";
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
+
 import { useGitWorkspaceResource } from "../lib/git-workspace-client-bus.ts";
-import { rendererWorkspaceSnapshot } from "../lib/renderer-workspace.ts";
-import { useSessionTimelineResource } from "../lib/session-timeline-client-bus.ts";
 
 import {
 	type SidebarVisibilitySnapshot,
@@ -349,60 +338,6 @@ export function MainShell() {
 					),
 		[selectedCloudSummary, cloudShell.data, storedSessionId],
 	);
-	const coldTimelineRef = useMemo(() => {
-		if (selectedCloudSummary === null || cloudSession !== null) return null;
-		const sessionId =
-			storedSessionId ?? cloudSummaryActiveSessionId(selectedCloudSummary);
-		return sessionId === null
-			? null
-			: {
-					environmentId: EnvironmentId.make(selectedCloudSummary.workspaceId),
-					sessionId,
-				};
-	}, [selectedCloudSummary, cloudSession, storedSessionId]);
-	// API checkpoint synchronization does not activate or wake a paused runtime.
-	useSessionTimelineResource(coldTimelineRef, "sync");
-	useEffect(() => {
-		if (
-			selectedCloudSummary === null ||
-			cloudTranscriptActivation(selectedCloudSummary) === "sync" ||
-			selectedFolderId !== null ||
-			cloudShell.data === null
-		)
-			return;
-		const folderId = cloudRuntimeProjectId(
-			selectedCloudSummary,
-			cloudShell.data,
-		);
-		if (folderId === null) return;
-		const workspace = rendererWorkspaceSnapshot();
-		let active = true;
-		const isCurrent = () =>
-			active &&
-			rendererWorkspaceSnapshot() === workspace &&
-			useChatsStore.getState().selectedChatId === selectedCloudSummary.chatId &&
-			useWorkspaceStore.getState().selectedFolderId === null;
-		registerCloudChat(selectedCloudSummary, folderId);
-		void useEnvironmentCatalogStore
-			.getState()
-			.activateTransient(selectedCloudSummary.workspaceId, cloudShell.data, {
-				folderId,
-				chatId: selectedCloudSummary.chatId,
-				isCurrent,
-			})
-			.catch((cause: unknown) => {
-				if (isCurrent())
-					useChatsStore.setState({
-						error:
-							cause instanceof Error
-								? cause.message
-								: "Could not open the cloud checkout.",
-					});
-			});
-		return () => {
-			active = false;
-		};
-	}, [selectedCloudSummary, selectedFolderId, cloudShell.data]);
 	const selectedSessionId =
 		cloudSession?.id ??
 		(selectedCloudSummary === null
@@ -437,7 +372,6 @@ export function MainShell() {
 	);
 	const selectedChatKey =
 		selectedChatRef === null ? null : rightPaneKey(selectedChatRef);
-	const selectedChat = useEnvironmentChat(selectedChatRef);
 	const pendingCreation = useChatsStore((s) =>
 		selectedChatId === null
 			? null
@@ -541,8 +475,7 @@ export function MainShell() {
 	// worktree" until the user opens the chat tab.
 	const refreshWorktrees = useWorktreesStore((s) => s.refresh);
 	useEffect(() => {
-		if (selectedFolderId === null || isCloudProjectFolder(selectedFolderId))
-			return;
+		if (selectedFolderId === null) return;
 		void refreshWorktrees(selectedFolderId);
 	}, [selectedFolderId, refreshWorktrees]);
 
@@ -568,11 +501,9 @@ export function MainShell() {
 		});
 	}, [selectedEnvironmentId]);
 
-	const emptyTabLabel =
-		selectedSession?.title ||
-		selectedCloudSummary?.title ||
-		selectedFolder?.name ||
-		"no project selected";
+	const emptyTabLabel = selectedFolder
+		? selectedFolder.name
+		: "no project selected";
 
 	// The empty new-chat landing reads as a clean, chrome-free surface: no top
 	// bar, no tab strip — just the centered composer. Keep the chrome whenever a
@@ -700,7 +631,7 @@ export function MainShell() {
 									<Suspense fallback={<TabsFallback />}>
 										<MainTabs
 											environmentId={selectedEnvironmentId}
-											projectId={selectedSession?.projectId ?? selectedFolderId}
+											projectId={selectedFolderId}
 											emptyLabel={emptyTabLabel}
 										/>
 									</Suspense>
@@ -751,22 +682,13 @@ export function MainShell() {
 															</Suspense>
 														) : null}
 														<Suspense fallback={<ComposerFallback />}>
-															{selectedChat?.readOnly === true ? (
-																<p
-																	role="status"
-																	className="py-3 text-center text-xs text-muted-foreground"
-																>
-																	{uiMessage("shell:shared_session_read_only")}
-																</p>
-															) : (
-																<ChatComposer
-																	key={selectedSession.id}
-																	session={selectedSession}
-																	environmentId={selectedEnvironmentId}
-																	constrain={false}
-																	directoryUnavailable={directoryUnavailable}
-																/>
-															)}
+															<ChatComposer
+																key={selectedSession.id}
+																session={selectedSession}
+																environmentId={selectedEnvironmentId}
+																constrain={false}
+																directoryUnavailable={directoryUnavailable}
+															/>
 														</Suspense>
 													</div>
 												</div>

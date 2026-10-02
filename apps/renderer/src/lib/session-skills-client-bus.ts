@@ -12,7 +12,7 @@ import {
 import type { Skill } from "@zuse/contracts";
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useMemo } from "react";
-import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
+import type { MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -30,6 +30,14 @@ const refFrom = (key: ResourceKey<unknown>): SessionRef | null =>
 
 const messageOf = (cause: unknown): string =>
 	cause instanceof Error ? cause.message : String(cause);
+
+const isSkillResourceFailure = (cause: unknown): boolean => {
+	const tag =
+		typeof cause === "object" && cause !== null && "_tag" in cause
+			? cause._tag
+			: null;
+	return tag === "SessionNotFoundError";
+};
 
 const makeDriver = (): ResourceDriver<MemoizeClient, SessionSkillsData> => {
 	let fiber: Fiber.Fiber<unknown, unknown> | null = null;
@@ -63,7 +71,7 @@ const makeDriver = (): ResourceDriver<MemoizeClient, SessionSkillsData> => {
 						if (active && !Cause.hasInterruptsOnly(cause)) {
 							const failure = Cause.squash(cause);
 							context.emit({ sync: "failed" });
-							if (isRpcClientTransportError(failure)) {
+							if (!isSkillResourceFailure(failure)) {
 								getRendererClientBus().reportConnectionFault(
 									ref.environmentId,
 									{ phase: "failed", message: messageOf(failure) },

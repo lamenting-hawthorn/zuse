@@ -38,17 +38,7 @@ export type SettingsSection =
 	| { readonly kind: "integrations" }
 	| { readonly kind: "mcp" }
 	| { readonly kind: "devices" }
-	| { readonly kind: "organizations" }
 	| { readonly kind: "machines" }
-	| {
-			readonly kind: "cloud";
-			readonly page:
-				| "repositories"
-				| "image"
-				| "agents"
-				| "billing"
-				| "sharing";
-	  }
 	| { readonly kind: "browser" }
 	| { readonly kind: "pokedex" }
 	| { readonly kind: "diagnostics" }

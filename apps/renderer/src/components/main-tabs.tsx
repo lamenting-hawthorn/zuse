@@ -28,11 +28,9 @@ import {
 import { resolveChatRuntimeMode } from "../lib/auto-worktree.ts";
 import { deriveChatAttentionState } from "../lib/chat-attention-state.ts";
 import { closeChatTab } from "../lib/close-chat-tab.ts";
-import { EMPTY_SESSIONS_BY_PROJECT } from "../lib/environment-entities.ts";
-import { useEnvironmentChat } from "../lib/environment-entity-hooks.ts";
+import { useActiveEnvironmentEntities } from "../lib/environment-entity-hooks.ts";
 import { useEnvironmentPermissions } from "../lib/environment-permissions-client-bus.ts";
 import { useEnvironmentQuestionAttachments } from "../lib/environment-question-attachments-client-bus.ts";
-import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
 import { selectAuthenticatedProvider } from "../lib/model-picker-availability.ts";
 import { filterActionableQuestionInteractions } from "../lib/question-actionability.ts";
 import {
@@ -97,9 +95,7 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 	const closeChangesTab = useUiStore((s) => s.closeChangesTab);
 
 	const selectedSessionId = useSessionsStore((s) => s.selectedSessionId);
-	const shell = useEnvironmentShellResource(environmentId);
-	const sessionsByProject =
-		shell.data?.sessionsByProject ?? EMPTY_SESSIONS_BY_PROJECT;
+	const { sessionsByProject } = useActiveEnvironmentEntities();
 	const projectSessions =
 		projectId !== null
 			? (sessionsByProject[projectId] ?? EMPTY_SESSIONS)
@@ -113,8 +109,7 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 	// Sessions with a pending permission prompt. Surfaced on the tab as a lock
 	// so a supervised-mode request is visible without opening the session.
 	// ExitPlanMode is excluded — plan mode owns its own inline approval card.
-	const requestsById =
-		useEnvironmentPermissions(environmentId).data?.requestsById ?? {};
+	const requestsById = useEnvironmentPermissions().data?.requestsById ?? {};
 	const questionAttachmentsByKey =
 		useEnvironmentQuestionAttachments(environmentId).data?.attachmentsByKey ??
 		{};
@@ -147,10 +142,6 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 			deriveActiveChatId(projectSessions, selectedSessionId, selectedChatId),
 		[selectedSessionId, projectSessions, selectedChatId, uiMessage],
 	);
-	const readOnly =
-		useEnvironmentChat(
-			activeChatId === null ? null : { environmentId, chatId: activeChatId },
-		)?.readOnly === true;
 
 	// Tabs = all non-archived sessions in the active chat, ordered by
 	// creation time so the user's mental order stays stable. Shared with the
@@ -174,7 +165,7 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 
 	return (
 		<>
-			{!readOnly && renamingSession !== null ? (
+			{renamingSession !== null ? (
 				<RenameDialog
 					title={uiMessage("errors:main_tabs_rename_session")}
 					description={uiMessage(
@@ -244,7 +235,6 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 							: session.title;
 						return (
 							<ChatTabButton
-								readOnly={readOnly}
 								key={session.id}
 								active={isActive}
 								label={session.title}
@@ -282,8 +272,7 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 							/>
 						);
 					})}
-					{!readOnly &&
-						projectId !== null &&
+					{projectId !== null &&
 						activeChatId !== null &&
 						pendingCreationByChat[activeChatId] === undefined && (
 							<NewChatTabButton
@@ -326,7 +315,6 @@ function TabButton({
 }
 
 export function ChatTabButton({
-	readOnly = false,
 	active,
 	label,
 	title,
@@ -340,7 +328,6 @@ export function ChatTabButton({
 	onClose,
 	onRename,
 }: {
-	readOnly?: boolean;
 	active: boolean;
 	label: string;
 	title?: string;
@@ -407,35 +394,33 @@ export function ChatTabButton({
 					<TypewriterText text={label} className="truncate" />
 				</span>
 			</button>
-			{!readOnly && (
-				<div className="absolute right-0.5 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-accent p-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							onRename();
-						}}
-						aria-label={uiMessage("errors:main_tabs_rename", {
-							label: String(label),
-						})}
-						title={uiMessage("errors:main_tabs_rename_session")}
-						className="rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-					>
-						<HugeiconsIcon icon={PencilEdit01Icon} className="size-3" />
-					</button>
-					<button
-						type="button"
-						onClick={(event) => {
-							event.stopPropagation();
-							onClose();
-						}}
-						aria-label={uiMessage("errors:main_tabs_close_chat")}
-						className="rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-					>
-						<X className="size-3" strokeWidth={1.8} />
-					</button>
-				</div>
-			)}
+			<div className="absolute right-0.5 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-accent p-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+				<button
+					type="button"
+					onClick={(event) => {
+						event.stopPropagation();
+						onRename();
+					}}
+					aria-label={uiMessage("errors:main_tabs_rename", {
+						label: String(label),
+					})}
+					title={uiMessage("errors:main_tabs_rename_session")}
+					className="rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+				>
+					<HugeiconsIcon icon={PencilEdit01Icon} className="size-3" />
+				</button>
+				<button
+					type="button"
+					onClick={(event) => {
+						event.stopPropagation();
+						onClose();
+					}}
+					aria-label={uiMessage("errors:main_tabs_close_chat")}
+					className="rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+				>
+					<X className="size-3" strokeWidth={1.8} />
+				</button>
+			</div>
 		</div>
 	);
 }

@@ -1,4 +1,3 @@
-import { resourceCacheStorageKey } from "@zuse/client-runtime/client-persistence";
 import {
 	resourceRefKey,
 	type SessionRef,
@@ -31,17 +30,13 @@ const STORE_NAME = "timelines";
 const METADATA_STORE_NAME = "timeline-metadata";
 const READING_POSITION_STORE_NAME = "reading-positions";
 const CLOUD_CATALOG_STORE_NAME = "cloud-catalog";
-export const cloudCatalogCacheKey = (subject: string): string =>
-	JSON.stringify(["account", subject]);
+const CLOUD_CATALOG_KEY = "catalog";
 const DEFAULT_MAX_ENTRIES = 128;
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 const DEFAULT_MAX_READING_POSITIONS = 256;
 
-export const environmentSessionCacheKey = (
-	ref: SessionRef,
-	namespace?: string,
-): SessionId =>
-	resourceCacheStorageKey(resourceRefKey(ref), namespace) as SessionId;
+export const environmentSessionCacheKey = (ref: SessionRef): SessionId =>
+	resourceRefKey(ref) as SessionId;
 
 export const shouldPersistTimelineCheckpoint = (
 	existing: SessionTimelineCacheEntry,
@@ -92,9 +87,8 @@ export const rememberCloudTimelineHead = (
 	ref: SessionRef,
 	projection: SessionTimelineProjection,
 	cursor: SessionStreamCursor,
-	namespace?: string,
 ): void => {
-	cloudHeads.set(environmentSessionCacheKey(ref, namespace), {
+	cloudHeads.set(environmentSessionCacheKey(ref), {
 		epoch: cursor.epoch,
 		firstId: projection.messages[0]?.id,
 		olderSequence: projection.olderMessageSequence ?? null,
@@ -102,9 +96,8 @@ export const rememberCloudTimelineHead = (
 };
 const cloudHeadEntry = (
 	entry: SessionTimelineCacheEntry,
-	namespace?: string,
 ): SessionTimelineCacheEntry => {
-	const head = cloudHeads.get(environmentSessionCacheKey(entry.ref, namespace));
+	const head = cloudHeads.get(environmentSessionCacheKey(entry.ref));
 	if (!head || head.epoch !== entry.cursor.epoch) return entry;
 	const index = entry.projection.messages.findIndex(
 		(message) => message.id === head.firstId,
@@ -128,10 +121,9 @@ const historyPageKey = (
 	ref: SessionRef,
 	cursor: SessionStreamCursor,
 	before: number,
-	namespace?: string,
 ) =>
 	JSON.stringify([
-		environmentSessionCacheKey(ref, namespace),
+		environmentSessionCacheKey(ref),
 		cursor.epoch,
 		cursor.version,
 		before,
@@ -209,11 +201,8 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		return this.database;
 	}
 
-	async load(
-		ref: SessionRef,
-		namespace?: string,
-	): Promise<SessionTimelineCacheEntry | null> {
-		const storageKey = environmentSessionCacheKey(ref, namespace);
+	async load(ref: SessionRef): Promise<SessionTimelineCacheEntry | null> {
+		const storageKey = environmentSessionCacheKey(ref);
 		const database = await this.db();
 		const transaction = database.transaction(
 			[STORE_NAME, METADATA_STORE_NAME, HISTORY_STORE_NAME],
@@ -243,12 +232,9 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		}
 	}
 
-	async save(
-		fullEntry: SessionTimelineCacheEntry,
-		namespace?: string,
-	): Promise<void> {
-		const entry = cloudHeadEntry(fullEntry, namespace);
-		const storageKey = environmentSessionCacheKey(entry.ref, namespace);
+	async save(fullEntry: SessionTimelineCacheEntry): Promise<void> {
+		const entry = cloudHeadEntry(fullEntry);
+		const storageKey = environmentSessionCacheKey(entry.ref);
 		const database = await this.db();
 		const transaction = database.transaction(
 			[STORE_NAME, METADATA_STORE_NAME, HISTORY_STORE_NAME],
@@ -273,7 +259,6 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		const encoded = encodeSessionTimelineCacheEntry(entry);
 		const persisted = {
 			...(encoded as Record<string, unknown>),
-			sessionId: storageKey,
 			estimatedBytes: JSON.stringify(encoded).length,
 		};
 		store.put(persisted);
@@ -289,14 +274,13 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		ref: SessionRef,
 		cursor: SessionStreamCursor,
 		before: number,
-		namespace?: string,
 	): Promise<HistoryPage | null> {
 		const database = await this.db();
 		const transaction = database.transaction(HISTORY_STORE_NAME, "readonly");
 		const record = await requestResult(
 			transaction
 				.objectStore(HISTORY_STORE_NAME)
-				.get(historyPageKey(ref, cursor, before, namespace)),
+				.get(historyPageKey(ref, cursor, before)),
 		);
 		await transactionComplete(transaction);
 		if (!record) return null;
@@ -311,7 +295,6 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		cursor: SessionStreamCursor,
 		before: number,
 		page: HistoryPage,
-		namespace?: string,
 	): Promise<void> {
 		const database = await this.db();
 		const encoded = Schema.encodeSync(HistoryPage)(page);
@@ -319,13 +302,11 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 			[HISTORY_STORE_NAME, METADATA_STORE_NAME],
 			"readwrite",
 		);
-		const key = historyPageKey(ref, cursor, before, namespace);
+		const key = historyPageKey(ref, cursor, before);
 		const bytes = JSON.stringify(encoded).length;
-		transaction.objectStore(HISTORY_STORE_NAME).put({
-			key,
-			resource: environmentSessionCacheKey(ref, namespace),
-			page: encoded,
-		});
+		transaction
+			.objectStore(HISTORY_STORE_NAME)
+			.put({ key, resource: environmentSessionCacheKey(ref), page: encoded });
 		transaction.objectStore(METADATA_STORE_NAME).put({
 			sessionId: `history:${key}`,
 			historyKey: key,
@@ -335,8 +316,8 @@ class IndexedDbSessionTimelineCache implements SessionTimelineCache {
 		await transactionComplete(transaction);
 	}
 
-	async remove(ref: SessionRef, namespace?: string): Promise<void> {
-		const storageKey = environmentSessionCacheKey(ref, namespace);
+	async remove(ref: SessionRef): Promise<void> {
+		const storageKey = environmentSessionCacheKey(ref);
 		const database = await this.db();
 		const transaction = database.transaction(
 			[STORE_NAME, METADATA_STORE_NAME, HISTORY_STORE_NAME],
@@ -406,11 +387,8 @@ class IndexedDbTimelineReadingPositionStore
 		return this.database;
 	}
 
-	async load(
-		ref: SessionRef,
-		namespace?: string,
-	): Promise<TimelineReadingPosition | null> {
-		const storageKey = environmentSessionCacheKey(ref, namespace);
+	async load(ref: SessionRef): Promise<TimelineReadingPosition | null> {
+		const storageKey = environmentSessionCacheKey(ref);
 		const database = await this.db();
 		const transaction = database.transaction(
 			READING_POSITION_STORE_NAME,
@@ -427,9 +405,8 @@ class IndexedDbTimelineReadingPositionStore
 	async save(
 		ref: SessionRef,
 		position: TimelineReadingPosition,
-		namespace?: string,
 	): Promise<void> {
-		const storageKey = environmentSessionCacheKey(ref, namespace);
+		const storageKey = environmentSessionCacheKey(ref);
 		const database = await this.db();
 		const transaction = database.transaction(
 			READING_POSITION_STORE_NAME,
@@ -446,8 +423,8 @@ class IndexedDbTimelineReadingPositionStore
 		await transactionComplete(transaction);
 	}
 
-	async remove(ref: SessionRef, namespace?: string): Promise<void> {
-		const storageKey = environmentSessionCacheKey(ref, namespace);
+	async remove(ref: SessionRef): Promise<void> {
+		const storageKey = environmentSessionCacheKey(ref);
 		const database = await this.db();
 		const transaction = database.transaction(
 			READING_POSITION_STORE_NAME,
@@ -470,7 +447,7 @@ export const cloudChatCatalogPersistence =
 	typeof indexedDB === "undefined"
 		? null
 		: {
-				load: async (subject: string): Promise<unknown | null> => {
+				load: async (): Promise<unknown | null> => {
 					const database = await openDatabase();
 					const transaction = database.transaction(
 						CLOUD_CATALOG_STORE_NAME,
@@ -479,12 +456,12 @@ export const cloudChatCatalogPersistence =
 					const value = await requestResult(
 						transaction
 							.objectStore(CLOUD_CATALOG_STORE_NAME)
-							.get(cloudCatalogCacheKey(subject)),
+							.get(CLOUD_CATALOG_KEY),
 					);
 					await transactionComplete(transaction);
 					return value ?? null;
 				},
-				save: async (subject: string, value: unknown): Promise<void> => {
+				save: async (value: unknown): Promise<void> => {
 					const database = await openDatabase();
 					const transaction = database.transaction(
 						CLOUD_CATALOG_STORE_NAME,
@@ -492,7 +469,7 @@ export const cloudChatCatalogPersistence =
 					);
 					transaction
 						.objectStore(CLOUD_CATALOG_STORE_NAME)
-						.put(value, cloudCatalogCacheKey(subject));
+						.put(value, CLOUD_CATALOG_KEY);
 					await transactionComplete(transaction);
 				},
 			};

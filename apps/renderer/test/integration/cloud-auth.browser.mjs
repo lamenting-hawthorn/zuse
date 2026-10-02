@@ -54,7 +54,7 @@ const server = await createServer({
 					return `
 					window.authCalls = [];
 					export const subscribeControlPlaneSessionCache = () => () => {};
-					export const runCloudControl = (run) => run(new Proxy({}, {get: (_, method) => () => {
+					export const runControlPlane = (run) => run(new Proxy({}, {get: (_, method) => () => {
 						window.authCalls.push(method);
 						return new Promise((resolve, reject) => { window.rejectAuth = () => reject(new Error('offline')); });
 					}}));
@@ -99,16 +99,7 @@ try {
 	assert.deepEqual(await page.evaluate(() => window.authCalls), [
 		"cloud.auth.login.start",
 	]);
-	const pendingLogin = dialog.getByRole("button", {
-		name: "Requesting code…",
-		exact: true,
-	});
-	assert.equal(await pendingLogin.isEnabled(), false);
-	assert.equal(await pendingLogin.getAttribute("aria-busy"), "true");
-	assert.match(
-		await dialog.getByRole("status").innerText(),
-		/Requesting a one-time code/,
-	);
+	assert.equal(await login.isEnabled(), false);
 	await page.evaluate(() => window.rejectAuth());
 	await dialog.getByRole("alert").waitFor();
 	assert.equal(await login.isEnabled(), true);

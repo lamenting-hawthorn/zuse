@@ -41,18 +41,7 @@ export const orderedCloudProviders = (
 export const selectedCloudProvider = (
 	providers: readonly CloudProviderOption[],
 	selected: string | null,
-	readyProviderIds?: readonly string[],
-): string | null => {
-	const ordered = orderedCloudProviders(providers);
-	const ready = ordered.filter((provider) =>
-		readyProviderIds?.includes(provider.providerId),
-	);
-	return (
-		ready.find((provider) => provider.providerId === selected)?.providerId ??
-		ready[0]?.providerId ??
-		providers.find((provider) => provider.providerId === selected)
-			?.providerId ??
-		ordered[0]?.providerId ??
-		null
-	);
-};
+): string | null =>
+	providers.find((provider) => provider.providerId === selected)?.providerId ??
+	orderedCloudProviders(providers)[0]?.providerId ??
+	null;

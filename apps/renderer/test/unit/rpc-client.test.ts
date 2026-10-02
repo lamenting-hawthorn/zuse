@@ -1,4 +1,3 @@
-import { RpcAccessDeniedError } from "@zuse/contracts";
 import { describe, expect, it } from "vitest";
 
 const locationValue = {
@@ -6,17 +5,6 @@ const locationValue = {
 	pathname: "/",
 	protocol: "http:",
 };
-
-it("renews expired grants without reconnecting on workspace permission denial", () => {
-	const expired = new RpcAccessDeniedError({ code: "credential-expired" });
-	expect(isRpcClientTransportError(expired)).toBe(true);
-	expect(isAuthCodedConnectionError(expired)).toBe(false);
-	expect(
-		isRpcClientTransportError(
-			new RpcAccessDeniedError({ code: "access-denied" }),
-		),
-	).toBe(false);
-});
 
 Object.defineProperty(globalThis, "location", {
 	value: locationValue,
@@ -48,23 +36,6 @@ const {
 } = await import("../../src/lib/rpc-client.ts");
 
 describe("renderer RPC transport selection", () => {
-	it("replaces a hosted connection when its account changes even at the same URL", () => {
-		const options = {
-			key: "environment:local",
-			kind: "websocket" as const,
-			wsUrl: "wss://host.example/rpc",
-			account: { subject: "alice", epoch: 1 },
-		};
-		expect(shouldReconnectRendererConnection(options, { ...options })).toBe(
-			false,
-		);
-		expect(
-			shouldReconnectRendererConnection(options, {
-				...options,
-				account: { subject: "bob", epoch: 2 },
-			}),
-		).toBe(true);
-	});
 	it("does not poison a healthy connection when a suspended stream is interrupted", () => {
 		const interruption = new Error("All fibers interrupted without error");
 		expect(isIgnorableRendererFailure(interruption)).toBe(true);

@@ -35,7 +35,7 @@ import {
 	type PtyOwnership,
 	type PtySummary,
 } from "@zuse/contracts";
-import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
+import type { MemoizeClient } from "./rpc-client.ts";
 import {
 	getRendererClientBus,
 	registerRendererResourceDriver,
@@ -196,7 +196,6 @@ const reportConnectionFailure = (
 	generation: number,
 	cause: unknown,
 ): void => {
-	if (!isRpcClientTransportError(cause)) return;
 	getRendererClientBus().reportConnectionFault(
 		environmentId,
 		{ phase: "failed", message: messageOf(cause) },

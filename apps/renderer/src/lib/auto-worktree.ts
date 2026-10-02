@@ -9,7 +9,6 @@ import {
 	repositorySettingsKey,
 	useRepositorySettingsStore,
 } from "../store/repository-settings.ts";
-import { isCloudProjectFolder } from "./cloud-project-folders.ts";
 import { getActiveEnvironment } from "./rpc-client.ts";
 import { resolveEnvironmentSettings } from "./settings-client-bus.ts";
 
@@ -17,7 +16,6 @@ const repositorySettingsFor = async (
 	environmentId: EnvironmentId,
 	projectId: FolderId,
 ): Promise<RepositorySettings | null> => {
-	if (isCloudProjectFolder(projectId)) return null;
 	const repositorySettings = useRepositorySettingsStore.getState();
 	return (
 		repositorySettings.byProject[
