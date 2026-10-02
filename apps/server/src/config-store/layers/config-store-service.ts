@@ -15,6 +15,7 @@ import {
 	MAX_KEYBINDING_RULES,
 	type MergePrefs,
 	modelsForProvider,
+	PROVIDER_CAPABILITIES,
 	PROVIDER_IDS,
 	type ProviderId,
 	resolveModelSlug,
@@ -62,7 +63,8 @@ const seedModels = (): Record<ProviderId, string> => {
 
 const seedProviderEnabled = (): Record<ProviderId, boolean> => {
 	const out = {} as Record<ProviderId, boolean>;
-	for (const id of PROVIDER_IDS) out[id] = true;
+	for (const id of PROVIDER_IDS)
+		out[id] = PROVIDER_CAPABILITIES[id].enabledByDefault;
 	return out;
 };
 

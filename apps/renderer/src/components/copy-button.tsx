@@ -1,4 +1,6 @@
+import "@zuse/i18n/english/common";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useMessages } from "@zuse/i18n/react";
 import { Copy01Icon, Tick02Icon } from "@zuse/icons/solid-rounded";
 import { useEffect, useState } from "react";
 
@@ -8,30 +10,38 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip.tsx";
 
 export function CopyButton({
 	text,
-	label = "Copy",
+	label,
+	showLabel = false,
 	className,
 }: {
 	readonly text: string;
 	readonly label?: string;
 	readonly className?: string;
+	readonly showLabel?: boolean;
 }) {
-	const [copied, setCopied] = useState(false);
+	const { message } = useMessages(["common"]);
+	const [state, setState] = useState<"idle" | "copied" | "error">("idle");
 
 	useEffect(() => {
-		if (!copied) return;
-		const id = window.setTimeout(() => setCopied(false), 1500);
+		if (state === "idle") return;
+		const id = window.setTimeout(() => setState("idle"), 1500);
 		return () => window.clearTimeout(id);
-	}, [copied]);
+	}, [state]);
 
 	const onCopy = () => {
 		void copyText(text).then(
-			() => setCopied(true),
-			() => setCopied(false),
+			() => setState("copied"),
+			() => setState("error"),
 		);
 	};
 
-	const icon = copied ? Tick02Icon : Copy01Icon;
-	const title = copied ? "Copied" : label;
+	const icon = state === "copied" ? Tick02Icon : Copy01Icon;
+	const title =
+		state === "copied"
+			? message("common:copied")
+			: state === "error"
+				? message("common:copy_failed")
+				: (label ?? message("common:copy"));
 
 	return (
 		<Tooltip>
@@ -42,7 +52,8 @@ export function CopyButton({
 						onClick={onCopy}
 						aria-label={title}
 						className={cn(
-							"inline-grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground/70 outline-none",
+							"inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md text-muted-foreground/70 outline-none",
+							showLabel ? "h-7 px-2 text-xs" : "size-6",
 							"hover:bg-muted/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
 							className,
 						)}
@@ -52,6 +63,7 @@ export function CopyButton({
 							className="size-3.5"
 							aria-hidden="true"
 						/>
+						{showLabel ? title : null}
 					</button>
 				}
 			/>

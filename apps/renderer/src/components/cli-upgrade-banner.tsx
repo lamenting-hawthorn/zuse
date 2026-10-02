@@ -27,6 +27,7 @@ const UPGRADE_DOCS_URL: Record<ProviderId, string> = {
 	opencode2: "https://opencode.ai/v2/docs",
 	kiro: "https://kiro.dev/docs/cli/setup/",
 	pi: "https://pi.dev/",
+	zuse: "https://zuse.sh",
 };
 
 /**

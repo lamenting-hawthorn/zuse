@@ -1,5 +1,6 @@
+import { PROVIDER_LABEL as PROVIDER_DISPLAY } from "~/lib/provider-labels";
 import "@zuse/i18n/english/shell";
-import type { AgentAvailability, ProviderId } from "@zuse/contracts";
+import type { AgentAvailability } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 
 /**
@@ -78,17 +79,7 @@ export function isInitialProviderAvailabilityLoading(
 	return loading && !availabilityLoaded;
 }
 
-export const PROVIDER_DISPLAY: Record<ProviderId, string> = {
-	claude: "Claude Code",
-	codex: "Codex",
-	grok: "Grok",
-	gemini: "Gemini",
-	cursor: "Cursor",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro CLI",
-	pi: "Pi",
-};
+export { PROVIDER_LABEL as PROVIDER_DISPLAY } from "~/lib/provider-labels";
 
 /**
  * Roll an `AgentAvailability` row + the user's enable toggle into the strings

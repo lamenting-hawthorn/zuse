@@ -1,13 +1,10 @@
 import type { ProviderId } from "@zuse/contracts";
 
-export const PROVIDER_LABEL: Readonly<Record<ProviderId, string>> = {
-	claude: "Claude Code",
-	codex: "Codex",
-	grok: "Grok",
-	cursor: "Cursor",
-	gemini: "Gemini",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro",
-	pi: "Pi",
+import { PROVIDER_LABELS as PROVIDER_LABEL } from "@zuse/contracts";
+
+export { PROVIDER_LABELS as PROVIDER_LABEL } from "@zuse/contracts";
+
+export const PROVIDER_SHORT_LABEL: Readonly<Record<ProviderId, string>> = {
+	...PROVIDER_LABEL,
+	claude: "Claude",
 };

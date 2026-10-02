@@ -1,6 +1,6 @@
 import type { ProviderId } from "@zuse/contracts";
 
-type CliProviderId = Exclude<ProviderId, "cursor">;
+type CliProviderId = Exclude<ProviderId, "cursor" | "zuse">;
 
 export interface ProviderCliDescriptor {
 	readonly providerId: CliProviderId;

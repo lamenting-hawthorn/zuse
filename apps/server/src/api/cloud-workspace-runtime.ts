@@ -110,6 +110,10 @@ import {
 	type TranscriptServiceShape,
 } from "../conversation/services/conversation-services.ts";
 import { CloudDeviceCommandClient } from "../device-bridge/cloud-client.ts";
+import {
+	connectionStorageRequest,
+	RuntimeModelConnections,
+} from "../harness/account-vault.ts";
 import { LanAuthService } from "../lan-auth/services/lan-auth-service.ts";
 import { isProviderAuthenticationRequired } from "../provider/provider-auth-failure.ts";
 import { CredentialsService } from "../provider/services/credentials-service.ts";
@@ -2171,6 +2175,30 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						generation: bootstrap.runtimeGeneration,
 						gatewayEpoch: bootstrap.gatewayEpoch,
 					};
+					const modelConnections = yield* Effect.serviceOption(
+						RuntimeModelConnections,
+					);
+					if (modelConnections._tag === "Some" && bootstrap.zuseAccountId) {
+						const transport = {
+							accountId: bootstrap.zuseAccountId,
+							request: (body: Record<string, unknown>) =>
+								connectionStorageRequest(
+									`${config.apiUrl}/v1/model-connections/storage`,
+									{
+										authorization: `Bearer ${runtimeCredential.credential}`,
+										"x-zuse-workspace-id": config.workspaceId,
+									},
+									body,
+								),
+						};
+						modelConnections.value.current = transport;
+						yield* Effect.addFinalizer(() =>
+							Effect.sync(() => {
+								if (modelConnections.value.current === transport)
+									modelConnections.value.current = null;
+							}),
+						);
+					}
 					const deviceClient = new CloudDeviceCommandClient(
 						`${config.apiUrl}${ApiPaths.cloudWorkspaceRuntimeDeviceBridge(config.workspaceId)}`,
 						() => runtimeCredential.credential,

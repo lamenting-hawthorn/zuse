@@ -85,3 +85,28 @@ describe("CredentialsService", () => {
 		expect(vault).not.toContain("integration-secret");
 	});
 });
+
+it("rereads shared credentials and serializes independent vault writers", async () => {
+	const userData = await mkdtemp(join(tmpdir(), "zuse-shared-vault-"));
+	temporaryDirectories.push(userData);
+	const layer = CredentialsServiceLive.pipe(
+		Layer.provide(Layer.succeed(AppPaths, AppPaths.of({ userData }))),
+	);
+	const first = await Effect.runPromise(
+		CredentialsService.pipe(Effect.provide(layer)),
+	);
+	const second = await Effect.runPromise(
+		CredentialsService.pipe(Effect.provide(layer)),
+	);
+	await Effect.runPromise(first.getIntegration("chatgpt", "one"));
+	await Promise.all([
+		Effect.runPromise(first.setIntegration("chatgpt", "one", "first")),
+		Effect.runPromise(second.setIntegration("chatgpt", "two", "second")),
+	]);
+	expect(await Effect.runPromise(first.getIntegration("chatgpt", "two"))).toBe(
+		"second",
+	);
+	expect(await Effect.runPromise(second.getIntegration("chatgpt", "one"))).toBe(
+		"first",
+	);
+});

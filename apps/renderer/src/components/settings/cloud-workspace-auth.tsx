@@ -4,6 +4,7 @@ import {
 	peekCloudAuth,
 } from "../../lib/cloud-workspace-session-cache.ts";
 import { subscribeControlPlaneSessionCache } from "../../lib/control-plane-client.ts";
+import { CopyAction, DeviceCode } from "./connection-login-steps.tsx";
 import "@zuse/i18n/english/settings";
 import {
 	type CloudAuthLoginOperation,
@@ -19,7 +20,6 @@ import { sealCloudAuthSecret as sealSecret } from "@zuse/utils/cloud-auth-crypto
 import {
 	Check,
 	ChevronRight,
-	Copy,
 	ExternalLink,
 	RefreshCw,
 	Terminal,
@@ -32,7 +32,7 @@ import {
 	useState,
 } from "react";
 import { runControlPlane } from "../../lib/control-plane-client.ts";
-import { copyText, openExternal } from "../../lib/platform-capabilities.ts";
+import { openExternal } from "../../lib/platform-capabilities.ts";
 import { ProviderIcon } from "../provider-icons.tsx";
 import { Badge } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
@@ -138,50 +138,6 @@ export function CodexDeviceLoginInstructions() {
 				)}
 			</InstructionStep>
 		</div>
-	);
-}
-
-function CopyAction({
-	text,
-	label,
-	compact = false,
-}: {
-	readonly text: string;
-	readonly label: string;
-	readonly compact?: boolean;
-}) {
-	const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
-		"idle",
-	);
-
-	useEffect(() => {
-		if (copyState === "idle") return;
-		const timer = window.setTimeout(() => setCopyState("idle"), 1_500);
-		return () => window.clearTimeout(timer);
-	}, [copyState]);
-	const buttonLabel =
-		copyState === "copied"
-			? "Copied"
-			: copyState === "error"
-				? "Copy failed"
-				: label;
-
-	return (
-		<Button
-			className={COMPACT_AUTH_ACTION}
-			size={compact ? "icon-xs" : "sm"}
-			variant="ghost"
-			aria-label={buttonLabel}
-			onClick={() => {
-				void copyText(text).then(
-					() => setCopyState("copied"),
-					() => setCopyState("error"),
-				);
-			}}
-		>
-			{copyState === "copied" ? <Check aria-hidden /> : <Copy aria-hidden />}
-			{compact ? null : buttonLabel}
-		</Button>
 	);
 }
 
@@ -739,17 +695,12 @@ export function CloudWorkspaceAuth() {
 									)}
 									{operation?.state === "connected" ||
 									operation?.verificationCode === undefined ? null : (
-										<div className="flex h-7 items-center gap-2 rounded-md bg-muted/60 px-2">
-											<code className="min-w-0 flex-1 select-all font-semibold text-xs tracking-[0.14em]">
-												{operation.verificationCode}
-											</code>
-											<CopyAction
-												text={operation.verificationCode}
-												label={uiMessage(
-													"settings:cloud_workspace_auth_copy_code",
-												)}
-											/>
-										</div>
+										<DeviceCode
+											code={operation.verificationCode}
+											label={uiMessage(
+												"settings:cloud_workspace_auth_copy_code",
+											)}
+										/>
 									)}
 									{operation?.state === "authorizing" &&
 									operation.verificationCode === undefined ? (

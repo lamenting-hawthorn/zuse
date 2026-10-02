@@ -49,6 +49,8 @@ import {
 } from "./machine-routes.ts";
 import { MachineStore } from "./machine-store.ts";
 import { ManagedTunnelProvider } from "./managed-tunnel.ts";
+import { routeModelConnectionRequest } from "./model-connection-routes.ts";
+import { ModelConnectionStore } from "./model-connection-store.ts";
 import { routePublicApiRequest } from "./public-api-routes.ts";
 import { PushDelivery } from "./push.ts";
 import type { SandboxOfferConfiguration } from "./sandbox-provider-module.ts";
@@ -308,6 +310,8 @@ const route = (
 		const accountIdentity = yield* AccountIdentity;
 		const workos = yield* WorkosVerifier;
 		const nowMs = yield* Clock.currentTimeMillis;
+		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
+		if (modelConnectionResponse !== null) return modelConnectionResponse;
 		const machineResponse = yield* routeMachineRequest(request);
 		if (machineResponse !== null) return machineResponse;
 		const cloudBillingResponse = yield* routeCloudBillingRequest(request);
@@ -684,6 +688,12 @@ const route = (
 			const principal = yield* requireWorkos(request);
 			const machineStore = yield* MachineStore;
 			const cloudStore = yield* CloudWorkspaceStore;
+			const connections = yield* Effect.serviceOption(ModelConnectionStore);
+			if (Option.isSome(connections))
+				yield* Effect.tryPromise({
+					try: () => connections.value.removeAccount(principal.accountId),
+					catch: () => serviceUnavailable("connection_storage_unavailable"),
+				});
 			// Revoke API credentials and cloud entitlement before asynchronous
 			// infrastructure cleanup. This keeps new work from racing a 202 deletion.
 			// Otherwise a still-active key can create more work while deletion is

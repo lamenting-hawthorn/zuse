@@ -51,5 +51,6 @@
 	"cloud_workspace_settings": "クラウドワークスペースの設定",
 	"recording_shortcut": "{{label}} のショートカットを記録中",
 	"recording_new_shortcut": "新しい操作のショートカットを記録中",
-	"provider_settings": "プロバイダー設定"
+	"provider_settings": "プロバイダー設定",
+	"copy_failed": "コピーに失敗しました"
 }

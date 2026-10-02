@@ -11,12 +11,17 @@ const toNiceToolLabel = (raw: string): string => {
 /** Map common provider-native tool identifiers to the shared UI contract. */
 export const normalizeNativeToolName = (raw: string): string => {
 	switch (raw.toLowerCase()) {
+		case "spawn_agent":
+			return "Agent";
+		case "read_image":
+			return "ViewImage";
 		case "read":
 		case "read_file":
 		case "readfile":
 			return "Read";
 		case "bash":
 		case "execute":
+		case "exec_command":
 		case "run_command":
 		case "run_terminal_cmd":
 		case "shell":
@@ -62,6 +67,7 @@ export const normalizeNativeToolName = (raw: string): string => {
 		case "multi_edit":
 		case "multiedit":
 			return "MultiEdit";
+		case "update_plan":
 		case "todo_write":
 		case "todowrite":
 			return "TodoWrite";
