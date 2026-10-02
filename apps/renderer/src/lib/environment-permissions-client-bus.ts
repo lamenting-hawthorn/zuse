@@ -18,10 +18,6 @@ import {
 import { Cause, Effect, Fiber, Stream } from "effect";
 import { useMemo } from "react";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
-import {
-	assertRendererAccountCurrent,
-	rendererAccountSnapshot,
-} from "./renderer-account.ts";
 import { isRpcClientTransportError, type MemoizeClient } from "./rpc-client.ts";
 import { interruptSession } from "./session-actions.ts";
 import {
@@ -187,9 +183,7 @@ export const denyEnvironmentPermissionAndInterrupt = async (
 	request: Pick<PermissionRequest, "id" | "sessionId">,
 	environmentId: EnvironmentId,
 ): Promise<void> => {
-	const account = rendererAccountSnapshot();
 	await decideEnvironmentPermission(request, { _tag: "Deny" }, environmentId);
-	assertRendererAccountCurrent(account);
 	await interruptSession({ environmentId, sessionId: request.sessionId });
 };
 
@@ -203,7 +197,6 @@ const activeKey = () =>
 export const loadEnvironmentPermissionDecisions = async (
 	projectId: FolderId,
 ): Promise<void> => {
-	const account = rendererAccountSnapshot();
 	const key = activeKey();
 	const bus = getRendererClientBus();
 	bus.overlay(key, {
@@ -227,7 +220,6 @@ export const loadEnvironmentPermissionDecisions = async (
 			retry: "never",
 			createdAt: Date.now(),
 		});
-		assertRendererAccountCurrent(account);
 		bus.overlay(key, {
 			update: (data) => ({
 				...data,
@@ -242,7 +234,6 @@ export const loadEnvironmentPermissionDecisions = async (
 			}),
 		});
 	} catch (cause) {
-		assertRendererAccountCurrent(account);
 		bus.overlay(key, {
 			update: (data) => ({
 				...data,
@@ -260,7 +251,6 @@ export const revokeEnvironmentPermissionDecision = async (
 	projectId: FolderId,
 	requestId: string,
 ): Promise<void> => {
-	const account = rendererAccountSnapshot();
 	const key = activeKey();
 	const bus = getRendererClientBus();
 	const before = bus.snapshot(key).data?.decisionsByProject[projectId];
@@ -287,9 +277,7 @@ export const revokeEnvironmentPermissionDecision = async (
 			retry: "never",
 			createdAt: Date.now(),
 		});
-		assertRendererAccountCurrent(account);
 	} catch (cause) {
-		assertRendererAccountCurrent(account);
 		if (before !== undefined) {
 			bus.overlay(key, {
 				update: (data) => ({

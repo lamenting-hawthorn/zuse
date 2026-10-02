@@ -1,10 +1,7 @@
 import { type ChatId, EnvironmentId, Folder, FolderId } from "@zuse/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import {
-	canUseChatPanel,
-	logicalRightPaneProject,
-} from "../../src/components/right-pane.tsx";
+import { logicalRightPaneProject } from "../../src/components/right-pane.tsx";
 import {
 	DEFAULT_RIGHT_PANE_WIDTH_PERCENT,
 	rightPaneKey,
@@ -23,22 +20,6 @@ const keyA = rightPaneKey(chatA);
 const keyB = rightPaneKey(chatB);
 
 describe("chat-scoped right pane state", () => {
-	it("keeps read-only panels available without offering host execution tools", () => {
-		for (const kind of ["files", "plan"] as const) {
-			expect(canUseChatPanel(kind, true)).toBe(true);
-			expect(canUseChatPanel(kind, false)).toBe(true);
-		}
-		for (const kind of [
-			"terminal",
-			"changes",
-			"pr",
-			"browser",
-			"subagents",
-		] as const) {
-			expect(canUseChatPanel(kind, true)).toBe(false);
-			expect(canUseChatPanel(kind, false)).toBe(true);
-		}
-	});
 	beforeEach(() => {
 		useUiStore.setState({
 			rightPaneLayoutByChat: {},
@@ -122,14 +103,5 @@ describe("chat-scoped right pane state", () => {
 
 		expect(sandboxFolderId).not.toBe(localProjectId);
 		expect(logicalRightPaneProject([project], localProjectId)).toBe(project);
-	});
-	it("uses the connected cloud project when no local project is selected", () => {
-		const cloud = Folder.make({
-			id: FolderId.make("sandbox"),
-			name: "zuse",
-			path: "/home/repos/zuse",
-			addedAt: new Date(0),
-		});
-		expect(logicalRightPaneProject([], null, cloud)).toBe(cloud);
 	});
 });

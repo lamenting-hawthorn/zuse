@@ -1,17 +1,6 @@
 import "@zuse/i18n/english/shell";
 import { subscribeControlPlaneSessionCache } from "~/lib/control-plane-client.ts";
-import {
-	isCloudProjectFolder,
-	mergeCloudProjectFolders,
-} from "../lib/cloud-project-folders.ts";
-import {
-	loadCloudAuth,
-	peekCloudAuth,
-} from "../lib/cloud-workspace-session-cache.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
-import { connectedCloudProviders } from "../lib/model-picker-availability.ts";
-import { environmentBelongsToWorkspace } from "../lib/rpc-client.ts";
-import { useCloudProjects } from "../lib/use-cloud-projects.ts";
 import "@zuse/i18n/english/common";
 import "@zuse/i18n/english/chat";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -24,7 +13,6 @@ import {
 	type ChatId,
 	type ChatWorkspacePolicy,
 	type CloudAccountImage,
-	type CloudAuthStatus,
 	type CloudProject,
 	type CloudProviderOption,
 	CommandId,
@@ -57,7 +45,6 @@ import {
 	useMemo,
 	useRef,
 	useState,
-	useSyncExternalStore,
 } from "react";
 import { Button } from "~/components/ui/button.tsx";
 import {
@@ -92,13 +79,9 @@ import {
 	type CloudLaunchStep,
 	chatLandingProgress,
 } from "~/lib/chat-landing-progress";
-import { cloudImageReadyForProject } from "~/lib/cloud-image-group.ts";
 import { cloudLaunchRequestForSource } from "~/lib/cloud-launch-source";
 import { cloudWorkspaceBetaAvailable } from "~/lib/cloud-machines-availability.ts";
-import {
-	cloudProviderSizeLabel,
-	selectedCloudProvider,
-} from "~/lib/cloud-provider-presentation.ts";
+import { cloudProviderSizeLabel } from "~/lib/cloud-provider-presentation.ts";
 import { loadCloudWorkspacePlacement } from "~/lib/cloud-workspace-session-cache.ts";
 import {
 	ensureCloudWorkspaceAttached,
@@ -106,7 +89,7 @@ import {
 	summaryFromLaunch,
 	useCloudChatSummaryForSelection,
 } from "~/lib/cloud-workspaces.ts";
-import { runCloudControl } from "~/lib/control-plane-client.ts";
+import { runControlPlane } from "~/lib/control-plane-client.ts";
 import { useActiveEnvironmentEntities } from "~/lib/environment-entity-hooks.ts";
 import {
 	dispatchEnvironmentShellCommand,
@@ -157,11 +140,6 @@ import { useWorkspaceStore } from "~/store/workspace";
 import { EMPTY_WORKTREES, useWorktreesStore } from "~/store/worktrees";
 import { bindCloudWorkspaceToLocalDevice } from "../lib/device-bridge-binding.ts";
 import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
-import {
-	assertRendererWorkspaceCurrent,
-	rendererWorkspaceSnapshot,
-	subscribeRendererWorkspace,
-} from "../lib/renderer-workspace.ts";
 import { ChatStartupView } from "./chat-startup-view.tsx";
 import {
 	type CloudComputerPickerItem,
@@ -273,29 +251,10 @@ const formatThreadRelative = (date: Date): string => {
  * the next render.
  */
 export function ChatLanding() {
-	const workspace = useSyncExternalStore(
-		subscribeRendererWorkspace,
-		rendererWorkspaceSnapshot,
-		rendererWorkspaceSnapshot,
-	);
-	return (
-		<WorkspaceChatLanding
-			key={`${workspace.key}:${workspace.epoch}`}
-			workspace={workspace}
-		/>
-	);
-}
-
-function WorkspaceChatLanding({
-	workspace,
-}: {
-	readonly workspace: ReturnType<typeof rendererWorkspaceSnapshot>;
-}) {
 	const { message: uiMessage } = useUiMessages(["chat", "common", "shell"]);
 
-	const { originsByFolder: runtimeOrigins } = useActiveEnvironmentEntities();
-	const storedFolders = useWorkspaceStore((s) => s.folders);
-	const cloudProjects = useCloudProjects();
+	const { originsByFolder: origins } = useActiveEnvironmentEntities();
+	const folders = useWorkspaceStore((s) => s.folders);
 	const selectedFolderId = useWorkspaceStore((s) => s.selectedFolderId);
 	const selectFolder = useWorkspaceStore((s) => s.select);
 	const addFolder = useWorkspaceStore((s) => s.add);
@@ -316,25 +275,6 @@ function WorkspaceChatLanding({
 	);
 	const activeEnvironmentId = useEnvironmentCatalogStore(
 		(s) => s.activeEnvironmentId,
-	);
-	const { folders, originsByFolder: origins } = useMemo(
-		() =>
-			mergeCloudProjectFolders(
-				environmentBelongsToWorkspace(activeEnvironmentId, workspace.scope)
-					? storedFolders
-					: [],
-				environmentBelongsToWorkspace(activeEnvironmentId, workspace.scope)
-					? runtimeOrigins
-					: {},
-				cloudProjects,
-			),
-		[
-			activeEnvironmentId,
-			workspace,
-			storedFolders,
-			runtimeOrigins,
-			cloudProjects,
-		],
 	);
 
 	const create = useChatsStore((s) => s.create);
@@ -415,14 +355,7 @@ function WorkspaceChatLanding({
 		[folders, selectedFolderId, uiMessage],
 	);
 
-	const storedCatalogEntries = useEnvironmentCatalogStore((s) => s.entries);
-	const catalogEntries = useMemo(
-		() =>
-			storedCatalogEntries.filter((entry) =>
-				environmentBelongsToWorkspace(entry.environmentId, workspace.scope),
-			),
-		[storedCatalogEntries, workspace],
-	);
+	const catalogEntries = useEnvironmentCatalogStore((s) => s.entries);
 	const shellViews = useEnvironmentShellCatalog(
 		catalogEntries.map((entry) => entry.environmentId),
 	);
@@ -508,11 +441,6 @@ function WorkspaceChatLanding({
 		readonly groupKey: string;
 		readonly member: LogicalProjectMember;
 	} | null>(null);
-	const cloudOnlyProject = isCloudProjectFolder(
-		remoteAnchor?.member.folderId ?? selectedFolderId,
-	);
-	const cloudOnlyHome =
-		cloudOnlyProject || (isHostedProduct() && activeEnvironmentId === "local");
 	const anchoredGroup = useMemo(
 		() =>
 			remoteAnchor === null
@@ -578,65 +506,6 @@ function WorkspaceChatLanding({
 	const [selectedCloudSizeId, setSelectedCloudSizeId] = useState<string | null>(
 		null,
 	);
-	const cloudTarget = cloudOnlyHome || selectedCloudProviderId !== null;
-	const [cloudAuth, setCloudAuth] = useState<CloudAuthStatus | null>(null);
-	const enabledProviders = useSettingsStore((state) => state.providerEnabled);
-	const cloudProviderIds = useMemo(
-		() =>
-			connectedCloudProviders(cloudAuth).filter(
-				(id) => enabledProviders[id] !== false,
-			),
-		[cloudAuth, enabledProviders],
-	);
-	useEffect(() => {
-		if (!cloudTarget) {
-			setCloudAuth(null);
-			return;
-		}
-		let cancelled = false;
-		let loading = false;
-		const load = async () => {
-			if (loading || cancelled) return;
-			loading = true;
-			try {
-				await loadCloudAuth();
-				if (!cancelled) setCloudAuth(peekCloudAuth() ?? null);
-			} catch {
-				if (!cancelled) setCloudAuth(null);
-			} finally {
-				loading = false;
-			}
-		};
-		void load();
-		const unsubscribe = subscribeControlPlaneSessionCache((key) => {
-			if (key === "cloud-workspace:auth") {
-				setCloudAuth(peekCloudAuth() ?? null);
-				void load();
-			}
-		});
-		return () => {
-			cancelled = true;
-			unsubscribe();
-		};
-	}, [cloudTarget]);
-	useEffect(() => {
-		if (
-			!cloudTarget ||
-			draftSession === null ||
-			cloudProviderIds.includes(draftSession.providerId)
-		)
-			return;
-		const provider = cloudProviderIds[0];
-		if (provider !== undefined)
-			void useSessionsStore
-				.getState()
-				.setProvider(
-					draftSession.id,
-					provider,
-					defaultModelByProvider[provider] ??
-						defaultModelFor(currentModelCatalog(), provider),
-				);
-	}, [cloudTarget, cloudProviderIds, draftSession, defaultModelByProvider]);
 	const [cloudProviders, setCloudProviders] = useState<
 		ReadonlyArray<CloudProviderOption>
 	>([]);
@@ -676,22 +545,13 @@ function WorkspaceChatLanding({
 							cloudRepositoryIdentity,
 					) ?? null;
 				setCloudProviders(placement.providers);
-				if (isHostedProduct() || cloudOnlyProject)
+				if (isHostedProduct())
 					setSelectedCloudProviderId((current) =>
-						selectedCloudProvider(
-							placement.providers,
-							current,
-							placement.providers
-								.filter((provider) =>
-									cloudImageReadyForProject(
-										images.find(
-											(image) => image.providerId === provider.providerId,
-										),
-										project?.projectId,
-									),
-								)
-								.map((provider) => provider.providerId),
-						),
+						placement.providers.some(
+							(provider) => provider.providerId === current,
+						)
+							? current
+							: (placement.providers[0]?.providerId ?? null),
 					);
 				setCloudProject(project);
 				setCloudAccountImages(images);
@@ -715,17 +575,23 @@ function WorkspaceChatLanding({
 			cancelled = true;
 			unsubscribe();
 		};
-	}, [cloudRepositoryIdentity, cloudOnlyProject]);
+	}, [cloudRepositoryIdentity]);
 	const cloudPickerItems = useMemo<ReadonlyArray<CloudComputerPickerItem>>(
 		() =>
 			cloudProviders.map((provider) => {
 				const cloudAccountImage = cloudAccountImages.find(
 					(image) => image.providerId === provider.providerId,
 				);
-				const ready = cloudImageReadyForProject(
-					cloudAccountImage,
-					cloudProject?.projectId,
-				);
+				const included =
+					cloudProject !== null &&
+					cloudAccountImage?.providerId === provider.providerId &&
+					cloudAccountImage?.repositories.some(
+						(repository) => repository.projectId === cloudProject.projectId,
+					) === true;
+				const ready =
+					included &&
+					(cloudAccountImage?.state === "ready" ||
+						cloudAccountImage?.state === "outdated");
 				const statusText =
 					cloudPlacementError || cloudAccountImage === undefined
 						? uiMessage("chat:cloud_setup_unavailable")
@@ -1161,8 +1027,12 @@ function WorkspaceChatLanding({
 			readonly pendingContextFiles: ReadonlyArray<PendingDraftContextFile>;
 		},
 	): Promise<void> => {
-		if (submitting || rendererWorkspaceSnapshot() !== workspace) return;
-		if (cloudOnlyHome && selectedCloudProviderId === null) {
+		if (submitting) return;
+		if (
+			isHostedProduct() &&
+			activeEnvironmentId === "local" &&
+			selectedCloudProviderId === null
+		) {
 			setSubmitError(
 				uiMessage(
 					"shell:hosted_set_up_a_cloud_workspace_in_settings_before_starting_a_chat",
@@ -1173,8 +1043,7 @@ function WorkspaceChatLanding({
 		const { draftSession: draft, draftRevision } = useSessionsStore.getState();
 		if (draft === null) return;
 		const ownsLanding = captureNewChatLanding();
-		const resetStaleCompletion = () => {
-			if (!ownsLanding()) return;
+		const resetStaleCompletion = () =>
 			resetCompletedChatDraft(draftRevision, () => {
 				setPendingInput(null);
 				setPendingPreviews({});
@@ -1187,19 +1056,17 @@ function WorkspaceChatLanding({
 				setSubmitting(false);
 				setDraftAttempt((attempt) => attempt + 1);
 			});
-		};
 		if (selectedCloudProviderId !== null) {
 			if (!CLOUD_WORKSPACE_BETA_AVAILABLE) return;
-			if (isHostedProduct() || cloudOnlyProject) {
+			if (isHostedProduct()) {
 				const placement = cloudPickerItems.find(
 					(item) => item.providerId === selectedCloudProviderId,
 				);
 				if (placement?.needsSetup !== false || placement.disabled) {
 					setSubmitError(
-						placement?.statusText ??
-							uiMessage(
-								"shell:hosted_finish_cloud_workspace_setup_in_settings_before_starting_a_chat",
-							),
+						uiMessage(
+							"shell:hosted_finish_cloud_workspace_setup_in_settings_before_starting_a_chat",
+						),
 					);
 					return;
 				}
@@ -1216,10 +1083,8 @@ function WorkspaceChatLanding({
 				);
 				return;
 			}
-			if (!cloudProviderIds.includes(draft.providerId)) {
-				setSubmitError(
-					"Connect this agent in this workspace’s Cloud settings before starting a chat.",
-				);
+			if (draft.providerId !== "claude" && draft.providerId !== "codex") {
+				setSubmitError(uiMessage("chat:cloud_supported_agents"));
 				return;
 			}
 			if (createSource?.linear?.mode === "separate") {
@@ -1258,8 +1123,7 @@ function WorkspaceChatLanding({
 			let staged = false;
 			let stagedMessage: { ref: SessionRef; id: MessageId } | null = null;
 			try {
-				assertRendererWorkspaceCurrent(workspace);
-				const launch = await runCloudControl((control) =>
+				const launch = await runControlPlane((control) =>
 					control["cloud.workspaces.create"]({
 						projectId: cloudProject.projectId,
 						providerId: selectedCloudProviderId,
@@ -1283,7 +1147,7 @@ function WorkspaceChatLanding({
 					input.text.trim().split(/\r?\n/u, 1)[0]?.slice(0, 80) ||
 					launch.workspace.branch;
 				const summary = summaryFromLaunch({
-					workspaceScope: workspace.scope,
+					workspaceScope: { kind: "personal" },
 					workspace: launch.workspace,
 					repositoryIdentity: cloudProject.repositoryIdentity,
 					repositoryDisplayName: cloudProject.displayName,
@@ -1760,13 +1624,8 @@ function WorkspaceChatLanding({
 		draftSession !== null ? (
 			<Suspense fallback={<div className="h-28" aria-busy="true" />}>
 				<ChatComposer
-					cloudProviderIds={cloudTarget ? cloudProviderIds : undefined}
 					constrain={!submitting}
-					submitDisabled={
-						submitting ||
-						pendingProjectSetup !== null ||
-						(cloudTarget && !cloudProviderIds.includes(draftSession.providerId))
-					}
+					submitDisabled={submitting || pendingProjectSetup !== null}
 					// Keyed by the draft's anchor — NOT by the "Run on" target,
 					// so picking a computer never remounts the editor and the
 					// typed text stays exactly where it is.
@@ -1784,12 +1643,10 @@ function WorkspaceChatLanding({
 							? composerDraftKeyForRemoteLanding(
 									EnvironmentId.make(remoteAnchor.member.environmentId),
 									remoteAnchor.member.folderId,
-									workspace.scope,
 								)
 							: composerDraftKeyForLanding(
 									EnvironmentId.make(activeEnvironmentId),
 									selectedFolderId,
-									workspace.scope,
 								)
 					}
 					onDraftSubmit={(input, opts) => void handleDraftSubmit(input, opts)}
@@ -1809,7 +1666,9 @@ function WorkspaceChatLanding({
 									{desktopCatalogEnabled || cloudPickerItems.length > 0 ? (
 										<ComputerPicker
 											group={pickerGroup}
-											includeComputers={!cloudOnlyHome}
+											includeComputers={
+												!(isHostedProduct() && activeEnvironmentId === "local")
+											}
 											target={resolvedTarget}
 											entries={catalogEntries}
 											onPickTarget={(target) => {
@@ -1854,7 +1713,8 @@ function WorkspaceChatLanding({
 											onRetryEnvironment={retryComputer}
 										/>
 									) : null}
-									{selectedCloudProviderId === null && !cloudOnlyHome ? (
+									{selectedCloudProviderId === null &&
+									!(isHostedProduct() && activeEnvironmentId === "local") ? (
 										<WorkspacePicker
 											value={workspaceMode}
 											onValueChange={(mode) => {
@@ -1870,7 +1730,7 @@ function WorkspaceChatLanding({
 											}}
 										/>
 									) : null}
-									{!cloudOnlyHome && (
+									{!(isHostedProduct() && activeEnvironmentId === "local") && (
 										<ImportChatMenu
 											threads={externalThreads}
 											loading={externalThreadsLoading}
@@ -1967,7 +1827,8 @@ function WorkspaceChatLanding({
 									)}
 									{/* Create-from browses the ACTIVE environment's PRs and
 										    branches — hidden for a remote-anchored draft. */}
-									{remoteAnchor === null && !cloudOnlyHome ? (
+									{remoteAnchor === null &&
+									!(isHostedProduct() && activeEnvironmentId === "local") ? (
 										<CreateFromMenu
 											environmentId={EnvironmentId.make(activeEnvironmentId)}
 											folderId={selectedFolderId}

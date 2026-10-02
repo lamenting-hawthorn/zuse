@@ -37,62 +37,6 @@ const command: ClientCommand = {
 const fingerprint = commandFingerprint(command);
 
 describe("renderer command outbox", () => {
-	it("preserves explicit account ownership and refuses command-id reuse by another owner", async () => {
-		resetMemoryCommandOutboxForTest();
-		const outbox = createClientCommandOutbox();
-		const owned: ClientCommand = {
-			...command,
-			owner: { kind: "account", subject: "first" },
-		};
-		const other: ClientCommand = {
-			...command,
-			owner: { kind: "account", subject: "second" },
-		};
-		await outbox.putOutbox({
-			command: owned,
-			fingerprint: commandFingerprint(owned),
-			attempts: 0,
-			lastAttemptAt: null,
-		});
-		expect((await outbox.listOutbox())[0]?.command.owner).toEqual(owned.owner);
-		await expect(
-			outbox.putOutbox({
-				command: other,
-				fingerprint: commandFingerprint(other),
-				attempts: 0,
-				lastAttemptAt: null,
-			}),
-		).rejects.toBeInstanceOf(CommandIdentityCollisionError);
-		expect((await outbox.listOutbox())[0]?.command.owner).toEqual(owned.owner);
-	});
-
-	it("keeps device, account, and legacy command identities distinct", () => {
-		const device: ClientCommand = { ...command, owner: { kind: "device" } };
-		const first: ClientCommand = {
-			...command,
-			owner: { kind: "account", subject: "first" },
-		};
-		const second: ClientCommand = {
-			...command,
-			owner: { kind: "account", subject: "second" },
-		};
-		expect(
-			new Set([command, device, first, second].map(commandFingerprint)).size,
-		).toBe(4);
-		expect(commandFingerprint({ ...command, owner: undefined })).toBe(
-			fingerprint,
-		);
-		const restored = upgradePersistedOutboxEntry({
-			command: first,
-			commandId,
-			environmentId,
-			createdAt: 1,
-			attempts: 0,
-			lastAttemptAt: null,
-		});
-		expect(restored?.command.owner).toEqual(first.owner);
-		expect(restored?.fingerprint).toBe(commandFingerprint(first));
-	});
 	it("persists retry-safe command identity and durable receipts", async () => {
 		resetMemoryCommandOutboxForTest();
 		const outbox = createClientCommandOutbox();

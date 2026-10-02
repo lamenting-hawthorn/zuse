@@ -1,5 +1,4 @@
 import type { CloudAccountImage } from "@zuse/contracts";
-import { reconcileCloudImages } from "./cloud-image-group.ts";
 import { setCloudSettingsUnbuiltChanges } from "./cloud-settings-guard.ts";
 import {
 	hasCloudEntitlement,
@@ -50,9 +49,7 @@ export const refreshCloudImages = async (): Promise<
 		if (result.status === "fulfilled")
 			images.set(result.value.providerId, result.value);
 	}
-	latestImages = reconcileCloudImages(latestImages, [
-		...images.values(),
-	]).filter((image) =>
+	latestImages = [...images.values()].filter((image) =>
 		providers.some((provider) => provider.providerId === image.providerId),
 	);
 

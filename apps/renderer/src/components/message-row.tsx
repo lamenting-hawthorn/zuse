@@ -37,19 +37,14 @@ import {
 	ChevronRight,
 	RefreshCw as RefreshIcon,
 } from "lucide-react";
-import { memo, type ReactNode, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { FileIcon } from "~/components/file-icon";
-import {
-	attachmentDataUrl,
-	downloadAttachment,
-	useAttachmentUrl,
-} from "~/lib/attachments";
+import { attachmentDataUrl, useAttachmentUrl } from "~/lib/attachments";
 import {
 	localProjectForCloudEnvironment,
 	useCloudChatCatalogStore,
 } from "~/lib/cloud-workspace-catalog.ts";
 import { useActiveEnvironmentEntities } from "~/lib/environment-entity-hooks.ts";
-import { formatError } from "~/lib/format-error";
 import { openNewChatLanding } from "~/lib/open-new-chat-landing.ts";
 import {
 	orchestrationToolName,
@@ -1534,21 +1529,6 @@ function AttachmentChip({
 			</button>
 		);
 	}
-	if (sessionRef !== null) {
-		return (
-			<AttachmentDownloadButton
-				key={JSON.stringify([
-					sessionRef.environmentId,
-					sessionRef.sessionId,
-					a.id,
-				])}
-				refValue={sessionRef}
-				attachment={a}
-			>
-				{inner}
-			</AttachmentDownloadButton>
-		);
-	}
 	return (
 		<a
 			key={a.id}
@@ -1564,54 +1544,5 @@ function AttachmentChip({
 		>
 			{inner}
 		</a>
-	);
-}
-
-function AttachmentDownloadButton({
-	refValue,
-	attachment,
-	children,
-}: {
-	refValue: SessionRef;
-	attachment: AttachmentRef;
-	children: ReactNode;
-}) {
-	const { message } = useUiMessages(["common"]);
-	const request = useRef<AbortController | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	useEffect(() => () => request.current?.abort(), []);
-	return (
-		<button
-			type="button"
-			className={contextPillClass}
-			disabled={busy || attachment.id.startsWith("pending-")}
-			aria-busy={busy}
-			title={error ?? attachment.originalName}
-			onClick={() => {
-				if (request.current !== null) return;
-				const controller = new AbortController();
-				request.current = controller;
-				setBusy(true);
-				setError(null);
-				void downloadAttachment(refValue, attachment.id, controller.signal)
-					.catch((cause: unknown) => {
-						if (!controller.signal.aborted) setError(formatError(cause));
-					})
-					.finally(() => {
-						if (!controller.signal.aborted) {
-							request.current = null;
-							setBusy(false);
-						}
-					});
-			}}
-		>
-			{children}
-			{busy ? (
-				<span role="status">{message("common:loading")}</span>
-			) : error !== null ? (
-				<span role="alert">{message("common:retry")}</span>
-			) : null}
-		</button>
 	);
 }

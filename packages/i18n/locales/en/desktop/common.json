@@ -1,8 +1,4 @@
 {
-	"device_preferences_save_failed": "Could not save device preferences. Your previous preferences are unchanged.",
-	"workspace_settings_load_failed": "Could not load workspace settings. Try again.",
-	"workspace_settings_save_failed": "Could not save workspace settings. Refresh before trying again.",
-	"workspace_settings_separate_configuration": "Configure this setting separately for the workspace.",
 	"projects_and_chats": "Projects and chats",
 	"collapse": "Collapse {{title}}",
 	"expand": "Expand {{title}}",
@@ -56,13 +52,5 @@
 	"recording_shortcut": "Recording shortcut for {{label}}",
 	"recording_new_shortcut": "Recording shortcut for new binding",
 	"provider_settings": "Provider settings",
-	"startup_surface_loading_zuse": "Loading Zuse",
-	"startup_surface_zuse": "Zuse",
-	"startup_surface_still_starting_zuse": "Still starting Zuse…",
-	"startup_surface_zuse_couldn_t_start": "Zuse couldn’t start",
-	"startup_surface_the_local_server_did_not_become_available_your_data_is_still_on_disk": "The local server did not become available. Your data is still on disk.",
-	"startup_surface_try_again": "Try again",
-	"startup_surface_reload": "Reload",
-	"startup_surface_copy_details": "Copy details",
 	"copy_failed": "Copy failed"
 }

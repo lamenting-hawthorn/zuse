@@ -5,8 +5,6 @@ import {
 	openNewChatLanding,
 	resetCompletedChatDraft,
 } from "../../src/lib/open-new-chat-landing.ts";
-import { observeRendererAccount } from "../../src/lib/renderer-account.ts";
-import { selectRendererWorkspace } from "../../src/lib/renderer-workspace.ts";
 import { useChatsStore } from "../../src/store/chats.ts";
 import { useSessionsStore } from "../../src/store/sessions.ts";
 import { useUiStore } from "../../src/store/ui.ts";
@@ -40,8 +38,6 @@ const beginDraft = (projectId = first) => {
 };
 
 beforeEach(() => {
-	observeRendererAccount("navigation-user");
-	selectRendererWorkspace({ kind: "personal" });
 	vi.stubGlobal("location", new URL("http://localhost"));
 	useWorkspaceStore.setState({ selectedFolderId: first });
 	useChatsStore.setState({
@@ -60,18 +56,6 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("New Chat navigation", () => {
-	it("does not let a late launch reclaim navigation after switching workspaces and back", () => {
-		openNewChatLanding(first);
-		const personal = captureNewChatLanding();
-		expect(personal()).toBe(true);
-		selectRendererWorkspace({ kind: "organization", organizationId: "org-a" });
-		expect(personal()).toBe(false);
-		const organization = captureNewChatLanding();
-		selectRendererWorkspace({ kind: "personal" });
-		expect(personal()).toBe(false);
-		expect(organization()).toBe(false);
-		expect(captureNewChatLanding()()).toBe(true);
-	});
 	it("opens another project's landing immediately without waiting for persistence", async () => {
 		const observed: Array<[ChatId | null, SessionId | null]> = [];
 		const observe = () => {

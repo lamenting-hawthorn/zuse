@@ -9,12 +9,7 @@ import {
 } from "@zuse/contracts";
 import { Schema } from "effect";
 import { createAtomStore as create } from "../state/atom-store.ts";
-import { rendererAccountSnapshot } from "./renderer-account.ts";
-import {
-	rendererWorkspaceSnapshot,
-	subscribeRendererWorkspace,
-	workspaceScopeKey,
-} from "./renderer-workspace.ts";
+import { isHostedProduct } from "./hosted-connect.ts";
 import { cloudChatCatalogPersistence } from "./session-timeline-cache.ts";
 
 export type CloudSyncPrefs = Readonly<{
@@ -41,6 +36,7 @@ const EMPTY_CATALOG: CloudChatCatalogState = {
 	archiveIntents: {},
 	syncPrefs: {},
 };
+const LEGACY_CLOUD_CATALOG_STORAGE_KEY = "zuse:cloud-chat-catalog:v1";
 
 const decodePersistedCatalog = (value: unknown): CloudChatCatalogState => {
 	try {
@@ -174,33 +170,25 @@ export const useCloudChatCatalogStore = create<CloudChatCatalogState>(
 
 let catalogPersistenceReady = false;
 let catalogHydration: Promise<void> | null = null;
-let catalogWriteTail = Promise.resolve();
 export const hydrateCloudChatCatalogPersistence = async (): Promise<void> => {
-	const account = rendererAccountSnapshot();
-	const workspace = rendererWorkspaceSnapshot();
-	if (typeof account.subject !== "string") return;
-	const subject =
-		workspace.key === "personal"
-			? account.subject
-			: JSON.stringify([account.subject, workspace.key]);
-	const persistence = cloudChatCatalogPersistence;
-	if (catalogPersistenceReady || persistence === null) return;
+	if (catalogPersistenceReady || cloudChatCatalogPersistence === null) return;
 	catalogHydration ??= (async () => {
-		// Old account writes retain their captured owner and must finish before
-		// that account is rehydrated, including an A -> B -> A transition.
-		await catalogWriteTail;
+		let stored = await cloudChatCatalogPersistence.load().catch(() => null);
 		if (
-			rendererAccountSnapshot() !== account ||
-			rendererWorkspaceSnapshot() !== workspace
-		)
-			return;
-		const stored = await persistence.load(subject).catch(() => null);
-		if (
-			rendererAccountSnapshot() !== account ||
-			rendererWorkspaceSnapshot() !== workspace
-		)
-			return;
-		// Unowned legacy cloud history cannot safely be assigned to this account.
+			!isHostedProduct() &&
+			stored === null &&
+			typeof window !== "undefined"
+		) {
+			try {
+				const legacy = window.localStorage.getItem(
+					LEGACY_CLOUD_CATALOG_STORAGE_KEY,
+				);
+				stored = legacy === null ? null : JSON.parse(legacy);
+				window.localStorage.removeItem(LEGACY_CLOUD_CATALOG_STORAGE_KEY);
+			} catch {
+				// A malformed or unavailable prototype catalog is safe to ignore.
+			}
+		}
 		const persisted = decodePersistedCatalog(stored);
 		useCloudChatCatalogStore.setState((current) => ({
 			summaries: mergeCloudChatSummaries(
@@ -221,39 +209,19 @@ export const hydrateCloudChatCatalogPersistence = async (): Promise<void> => {
 			},
 		}));
 		catalogPersistenceReady = true;
-		const state = useCloudChatCatalogStore.getState();
-		catalogWriteTail = catalogWriteTail
-			.then(() => persistence.save(subject, state))
+		await cloudChatCatalogPersistence
+			.save(useCloudChatCatalogStore.getState())
 			.catch(() => undefined);
-		await catalogWriteTail;
 	})();
 	await catalogHydration;
 };
 
 void hydrateCloudChatCatalogPersistence();
-const resetCatalog = () => {
-	catalogPersistenceReady = false;
-	catalogHydration = null;
-	useCloudChatCatalogStore.setState(EMPTY_CATALOG);
-	void hydrateCloudChatCatalogPersistence();
-};
-// Account changes already reset the workspace; one notification owns hydration.
-const unsubscribeWorkspace = subscribeRendererWorkspace(resetCatalog);
-if (import.meta.hot)
-	import.meta.hot.dispose(() => {
-		unsubscribeWorkspace();
-	});
+let catalogWriteTail = Promise.resolve();
 useCloudChatCatalogStore.subscribe((state) => {
 	if (!catalogPersistenceReady) return;
-	const account = rendererAccountSnapshot();
-	const workspace = rendererWorkspaceSnapshot();
-	if (typeof account.subject !== "string") return;
-	const subject =
-		workspace.key === "personal"
-			? account.subject
-			: JSON.stringify([account.subject, workspace.key]);
 	catalogWriteTail = catalogWriteTail
-		.then(() => cloudChatCatalogPersistence?.save(subject, state))
+		.then(() => cloudChatCatalogPersistence?.save(state))
 		.then(() => undefined)
 		.catch(() => undefined);
 });
@@ -297,12 +265,7 @@ export const confirmCloudChatUnarchive = (summary: CloudChatSummary): void => {
 export const registerCloudChat = (
 	summary: CloudChatSummary,
 	projectId?: FolderId,
-): boolean => {
-	if (
-		workspaceScopeKey(summary.workspaceScope ?? { kind: "personal" }) !==
-		rendererWorkspaceSnapshot().key
-	)
-		return false;
+): void => {
 	useCloudChatCatalogStore.setState((state) => ({
 		summaries: mergeCloudChatSummaries(state.summaries, [summary]),
 		localProjectByEnvironment:
@@ -313,7 +276,6 @@ export const registerCloudChat = (
 						[summary.workspaceId]: projectId,
 					},
 	}));
-	return true;
 };
 
 export const cloudSyncPrefsFor = (workspaceId: string): CloudSyncPrefs | null =>
@@ -358,14 +320,6 @@ export const forgetCloudChat = (workspaceId: string): void => {
 export const reconcileCloudChatCatalog = (
 	incoming: ReadonlyArray<CloudChatSummary>,
 ): ReadonlyArray<CloudChatSummary> => {
-	if (
-		incoming.some(
-			(summary) =>
-				workspaceScopeKey(summary.workspaceScope ?? { kind: "personal" }) !==
-				rendererWorkspaceSnapshot().key,
-		)
-	)
-		throw new Error("Cloud catalog contains a chat from another workspace.");
 	const incomingIds = new Set(incoming.map((summary) => summary.workspaceId));
 	const previous = useCloudChatCatalogStore.getState();
 	const previousById = new Map(

@@ -20,16 +20,12 @@ export interface TimelineReadingPosition {
 }
 
 export interface TimelineReadingPositionStore {
-	readonly load: (
-		ref: SessionRef,
-		namespace?: string,
-	) => Promise<TimelineReadingPosition | null>;
+	readonly load: (ref: SessionRef) => Promise<TimelineReadingPosition | null>;
 	readonly save: (
 		ref: SessionRef,
 		position: TimelineReadingPosition,
-		namespace?: string,
 	) => Promise<void>;
-	readonly remove: (ref: SessionRef, namespace?: string) => Promise<void>;
+	readonly remove: (ref: SessionRef) => Promise<void>;
 }
 
 export function encodeTimelineReadingPosition(

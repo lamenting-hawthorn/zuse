@@ -20,7 +20,6 @@ import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	scope: vi.fn(),
 	cancel: vi.fn(),
 	dataKey: vi.fn(),
 	enqueue: vi.fn(),
@@ -30,7 +29,6 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/lib/rpc-client.ts", () => ({
-	getCloudWorkspaceScope: mocks.scope,
 	getControlPlaneRpcClient: async () => ({
 		"cloud.commands.cancel": mocks.cancel,
 		"cloud.commands.dataKey": mocks.dataKey,
@@ -155,17 +153,7 @@ const waitUntil = async (predicate: () => boolean): Promise<void> => {
 describe("cloud command transport rollout compatibility", () => {
 	beforeEach(() => {
 		vi.resetAllMocks();
-		mocks.scope.mockReturnValue({ kind: "personal" });
 		mocks.dataKey.mockReturnValue(missing());
-	});
-
-	it("does not infer Personal ownership for an unknown queued command", async () => {
-		mocks.scope.mockReturnValue(undefined);
-		const handle = dispatch();
-		await expect(handle.accepted).rejects.toThrow("ownership is not available");
-		expect(mocks.dataKey).not.toHaveBeenCalled();
-		expect(mocks.enqueue).not.toHaveBeenCalled();
-		handle.dispose();
 	});
 
 	it("falls back to live RPC when an older control plane lacks mailbox routes", async () => {

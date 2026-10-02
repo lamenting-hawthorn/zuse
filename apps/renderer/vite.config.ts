@@ -116,7 +116,6 @@ export default defineConfig({
 			"@noble/hashes/sha2",
 			"@noble/hashes/utils",
 			"effect",
-			"effect/unstable/http",
 			"effect/unstable/reactivity",
 			"effect/unstable/rpc",
 			"effect/unstable/rpc/RpcClientError",

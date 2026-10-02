@@ -1,15 +1,4 @@
-import {
-	type AgentAvailability,
-	type CloudAuthStatus,
-	ProviderId,
-} from "@zuse/contracts";
-
-export const connectedCloudProviders = (
-	status: CloudAuthStatus | null,
-): ReadonlyArray<ProviderId> =>
-	status?.providers
-		.filter((provider) => provider.state === "connected")
-		.map((provider) => ProviderId.make(provider.providerId)) ?? [];
+import type { AgentAvailability, ProviderId } from "@zuse/contracts";
 
 export function isModelPickerProviderVisible({
 	providerId,
@@ -17,18 +6,14 @@ export function isModelPickerProviderVisible({
 	providerEnabled,
 	availabilityLoaded = true,
 	revealBeforeAvailabilityLoaded = true,
-	cloudProviderIds,
 }: {
 	providerId: ProviderId;
 	availability: AgentAvailability | undefined;
 	providerEnabled: Partial<Record<ProviderId, boolean>>;
 	availabilityLoaded?: boolean;
 	revealBeforeAvailabilityLoaded?: boolean;
-	cloudProviderIds?: ReadonlyArray<ProviderId>;
 }): boolean {
 	if (providerEnabled[providerId] === false) return false;
-	if (cloudProviderIds !== undefined)
-		return cloudProviderIds.includes(providerId);
 	if (availability === undefined) {
 		return !availabilityLoaded && revealBeforeAvailabilityLoaded;
 	}

@@ -12,11 +12,6 @@ import {
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
 
 /** Mirror privacy-safe active workload counts to desktop-owned services. */
-export function RuntimeActivityReporter() {
-	useReportRuntimeActivity();
-	return null;
-}
-
 export function useReportRuntimeActivity(): void {
 	const localEnvironmentId = useEnvironmentCatalogStore((state) =>
 		localRuntimeEnvironmentId(state.entries, state.activeEnvironmentId),

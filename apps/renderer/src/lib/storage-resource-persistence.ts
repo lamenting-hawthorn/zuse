@@ -2,7 +2,6 @@ import type {
 	PersistedResource,
 	ResourcePersistence,
 } from "@zuse/client-runtime/client-persistence";
-import { resourceCacheStorageKey } from "@zuse/client-runtime/client-persistence";
 import {
 	type ResourceKey,
 	resourceKeyId,
@@ -51,14 +50,11 @@ const isCursor = (
 export const makeLocalStorageResourcePersistence = <Data>(
 	options: PersistenceOptions<Data>,
 ): ResourcePersistence => {
-	const storageKey = (key: ResourceKey<unknown>, namespace?: string): string =>
-		`${options.prefix}.v${options.version}:${resourceCacheStorageKey(resourceKeyId(key), namespace)}`;
+	const storageKey = (key: ResourceKey<unknown>): string =>
+		`${options.prefix}.v${options.version}:${resourceKeyId(key)}`;
 
 	return {
-		loadResource: async <Value>(
-			key: ResourceKey<Value>,
-			namespace?: string,
-		) => {
+		loadResource: async <Value>(key: ResourceKey<Value>) => {
 			let storage: StorageLike | null;
 			try {
 				storage = options.storage();
@@ -66,7 +62,7 @@ export const makeLocalStorageResourcePersistence = <Data>(
 				return null;
 			}
 			if (storage === null) return null;
-			const cacheKey = storageKey(key, namespace);
+			const cacheKey = storageKey(key);
 			let raw: string | null;
 			try {
 				raw = storage.getItem(cacheKey);
@@ -101,22 +97,21 @@ export const makeLocalStorageResourcePersistence = <Data>(
 		saveResource: async <Value>(
 			key: ResourceKey<Value>,
 			resource: PersistedResource<Value>,
-			namespace?: string,
 		) => {
 			try {
 				options
 					.storage()
 					?.setItem(
-						storageKey(key, namespace),
+						storageKey(key),
 						JSON.stringify({ version: options.version, resource }),
 					);
 			} catch {
 				// Cache persistence is best-effort and cannot block live settings.
 			}
 		},
-		removeResource: async (key, namespace) => {
+		removeResource: async (key) => {
 			try {
-				options.storage()?.removeItem(storageKey(key, namespace));
+				options.storage()?.removeItem(storageKey(key));
 			} catch {
 				// Storage can be unavailable under opaque hosted origins.
 			}

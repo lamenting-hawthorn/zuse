@@ -2,9 +2,7 @@ import type { CloudAccountImage } from "@zuse/contracts";
 import { expect, it, vi } from "vitest";
 import {
 	cloudImageGroupStatus,
-	cloudImageReadyForProject,
 	rebuildCloudImages,
-	reconcileCloudImages,
 } from "../../src/lib/cloud-image-group.ts";
 
 const image = (
@@ -17,50 +15,6 @@ const image = (
 	providers: [],
 	builds: [],
 	updatedAt: 1,
-});
-
-it("does not replace a queued rebuild with an older ready image", () => {
-	const ready = image("box", "ready");
-	const queued = { ...image("box", "building"), updatedAt: 20 };
-	expect(reconcileCloudImages([queued], [ready])).toEqual([queued]);
-	const completed = { ...ready, updatedAt: 30 };
-	expect(reconcileCloudImages([queued], [completed])).toEqual([completed]);
-	const failed = { ...queued, state: "failed" as const, updatedAt: 40 };
-	expect(reconcileCloudImages([queued], [failed])).toEqual([failed]);
-	expect(reconcileCloudImages([queued], [image("e2b", "ready")])).toEqual([
-		image("e2b", "ready"),
-	]);
-});
-
-it("only offers built images that contain the selected repository for new chats", () => {
-	const built = {
-		...image("boxd", "ready"),
-		repositories: [
-			{
-				projectId: "project",
-				repositoryIdentity: "github.com/example/repo",
-				displayName: "example/repo",
-				defaultBranch: "main",
-			},
-		],
-	};
-	expect(cloudImageReadyForProject(built, "project")).toBe(true);
-	expect(
-		cloudImageReadyForProject({ ...built, state: "outdated" }, "project"),
-	).toBe(true);
-	expect(cloudImageReadyForProject(built, "other-project")).toBe(false);
-	expect(cloudImageReadyForProject(built, undefined)).toBe(false);
-	expect(cloudImageReadyForProject(undefined, "project")).toBe(false);
-	for (const state of [
-		"not-built",
-		"building",
-		"failed",
-		"auth-broken",
-	] as const) {
-		expect(cloudImageReadyForProject({ ...built, state }, "project")).toBe(
-			false,
-		);
-	}
 });
 
 it("requires every available provider, including newly added ones, to be ready", () => {

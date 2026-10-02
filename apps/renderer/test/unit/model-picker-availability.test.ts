@@ -1,12 +1,7 @@
-import {
-	type AgentAvailability,
-	CloudAuthStatus,
-	type ProviderId,
-} from "@zuse/contracts";
+import type { AgentAvailability, ProviderId } from "@zuse/contracts";
 import { describe, expect, it } from "vitest";
 
 import {
-	connectedCloudProviders,
 	isModelPickerProviderVisible,
 	selectAuthenticatedProvider,
 } from "../../src/lib/model-picker-availability.ts";
@@ -25,59 +20,6 @@ const availabilityFor = (
 });
 
 describe("model picker provider visibility", () => {
-	it("uses workspace Cloud connections rather than this computer's agents", () => {
-		const connected = connectedCloudProviders(
-			CloudAuthStatus.make({
-				authorityState: "ready",
-				providers: [
-					{ providerId: "grok", state: "connected" },
-					{ providerId: "claude", state: "disconnected" },
-					{ providerId: "codex", state: "expired" },
-					{ providerId: "cursor", state: "authorizing" },
-				],
-			}),
-		);
-		expect(connected).toEqual(["grok"]);
-		for (const providerId of ["claude", "codex", "cursor"] as const) {
-			expect(
-				isModelPickerProviderVisible({
-					providerId,
-					availability: availabilityFor(providerId),
-					providerEnabled: {},
-					cloudProviderIds: connected,
-				}),
-			).toBe(false);
-		}
-		expect(
-			isModelPickerProviderVisible({
-				providerId: "grok",
-				availability: undefined,
-				providerEnabled: {},
-				cloudProviderIds: connected,
-			}),
-		).toBe(true);
-	});
-	it("does not fall back to local agents while Cloud auth is unknown or empty", () => {
-		expect(connectedCloudProviders(null)).toEqual([]);
-		expect(
-			isModelPickerProviderVisible({
-				providerId: "claude",
-				availability: availabilityFor("claude"),
-				providerEnabled: {},
-				cloudProviderIds: [],
-			}),
-		).toBe(false);
-	});
-	it("respects disabled providers even when connected to Cloud", () => {
-		expect(
-			isModelPickerProviderVisible({
-				providerId: "grok",
-				availability: undefined,
-				providerEnabled: { grok: false },
-				cloudProviderIds: ["grok"],
-			}),
-		).toBe(false);
-	});
 	it("shows installed authenticated providers", () => {
 		expect(
 			isModelPickerProviderVisible({
