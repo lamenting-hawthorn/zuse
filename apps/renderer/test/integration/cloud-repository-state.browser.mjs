@@ -42,8 +42,12 @@ const server = await createServer({
 					return "\0selection-cache";
 				if (id.endsWith("control-plane-client.ts")) return "\0selection-client";
 				if (id.endsWith("cloud-image-monitor.ts")) return "\0selection-monitor";
+				if (id.endsWith("platform-capabilities.ts"))
+					return "\0selection-platform";
 			},
 			load(id) {
+				if (id === "\0selection-platform")
+					return `export const openExternal = async url => { window.openedGithubUrl = typeof url === 'function' ? await url() : url; };`;
 				if (id === "\0selection-auth")
 					return `export const useAuth = () => ({isLoading:false,isSignedIn:true});`;
 				if (id === "\0selection-monitor")
@@ -51,7 +55,7 @@ const server = await createServer({
 				if (id === "\0selection-client")
 					return `
                  export const subscribeControlPlaneSessionCache = listener => { window.cacheListener = listener; return () => {}; };
-                 export const runControlPlane = fn => fn({'cloud.projects.connect': async () => {
+                 export const runCloudControl = fn => fn({'cloud.github.install': async () => ({url:'https://api-staging.zuse.sh/v1/cloud/github/callback?state=test'}), 'cloud.projects.connect': async () => {
                   await new Promise(resolve => { window.finishConnect = resolve; });
                   window.projects = [window.project];
                   return window.project;
@@ -118,6 +122,26 @@ try {
 	await page
 		.getByRole("button", { name: "Repository", exact: true })
 		.waitFor({ timeout: 30000 });
+	const existing = page.getByRole("button", {
+		name: "Connect existing account",
+		exact: true,
+	});
+	await ((await existing.count())
+		? existing
+		: page.getByRole("button", { name: "Configure app", exact: true })
+	).click();
+	await page.waitForFunction(
+		() =>
+			window.openedGithubUrl !== undefined ||
+			document.body.textContent.includes(
+				"That cloud action could not be completed",
+			),
+	);
+	assert.equal(
+		await page.evaluate(() => window.openedGithubUrl),
+		"https://api-staging.zuse.sh/v1/cloud/github/callback?state=test",
+	);
+	assert.equal(await existing.count(), 0);
 	// Hold a refresh that captured the repository list before the mutation.
 	await page.evaluate(() => {
 		window.delayProjects = true;

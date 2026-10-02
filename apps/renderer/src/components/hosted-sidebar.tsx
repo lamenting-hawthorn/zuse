@@ -20,6 +20,7 @@ import {
 	saveHostedLaptopPreference,
 } from "../lib/hosted-laptop-preferences.ts";
 import { selectHostedCloudHome } from "../lib/hosted-workspace.ts";
+import { rendererAccountSnapshot } from "../lib/renderer-account.ts";
 import { registerApiEnvironment } from "../lib/rpc-client.ts";
 import { useEnvironmentCatalogStore } from "../store/environment-catalog.ts";
 import { Button } from "./ui/button.tsx";
@@ -117,6 +118,7 @@ function LaptopChats({ environmentId }: { environmentId: string }) {
 	const [attempt, setAttempt] = useState(0);
 	useEffect(() => {
 		let active = true;
+		const account = rendererAccountSnapshot();
 		setReady(false);
 		setError(null);
 		const endpoint = async () => {
@@ -130,7 +132,7 @@ function LaptopChats({ environmentId }: { environmentId: string }) {
 			.then(
 				(url) => {
 					if (!active) return;
-					registerApiEnvironment(environmentId, url, endpoint);
+					registerApiEnvironment(environmentId, url, endpoint, account);
 					setReady(true);
 				},
 				() => {

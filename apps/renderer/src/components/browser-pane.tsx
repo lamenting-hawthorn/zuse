@@ -1535,7 +1535,7 @@ export function BrowserPane({
 					ariaLabel={
 						isLoading
 							? uiMessage("common:stop")
-							: uiMessage("chat:startup_surface_reload")
+							: uiMessage("common:startup_surface_reload")
 					}
 				>
 					<RefreshCw

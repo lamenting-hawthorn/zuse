@@ -36,7 +36,7 @@ describe("cloud workspace authentication dialog", () => {
 
 	it("keeps every visible auth action at the compact cloud control height", () => {
 		expect(authDialogSource).toContain(
-			"const COMPACT_AUTH_ACTION = COMPACT_CLOUD_ACTION",
+			"COMPACT_CLOUD_ACTION} gap-2 [&_svg]:size-3 [&_svg]:mx-0",
 		);
 		expect(authDialogSource).not.toMatch(/className={`w-full/);
 	});
