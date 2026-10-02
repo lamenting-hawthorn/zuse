@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 
 const historicalPaths = [
 	/^infra\/api\/drizzle\/migrations\/0021_link_challenge_api_issuer\.sql$/u,
+	// Removes the constraint by its shipped, pre-rename database identifier.
+	/^infra\/api\/drizzle\/migrations\/0032_classify_legacy_lifecycle_usage\.sql$/u,
 	/^infra\/api\/drizzle\/migrations\/(?:000\d|001[0-5])_/u,
 	/^infra\/api\/drizzle\/migrations\/meta\//u,
 	/^apps\/server\/src\/persistence\/migrations\/002[4-8]_/u,

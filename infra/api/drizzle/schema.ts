@@ -407,6 +407,7 @@ export const apiCloudGithubInstallations = pgTable(
 export const apiCloudAuthAuthorities = pgTable(
 	"api_cloud_auth_authorities",
 	{
+		status: jsonb("status"),
 		accountId: text("account_id").primaryKey(),
 		provider: text("provider").notNull(),
 		providerSandboxId: text("provider_sandbox_id"),
@@ -695,7 +696,7 @@ export const apiCloudWorkspaceUsage = pgTable(
 		),
 		check(
 			"api_cloud_usage_kind_check",
-			sql`${table.kind} IN ('runtime-seconds', 'pause', 'resume', 'snapshot-bytes', 'storage-byte-seconds', 'archive', 'restore', 'delete')`,
+			sql`${table.kind} IN ('runtime-seconds', 'lifecycle-elapsed-seconds', 'pause', 'resume', 'snapshot-bytes', 'storage-byte-seconds', 'archive', 'restore', 'delete')`,
 		),
 	],
 );

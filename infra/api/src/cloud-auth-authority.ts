@@ -47,7 +47,9 @@ export const canSeedCloudAuthSnapshot = (
 	targetProviderId === authorityProviderId &&
 	authorityProviderId === CLOUD_AUTH_AUTHORITY_PROVIDER_ID;
 
-const AUTH_TIMEOUT_SECONDS = 60 * 60;
+// Shared across real operations so a broker request cannot shorten a concurrent
+// device login's window. Passive status/login polling never extends this lease.
+const AUTH_TIMEOUT_SECONDS = 15 * 60;
 const AUTH_PROVISIONING_LEASE_MS = 2 * 60 * 1000;
 const PROVIDERS = ["claude", "codex", "cursor", "grok"] as const;
 const AUTH_STARTUP_RETRY = Schedule.addDelay(Schedule.recurs(20), () =>
@@ -856,7 +858,14 @@ const initializeAuthority = Effect.fn("initializeCloudAuthAuthority")(
 const ensureRunning = Effect.fn("ensureCloudAuthAuthorityRunning")(function* (
 	authority: Authority,
 ) {
-	if (authority.state === "running") return authority;
+	if (authority.state === "running") {
+		yield* authority.provider
+			.extendTimeout(authority.sandboxId, AUTH_TIMEOUT_SECONDS)
+			.pipe(
+				Effect.mapError(() => serviceUnavailable("cloud_auth_unavailable")),
+			);
+		return authority;
+	}
 	const resumed = yield* authority.provider
 		.resume(authority.sandboxId, AUTH_TIMEOUT_SECONDS, "pause")
 		.pipe(Effect.mapError(() => serviceUnavailable("cloud_auth_unavailable")));
@@ -1008,7 +1017,20 @@ const decodeProviderStatus = (
 const readCloudAuthStatus = Effect.fn("readCloudAuthStatus")(function* (
 	accountId: string,
 	verify: boolean,
+	wake = true,
 ) {
+	const store = yield* CloudWorkspaceStore;
+	const locator = yield* store.getCloudAuthAuthority(accountId);
+	// Passive reads must not perform legacy discovery/initialization either.
+	if (!wake && locator === null)
+		return new CloudAuthStatus({
+			authorityState: "not-created",
+			providers: PROVIDERS.map(
+				(providerId) =>
+					new CloudAuthProviderStatus({ providerId, state: "disconnected" }),
+			),
+			updatedAt: Date.now(),
+		});
 	const recovered = yield* recoverAuthority(accountId);
 	if (recovered === null) {
 		return new CloudAuthStatus({
@@ -1022,7 +1044,23 @@ const readCloudAuthStatus = Effect.fn("readCloudAuthStatus")(function* (
 			),
 		});
 	}
-	const authority = yield* initializeAuthority(yield* ensureRunning(recovered));
+	if (!wake && recovered.state !== "running")
+		return new CloudAuthStatus({
+			authorityState: "error",
+			providers: PROVIDERS.map(
+				(providerId) =>
+					new CloudAuthProviderStatus({
+						providerId,
+						state: "error",
+						errorCode: "cloud_auth_status_refresh_required",
+					}),
+			),
+			updatedAt: Date.now(),
+		});
+	const authority = wake
+		? yield* initializeAuthority(yield* ensureRunning(recovered))
+		: recovered;
+	const observedLocator = yield* store.getCloudAuthAuthority(accountId);
 	if (authority.storageIncarnationId !== recovered.storageIncarnationId)
 		return new CloudAuthStatus({
 			authorityState: "error",
@@ -1062,7 +1100,7 @@ const readCloudAuthStatus = Effect.fn("readCloudAuthStatus")(function* (
 		] as const,
 		{ concurrency: 3 },
 	);
-	return new CloudAuthStatus({
+	const status = new CloudAuthStatus({
 		authorityState: keyId === null || publicJwk === null ? "error" : "ready",
 		providers: PROVIDERS.map((providerId, index) =>
 			decodeProviderStatus(providerId, providerValues[index] ?? null),
@@ -1071,33 +1109,44 @@ const readCloudAuthStatus = Effect.fn("readCloudAuthStatus")(function* (
 		...(publicJwk === null ? {} : { encryptionPublicJwk: publicJwk }),
 		updatedAt: Date.now(),
 	});
+	if (
+		observedLocator?.storageIncarnationId === authority.storageIncarnationId &&
+		observedLocator.providerSandboxId === authority.sandboxId &&
+		status.authorityState === "ready"
+	)
+		yield* store.saveCloudAuthStatus({
+			accountId,
+			expectedRevision: observedLocator.revision,
+			status,
+		});
+	return status;
 });
 
-/** Read the last real CLI verification without putting provider probes on UI polling. */
+/** Durable public status: UI polling must never wake paid compute. */
 export const cloudAuthStatus = Effect.fn("cloudAuthStatus")(function* (
 	accountId: string,
 ) {
-	return yield* readCloudAuthStatus(accountId, false).pipe(
-		Effect.catch((cause) =>
-			Effect.sync(() => {
-				console.warn("[cloud-auth] status unavailable", {
-					accountId,
-					code: cause.code,
-				});
-				return new CloudAuthStatus({
-					authorityState: "error",
-					providers: PROVIDERS.map(
-						(providerId) =>
-							new CloudAuthProviderStatus({
-								providerId,
-								state: "disconnected",
-							}),
-					),
-					updatedAt: Date.now(),
-				});
-			}),
-		),
+	const locator = yield* (yield* CloudWorkspaceStore).getCloudAuthAuthority(
+		accountId,
 	);
+	if (locator?.state === "ready" && locator.status !== undefined)
+		return locator.status;
+	// Even provider file reads can auto-wake an idle VM. Never contact the
+	// provider here, including on a cold cache after upgrading an old account.
+	return new CloudAuthStatus({
+		authorityState: locator === null ? "not-created" : "error",
+		providers: PROVIDERS.map(
+			(providerId) =>
+				new CloudAuthProviderStatus({
+					providerId,
+					state: locator === null ? "disconnected" : "error",
+					...(locator === null
+						? {}
+						: { errorCode: "cloud_auth_status_refresh_required" }),
+				}),
+		),
+		updatedAt: Date.now(),
+	});
 });
 
 export const provisionCloudAuth = Effect.fn("provisionCloudAuth")(function* (
@@ -1106,7 +1155,7 @@ export const provisionCloudAuth = Effect.fn("provisionCloudAuth")(function* (
 	// This RPC is an explicit account action, so it may replace a persisted
 	// authority locator only after the provider proves its storage is gone.
 	yield* provisionAuthority(accountId, true);
-	return yield* cloudAuthStatus(accountId);
+	return yield* readCloudAuthStatus(accountId, false, false);
 });
 
 const operationFrom = (
@@ -1186,6 +1235,7 @@ export const configureCloudAuth = Effect.fn("configureCloudAuth")(function* (
 		})
 		.pipe(Effect.mapError(() => serviceUnavailable("cloud_auth_setup_failed")));
 	const result = yield* waitForFile(authority, resultPath, 350);
+	yield* readCloudAuthStatus(accountId, false, false);
 	try {
 		const parsed = JSON.parse(result) as Record<string, unknown>;
 		const state =
@@ -1248,7 +1298,9 @@ const requireOperationAuthority = Effect.fn(
 	const recovered = yield* recoverAuthority(accountId);
 	if (recovered === null)
 		return yield* Effect.fail(badRequest("cloud_auth_not_configured"));
-	return yield* ensureRunning(recovered);
+	if (recovered.state !== "running")
+		return yield* Effect.fail(badRequest("cloud_auth_operation_expired"));
+	return recovered;
 });
 
 export const pollCloudAuthLogin = Effect.fn("pollCloudAuthLogin")(function* (
@@ -1266,7 +1318,10 @@ export const pollCloudAuthLogin = Effect.fn("pollCloudAuthLogin")(function* (
 			providerId: "codex",
 			state: "authorizing",
 		});
-	return operationFrom(operationId, value);
+	const operation = operationFrom(operationId, value);
+	if (operation.state === "connected")
+		yield* readCloudAuthStatus(accountId, false, false);
+	return operation;
 });
 
 export const cancelCloudAuthLogin = Effect.fn("cancelCloudAuthLogin")(
@@ -1349,6 +1404,7 @@ await writeFile(${JSON.stringify(resultPath)}, "ready", { mode: 0o600 });`;
 			Effect.mapError(() => serviceUnavailable("cloud_auth_disconnect_failed")),
 		);
 	yield* waitForFile(authority, resultPath);
+	yield* readCloudAuthStatus(accountId, false, false);
 	return new CloudAuthProviderStatus({ providerId, state: "disconnected" });
 });
 
