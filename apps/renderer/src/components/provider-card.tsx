@@ -1,3 +1,5 @@
+import { PROVIDER_LABEL } from "~/lib/provider-labels";
+import { CopyButton } from "./copy-button.tsx";
 import "@zuse/i18n/english/providers";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { AgentAvailability, ProviderId } from "@zuse/contracts";
@@ -7,7 +9,6 @@ import {
 	AlertCircleIcon,
 	ArrowDown01Icon,
 	CircleArrowUp01Icon,
-	Copy01Icon,
 	Delete02Icon,
 	LinkSquare01Icon,
 	Loading02Icon,
@@ -42,19 +43,6 @@ import {
 	providerUpdateKey,
 	useProvidersStore,
 } from "~/store/providers";
-
-const PROVIDER_LABEL: Record<ProviderId, string> = {
-	claude: "Claude Code",
-	codex: "Codex",
-	grok: "Grok",
-	gemini: "Gemini",
-	cursor: "Cursor",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro",
-	pi: "Pi",
-	zuse: "Zuse (Experimental)",
-};
 
 const LOGIN_HINT: Partial<Record<ProviderId, string>> = {
 	claude: "claude /login",
@@ -123,7 +111,9 @@ export function ProviderSettingsRow({
 			? {
 					...baseSummary,
 					statusKey: "subscription" as const,
-					headline: `Requires ${subscription?.plan}`,
+					headline: uiMessage("providers:provider_card_requires_subscription", {
+						plan: subscription.plan,
+					}),
 					detail: null,
 					authEmail: null,
 				}
@@ -264,7 +254,7 @@ export function ProviderSettingsRow({
 			{open && (
 				<div
 					id={detailsId}
-					className="flex flex-col gap-4 px-3 pt-1 pb-4 pl-[52px] text-xs"
+					className="flex flex-col gap-4 px-3 pt-1 pb-4 pl-3 text-xs"
 				>
 					{showUpgrade && (
 						<CodeRow
@@ -287,7 +277,10 @@ export function ProviderSettingsRow({
 					{availability?.cliInstalled &&
 						availability.authStatus === "unauthenticated" &&
 						supportsProviderLogin(providerId) && (
-							<ProviderSignInRow providerId={providerId} />
+							<ProviderSignInRow
+								providerId={providerId}
+								environmentId={environmentId}
+							/>
 						)}
 					{availability?.cliInstalled &&
 						availability.authStatus === "unauthenticated" &&
@@ -410,7 +403,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 					const onlyVisible =
 						checked && visibleCount + customModelIds.length <= 1;
 					return (
-						<div key={model.id} className="flex h-8 items-center gap-2 px-2.5">
+						<div key={model.id} className="flex h-7 items-center gap-2 px-2.5">
 							<span className="min-w-0 flex-1 truncate text-xs text-foreground">
 								{model.label}
 							</span>
@@ -433,7 +426,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 					);
 				})}
 				{customModelIds.map((modelId) => (
-					<div key={modelId} className="flex h-8 items-center gap-2 px-2.5">
+					<div key={modelId} className="flex h-7 items-center gap-2 px-2.5">
 						<span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground">
 							{modelId}
 						</span>
@@ -565,14 +558,17 @@ function SubscriptionRow({
  * machine lives in `useProviderLogin` so the inline auth ErrorBubble can reuse
  * it verbatim.
  */
-function ProviderSignInRow({ providerId }: { providerId: ProviderId }) {
+function ProviderSignInRow({
+	providerId,
+	environmentId,
+}: {
+	providerId: ProviderId;
+	environmentId: string;
+}) {
 	const { message: uiMessage } = useUiMessages(["common", "providers"]);
 
-	const refresh = useProvidersStore((s) => s.refresh);
 	const { state, start, cancel } = useProviderLogin(providerId, {
-		onSuccess: () => {
-			void refresh();
-		},
+		environmentId,
 	});
 	const label = PROVIDER_LABEL[providerId];
 	const manualCommand = LOGIN_HINT[providerId] ?? "";
@@ -711,7 +707,12 @@ function useProviderUpdate(environmentId: string, providerId: ProviderId) {
 			IDLE_PROVIDER_UPDATE_STATE,
 	);
 	const updateProvider = useProvidersStore((s) => s.updateProvider);
-	return { state, run: () => updateProvider(environmentId, providerId) };
+	return {
+		state,
+		run: () => updateProvider(environmentId, providerId),
+		cancel: () =>
+			useProvidersStore.getState().cancelUpdate(environmentId, providerId),
+	};
 }
 
 /**
@@ -735,17 +736,21 @@ function UpdateAvailableButton({
 	readonly latestVersion: string | undefined;
 	readonly behind: boolean;
 }) {
-	const { state, run } = useProviderUpdate(environmentId, providerId);
+	const { state, run, cancel } = useProviderUpdate(environmentId, providerId);
+	const { message: uiMessage } = useUiMessages(["providers", "common"]);
 
 	const idleLabel =
 		behind && latestVersion !== undefined
-			? `Update ${displayName} to v${latestVersion}`
-			: `Update ${displayName} to the latest version`;
+			? uiMessage("providers:update_to_version", {
+					name: displayName,
+					version: latestVersion,
+				})
+			: uiMessage("providers:update_to_latest", { name: displayName });
 	const tooltip =
 		state.kind === "running"
-			? (state.line ?? "Updating…")
+			? uiMessage("providers:cancel_update")
 			: state.kind === "success"
-				? "Updated"
+				? uiMessage("providers:updated")
 				: state.kind === "failed"
 					? state.reason
 					: idleLabel;
@@ -801,11 +806,11 @@ function UpdateAvailableButton({
 	const active = state.kind !== "idle" || behind;
 	const badge =
 		state.kind === "running"
-			? "Updating…"
+			? uiMessage("providers:updating")
 			: state.kind === "failed"
-				? "Failed"
+				? uiMessage("providers:update_failed")
 				: state.kind === "success"
-					? "Updated"
+					? uiMessage("providers:updated")
 					: behind && latestVersion !== undefined
 						? `v${latestVersion}`
 						: null;
@@ -816,10 +821,10 @@ function UpdateAvailableButton({
 				render={
 					<button
 						type="button"
-						disabled={state.kind === "running"}
 						onClick={(e) => {
 							e.stopPropagation();
-							void run();
+							if (state.kind === "running") cancel();
+							else void run();
 						}}
 						aria-label={idleLabel}
 						className={cn(
@@ -845,13 +850,6 @@ function UpdateAvailableButton({
 function CodeRow({ label, command }: { label: string; command: string }) {
 	const { message: uiMessage } = useUiMessages(["common", "providers"]);
 
-	const [copied, setCopied] = useState(false);
-	const onCopy = () => {
-		void navigator.clipboard.writeText(command).then(() => {
-			setCopied(true);
-			window.setTimeout(() => setCopied(false), 1500);
-		});
-	};
 	return (
 		<div className="flex flex-col gap-1.5">
 			<span className="text-[11px] font-medium text-muted-foreground">
@@ -859,20 +857,7 @@ function CodeRow({ label, command }: { label: string; command: string }) {
 			</span>
 			<div className="flex h-7 items-center gap-2 rounded-md bg-muted/40 pr-0.5 pl-2.5 font-mono text-[11px]">
 				<code className="flex-1 truncate text-foreground">$ {command}</code>
-				<Button
-					type="button"
-					size="xs"
-					variant="ghost"
-					onClick={onCopy}
-					className="h-6 shrink-0 px-2 font-sans text-[10px]"
-				>
-					<HugeiconsIcon
-						icon={Copy01Icon}
-						className="mr-1 size-3"
-						aria-hidden
-					/>
-					{copied ? uiMessage("common:copied") : uiMessage("common:copy")}
-				</Button>
+				<CopyButton text={command} label={uiMessage("common:copy")} showLabel />
 			</div>
 		</div>
 	);

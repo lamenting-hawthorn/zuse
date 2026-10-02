@@ -36,6 +36,7 @@ import {
 	type FolderId,
 	type PermissionDecision,
 	type PermissionKind,
+	PROVIDER_CAPABILITIES,
 	type ProviderEventEnvelope,
 	type ProviderId,
 	type ThreadGoalSetInput,
@@ -426,14 +427,14 @@ export const ProviderServiceLive = Layer.effect(
 						...(modelDescriptor !== undefined ? { modelDescriptor } : {}),
 						workspaceInstructions: zuseWorkspaceInstructions({
 							projectPath: folder.path,
-							includeAppTools:
-								input.providerId !== "pi" && input.providerId !== "zuse",
+							includeAppTools: PROVIDER_CAPABILITIES[input.providerId].appTools,
 							cwd,
 						}),
 					};
 					const brokeredCredential = yield* Effect.tryPromise({
 						try: () =>
-							input.providerId === "zuse"
+							PROVIDER_CAPABILITIES[input.providerId].credentialSource ===
+							"connections"
 								? Promise.resolve(null)
 								: runtimeCredentials.resolve(input.providerId),
 						catch: (cause) =>

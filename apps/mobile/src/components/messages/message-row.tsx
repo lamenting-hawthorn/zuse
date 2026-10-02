@@ -1,3 +1,4 @@
+import "@zuse/i18n/english/chat";
 import type { FileChange } from "@zuse/client-runtime/timeline";
 import {
 	toolImageDataUrl,
@@ -10,6 +11,7 @@ import type {
 	SessionId,
 	UserQuestion,
 } from "@zuse/contracts";
+import { useMessages } from "@zuse/i18n/react";
 import { proposedPlanMarkdownFromContent } from "@zuse/utils/proposed-plan";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
@@ -703,38 +705,39 @@ const ContextCompactionRow = ({
 }: {
 	content: Extract<MessageContent, { _tag: "context_compaction" }>;
 }) => {
+	const { message } = useMessages(["chat"]);
 	const before = formatTokens(content.beforeTokens);
 	const after = formatTokens(content.afterTokens);
 	const detail =
 		before !== null && after !== null
-			? `${before} to ${after}`
+			? `${before} → ${after}`
 			: content.status === "in_progress"
-				? "Compacting context"
+				? message("chat:message_row_compacting")
 				: content.status === "failed"
-					? "Compaction stopped"
-					: "Context compacted";
+					? message("chat:message_row_compaction_failed")
+					: message("chat:message_row_chat_compacted");
 
 	return (
 		<ExpandableEventRow
 			icon="hourglass"
 			title={
 				content.status === "in_progress"
-					? "Compacting context"
+					? message("chat:message_row_compacting")
 					: content.status === "failed"
-						? "Compaction stopped"
-						: "Compacted"
+						? message("chat:message_row_compaction_failed")
+						: message("chat:message_row_chat_compacted")
 			}
 			detail={detail}
 			badge={formatDuration(content.durationMs)}
 		>
 			<Text className="font-sans text-sm leading-5 text-muted-foreground">
 				{before !== null && after !== null
-					? `Context changed from ${before} to ${after}.`
+					? `${before} → ${after}`
 					: content.status === "failed"
-						? "Compaction stopped; the conversation history is preserved."
+						? message("chat:message_row_compaction_failed")
 						: content.status === "in_progress"
-							? "Reducing conversation context for the next turn."
-							: "The conversation context was compacted for the next turn."}
+							? message("chat:message_row_compacting")
+							: message("chat:message_row_chat_compacted")}
 			</Text>
 		</ExpandableEventRow>
 	);

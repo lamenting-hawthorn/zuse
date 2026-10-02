@@ -39,11 +39,7 @@ export function modelError(error: unknown): HarnessModelError {
 		let code = `http_${error.statusCode ?? "unknown"}`;
 		try {
 			const body = JSON.parse(error.responseBody ?? "{}");
-			if (
-				body.error?.code === "subscription_sharing_usage_limit_exceeded" ||
-				body.error?.code === "subscription_sharing_unavailable"
-			)
-				code = body.error.code;
+			code = safeErrorCode(body.error?.code, error.statusCode);
 		} catch {
 			/* Body may be plain text. */
 		}

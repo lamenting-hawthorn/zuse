@@ -459,7 +459,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	const RuntimeModelConnectionsLayer = Layer.succeed(RuntimeModelConnections, {
 		current: null,
 	});
-	const ChatGPTLayer = modelConnectionsLayer(
+	const ModelConnectionsLayer = modelConnectionsLayer(
 		deps.telemetryIdentity?.kind === "desktop" &&
 			process.platform !== "win32" &&
 			deps.machineRuntimeRole !== "cloud-environment",
@@ -478,7 +478,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	);
 	const HarnessProviderLayer = HarnessProviderLive.pipe(
 		Layer.provide(SkillDiscoveryLayer),
-		Layer.provide(ChatGPTLayer),
+		Layer.provide(ModelConnectionsLayer),
 		Layer.provide(AppPathsLayer),
 		Layer.provide(MigratedSqlite),
 		Layer.provide(ConfigStoreLayer),
@@ -739,7 +739,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		ApiLinkLayer,
 		ExternalThreadLayer,
 		LinearLayer,
-		ChatGPTLayer,
+		ModelConnectionsLayer,
 		MachineControlLayer,
 		MachineHostLayer,
 		MachineResourceServiceLive,

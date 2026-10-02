@@ -1,3 +1,4 @@
+import type { ModelMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import {
 	AccountBroker,
@@ -684,4 +685,30 @@ it.each([
 	await engine.initialize();
 	await engine.send("");
 	expect(summaries).toBe(autoCompactTokenLimit === undefined ? 0 : 1);
+});
+
+it("reuses immutable-message estimates before serialization across forks and invalidates on clear", () => {
+	let reads = 0;
+	const message: ModelMessage = {
+		role: "user",
+		get content() {
+			reads++;
+			return "shared prefix";
+		},
+	};
+	const prompts = new PromptCache();
+	const first = prompts.estimate([message], "model");
+	const before = reads;
+	expect(prompts.estimate([message], "model")).toBe(first);
+	expect(reads).toBe(before);
+	expect(
+		prompts.estimate([message, { role: "user", content: "child" }], "model"),
+	).toBeGreaterThan(first);
+	expect(reads).toBe(before);
+	prompts.estimate([message], "other-model");
+	expect(reads).toBeGreaterThan(before);
+	const beforeClear = reads;
+	prompts.cache.clear();
+	prompts.estimate([message], "model");
+	expect(reads).toBeGreaterThan(beforeClear);
 });

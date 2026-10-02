@@ -51,5 +51,6 @@
 	"cloud_workspace_settings": "Cloud-Workspace-Einstellungen",
 	"recording_shortcut": "Tastenkürzel für {{label}} wird aufgezeichnet",
 	"recording_new_shortcut": "Tastenkürzel für neue Zuordnung wird aufgezeichnet",
-	"provider_settings": "Anbietereinstellungen"
+	"provider_settings": "Anbietereinstellungen",
+	"copy_failed": "Kopieren fehlgeschlagen"
 }

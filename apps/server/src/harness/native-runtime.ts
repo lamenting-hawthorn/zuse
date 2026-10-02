@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { digest } from "@zuse/agents/harness/cache";
 import { HarnessEngine } from "@zuse/agents/harness/engine";
 import type { HarnessHost } from "@zuse/agents/harness/types";
 import { Effect } from "effect";
-import { acquireProcessLock } from "../cache/process-lock.ts";
+import { acquireProcessLock } from "../process/process-lock.ts";
 import { NativeHarnessTools, type NativeToolOptions } from "./native-tools.ts";
 
 export interface NativeRuntimeOptions {
@@ -24,7 +24,7 @@ export interface NativeRuntimeOptions {
 export async function createNativeHarness(
 	options: NativeRuntimeOptions,
 ): Promise<HarnessEngine> {
-	const rootKey = createHash("sha256").update(options.rootId).digest("hex");
+	const rootKey = digest(options.rootId);
 	const directory = join(options.dataDirectory, "harness", rootKey);
 	await mkdir(directory, { recursive: true, mode: 0o700 });
 	const lease = await Effect.runPromise(

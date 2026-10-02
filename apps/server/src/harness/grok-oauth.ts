@@ -3,8 +3,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { ModelConnection, ModelSignInEvent } from "@zuse/contracts";
 import { createRemoteJWKSet, customFetch, jwtVerify } from "jose";
 import { z } from "zod";
-import type { ChatGPTRegistration, ChatGPTVault } from "./chatgpt-oauth.ts";
-import { ConnectionRegistry, ModelAuthError } from "./connection-registry.ts";
+import {
+	ConnectionRegistry,
+	ModelAuthError,
+	postOAuthForm,
+} from "./connection-registry.ts";
+import type { ModelRegistration, ModelVault } from "./connection-types.ts";
 
 // Protocol checked against https://auth.x.ai/.well-known/openid-configuration
 // and NousResearch/hermes-agent's auth_xai.py/auth_constants.py.
@@ -27,7 +31,7 @@ const deviceSchema = z.object({
 	expires_in: z.number().positive().max(3600),
 	interval: z.number().int().positive().max(60).default(5),
 });
-const metadata = (r: ChatGPTRegistration): ModelConnection => ({
+const metadata = (r: ModelRegistration): ModelConnection => ({
 	provider: "supergrok",
 	id: r.id,
 	clientId: r.clientId,
@@ -47,10 +51,9 @@ const metadata = (r: ChatGPTRegistration): ModelConnection => ({
 			: "permission-required",
 });
 export class GrokOAuth extends ConnectionRegistry {
-	private readonly pending = new Map<string, AbortController>();
 	private readonly keys;
 	constructor(
-		vault: ChatGPTVault,
+		vault: ModelVault,
 		readonly clientId: string,
 		private readonly fetcher: typeof fetch = fetch,
 	) {
@@ -67,19 +70,13 @@ export class GrokOAuth extends ConnectionRegistry {
 		fields: Record<string, string>,
 		signal?: AbortSignal,
 	) {
-		const response = await this.fetcher(`${issuer}/oauth2/${path}`, {
-			method: "POST",
-			redirect: "error",
-			signal: signal
-				? AbortSignal.any([signal, AbortSignal.timeout(10000)])
-				: AbortSignal.timeout(10000),
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Accept: "application/json",
-			},
-			body: new URLSearchParams(fields),
-		});
-		return response;
+		return postOAuthForm(
+			this.fetcher,
+			`${issuer}/oauth2/${path}`,
+			new URLSearchParams(fields),
+			10000,
+			signal,
+		);
 	}
 	async connect(id?: string) {
 		if (!this.clientId) throw new ModelAuthError("unavailable");
@@ -88,8 +85,8 @@ export class GrokOAuth extends ConnectionRegistry {
 		const connectionId = id ?? `supergrok:${randomUUID()}`;
 		const clientId = existing?.clientId ?? this.clientId;
 		const abort = new AbortController();
-		this.pending.get(connectionId)?.abort();
-		this.pending.set(connectionId, abort);
+		const cancel = () => abort.abort();
+		this.replacePending(connectionId, cancel);
 		try {
 			const response = await this.post(
 				"device/code",
@@ -166,7 +163,7 @@ export class GrokOAuth extends ConnectionRegistry {
 							(existing?.authorizationGeneration ?? 0)
 						)
 							throw new ModelAuthError("cancelled");
-						const registration: ChatGPTRegistration = {
+						const registration: ModelRegistration = {
 							id: connectionId,
 							clientId,
 							subject,
@@ -191,91 +188,55 @@ export class GrokOAuth extends ConnectionRegistry {
 				}
 				throw new ModelAuthError("timeout");
 			})().finally(() => {
-				if (this.pending.get(connectionId) === abort)
-					this.pending.delete(connectionId);
+				this.finishPending(connectionId, cancel);
 			});
 			void finished.catch(() => {});
 			return { event, finished, cancel: () => abort.abort() };
 		} catch (error) {
-			if (this.pending.get(connectionId) === abort)
-				this.pending.delete(connectionId);
+			this.finishPending(connectionId, cancel);
 			abort.abort();
 			throw error;
 		}
 	}
 	async credential(id: string) {
-		return this.vault.lock(id, async () => {
-			const value = await this.vault.read(id);
-			if (
-				!value ||
-				!metadata(value).authorized ||
-				!value.accessToken ||
-				!value.refreshToken
-			)
-				throw new ModelAuthError("reauthorization_required");
-			if ((value.expiresAt ?? 0) > Date.now() + 60000)
-				return { connectionId: id, accessToken: value.accessToken };
-			const response = await this.post("token", {
-				grant_type: "refresh_token",
-				client_id: value.clientId,
-				refresh_token: value.refreshToken,
-			});
-			if (!response.ok)
-				throw new ModelAuthError(
-					response.status >= 500
-						? "temporarily_unavailable"
-						: "reauthorization_required",
-				);
-			const tokens = tokensSchema.parse(await response.json());
-			const refreshed = {
-				...value,
-				accessToken: tokens.access_token,
-				refreshToken: tokens.refresh_token ?? value.refreshToken,
-				expiresAt: Date.now() + tokens.expires_in * 1000,
-				scope: tokens.scope ?? value.scope,
-			};
-			await this.vault.write(refreshed);
-			if (!metadata(refreshed).authorized)
-				throw new ModelAuthError("reauthorization_required");
-			return { connectionId: id, accessToken: refreshed.accessToken };
-		});
+		return this.credentialWith(
+			id,
+			(value) => metadata(value).authorized,
+			async (value) => {
+				const response = await this.post("token", {
+					grant_type: "refresh_token",
+					client_id: value.clientId,
+					refresh_token: value.refreshToken,
+				});
+				if (!response.ok)
+					throw new ModelAuthError(
+						response.status >= 500
+							? "temporarily_unavailable"
+							: "reauthorization_required",
+					);
+				const tokens = tokensSchema.parse(await response.json());
+				const refreshed = {
+					...value,
+					accessToken: tokens.access_token,
+					refreshToken: tokens.refresh_token ?? value.refreshToken,
+					expiresAt: Date.now() + tokens.expires_in * 1000,
+					scope: tokens.scope ?? value.scope,
+				};
+				return refreshed;
+			},
+		);
 	}
 	async disconnect(id: string) {
-		this.pending.get(id)?.abort();
-		const value = await this.vault.lock(id, async () => {
-			const current = await this.vault.read(id);
-			if (!current) return null;
-			const {
-				accessToken: _access,
-				refreshToken: _refresh,
-				idToken: _id,
-				expiresAt: _expires,
-				...rest
-			} = current;
-			await this.vault.write({
-				...rest,
-				authorizationGeneration: (current.authorizationGeneration ?? 0) + 1,
-			});
-			return current;
-		});
-		if (!value?.refreshToken) return { revoked: true };
-		try {
-			return {
-				revoked:
-					(
-						await this.post("revoke", {
-							client_id: value.clientId,
-							token: value.refreshToken,
-							token_type_hint: "refresh_token",
-						})
-					).status === 200,
-			};
-		} catch {
-			return { revoked: false };
-		}
-	}
-	close() {
-		for (const abort of this.pending.values()) abort.abort();
-		this.pending.clear();
+		return this.disconnectWith(
+			id,
+			async (value) =>
+				(
+					await this.post("revoke", {
+						client_id: value.clientId,
+						token: value.refreshToken,
+						token_type_hint: "refresh_token",
+					})
+				).status === 200,
+		);
 	}
 }

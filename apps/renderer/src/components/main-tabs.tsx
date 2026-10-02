@@ -1,3 +1,4 @@
+import { PROVIDER_LABEL } from "~/lib/provider-labels";
 import "@zuse/i18n/english/errors";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -58,19 +59,6 @@ type Props = {
 	readonly environmentId: EnvironmentId;
 	/** Fallback label when no chat is selected yet. */
 	readonly emptyLabel: string;
-};
-
-const PROVIDER_LABEL: Record<ProviderId, string> = {
-	claude: "Claude",
-	codex: "Codex",
-	grok: "Grok",
-	cursor: "Cursor",
-	gemini: "Gemini",
-	kiro: "Kiro",
-	pi: "Pi",
-	zuse: "Zuse (Experimental)",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
 };
 
 const lookupModelLabel = (

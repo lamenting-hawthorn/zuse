@@ -1,5 +1,5 @@
 import { isUtf8 } from "node:buffer";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import {
 	link,
@@ -11,7 +11,8 @@ import {
 	unlink,
 	writeFile,
 } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { digest } from "@zuse/agents/harness/cache";
 import {
 	nativeToolDefinitions,
 	nativeToolSchemas,
@@ -20,18 +21,17 @@ import type {
 	HarnessToolContext,
 	HarnessToolOutput,
 } from "@zuse/agents/harness/types";
+import { imageMime, isWithin } from "@zuse/agents/kernel/file-validation";
 import {
 	decidePermission,
 	isSensitivePath,
 	type RuntimeMode,
 } from "@zuse/agents/kernel/permission-policy";
-import { Effect } from "effect";
-import { acquireProcessLock } from "../cache/process-lock.ts";
+import { withProcessLock } from "../process/process-lock.ts";
 import { HarnessProcesses, type ProcessOptions } from "./processes.ts";
 
 const MAX_FILE = 2 * 1024 * 1024;
-const hash = (data: string | Buffer) =>
-	createHash("sha256").update(data).digest("hex");
+
 export interface NativeToolOptions extends ProcessOptions {
 	readonly cwd: string;
 	readonly lockDirectory: string;
@@ -71,8 +71,7 @@ export class NativeHarnessTools {
 		await this.processes.initialize();
 	}
 	private inside(path: string): void {
-		const rel = relative(this.root, path);
-		if (rel === ".." || rel.startsWith("../") || isAbsolute(rel))
+		if (!isWithin(path, this.root))
 			throw new Error("Path is outside the checkout");
 	}
 	private async path(input: string): Promise<string> {
@@ -169,55 +168,51 @@ export class NativeHarnessTools {
 		transform: (current: string) => string,
 		context: HarnessToolContext,
 	): Promise<string> {
-		const lock = await Effect.runPromise(
-			acquireProcessLock(
-				join(this.options.lockDirectory, `${hash(path)}.sqlite`),
-			),
-			{ signal: context.signal },
-		);
-		try {
-			if ((await this.path(path)) !== path)
-				throw new Error("Path changed before edit");
-			const previous = expected === null ? null : await this.read(path);
-			if (previous && hash(previous.data) !== expected)
-				throw new Error("Stale file hash; read the file again");
-			const next = transform(previous?.data.toString("utf8") ?? "");
-			if (Buffer.byteLength(next) > MAX_FILE)
-				throw new Error("Edited file exceeds 2 MiB");
-			context.signal.throwIfAborted();
-			await mkdir(dirname(path), { recursive: true });
-			if ((await this.path(path)) !== path)
-				throw new Error("Path changed before edit");
-
-			const temporary = join(dirname(path), `.zuse-${randomUUID()}.tmp`);
-			try {
-				const file = await open(temporary, "wx", previous?.mode ?? 0o644);
-				try {
-					await file.writeFile(next);
-					if (previous) await file.chmod(previous.mode);
-					await file.sync();
-				} finally {
-					await file.close();
-				}
+		return withProcessLock(
+			join(this.options.lockDirectory, `${digest(path)}.sqlite`),
+			async () => {
+				if ((await this.path(path)) !== path)
+					throw new Error("Path changed before edit");
+				const previous = expected === null ? null : await this.read(path);
+				if (previous && digest(previous.data) !== expected)
+					throw new Error("Stale file hash; read the file again");
+				const next = transform(previous?.data.toString("utf8") ?? "");
+				if (Buffer.byteLength(next) > MAX_FILE)
+					throw new Error("Edited file exceeds 2 MiB");
 				context.signal.throwIfAborted();
-				if (expected === null) await link(temporary, path);
-				else {
-					if (hash((await this.read(path)).data) !== expected)
-						throw new Error("File changed during edit");
-					await rename(temporary, path);
-				}
-			} finally {
-				await unlink(temporary).catch(() => {});
-			}
+				await mkdir(dirname(path), { recursive: true });
+				if ((await this.path(path)) !== path)
+					throw new Error("Path changed before edit");
 
-			return JSON.stringify({
-				path,
-				hash: hash(next),
-				bytes: Buffer.byteLength(next),
-			});
-		} finally {
-			lock.close();
-		}
+				const temporary = join(dirname(path), `.zuse-${randomUUID()}.tmp`);
+				try {
+					const file = await open(temporary, "wx", previous?.mode ?? 0o644);
+					try {
+						await file.writeFile(next);
+						if (previous) await file.chmod(previous.mode);
+						await file.sync();
+					} finally {
+						await file.close();
+					}
+					context.signal.throwIfAborted();
+					if (expected === null) await link(temporary, path);
+					else {
+						if (digest((await this.read(path)).data) !== expected)
+							throw new Error("File changed during edit");
+						await rename(temporary, path);
+					}
+				} finally {
+					await unlink(temporary).catch(() => {});
+				}
+
+				return JSON.stringify({
+					path,
+					hash: digest(next),
+					bytes: Buffer.byteLength(next),
+				});
+			},
+			context.signal,
+		);
 	}
 	async execute(
 		name: string,
@@ -251,18 +246,7 @@ export class NativeHarnessTools {
 			case "read_image": {
 				const args = nativeToolSchemas.read_image.parse(input);
 				const { data } = await this.read(await this.path(args.path), false);
-				const mediaType = data
-					.subarray(0, 8)
-					.equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-					? "image/png"
-					: data[0] === 255 && data[1] === 216 && data[2] === 255
-						? "image/jpeg"
-						: /^GIF8[79]a$/.test(data.subarray(0, 6).toString("ascii"))
-							? "image/gif"
-							: data.subarray(0, 4).toString("ascii") === "RIFF" &&
-									data.subarray(8, 12).toString("ascii") === "WEBP"
-								? "image/webp"
-								: null;
+				const mediaType = imageMime(data);
 				if (!mediaType) throw new Error("Unsupported image format");
 				return {
 					type: "content",
@@ -285,7 +269,7 @@ export class NativeHarnessTools {
 					.join("\n");
 				return this.bounded({
 					path: file,
-					hash: hash(data),
+					hash: digest(data),
 					total_lines: lines.length,
 					offset: args.offset,
 					content: selected,

@@ -20,6 +20,7 @@ import {
 	ModelLiveMeta,
 	normalizeModelCatalog,
 	OpencodeInventory,
+	PROVIDER_CAPABILITIES,
 	type ProviderId,
 	pickNewerModelCatalog,
 	type ResolvedCatalogSource,
@@ -138,12 +139,7 @@ const pendingListing = (authoritative: boolean): LiveListingDocument => ({
 });
 
 const isAuthoritative = (providerId: ProviderId): boolean =>
-	providerId === "zuse" ||
-	providerId === "codex" ||
-	providerId === "cursor" ||
-	providerId === "kiro" ||
-	providerId === "opencode" ||
-	providerId === "opencode2";
+	PROVIDER_CAPABILITIES[providerId].authoritativeModels;
 
 export const ModelCatalogServiceLive = Layer.effect(
 	ModelCatalogService,

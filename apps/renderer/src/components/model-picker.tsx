@@ -1,3 +1,6 @@
+import { canUseExperimentalHarness } from "@zuse/utils/feature-access";
+import { PROVIDER_SHORT_LABEL } from "~/lib/provider-labels";
+import { useAuth } from "../hooks/use-auth.ts";
 import { loadCloudAuth } from "../lib/cloud-workspace-session-cache.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import "@zuse/i18n/english/providers";
@@ -50,18 +53,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const PROVIDER_LABEL = PROVIDER_LABELS;
 
-const PROVIDER_CHIP_LABEL: Record<ProviderId, string> = {
-	claude: "Claude",
-	codex: "Codex",
-	grok: "Grok",
-	cursor: "Cursor",
-	gemini: "Gemini",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro",
-	pi: "Pi",
-	zuse: "Zuse (Experimental)",
-};
+const PROVIDER_CHIP_LABEL = PROVIDER_SHORT_LABEL;
 
 interface ModelPickerEntry {
 	providerId: ProviderId;
@@ -104,6 +96,8 @@ type ModelPickerProps =
 	  };
 
 export function ModelPicker(props: ModelPickerProps) {
+	const { user } = useAuth();
+	const experimentalHarnessAllowed = canUseExperimentalHarness(user?.email);
 	const { message: uiMessage } = useUiMessages(["providers"]);
 
 	const isDefault = props.mode === "default";
@@ -306,6 +300,7 @@ export function ModelPicker(props: ModelPickerProps) {
 
 	const pickableProviders = useMemo<ReadonlyArray<ProviderId>>(() => {
 		return catalogProviderIds(catalog).filter((pid) => {
+			if (pid === "zuse" && !experimentalHarnessAllowed) return false;
 			// Settings must keep the selected provider's catalog editable even when
 			// its local runtime is signed out. Session pickers remain restricted to
 			// providers that can actually start a session.
@@ -325,6 +320,7 @@ export function ModelPicker(props: ModelPickerProps) {
 		providerEnabled,
 		availabilityById,
 		availabilityLoaded,
+		experimentalHarnessAllowed,
 		uiMessage,
 	]);
 	const allModels = useMemo<ModelPickerEntry[]>(() => {

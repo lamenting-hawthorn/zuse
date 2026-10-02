@@ -44,6 +44,8 @@ child.once('exit', (code, signal) => { clearInterval(watchdog); process.exitCode
 `;
 export interface SupervisedProcessOptions {
 	readonly stdin?: boolean;
+	/** Native harness commands own their descendants; legacy device commands retain their lifecycle. */
+	readonly killDescendantsOnExit?: boolean;
 	readonly env?: NodeJS.ProcessEnv;
 }
 /** fd 0 is a private lease pipe; fd 3 is command input, never interpreted as a lease. */
@@ -73,7 +75,8 @@ export const spawnSupervisedProcess = (
 		},
 	);
 	// The shell may exit with descendants still holding its output pipes open.
-	child.once("exit", () => signalProcessGroup(child, "SIGKILL"));
+	if (options.killDescendantsOnExit)
+		child.once("exit", () => signalProcessGroup(child, "SIGKILL"));
 	return child;
 };
 export const spawnSupervisedCommand = (
@@ -83,7 +86,7 @@ export const spawnSupervisedCommand = (
 	options: SupervisedProcessOptions & { readonly shell?: string } = {},
 ): ChildProcess =>
 	spawnSupervisedProcess(
-		options.shell ?? process.env.SHELL ?? "/bin/sh",
+		options.shell || process.env.SHELL || "/bin/sh",
 		["-lc", command],
 		cwd,
 		deadline,

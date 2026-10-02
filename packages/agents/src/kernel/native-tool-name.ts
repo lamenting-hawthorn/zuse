@@ -11,6 +11,8 @@ const toNiceToolLabel = (raw: string): string => {
 /** Map common provider-native tool identifiers to the shared UI contract. */
 export const normalizeNativeToolName = (raw: string): string => {
 	switch (raw.toLowerCase()) {
+		case "spawn_agent":
+			return "Agent";
 		case "read_image":
 			return "ViewImage";
 		case "read":

@@ -4,7 +4,7 @@ import {
 	peekCloudAuth,
 } from "../../lib/cloud-workspace-session-cache.ts";
 import { subscribeControlPlaneSessionCache } from "../../lib/control-plane-client.ts";
-import { CopyAction } from "./connection-login-steps.tsx";
+import { CopyAction, DeviceCode } from "./connection-login-steps.tsx";
 import "@zuse/i18n/english/settings";
 import {
 	type CloudAuthLoginOperation,
@@ -695,17 +695,12 @@ export function CloudWorkspaceAuth() {
 									)}
 									{operation?.state === "connected" ||
 									operation?.verificationCode === undefined ? null : (
-										<div className="flex h-7 items-center gap-2 rounded-md bg-muted/60 px-2">
-											<code className="min-w-0 flex-1 select-all font-semibold text-xs tracking-[0.14em]">
-												{operation.verificationCode}
-											</code>
-											<CopyAction
-												text={operation.verificationCode}
-												label={uiMessage(
-													"settings:cloud_workspace_auth_copy_code",
-												)}
-											/>
-										</div>
+										<DeviceCode
+											code={operation.verificationCode}
+											label={uiMessage(
+												"settings:cloud_workspace_auth_copy_code",
+											)}
+										/>
 									)}
 									{operation?.state === "authorizing" &&
 									operation.verificationCode === undefined ? (

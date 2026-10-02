@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import { withCodexControlClient } from "@zuse/agents/drivers/codex-control-client";
-import { type ProviderId, Skill } from "@zuse/contracts";
+import { PROVIDER_CAPABILITIES, type ProviderId, Skill } from "@zuse/contracts";
 import { Effect, FileSystem, Layer } from "effect";
 import { ensureBundledZuseSkillInstalled } from "../bundled-zuse-skill.ts";
 import { createCodexSkillBatcher } from "../codex-skill-batcher.ts";
@@ -323,7 +323,7 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 					[projectCwd, "project"],
 					[home, "global"],
 				] as const) {
-					for (const config of [".zuse", ".agents", ".codex"]) {
+					for (const config of PROVIDER_CAPABILITIES.zuse.skillFolders) {
 						const raw = yield* readClaudeSkillsRoot(
 							path.join(root, config, "skills"),
 						);

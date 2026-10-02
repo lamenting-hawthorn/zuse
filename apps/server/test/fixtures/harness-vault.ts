@@ -1,13 +1,13 @@
 import type {
-	ChatGPTRegistration,
-	ChatGPTVault,
-	PendingChatGPTRegistration,
-} from "../../src/harness/chatgpt-oauth.ts";
+	ModelRegistration,
+	ModelVault,
+	PendingModelRegistration,
+} from "../../src/harness/connection-types.ts";
 export function vault() {
-	const registrations = new Map<string, ChatGPTRegistration>();
-	const pending = new Map<string, PendingChatGPTRegistration>();
+	const registrations = new Map<string, ModelRegistration>();
+	const pending = new Map<string, PendingModelRegistration>();
 	const locks = new Map<string, Promise<unknown>>();
-	const storage: ChatGPTVault = {
+	const storage: ModelVault = {
 		readPending: async (id) => pending.get(id) ?? null,
 		listPending: async () => [...pending.values()],
 		writePending: async (value) => {

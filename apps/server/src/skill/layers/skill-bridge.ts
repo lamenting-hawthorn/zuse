@@ -2,6 +2,7 @@ import * as fsSync from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ProviderId, Skill } from "@zuse/contracts";
+import { PROVIDER_CAPABILITIES } from "@zuse/contracts";
 import { Effect, Layer, PubSub, Stream } from "effect";
 
 import { SessionService } from "../../conversation/services/conversation-services.ts";
@@ -33,7 +34,7 @@ const watchRoots = (
 	const roots =
 		providerId === "zuse"
 			? [home, projectCwd].flatMap((root) =>
-					[".zuse", ".agents", ".codex"].map((directory) =>
+					PROVIDER_CAPABILITIES.zuse.skillFolders.map((directory) =>
 						path.join(root, directory, "skills"),
 					),
 				)

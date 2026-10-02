@@ -51,5 +51,6 @@
 	"cloud_workspace_settings": "雲端工作區設定",
 	"recording_shortcut": "正在錄製 {{label}} 的快捷鍵",
 	"recording_new_shortcut": "正在錄製新操作的快捷鍵",
-	"provider_settings": "供應商設定"
+	"provider_settings": "供應商設定",
+	"copy_failed": "複製失敗"
 }

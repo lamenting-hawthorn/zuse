@@ -1,16 +1,10 @@
-import {
-	chmod,
-	mkdir,
-	readFile,
-	rename,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { ProviderId } from "@zuse/contracts";
 import { Effect, Layer, Schema } from "effect";
 import { AppPaths } from "../../app-paths.ts";
-import { acquireProcessLock } from "../../cache/process-lock.ts";
+import { atomicWritePrivateJson } from "../../atomic-private-file.ts";
+import { withProcessLock } from "../../process/process-lock.ts";
 import {
 	openStorage,
 	type SecureStorageEnvelope,
@@ -38,8 +32,6 @@ interface VaultContents {
 	readonly integrations: Record<string, Record<string, string>>;
 	readonly mcpOauth: Record<string, string>;
 }
-
-type VaultEnvelope = SecureStorageEnvelope;
 
 const emptyVault = (): VaultContents => ({
 	version: 2,
@@ -138,22 +130,12 @@ const parseVaultContents = (value: unknown): VaultContents => {
 	};
 };
 
-const decodeEnvelope = (raw: string): VaultEnvelope => {
-	const value = JSON.parse(raw) as Partial<VaultEnvelope>;
-	if (
-		value.version !== 1 ||
-		typeof value.iv !== "string" ||
-		typeof value.ciphertext !== "string" ||
-		typeof value.tag !== "string"
-	) {
-		throw new Error("Secure storage is corrupt.");
-	}
-	return value as VaultEnvelope;
-};
-
-const encryptVault = (contents: VaultContents, key: Buffer): VaultEnvelope =>
+const encryptVault = (
+	contents: VaultContents,
+	key: Buffer,
+): SecureStorageEnvelope =>
 	sealStorage(JSON.stringify(contents), key, VAULT_AAD);
-const decryptVault = (envelope: VaultEnvelope, key: Buffer): VaultContents =>
+const decryptVault = (envelope: unknown, key: Buffer): VaultContents =>
 	parseVaultContents(JSON.parse(openStorage(envelope, key, VAULT_AAD)));
 
 export const readBrowserCredentialFromVault = async (
@@ -173,7 +155,7 @@ export const readBrowserCredentialFromVault = async (
 		throw cause;
 	}
 	const contents = decryptVault(
-		decodeEnvelope(raw),
+		JSON.parse(raw),
 		await secureStorageMasterKey(false),
 	);
 	return contents.browserCredentials[normalizeOrigin(origin)] ?? null;
@@ -192,39 +174,40 @@ export const CredentialsServiceLive = Layer.effect(
 		const { userData } = yield* AppPaths;
 		const vaultPath = join(userData, VAULT_FILENAME);
 		let writeTail = Promise.resolve();
+		let cached: { stamp: string; contents: VaultContents } | undefined;
 
 		const load = async (): Promise<VaultContents> => {
 			let raw: string;
 			try {
+				const metadata = await stat(vaultPath, { bigint: true });
+				const stamp = `${metadata.dev}:${metadata.ino}:${metadata.size}:${metadata.mtimeNs}:${metadata.ctimeNs}`;
+				if (cached?.stamp === stamp) return cached.contents;
 				raw = await readFile(vaultPath, "utf8");
+				const contents = decryptVault(
+					JSON.parse(raw),
+					await secureStorageMasterKey(false),
+				);
+				// Cache under the pre-read identity. An atomic replacement during the
+				// read will miss next time, never pin an old vault to a new identity.
+				cached = { stamp, contents };
+				return contents;
 			} catch (cause) {
 				if (
 					typeof cause === "object" &&
 					cause !== null &&
 					(cause as { code?: unknown }).code === "ENOENT"
 				) {
+					cached = undefined;
 					return emptyVault();
 				}
 				throw cause;
 			}
-			const key = await secureStorageMasterKey(false);
-			return decryptVault(decodeEnvelope(raw), key);
 		};
 
 		const persist = async (contents: VaultContents): Promise<void> => {
+			cached = undefined;
 			const key = await secureStorageMasterKey();
-			await mkdir(userData, { recursive: true, mode: 0o700 });
-			const tmp = `${vaultPath}.tmp.${process.pid}.${Date.now()}`;
-			try {
-				await writeFile(tmp, JSON.stringify(encryptVault(contents, key)), {
-					mode: 0o600,
-				});
-				await chmod(tmp, 0o600);
-				await rename(tmp, vaultPath);
-				await chmod(vaultPath, 0o600);
-			} finally {
-				await rm(tmp, { force: true }).catch(() => {});
-			}
+			await atomicWritePrivateJson(vaultPath, encryptVault(contents, key));
 		};
 
 		const read = <A>(
@@ -241,16 +224,9 @@ export const CredentialsServiceLive = Layer.effect(
 			Effect.tryPromise({
 				try: async () => {
 					const operation = writeTail.then(async () => {
-						await mkdir(userData, { recursive: true, mode: 0o700 });
-						const lock = await Effect.runPromise(
-							acquireProcessLock(`${vaultPath}.lock.sqlite`),
-						);
-						try {
-							const current = await load();
-							await persist(update(current));
-						} finally {
-							lock.close();
-						}
+						await withProcessLock(`${vaultPath}.lock.sqlite`, async () => {
+							await persist(update(await load()));
+						});
 					});
 					writeTail = operation.catch(() => {});
 					await operation;

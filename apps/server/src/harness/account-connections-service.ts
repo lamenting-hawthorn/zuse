@@ -19,7 +19,7 @@ import {
 	makeModelConnections,
 } from "./connections-service.ts";
 import { GrokOAuth, XAI_PUBLIC_CLIENT_ID } from "./grok-oauth.ts";
-import { chatGPTVault } from "./vault.ts";
+import { modelConnectionVault } from "./vault.ts";
 
 interface AccountService {
 	accountId: string;
@@ -96,7 +96,7 @@ export const accountModelConnections = (
 			if (cached?.key === key && (!cloud || cached.transport === transport))
 				return cached.result;
 			clear();
-			const hostId = chatGPTVault(credentials, userData).hostId;
+			const hostId = modelConnectionVault(credentials, userData).hostId;
 			const auth = new ChatGPTOAuth(
 				accountConnectionVault(transport, "chatgpt", hostId),
 			);

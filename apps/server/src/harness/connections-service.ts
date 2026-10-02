@@ -1,10 +1,16 @@
+import type {
+	ModelConnectionProvider,
+	ModelConnectionStorage,
+} from "@zuse/contracts";
 import {
 	ModelConnectionError,
 	type ModelConnectionStatus,
 	type ModelSignInEvent,
 } from "@zuse/contracts";
 import { Context, Effect, Stream } from "effect";
-import { ChatGPTAuthError, type ChatGPTOAuth } from "./chatgpt-oauth.ts";
+import { ProcessLockError } from "../process/process-lock.ts";
+import type { ChatGPTOAuth } from "./chatgpt-oauth.ts";
+import { ModelAuthError } from "./connection-registry.ts";
 import { GrokOAuth } from "./grok-oauth.ts";
 
 export interface ModelConnectionsShape {
@@ -13,7 +19,7 @@ export interface ModelConnectionsShape {
 		{
 			connectionId: string;
 			accessToken: string;
-			provider?: "chatgpt" | "supergrok";
+			provider?: ModelConnectionProvider;
 		},
 		ModelConnectionError
 	>;
@@ -24,8 +30,8 @@ export interface ModelConnectionsShape {
 	>;
 	readonly connect: (
 		id?: string,
-		provider?: "chatgpt" | "supergrok",
-		storage?: "local" | "account",
+		provider?: ModelConnectionProvider,
+		storage?: ModelConnectionStorage,
 	) => Stream.Stream<ModelSignInEvent, ModelConnectionError>;
 	readonly rename: (
 		id: string,
@@ -44,7 +50,11 @@ export class ModelConnections extends Context.Service<
 	ModelConnectionsShape
 >()("@zusehq/server/harness/ModelConnections") {}
 const safeError = (cause: unknown): ModelConnectionError => {
-	if (cause instanceof ChatGPTAuthError) {
+	if (cause instanceof ProcessLockError)
+		return new ModelConnectionError({
+			code: cause.kind === "timeout" ? "timeout" : "storage_failed",
+		});
+	if (cause instanceof ModelAuthError) {
 		switch (cause.code) {
 			case "unavailable":
 			case "cancelled":

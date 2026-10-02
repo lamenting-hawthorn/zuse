@@ -21,6 +21,8 @@ export const ModelConnection = Schema.Struct({
 	planNoticeSeen: Schema.Boolean,
 });
 export type ModelConnection = typeof ModelConnection.Type;
+export type ModelConnectionProvider = NonNullable<ModelConnection["provider"]>;
+export type ModelConnectionStorage = NonNullable<ModelConnection["storage"]>;
 export class ModelConnectionError extends Schema.TaggedErrorClass<ModelConnectionError>()(
 	"ModelConnectionError",
 	{

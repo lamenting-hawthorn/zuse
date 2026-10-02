@@ -75,3 +75,45 @@ it("accepts fresh leases through the private pipe without restarting the command
 		child.kill("SIGKILL");
 	}
 });
+
+it.each([
+	false,
+	true,
+])("only reaps descendants on normal exit when opted in (%s)", async (killDescendantsOnExit) => {
+	const { spawnSupervisedCommand } = await import(
+		"../../src/process/process-group.ts"
+	);
+	const directory = await mkdtemp(join(tmpdir(), "zuse-exit-policy-"));
+	const child = spawnSupervisedCommand(
+		"(sleep 0.4; printf survived > marker) & exit 0",
+		directory,
+		undefined,
+		{ killDescendantsOnExit },
+	);
+	try {
+		await once(child, "exit");
+		await new Promise((resolve) => setTimeout(resolve, 650));
+		if (killDescendantsOnExit)
+			await expect(readFile(join(directory, "marker"))).rejects.toThrow();
+		else
+			expect(await readFile(join(directory, "marker"), "utf8")).toBe(
+				"survived",
+			);
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
+it("falls back to sh for an empty SHELL", async () => {
+	const { spawnSupervisedCommand } = await import(
+		"../../src/process/process-group.ts"
+	);
+	const previous = process.env.SHELL;
+	process.env.SHELL = "";
+	try {
+		const child = spawnSupervisedCommand("exit 0", tmpdir());
+		expect((await once(child, "close"))[0]).toBe(0);
+	} finally {
+		if (previous === undefined) delete process.env.SHELL;
+		else process.env.SHELL = previous;
+	}
+});

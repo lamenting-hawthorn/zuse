@@ -2,7 +2,7 @@ import { Clock, Effect, Option, Schema } from "effect";
 import { requireEnvironmentCredential, requireWorkos } from "./auth.ts";
 import { requireRuntime } from "./cloud-workspace-routes.ts";
 import { badRequest, serviceUnavailable } from "./errors.ts";
-import { decodeBody } from "./http.ts";
+import { decodeBody, json } from "./http.ts";
 import { ModelConnectionStore } from "./model-connection-store.ts";
 
 const Command = Schema.Struct({
@@ -47,6 +47,15 @@ export const routeModelConnectionRequest = (request: Request) =>
 			return yield* Effect.fail(badRequest("invalid_request"));
 		if ((workspaceId || environment) && body.provider !== "supergrok")
 			return yield* Effect.fail(badRequest("hosted_chatgpt_unavailable"));
+		if (
+			((body.action === "list" ||
+				body.action === "read" ||
+				body.action === "write") &&
+				!body.kind) ||
+			((body.action === "read" || body.action === "write") && !body.id) ||
+			(body.action === "write" && body.value === undefined)
+		)
+			return yield* Effect.fail(badRequest("invalid_request"));
 		const account = principal.accountId;
 		const value = yield* Effect.tryPromise({
 			try: async () => {
@@ -85,10 +94,7 @@ export const routeModelConnectionRequest = (request: Request) =>
 			},
 			catch: () => serviceUnavailable("connection_storage_unavailable"),
 		});
-		return new Response(JSON.stringify({ value }), {
-			headers: {
-				"content-type": "application/json",
-				"cache-control": "no-store",
-			},
-		});
+		const response = json({ value });
+		response.headers.set("cache-control", "no-store");
+		return response;
 	});

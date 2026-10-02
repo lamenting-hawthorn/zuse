@@ -46,9 +46,6 @@ export class AccountBroker {
 	): void {
 		this.health.set(id, reason);
 	}
-	retry(id: string): void {
-		this.health.delete(id);
-	}
 	removeRoot(rootId: string): void {
 		this.affinity.delete(rootId);
 	}
@@ -56,9 +53,6 @@ export class AccountBroker {
 		this.health.delete(id);
 		for (const [root, active] of this.affinity)
 			if (active === id) this.affinity.delete(root);
-	}
-	status(id: string): ConnectionHealth | undefined {
-		return this.health.get(id);
 	}
 	private eligible(id: string): boolean {
 		const health = this.health.get(id);

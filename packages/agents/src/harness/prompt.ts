@@ -1,24 +1,29 @@
 import type { ModelMessage } from "ai";
-import { digest, HarnessCache, stableJson } from "./cache.ts";
+import { HarnessCache, stableJson } from "./cache.ts";
 
 export interface CompactionCheckpoint {
 	readonly covered: number;
 	readonly summary: string;
 }
-/** One host-owned budget can serve every engine; no mutable execution state lives here. */
+/** Cache estimates by immutable committed message identity; never retain duplicate prompt text. */
 export class PromptCache {
 	constructor(readonly cache = new HarnessCache()) {}
-	serialize(message: ModelMessage, model: string): string {
-		const content = stableJson(message);
-		const key = digest(`serializer-v1:${model}:${content}`);
-		const cached = this.cache.get(key);
-		if (cached !== undefined) return cached;
-		this.cache.set(key, content);
-		return content;
+	private identities = new WeakMap<ModelMessage, number>();
+	private nextIdentity = 0;
+	private key(message: ModelMessage, model: string, kind: string): string {
+		let id = this.identities.get(message);
+		if (id === undefined) {
+			id = this.nextIdentity++;
+			this.identities.set(message, id);
+		}
+		return `${kind}:v1:${model}:${id}`;
 	}
 
 	estimate(messages: ModelMessage[], model: string): number {
 		return messages.reduce((sum, message) => {
+			const key = this.key(message, model, "estimate");
+			const cached = this.cache.get(key);
+			if (cached !== undefined) return sum + Number(cached);
 			let imageTokens = 0;
 			// Encoded image bytes are not text tokens. Keep a conservative per-image
 			// reserve until provider/model-specific vision budgeting is available.
@@ -62,12 +67,12 @@ export class PromptCache {
 								}),
 							}
 						: message;
-			return (
-				sum +
-				Math.ceil(Buffer.byteLength(this.serialize(estimated, model)) / 3) +
+			const estimate =
+				Math.ceil(Buffer.byteLength(stableJson(estimated)) / 3) +
 				8 +
-				imageTokens
-			);
+				imageTokens;
+			this.cache.set(key, String(estimate));
+			return sum + estimate;
 		}, 0);
 	}
 }

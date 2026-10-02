@@ -1,10 +1,9 @@
+import { CopyButton } from "../copy-button.tsx";
 import "@zuse/i18n/english/settings";
 import { useMessages } from "@zuse/i18n/react";
-import { Check, Copy, ExternalLink } from "lucide-react";
-import { useEffect, useState } from "react";
-import { copyText, openExternal } from "~/lib/platform-capabilities.ts";
+import { ExternalLink } from "lucide-react";
+import { openExternal } from "~/lib/platform-capabilities.ts";
 import { Button } from "../ui/button.tsx";
-import { COMPACT_CLOUD_ACTION } from "./cloud-settings-ui.tsx";
 export function CopyAction({
 	text,
 	label,
@@ -14,38 +13,27 @@ export function CopyAction({
 	readonly label: string;
 	readonly compact?: boolean;
 }) {
-	const [copyState, setCopyState] = useState<"idle" | "copied" | "error">(
-		"idle",
-	);
-
-	useEffect(() => {
-		if (copyState === "idle") return;
-		const timer = window.setTimeout(() => setCopyState("idle"), 1_500);
-		return () => window.clearTimeout(timer);
-	}, [copyState]);
-	const buttonLabel =
-		copyState === "copied"
-			? "Copied"
-			: copyState === "error"
-				? "Copy failed"
-				: label;
-
 	return (
-		<Button
-			className={COMPACT_CLOUD_ACTION}
-			size={compact ? "icon-xs" : "sm"}
-			variant="ghost"
-			aria-label={buttonLabel}
-			onClick={() => {
-				void copyText(text).then(
-					() => setCopyState("copied"),
-					() => setCopyState("error"),
-				);
-			}}
-		>
-			{copyState === "copied" ? <Check aria-hidden /> : <Copy aria-hidden />}
-			{compact ? null : buttonLabel}
-		</Button>
+		<CopyButton
+			text={text}
+			label={label}
+			showLabel={!compact}
+			className={compact ? "h-7 w-7" : "h-7"}
+		/>
+	);
+}
+export function DeviceCode({
+	code,
+	label,
+}: {
+	readonly code: string;
+	readonly label: string;
+}) {
+	return (
+		<div className="flex h-7 w-fit items-center gap-2 rounded-md bg-muted/60 pl-2.5">
+			<code className="select-all text-sm tracking-wider">{code}</code>
+			<CopyAction compact text={code} label={label} />
+		</div>
 	);
 }
 
@@ -57,14 +45,10 @@ export function DeviceLoginSteps({ code, url }: { code: string; url: string }) {
 				<p className="text-xs">
 					1. {t("settings:model_connections_copy_code")}
 				</p>
-				<div className="flex h-7 w-fit items-center gap-2 rounded-md bg-muted/60 pl-2.5">
-					<code className="select-all text-sm tracking-wider">{code}</code>
-					<CopyAction
-						compact
-						text={code}
-						label={t("settings:model_connections_copy_code")}
-					/>
-				</div>
+				<DeviceCode
+					code={code}
+					label={t("settings:model_connections_copy_code")}
+				/>
 			</div>
 			<div className="space-y-1.5">
 				<p className="text-xs">2. {t("settings:model_connections_verify")}</p>

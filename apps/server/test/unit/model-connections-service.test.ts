@@ -1,13 +1,11 @@
 import { Effect, Stream } from "effect";
 import { expect, it } from "vitest";
-import {
-	ChatGPTOAuth,
-	type ChatGPTVault,
-} from "../../src/harness/chatgpt-oauth.ts";
+import { ChatGPTOAuth } from "../../src/harness/chatgpt-oauth.ts";
+import type { ModelVault } from "../../src/harness/connection-types.ts";
 import { makeModelConnections } from "../../src/harness/connections-service.ts";
 
 function fixture() {
-	const vault: ChatGPTVault = {
+	const vault: ModelVault = {
 		read: async () => null,
 		write: async () => {},
 		list: async () => [],

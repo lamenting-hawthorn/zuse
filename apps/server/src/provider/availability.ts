@@ -6,6 +6,7 @@ import type { Account } from "@zuse/agents/codex-generated/v2/Account";
 import type { GetAccountResponse } from "@zuse/agents/codex-generated/v2/GetAccountResponse";
 import { withCodexControlClient } from "@zuse/agents/drivers/codex-control-client";
 import { readKiroAuthContext } from "@zuse/agents/drivers/kiro-auth";
+import type { CliProviderId } from "@zuse/contracts";
 import {
 	AgentAvailability,
 	type CliVersionStatus,
@@ -25,7 +26,7 @@ import { PROVIDER_CLI_REGISTRY } from "./provider-cli-registry.ts";
 export { SUPPORTED_PROVIDER_CLIS } from "./provider-cli-registry.ts";
 
 interface ProviderProbe {
-	readonly providerId: Exclude<ProviderId, "cursor" | "zuse">;
+	readonly providerId: CliProviderId;
 	readonly displayName: string;
 	readonly cliBinary: string;
 	/**
@@ -1009,7 +1010,7 @@ const probeOpencodeAccount: Effect.Effect<
 });
 
 const probeAccount = (
-	providerId: Exclude<ProviderId, "cursor" | "zuse">,
+	providerId: CliProviderId,
 	cliPath: string,
 ): Effect.Effect<
 	AccountInfo,

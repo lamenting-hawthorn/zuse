@@ -1,18 +1,9 @@
 import { createHash } from "node:crypto";
 
-/** Canonical JSON is used only for immutable definitions, never to reorder history. */
-export function stableJson(value: unknown): string {
-	if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
-	if (value !== null && typeof value === "object") {
-		return `{${Object.entries(value)
-			.filter(([, v]) => v !== undefined)
-			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-			.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`)
-			.join(",")}}`;
-	}
-	return JSON.stringify(value) ?? "null";
-}
-export const digest = (value: string): string =>
+import { canonicalJson as stableJson } from "@zuse/utils/canonical-json";
+
+export { canonicalJson as stableJson } from "@zuse/utils/canonical-json";
+export const digest = (value: string | Uint8Array): string =>
 	createHash("sha256").update(value).digest("hex");
 export const promptCacheKey = (
 	connection: string,

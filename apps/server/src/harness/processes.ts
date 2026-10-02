@@ -1,19 +1,12 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-	mkdir,
-	open,
-	readdir,
-	readFile,
-	rename,
-	unlink,
-	writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { finished } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
+import { atomicWritePrivateJson } from "../atomic-private-file.ts";
 import {
 	SUPERVISED_COMMAND_LEASE_MS,
 	signalProcessGroup,
@@ -127,18 +120,12 @@ export class HarnessProcesses {
 		}
 	}
 	private persist(entry: Entry): Promise<void> {
-		const data = JSON.stringify(entry.record);
+		const snapshot = { ...entry.record };
 		const operation = entry.persistence
 			.catch(() => {})
 			.then(async () => {
 				const path = this.metadata(entry.record.id);
-				const tmp = `${path}.${randomUUID()}.tmp`;
-				try {
-					await writeFile(tmp, data, { mode: 0o600 });
-					await rename(tmp, path);
-				} finally {
-					await unlink(tmp).catch(() => {});
-				}
+				await atomicWritePrivateJson(path, snapshot);
 			});
 		entry.persistence = operation;
 		void operation.catch(() => {
@@ -263,7 +250,7 @@ export class HarnessProcesses {
 			input.args,
 			input.cwd,
 			Date.now() + SUPERVISED_COMMAND_LEASE_MS,
-			{ stdin: true, env: this.options.env },
+			{ stdin: true, env: this.options.env, killDescendantsOnExit: true },
 		);
 		entry.child = child;
 		this.entries.set(id, entry);

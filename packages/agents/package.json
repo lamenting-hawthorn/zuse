@@ -21,7 +21,9 @@
 		"./kernel/tool-input": "./src/kernel/tool-input.ts",
 		"./kernel/workspace-instructions": "./src/kernel/workspace-instructions.ts",
 		"./harness/*": "./src/harness/*.ts",
-		"./kernel/provider-checkpoint-batcher": "./src/kernel/provider-checkpoint-batcher.ts"
+		"./kernel/provider-checkpoint-batcher": "./src/kernel/provider-checkpoint-batcher.ts",
+		"./kernel/native-tool-name": "./src/kernel/native-tool-name.ts",
+		"./kernel/file-validation": "./src/kernel/file-validation.ts"
 	},
 	"scripts": {
 		"check-types": "tsc --noEmit",
@@ -40,7 +42,8 @@
 		"@zuse/contracts": "*",
 		"ai": "^7.0.123",
 		"effect": "catalog:",
-		"zod": "^4.0.0"
+		"zod": "^4.0.0",
+		"@zuse/utils": "*"
 	},
 	"devDependencies": {
 		"@repo/typescript-config": "*",

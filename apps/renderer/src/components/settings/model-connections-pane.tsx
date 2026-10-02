@@ -1,5 +1,13 @@
+import { canUseExperimentalHarness } from "@zuse/utils/feature-access";
 import { useSettingsStore } from "~/lib/settings-client-bus.ts";
 import { useAuth } from "../../hooks/use-auth.ts";
+import {
+	Select,
+	SelectItem,
+	SelectPopup,
+	SelectTrigger,
+	SelectValue,
+} from "../ui/select.tsx";
 import { Switch } from "../ui/switch.tsx";
 import "@zuse/i18n/english/settings";
 import type { ModelConnection } from "@zuse/contracts";
@@ -46,7 +54,9 @@ function ConnectionRow({
 }) {
 	const { message: t } = useMessages(["common", "settings"]);
 	const [editing, setEditing] = useState(false);
-	const [name, setName] = useState(connection.name);
+	const [name, setName] = useState(
+		connection.name.includes("@") ? "" : connection.name,
+	);
 	const provider = connection.provider === "supergrok" ? "grok" : "codex";
 	const providerName = connectionNames[connection.provider ?? "chatgpt"];
 	return (
@@ -58,14 +68,18 @@ function ConnectionRow({
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-1.5">
 						<p className="truncate text-xs font-medium">
-							{connection.name === connection.email
-								? providerName
-								: connection.name}
+							{connection.name === connection.email ? (
+								providerName
+							) : connection.name.includes("@") ? (
+								<BlurredEmail email={connection.name} />
+							) : (
+								connection.name
+							)}
 						</p>
 						{connection.preferred && (
 							<Star
 								className="size-3 shrink-0 text-muted-foreground"
-								aria-label={t("settings:chatgpt_preferred")}
+								aria-label={t("settings:model_connections_preferred")}
 							/>
 						)}
 					</div>
@@ -89,8 +103,8 @@ function ConnectionRow({
 									: connection.status === "permission-required"
 										? t("settings:chatgpt_permission_required")
 										: connection.status === "pending"
-											? t("settings:chatgpt_pending")
-											: t("settings:chatgpt_disconnected"),
+											? t("settings:model_connections_pending")
+											: t("settings:model_connections_disconnected"),
 							]
 								.filter((part) => part !== null)
 								.join(" · ")}
@@ -116,21 +130,21 @@ function ConnectionRow({
 							className="h-7"
 							disabled={connection.status === "pending"}
 							onClick={() => {
-								setName(connection.name);
+								setName(connection.name.includes("@") ? "" : connection.name);
 								setEditing(true);
 							}}
 						>
-							{t("settings:chatgpt_rename")}
+							{t("settings:model_connections_rename")}
 						</MenuItem>
 						<MenuItem
 							className="h-7"
 							disabled={!connection.authorized || connection.preferred}
 							onClick={onPreferred}
 						>
-							{t("settings:chatgpt_make_preferred")}
+							{t("settings:model_connections_make_preferred")}
 						</MenuItem>
 						<MenuItem className="h-7" onClick={onReconnect}>
-							{t("settings:chatgpt_reconnect")}
+							{t("settings:model_connections_reconnect")}
 						</MenuItem>
 						<MenuItem
 							className="h-7"
@@ -142,7 +156,7 @@ function ConnectionRow({
 								)
 							}
 						>
-							{t("settings:chatgpt_manage_usage")}
+							{t("settings:model_connections_manage_usage")}
 						</MenuItem>
 						{connection.status !== "pending" &&
 							connection.status !== "disconnected" && (
@@ -168,7 +182,7 @@ function ConnectionRow({
 						value={name}
 						onChange={(event) => setName(event.target.value)}
 						maxLength={200}
-						aria-label={t("settings:chatgpt_account_name")}
+						aria-label={t("settings:model_connections_account_name")}
 						disabled={busy}
 						autoFocus
 					/>
@@ -227,12 +241,19 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 	const { message: t } = useMessages(["common", "settings"]);
 	const { state, controller } = useModelConnections(environmentId);
 	const generation = useRef(0);
-	const [loginProvider, setLoginProvider] = useState<
-		"chatgpt" | "supergrok" | null
-	>(null);
-	const [storage, setStorage] = useState<"local" | "account">("local");
-	const [reconnectId, setReconnectId] = useState<string | undefined>();
-	const setup = (provider: "chatgpt" | "supergrok", id?: string) => {
+	const [loginProvider, setLoginProvider] = useState<NonNullable<
+		ModelConnection["provider"]
+	> | null>(state.attempt?.provider ?? null);
+	const [storage, setStorage] = useState<
+		NonNullable<ModelConnection["storage"]>
+	>(state.attempt?.storage ?? "local");
+	const [reconnectId, setReconnectId] = useState<string | undefined>(
+		state.attempt?.connectionId,
+	);
+	const setup = (
+		provider: NonNullable<ModelConnection["provider"]>,
+		id?: string,
+	) => {
 		generation.current++;
 		setStorage(
 			id
@@ -255,17 +276,21 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 	const error =
 		state.error === null
 			? null
-			: state.error === "access_denied"
-				? t("settings:chatgpt_error_denied")
-				: state.error === "timeout"
-					? t("settings:chatgpt_error_timeout")
-					: state.error === "busy"
-						? t("settings:chatgpt_error_busy")
-						: state.error === "identity_mismatch"
-							? t("settings:chatgpt_error_identity")
-							: state.error === "unavailable"
-								? t("settings:chatgpt_local_only")
-								: t("settings:chatgpt_error_generic");
+			: state.error === "cancelled"
+				? t(
+						"settings:cloud_workspace_auth_login_cancelled_no_credentials_were_changed",
+					)
+				: state.error === "access_denied"
+					? t("settings:model_connections_error_denied")
+					: state.error === "timeout"
+						? t("settings:model_connections_error_timeout")
+						: state.error === "busy"
+							? t("settings:model_connections_error_busy")
+							: state.error === "identity_mismatch"
+								? t("settings:chatgpt_error_identity")
+								: state.error === "unavailable"
+									? t("settings:chatgpt_local_only")
+									: t("settings:model_connections_error_generic");
 	const connect = async () => {
 		const attempt = generation.current;
 		await controller.connect(reconnectId, loginProvider ?? "chatgpt", storage);
@@ -283,7 +308,7 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 						className="h-7 w-7"
 						size="icon-sm"
 						variant="ghost"
-						aria-label={t("settings:chatgpt_refresh")}
+						aria-label={t("settings:model_connections_refresh")}
 						disabled={state.busy !== null}
 						onClick={() => void controller.load()}
 					>
@@ -397,37 +422,41 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 					</DialogHeader>
 					<DialogPanel className="space-y-3">
 						{!reconnectId && !state.signingIn && (
-							<fieldset
-								aria-label={t("settings:model_connections_save_to")}
-								className="flex gap-1 rounded-md bg-muted/50 p-1"
+							<Select
+								value={storage}
+								onValueChange={(value) => {
+									if (value === "local" || value === "account")
+										setStorage(value);
+								}}
 							>
-								<Button
-									className="h-7 flex-1"
-									variant={storage === "local" ? "settings" : "ghost"}
-									size="sm"
-									disabled={state.localAvailable === false}
-									aria-pressed={storage === "local"}
-									onClick={() => setStorage("local")}
+								<SelectTrigger
+									title={
+										storage === "account"
+											? t("settings:model_connections_account_hint")
+											: undefined
+									}
+									className="h-7"
+									aria-label={t("settings:model_connections_save_to")}
 								>
-									{t("settings:model_connections_local_scope")}
-								</Button>
-								<Button
-									className="h-7 flex-1"
-									variant={storage === "account" ? "settings" : "ghost"}
-									size="sm"
-									disabled={!state.accountAvailable}
-									aria-pressed={storage === "account"}
-									onClick={() => setStorage("account")}
-								>
-									{t("settings:model_connections_account_scope")}
-								</Button>
-							</fieldset>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectPopup>
+									<SelectItem
+										value="local"
+										disabled={state.localAvailable === false}
+									>
+										{t("settings:model_connections_local_scope")}
+									</SelectItem>
+									<SelectItem
+										value="account"
+										disabled={!state.accountAvailable}
+									>
+										{t("settings:model_connections_account_scope")}
+									</SelectItem>
+								</SelectPopup>
+							</Select>
 						)}
-						{storage === "account" && (
-							<p className="text-[11px] text-muted-foreground">
-								{t("settings:model_connections_account_hint")}
-							</p>
-						)}
+
 						{state.device && (
 							<DeviceLoginSteps
 								code={state.device.userCode}
@@ -443,8 +472,8 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 								{state.device
 									? t("settings:model_connections_waiting_supergrok")
 									: state.loginUrl
-										? t("settings:chatgpt_waiting")
-										: t("settings:chatgpt_working")}
+										? t("settings:model_connections_waiting")
+										: t("settings:model_connections_working")}
 							</div>
 						)}
 						{error && (
@@ -469,7 +498,7 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 								variant="settings"
 								onClick={() => state.loginUrl && openExternal(state.loginUrl)}
 							>
-								{t("settings:chatgpt_open_browser")}
+								{t("settings:model_connections_open_browser")}
 							</Button>
 						) : (
 							!state.signingIn && (
@@ -508,7 +537,7 @@ function ConnectionControls({ environmentId }: { environmentId: string }) {
 							disabled={state.busy !== null}
 							onClick={() => void controller.acknowledgePlan()}
 						>
-							{t("settings:chatgpt_got_it")}
+							{t("settings:model_connections_got_it")}
 						</Button>
 					</DialogFooter>
 				</DialogPopup>
@@ -522,6 +551,7 @@ export function ModelConnectionsPane({
 	environmentId: string;
 }) {
 	const { user } = useAuth();
+	if (!canUseExperimentalHarness(user?.email)) return null;
 	return (
 		<LocalConnections
 			key={`${environmentId}:${user?.id ?? "signed-out"}`}

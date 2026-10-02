@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AccountBroker } from "@zuse/agents/harness/account-broker";
+import { digest } from "@zuse/agents/harness/cache";
 import { requestModel } from "@zuse/agents/harness/model";
 import { contextLimits } from "@zuse/agents/harness/prompt";
 import type {
@@ -11,6 +11,7 @@ import type {
 import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import type { ProviderSessionHandle } from "@zuse/agents/kernel/driver";
 import { isSensitivePath } from "@zuse/agents/kernel/permission-policy";
+import type { ModelConnectionProvider } from "@zuse/contracts";
 import {
 	AgentAvailability,
 	type AgentSessionId,
@@ -31,7 +32,7 @@ import { makeHarnessSession } from "./provider-session.ts";
 import { resolveHarnessRipgrep } from "./ripgrep.ts";
 
 export function parseHarnessModel(id: string): {
-	provider: "chatgpt" | "supergrok";
+	provider: ModelConnectionProvider;
 	model: string;
 } {
 	const match = /^(chatgpt|supergrok)\/([^\s/]+)$/.exec(id);
@@ -102,7 +103,7 @@ export const HarnessProviderLive = Layer.effect(
 						paths.userData,
 						"cache",
 						"harness-models-v3",
-						`${createHash("sha256").update(id).digest("hex")}.json`,
+						`${digest(id)}.json`,
 					),
 				schema: Inventory,
 			},
@@ -195,7 +196,15 @@ export const HarnessProviderLive = Layer.effect(
 		const sync = async () => {
 			const status = await metadata();
 			names.clear();
-			for (const c of status.connections) names.set(c.id, c.name);
+			for (const c of status.connections)
+				names.set(
+					c.id,
+					c.name.includes("@")
+						? c.provider === "supergrok"
+							? "SuperGrok"
+							: "ChatGPT"
+						: c.name,
+				);
 			const live = new Set(
 				status.connections.filter((c) => c.authorized).map((c) => c.id),
 			);
@@ -302,7 +311,11 @@ export const HarnessProviderLive = Layer.effect(
 						hasApiKey: false,
 						authStatus: authorized ? "authenticated" : "unauthenticated",
 						authType: "subscription",
-						status: authorized ? "ready" : "warning",
+						status: !status.available
+							? "disabled"
+							: authorized
+								? "ready"
+								: "warning",
 						statusMessage: authorized
 							? undefined
 							: "Connect ChatGPT or SuperGrok in Agent providers.",
@@ -313,12 +326,36 @@ export const HarnessProviderLive = Layer.effect(
 				Effect.gen(function* () {
 					const settings = yield* config.getSettings();
 					if (settings.providerEnabled.zuse !== true)
-						throw new Error(
-							"Enable Zuse (Experimental) in Agent providers first.",
+						return yield* Effect.fail(
+							new AgentSessionStartError({
+								providerId: "zuse",
+								reason: "Enable Zuse (Experimental) in Agent providers first.",
+							}),
+						);
+					if (!(yield* connections.status()).available)
+						return yield* Effect.fail(
+							new AgentSessionStartError({
+								providerId: "zuse",
+								reason:
+									"Zuse Experimental is not available for this signed-in account.",
+							}),
 						);
 					if (!input.model)
-						throw new Error("Choose a Zuse model before starting a chat.");
-					const selected = parseHarnessModel(input.model);
+						return yield* Effect.fail(
+							new AgentSessionStartError({
+								providerId: "zuse",
+								reason: "Choose a Zuse model before starting a chat.",
+							}),
+						);
+					const selected = yield* Effect.try({
+						try: () => parseHarnessModel(input.model ?? ""),
+						catch: () =>
+							new AgentSessionStartError({
+								providerId: "zuse",
+								reason:
+									"Choose a ChatGPT or SuperGrok model from the Zuse picker.",
+							}),
+					});
 					const context = yield* Effect.tryPromise(async () => {
 						const status = await sync();
 						const inventories = await Promise.all(
@@ -358,11 +395,19 @@ export const HarnessProviderLive = Layer.effect(
 					});
 					const rootId = `zuse:${sessionId}`;
 					if (resumeCursor !== null && resumeCursor !== rootId)
-						throw new Error(
-							"The Zuse resume cursor does not belong to this chat.",
+						return yield* Effect.fail(
+							new AgentSessionStartError({
+								providerId: "zuse",
+								reason: "The Zuse resume cursor does not belong to this chat.",
+							}),
 						);
 					if (input.forkFromResume)
-						throw new Error("Use transcript copying when forking a Zuse chat.");
+						return yield* Effect.fail(
+							new AgentSessionStartError({
+								providerId: "zuse",
+								reason: "Use transcript copying when forking a Zuse chat.",
+							}),
+						);
 					const journal = yield* makeHarnessJournal(rootId).pipe(
 						Effect.provide(journals),
 					);
@@ -528,13 +573,15 @@ export const HarnessProviderLive = Layer.effect(
 						},
 					});
 				}).pipe(
-					Effect.catchCause(() =>
+					Effect.catch((error) =>
 						Effect.fail(
-							new AgentSessionStartError({
-								providerId: "zuse",
-								reason:
-									"Zuse could not start. Enable the experiment, connect an account, and choose an available model. If resuming, preserve the execution journal and inspect the last step.",
-							}),
+							error instanceof AgentSessionStartError
+								? error
+								: new AgentSessionStartError({
+										providerId: "zuse",
+										reason:
+											"Zuse could not start. Enable the experiment, connect an account, and choose an available model. If resuming, preserve the execution journal and inspect the last step.",
+									}),
 						),
 					),
 				),

@@ -1,14 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
+import type { ModelConnectionProvider } from "@zuse/contracts";
 import { Context } from "effect";
 import { z } from "zod";
+import { ModelAuthError } from "./connection-registry.ts";
 import {
-	type ChatGPTVault,
+	type ModelVault,
 	pendingRegistrationSchema,
 	registrationSchema,
-} from "./chatgpt-oauth.ts";
-import { ModelAuthError } from "./connection-registry.ts";
+} from "./connection-types.ts";
 
 export interface AccountConnectionTransport {
 	readonly accountId: string;
@@ -22,9 +23,9 @@ export class RuntimeModelConnections extends Context.Service<
 
 export function accountConnectionVault(
 	transport: AccountConnectionTransport,
-	provider: "chatgpt" | "supergrok",
+	provider: ModelConnectionProvider,
 	hostId: () => Promise<string>,
-): ChatGPTVault {
+): ModelVault {
 	const lease = new AsyncLocalStorage<string>();
 	const call = async (
 		action: string,

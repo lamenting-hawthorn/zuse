@@ -57,10 +57,11 @@ async function setup(contextWindow?: number, autoCompactTokenLimit?: number) {
 		}),
 	);
 	vi.stubGlobal("fetch", fetcher);
+	let connectionAccess = true;
 	const auth = ModelConnections.of({
 		status: () =>
 			Effect.succeed({
-				available: true,
+				available: connectionAccess,
 				connections: [
 					{
 						id: "connection-one",
@@ -155,6 +156,9 @@ async function setup(contextWindow?: number, autoCompactTokenLimit?: number) {
 		enable,
 		fetcher,
 		requestPermission,
+		setConnectionAccess: (allowed: boolean) => {
+			connectionAccess = allowed;
+		},
 		close: async () => {
 			await runtime.dispose();
 			await rm(dir, { recursive: true, force: true });
@@ -186,7 +190,9 @@ const tool = (
 it("edits and runs bash through the provider handle, streams, and resumes without repeating completed tools", async () => {
 	const env = await setup();
 	try {
-		await expect(env.start()).rejects.toThrow();
+		await expect(env.start()).rejects.toMatchObject({
+			reason: "Enable Zuse (Experimental) in Agent providers first.",
+		});
 		await env.enable(true);
 		expect(
 			(await env.runtime.runPromise(env.provider.availability())).authStatus,
@@ -495,6 +501,26 @@ it.each([
 		expect(requests).toBe(2);
 		await env.runtime.runPromise(handle.close());
 		await reading;
+	} finally {
+		await env.close();
+	}
+});
+
+it("denies new and resumed harness execution despite saved enablement when account access is revoked", async () => {
+	const env = await setup();
+	try {
+		await env.enable(true);
+		env.setConnectionAccess(false);
+		expect(
+			await env.runtime.runPromise(env.provider.availability()),
+		).toMatchObject({ runtimeAvailable: false, status: "disabled" });
+		for (const cursor of [null, "zuse:test-session"]) {
+			await expect(env.start(cursor)).rejects.toMatchObject({
+				reason:
+					"Zuse Experimental is not available for this signed-in account.",
+			});
+		}
+		expect(env.fetcher).not.toHaveBeenCalled();
 	} finally {
 		await env.close();
 	}

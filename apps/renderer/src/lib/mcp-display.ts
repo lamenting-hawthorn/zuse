@@ -1,19 +1,9 @@
+import { PROVIDER_LABEL as MCP_PROVIDER_LABEL } from "~/lib/provider-labels";
 import "@zuse/i18n/english/shell";
 import type { McpServerDescriptor, ProviderId } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
 
-export const MCP_PROVIDER_LABEL: Record<ProviderId, string> = {
-	claude: "Claude",
-	codex: "Codex",
-	grok: "Grok",
-	gemini: "Gemini",
-	kiro: "Kiro",
-	pi: "Pi",
-	zuse: "Zuse (Experimental)",
-	cursor: "Cursor",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-};
+export { PROVIDER_LABEL as MCP_PROVIDER_LABEL } from "~/lib/provider-labels";
 
 export const MCP_DISPLAY_GROUPS = [
 	{

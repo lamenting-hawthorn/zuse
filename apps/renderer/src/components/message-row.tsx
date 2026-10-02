@@ -1,4 +1,5 @@
 import { cloudProviderAuthenticationMode } from "@zuse/client-runtime/cloud-provider-availability";
+import { PROVIDER_LABEL as PROVIDER_LABEL_FOR_ERROR } from "~/lib/provider-labels";
 import { useStreamingText } from "../hooks/use-streaming-text.ts";
 import { ContextPill, contextPillClass } from "./context-pill.tsx";
 import "@zuse/i18n/english/common";
@@ -828,19 +829,6 @@ const formatResetDetail = (info: RateLimitInfo): string => {
 	return "Try again later";
 };
 
-const PROVIDER_LABEL_FOR_ERROR: Record<ProviderId, string> = {
-	claude: "Claude Code",
-	codex: "Codex",
-	grok: "Grok",
-	gemini: "Gemini",
-	cursor: "Cursor",
-	opencode: "OpenCode",
-	opencode2: "OpenCode 2",
-	kiro: "Kiro",
-	pi: "Pi",
-	zuse: "Zuse (Experimental)",
-};
-
 /**
  * "Authentication required" card shown when a login-capable provider reports
  * an auth failure. Reuses the shared `useProviderLogin` flow
@@ -874,6 +862,7 @@ function ProviderAuthCard({
 	);
 	const reopenSession = useSessionsStore((s) => s.resume);
 	const { state, start, cancel } = useProviderLogin(providerId, {
+		environmentId,
 		onSuccess: () => {
 			// Re-probe first so the keychain write has landed and this card
 			// resolves (hides) before recovery. Reopen the provider with the fresh

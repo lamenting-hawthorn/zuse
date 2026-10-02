@@ -1,22 +1,22 @@
 import { randomUUID } from "node:crypto";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { digest } from "@zuse/agents/harness/cache";
+import type { ModelConnectionProvider } from "@zuse/contracts";
 import { Effect } from "effect";
-import { acquireProcessLock } from "../cache/process-lock.ts";
+import { withProcessLock } from "../process/process-lock.ts";
 import type { CredentialsServiceShape } from "../provider/services/credentials-service.ts";
 import {
-	type ChatGPTVault,
+	type ModelVault,
 	pendingRegistrationSchema,
 	registrationSchema,
-} from "./chatgpt-oauth.ts";
+} from "./connection-types.ts";
 
 /** Same encrypted vault as existing integrations; Codex auth files are never read. */
-export function chatGPTVault(
+export function modelConnectionVault(
 	credentials: CredentialsServiceShape,
 	userData: string,
-	provider: "chatgpt" | "supergrok" = "chatgpt",
-): ChatGPTVault {
+	provider: ModelConnectionProvider = "chatgpt",
+): ModelVault {
 	const namespace = `zuse-${provider}-connections`;
 	const pendingNamespace = `zuse-${provider}-pending-registrations`;
 	const readPending = async (id: string) => {
@@ -37,18 +37,10 @@ export function chatGPTVault(
 		id: string,
 		operation: () => Promise<T>,
 	): Promise<T> => {
-		const directory = join(userData, "harness-locks");
-		await mkdir(directory, { recursive: true, mode: 0o700 });
-		const database = await Effect.runPromise(
-			acquireProcessLock(
-				join(directory, `${digest(`${provider}:${id}`)}.sqlite`),
-			),
+		return withProcessLock(
+			join(userData, "harness-locks", `${digest(`${provider}:${id}`)}.sqlite`),
+			operation,
 		);
-		try {
-			return await operation();
-		} finally {
-			database.close();
-		}
 	};
 	return {
 		readPending,

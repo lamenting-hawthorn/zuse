@@ -131,5 +131,14 @@
 	"pi_binary_path": "Pi 실행 파일 경로",
 	"pi_binary_placeholder": "PATH에서 pi 찾기",
 	"pi_binary_help": "실행 파일의 절대 경로를 입력하거나 비워 두면 PATH에서 검색합니다.",
-	"provider_row_configure": "{{label}} 설정"
+	"provider_row_configure": "{{label}} 설정",
+	"updating": "업데이트 중…",
+	"updated": "업데이트됨",
+	"update_failed": "실패",
+	"cancel_update": "업데이트 취소",
+	"update_to_version": "{{name}}을(를) v{{version}}(으)로 업데이트",
+	"update_to_latest": "{{name}}을(를) 최신 버전으로 업데이트",
+	"sign_in_failed": "로그인에 실패했습니다.",
+	"sign_in_incomplete": "로그인이 완료되기 전에 종료되었습니다.",
+	"update_incomplete": "업데이트가 완료되기 전에 종료되었습니다."
 }

@@ -17,7 +17,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { WORKOS_PUBLIC_CLIENT_ID } from "@zuse/contracts";
 import { Effect, Layer } from "effect";
 
-import { acquireProcessLock as acquireSharedProcessLock } from "../../cache/process-lock.ts";
+import { acquireProcessLock as acquireSharedProcessLock } from "../../process/process-lock.ts";
 import { SessionStoreError } from "../errors.ts";
 import { SessionStore } from "../services/session-store.ts";
 import { parseSessionBundle, type SessionBundle } from "./workos.ts";

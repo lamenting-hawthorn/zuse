@@ -1,5 +1,7 @@
+import { APICallError } from "ai";
 import { describe, expect, it } from "vitest";
 import {
+	modelError,
 	modelTools,
 	requestModel,
 	subscriptionFetch,
@@ -66,6 +68,28 @@ const completed = {
 	},
 };
 describe("AI SDK subscription transport", () => {
+	it.each([
+		[
+			"subscription_sharing_usage_limit_exceeded",
+			"subscription_sharing_usage_limit_exceeded",
+		],
+		["subscription_sharing_unavailable", "subscription_sharing_unavailable"],
+		["policy_denied", "http_429"],
+		["private-provider-detail", "http_429"],
+	])("classifies HTTP errors without treating %s as an arbitrary failover reason", (code, expected) => {
+		const error = modelError(
+			new APICallError({
+				message: "Request failed",
+				url: "https://example.test/responses",
+				requestBodyValues: {},
+				statusCode: 429,
+				responseBody: JSON.stringify({ error: { code } }),
+			}),
+		);
+		expect(error.code).toBe(expected);
+		expect(error.status).toBe(429);
+	});
+
 	it("uses explicit portable input and supported request fields with fragmented streams", async () => {
 		let text = "";
 		const output = await requestModel(

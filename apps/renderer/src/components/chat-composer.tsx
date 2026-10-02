@@ -2771,11 +2771,15 @@ function ContextStatusPopover({
 		return [...latestByKey.values()].reverse();
 	}, [messages, session.providerId, uiMessage]);
 
-	const latestCompaction = messages.findLast(
-		(message) =>
-			message.content._tag === "context_compaction" &&
-			message.content.providerId === session.providerId,
-	)?.content;
+	const latestCompaction = useMemo(
+		() =>
+			messages.findLast(
+				(message) =>
+					message.content._tag === "context_compaction" &&
+					message.content.providerId === session.providerId,
+			)?.content,
+		[messages, session.providerId],
+	);
 	if (
 		latestCompaction?._tag === "context_compaction" &&
 		latestCompaction.status === "in_progress"

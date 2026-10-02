@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { HarnessEngine } from "@zuse/agents/harness/engine";
 import type { HarnessEvent } from "@zuse/agents/harness/types";
 import type { ProviderSessionHandle } from "@zuse/agents/kernel/driver";
+import { normalizeNativeToolName } from "@zuse/agents/kernel/native-tool-name";
 import { ProviderCheckpointBatcher } from "@zuse/agents/kernel/provider-checkpoint-batcher";
 import {
 	makeBoundedQuestionCallbackRegistry,
@@ -117,18 +118,6 @@ export const makeHarnessSession = (options: HarnessSessionOptions) =>
 				}
 				case "tool-start": {
 					flush(event.agentId);
-					const names: Record<string, string> = {
-						read_file: "Read",
-						read_image: "ViewImage",
-						write_file: "Write",
-						edit_file: "Edit",
-						multi_edit: "MultiEdit",
-						exec_command: "Bash",
-						grep: "Grep",
-						glob: "Glob",
-						spawn_agent: "Agent",
-						update_plan: "TodoWrite",
-					};
 					const args =
 						event.call.input && typeof event.call.input === "object"
 							? event.call.input
@@ -137,7 +126,7 @@ export const makeHarnessSession = (options: HarnessSessionOptions) =>
 					emit({
 						_tag: "ToolUse",
 						itemId: AgentItemId.make(event.call.id),
-						tool: names[event.call.name] ?? event.call.name,
+						tool: normalizeNativeToolName(event.call.name),
 						input: {
 							...args,
 							...(event.call.name === "spawn_agent"

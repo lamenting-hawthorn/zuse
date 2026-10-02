@@ -199,3 +199,21 @@ it("shows device codes without opening a browser automatically and sends the sel
 	expect(controller.snapshot().device).toBeNull();
 	controller.dispose();
 });
+
+it("refreshes global metadata after sign-in with no mounted subscribers", async () => {
+	const { client } = fixture();
+	let refreshes = 0;
+	const controller = new ModelConnectionController(
+		async () => client,
+		() => {},
+		async () => {
+			refreshes++;
+		},
+	);
+	const unsubscribe = controller.subscribe(() => {});
+	unsubscribe();
+	await controller.connect();
+	expect(refreshes).toBe(1);
+	expect(controller.snapshot().connections).toHaveLength(1);
+	controller.dispose();
+});
