@@ -1,5 +1,17 @@
+import { KeyedEffectSerialWorker } from "@zuse/utils/keyed-worker";
 import { Context, Effect, Layer, Ref, Semaphore } from "effect";
 import { SqlClient } from "effect/unstable/sql";
+import { type ApiError, serviceUnavailable } from "./errors.ts";
+
+// Include acquisition and remote work in the budget; an unavailable provider
+// must not retain a pooled transaction indefinitely.
+const organizationDeadline = <A, E, R>(operation: Effect.Effect<A, E, R>) =>
+	operation.pipe(
+		Effect.timeout("60 seconds"),
+		Effect.catchTag("TimeoutError", () =>
+			Effect.fail(serviceUnavailable("organization_operation_timeout")),
+		),
+	);
 
 export type ProviderKind = "desktop" | "ssh" | "cloud";
 export type DevicePlatform = "ios" | "android" | "web" | "desktop";
@@ -87,6 +99,11 @@ export type EnvironmentRegistrationMode =
 	| "preserve-identity";
 
 export interface ApiStoreApi {
+	/** Serialize membership edits across API workers before checking current authority. */
+	readonly withOrganizationLock: <A, E, R>(
+		organizationId: string,
+		operation: Effect.Effect<A, E, R>,
+	) => Effect.Effect<A, E | ApiError, R>;
 	readonly createChallenge: (
 		challenge: LinkChallengeRecord,
 	) => Effect.Effect<void>;
@@ -191,8 +208,11 @@ export const ApiStoreMemory: Layer.Layer<ApiStore> = Layer.effect(
 		const revokedDpopThumbprints = yield* Ref.make(new Set<string>());
 		const dpop = yield* Ref.make(new Set<string>());
 		const activities = yield* Ref.make<ActivityRecord[]>([]);
+		const organizationLock = new KeyedEffectSerialWorker<string>();
 
 		return ApiStore.of({
+			withOrganizationLock: (organizationId, operation) =>
+				organizationDeadline(organizationLock.run(organizationId, operation)),
 			createChallenge: (challenge) =>
 				Ref.update(challenges, (map) =>
 					new Map(map).set(challenge.challengeId, challenge),
@@ -526,6 +546,18 @@ export const ApiStorePg: Layer.Layer<ApiStore, never, SqlClient.SqlClient> =
 				);
 
 			return ApiStore.of({
+				withOrganizationLock: (organizationId, operation) =>
+					sql
+						.withTransaction(
+							sql`SELECT pg_advisory_xact_lock(hashtextextended(${`organization:${organizationId}`}, 0))`.pipe(
+								Effect.orDie,
+								Effect.andThen(operation),
+							),
+						)
+						.pipe(
+							Effect.catchTag("SqlError", Effect.die),
+							organizationDeadline,
+						),
 				createChallenge: (challenge) =>
 					orDie(
 						sql`

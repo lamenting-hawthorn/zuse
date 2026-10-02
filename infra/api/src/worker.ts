@@ -122,6 +122,7 @@ interface Env extends SlackBindings {
 	readonly CLOUD_REPOSITORY_CACHE_MAX_BYTES?: string;
 	readonly MAX_ENVIRONMENTS_PER_ACCOUNT?: string;
 	readonly ALLOWED_BROWSER_ORIGINS?: string;
+	readonly ORGANIZATION_WORKSPACES_ENABLED?: string;
 	// Managed Cloudflare tunnel (optional — absent disables provisioning).
 	readonly CF_API_TOKEN?: string;
 	readonly CF_ACCOUNT_ID?: string;
@@ -364,6 +365,8 @@ const build = (env: Env, directStartup = false): ReturnType<typeof makeApi> => {
 		env.GITHUB_APP_PRIVATE_KEY,
 	].every(isConfigured);
 	const configLayer = Config.layer({
+		organizationWorkspacesEnabled:
+			env.ORGANIZATION_WORKSPACES_ENABLED === "true",
 		apiIssuer: env.API_ISSUER,
 		publicApiOrigin: env.API_PUBLIC_ORIGIN,
 		workosJwksUrl: env.WORKOS_JWKS_URL,
