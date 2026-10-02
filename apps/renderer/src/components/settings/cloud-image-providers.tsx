@@ -109,7 +109,9 @@ export function CloudImageProviders({
 							>
 								{!onSelectProvider ? providerName(provider.providerId) : null}
 								{status(image)}
-								<span className="text-[11px] text-muted-foreground">Logs</span>
+								<span className="text-[11px] text-muted-foreground">
+									{message("settings:diagnostics_pane_open_logs")}
+								</span>
 								<ChevronRight
 									className="size-3.5 text-muted-foreground"
 									aria-hidden

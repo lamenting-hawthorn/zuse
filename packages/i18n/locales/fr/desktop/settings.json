@@ -1,4 +1,7 @@
 {
+	"cloud_image_starting": "Démarrage de la compilation…",
+	"cloud_image_queued": "En attente d’un worker de compilation…",
+	"cloud_image_sanitizing": "Préparation de l’instantané…",
 	"workspace_new_chat_access": "Nouveaux chats cloud",
 	"workspace_new_chat_access_description": "Choisissez l’accès aux nouveaux chats de l’organisation. Voir autorise la lecture ; Modifier autorise aussi les changements et les interactions avec l’agent. Les chats existants restent inchangés. Modifiez leur accès dans le menu Partager du chat.",
 	"sharing_link_notice": "Seules les personnes ayant déjà accès peuvent ouvrir ce lien. Enregistrez d’abord les modifications du partage.",

@@ -1,4 +1,7 @@
 {
+	"cloud_image_starting": "正在啟動建置…",
+	"cloud_image_queued": "正在等待建置工作程序…",
+	"cloud_image_sanitizing": "正在準備快照…",
 	"workspace_new_chat_access": "新增雲端聊天",
 	"workspace_new_chat_access_description": "選擇組織新聊天的存取權限。檢視允許閱讀；編輯還允許修改及與代理互動。現有聊天不受影響。可在聊天的分享選單中更改存取權限。",
 	"sharing_link_notice": "只有已擁有存取權限的人才能開啟此連結。請先儲存共用設定的變更。",

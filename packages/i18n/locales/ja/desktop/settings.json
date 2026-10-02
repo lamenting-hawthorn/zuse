@@ -1,4 +1,7 @@
 {
+	"cloud_image_starting": "ビルドを開始しています…",
+	"cloud_image_queued": "ビルドワーカーを待機しています…",
+	"cloud_image_sanitizing": "スナップショットを準備しています…",
 	"workspace_new_chat_access": "新しいクラウドチャット",
 	"workspace_new_chat_access_description": "組織の新しいチャットへのアクセスを設定します。表示では閲覧、編集では変更とエージェントとの対話も可能です。既存のチャットには影響しません。各チャットの共有メニューでアクセスを変更できます。",
 	"sharing_link_notice": "すでにアクセス権を持つ人だけがこのリンクを開けます。共有設定の変更は先に保存してください。",

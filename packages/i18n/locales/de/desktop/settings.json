@@ -1,4 +1,7 @@
 {
+	"cloud_image_starting": "Build wird gestartet…",
+	"cloud_image_queued": "Warten auf einen Build-Worker…",
+	"cloud_image_sanitizing": "Snapshot wird vorbereitet…",
 	"workspace_new_chat_access": "Neue Cloud-Chats",
 	"workspace_new_chat_access_description": "Wähle den Zugriff für neue Organisations-Chats. Anzeigen erlaubt das Lesen; Bearbeiten erlaubt auch Änderungen und Agenteninteraktion. Bestehende Chats bleiben unverändert. Den Zugriff änderst du im Teilen-Menü eines Chats.",
 	"sharing_link_notice": "Nur Personen mit bestehendem Zugriff können diesen Link öffnen. Speichern Sie zuerst Änderungen an der Freigabe.",

@@ -130,16 +130,16 @@ export function CloudImageReadiness({
 				<div className="min-w-0 flex-1">
 					<p className="text-xs font-medium">
 						{starting && state !== "building"
-							? "Starting build…"
+							? uiMessage("settings:cloud_image_starting")
 							: uiMessage(
 									"settings:cloud_image_readiness_building_cloud_image",
 								)}
 					</p>
 					<p className="mt-0.5 text-[11px] text-muted-foreground">
 						{image.progressPhase === "queued"
-							? "Waiting for a build worker…"
+							? uiMessage("settings:cloud_image_queued")
 							: image.progressPhase === "sanitizing"
-								? "Preparing the snapshot…"
+								? uiMessage("settings:cloud_image_sanitizing")
 								: uiMessage(
 										"settings:cloud_image_readiness_preparing_repositories_and_agents",
 									)}

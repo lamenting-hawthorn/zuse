@@ -1,4 +1,7 @@
 {
+	"cloud_image_starting": "正在启动构建…",
+	"cloud_image_queued": "正在等待构建工作进程…",
+	"cloud_image_sanitizing": "正在准备快照…",
 	"workspace_new_chat_access": "新建云端聊天",
 	"workspace_new_chat_access_description": "选择组织新聊天的访问权限。查看允许阅读；编辑还允许修改和与智能体交互。现有聊天不受影响。可在聊天的共享菜单中更改访问权限。",
 	"sharing_link_notice": "只有已拥有访问权限的人才能打开此链接。请先保存共享设置的更改。",

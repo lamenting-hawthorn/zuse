@@ -1,4 +1,7 @@
 {
+	"cloud_image_starting": "⟦Stààrtïïng büüïïld…⟧",
+	"cloud_image_queued": "⟦Wààïïtïïng fôôr àà büüïïld wôôrkëër…⟧",
+	"cloud_image_sanitizing": "⟦Prëëpààrïïng thëë snààpshôôt…⟧",
 	"workspace_new_chat_access": "⟦Nëëw clôôüüd chààts⟧",
 	"workspace_new_chat_access_description": "⟦Chôôôôsëë ààccëëss fôôr nëëw ôôrgàànïïzààtïïôôn chààts. Vïïëëw pëërmïïts rëëààdïïng; ËËdïït ààlsôô pëërmïïts chààngëës àànd ààgëënt ïïntëërààctïïôôn. ËËxïïstïïng chààts ààrëë üünchààngëëd. ÜÜsëë àà chààt’s Shààrëë mëënüü tôô chààngëë ïïts ààccëëss.⟧",
 	"sharing_link_notice": "⟦ÔÔnly pëëôôplëë whôô ààlrëëààdy hààvëë ààccëëss cààn ôôpëën thïïs lïïnk. Shààrïïng chààngëës müüst bëë sààvëëd fïïrst.⟧",
