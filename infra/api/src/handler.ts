@@ -352,8 +352,6 @@ const route = (
 		const organizationResponse = yield* routeOrganizationRequest(request);
 		if (organizationResponse !== null) return organizationResponse;
 		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
-		const organizationResponse = yield* routeOrganizationRequest(request);
-		if (organizationResponse !== null) return organizationResponse;
 		if (modelConnectionResponse !== null) return modelConnectionResponse;
 		const machineResponse = yield* routeMachineRequest(request);
 		if (machineResponse !== null) return machineResponse;
