@@ -21,7 +21,6 @@ export function SessionActionsMenu({
 	onFiles,
 	onTerminal,
 	onOpenOnDesktop,
-	onShare,
 	onArchive,
 }: {
 	isPinned: boolean;
@@ -35,8 +34,7 @@ export function SessionActionsMenu({
 	onFiles: () => void;
 	onTerminal?: () => void;
 	onOpenOnDesktop?: () => void;
-	onShare?: () => void;
-	onArchive?: () => void;
+	onArchive: () => void;
 }) {
 	return (
 		<View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -70,13 +68,6 @@ export function SessionActionsMenu({
 					}
 					modifiers={[accessibilityLabel("Chat actions")]}
 				>
-					{onShare ? (
-						<NativeButton
-							label="Share chat"
-							systemImage={sf("square.and.arrow.up")}
-							onPress={onShare}
-						/>
-					) : null}
 					{onPin !== undefined ? (
 						<NativeButton
 							label={isPinned ? "Unpin" : "Pin"}
@@ -134,15 +125,13 @@ export function SessionActionsMenu({
 							onPress={onOpenOnDesktop}
 						/>
 					) : null}
-					{onArchive !== undefined ? (
-						/* biome-ignore lint/a11y/useValidAriaRole: SwiftUI maps this to UIMenu destructive styling. */
-						<NativeButton
-							label="Archive"
-							systemImage={sf("archivebox")}
-							role="destructive"
-							onPress={onArchive}
-						/>
-					) : null}
+					{/* biome-ignore lint/a11y/useValidAriaRole: SwiftUI maps this to UIMenu destructive styling. */}
+					<NativeButton
+						label="Archive"
+						systemImage={sf("archivebox")}
+						role="destructive"
+						onPress={onArchive}
+					/>
 				</Menu>
 			</Host>
 		</View>

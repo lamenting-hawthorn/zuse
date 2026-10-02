@@ -18,7 +18,6 @@ import {
 } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { withWorkspaceConnection } from "~/components/workspace-connection-screen";
 import { connectionErrorMessage } from "~/lib/connection-error-message";
 import {
 	normalizeConnParam,
@@ -90,9 +89,7 @@ const accessoryKeys = [
 const paramValue = (value: string | string[] | undefined): string =>
 	Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
 
-export default withWorkspaceConnection(MobileTerminalScreen);
-
-function MobileTerminalScreen() {
+export default function MobileTerminalScreen() {
 	return mobileReleaseFeatures.terminal ? (
 		<MobileTerminalContent />
 	) : (

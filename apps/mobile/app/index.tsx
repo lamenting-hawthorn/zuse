@@ -1,5 +1,4 @@
 import { useAtomValue } from "@effect/atom-react";
-import { workspaceScopeKey } from "@zuse/client-runtime/environment-scope";
 import { Cancel01Icon, PlusSignIcon } from "@zuse/icons/solid-rounded";
 import { router, Stack } from "expo-router";
 import { SymbolView } from "expo-symbols";
@@ -28,8 +27,6 @@ import { Button } from "~/components/ui/button";
 import { EmptyState } from "~/components/ui/empty-state";
 import { GlassSurface } from "~/components/ui/glass-surface";
 import { HugeIcon } from "~/components/ui/huge-icon";
-import { WorkspaceBilling } from "~/components/workspace-billing";
-import { WorkspaceSwitcher } from "~/components/workspace-switcher";
 import { connectionErrorMessage } from "~/lib/connection-error-message";
 import { optionsForConnection } from "~/lib/connection-params";
 import {
@@ -47,7 +44,6 @@ import {
 } from "~/lib/inbox";
 import { startLoadingDeadline } from "~/lib/loading-deadline";
 import { moveProject, orderProjects } from "~/lib/project-order";
-import { mobileReleaseFeatures } from "~/lib/release-features";
 import {
 	authAccountAtom,
 	authBusyAtom,
@@ -113,22 +109,6 @@ const HEADER_ACTION_STYLE = {
 type ChatFeedItem = HomeFeedItem & { type: "chat" };
 
 export default function HomeScreen() {
-	const catalog = useAtomValue(cloudCatalogAtom);
-	const scope = catalog.scope;
-	const organization =
-		scope.kind === "organization"
-			? catalog.organizations.find((entry) => entry.id === scope.organizationId)
-			: undefined;
-	const key = `${catalog.accountId}:${workspaceScopeKey(scope)}`;
-	if (
-		mobileReleaseFeatures.organizationWorkspaces &&
-		organization?.role === "billing"
-	)
-		return <WorkspaceBilling key={key} />;
-	return <ChatHomeScreen key={key} />;
-}
-
-function ChatHomeScreen() {
 	const { width } = useWindowDimensions();
 	const [search, setSearch] = useState("");
 	const [displayStates, setDisplayStates] = useState<
@@ -535,12 +515,7 @@ function ChatHomeScreen() {
 				options={{
 					title: "Zuse",
 					headerLargeTitle: false,
-					headerTitle: () =>
-						mobileReleaseFeatures.organizationWorkspaces && account !== null ? (
-							<WorkspaceSwitcher />
-						) : (
-							<BrandTitle />
-						),
+					headerTitle: () => <BrandTitle />,
 					headerRight: () => (
 						<View className="flex-row items-center gap-2">
 							<Pressable
