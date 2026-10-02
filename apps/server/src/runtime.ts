@@ -35,9 +35,6 @@ import { AttachmentServiceLive } from "./attachment/layers/attachment-service.ts
 import { AuthServiceLive } from "./auth/layers/auth-service.ts";
 import { SessionStoreLive } from "./auth/layers/session-store.ts";
 import { AuthShell } from "./auth/services/auth-shell.ts";
-import { CollaborationServiceLive } from "./collaboration/layers/collaboration-service.ts";
-import { OrganizationAuthorityLive } from "./collaboration/services/organization-authority.ts";
-import { WorkspaceSharingAuthorityLive } from "./collaboration/services/workspace-sharing-authority.ts";
 import { ConfigStoreServiceLive } from "./config-store/layers/config-store-service.ts";
 import { ConversationState } from "./conversation/core/conversation-state.ts";
 import { ConversationServicesLive } from "./conversation/layers/conversation-services.ts";
@@ -530,13 +527,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(AuthLayer),
 		Layer.provide(MachineRuntimeRoleLayer),
 	);
-	const CollaborationLayer = CollaborationServiceLive.pipe(
-		Layer.provide(WorkspaceSharingAuthorityLive.pipe(Layer.provide(AuthLayer))),
-		Layer.provide(MigratedSqlite),
-		Layer.provide(
-			OrganizationAuthorityLive.pipe(Layer.provide(MachineControlLayer)),
-		),
-	);
 	const MachineHostLayer = MachineHostServiceLive.pipe(
 		Layer.provide(AppPathsLayer),
 		Layer.provide(
@@ -630,7 +620,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		deps.apiEnabled === false
 			? makeDisabledApiLinkService(lanAuthConfig)
 			: ApiLinkServiceLive.pipe(
-					Layer.provide(CollaborationLayer),
 					Layer.provide(AccountAccessLayer),
 					Layer.provide(EnrolledLanAuthLayer),
 					Layer.provide(LanAuthConfigLayer),
@@ -725,7 +714,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		ExternalThreadLayer,
 		LinearLayer,
 		MachineControlLayer,
-		CollaborationLayer,
 		MachineHostLayer,
 		MachineResourceServiceLive,
 		AccountAccessLayer,
@@ -756,7 +744,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 			Layer.provide(
 				RpcAuthorizationLive.pipe(
 					Layer.provide(AuthLayer),
-					Layer.provide(CollaborationLayer),
 					Layer.provide(MigratedSqlite),
 				),
 			),

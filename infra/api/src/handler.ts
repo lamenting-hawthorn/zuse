@@ -38,7 +38,6 @@ import {
 	signConnectToken,
 	verifyEnvironmentLinkProof,
 } from "./crypto.ts";
-import { canDiscoverEnvironment } from "./environment-access.ts";
 import {
 	type ApiError,
 	badRequest,
@@ -617,18 +616,7 @@ const route = (
 		// 3. List the caller's environments (WorkOS-authenticated).
 		if (method === "GET" && path === "/v1/environments") {
 			const principal = yield* requireWorkos(request);
-			const owned = yield* store.listEnvironments(principal.accountId);
-			const shared = yield* Effect.filter(
-				yield* store.listSharedEnvironments(principal.accountId),
-				(environment) =>
-					canDiscoverEnvironment(
-						environment,
-						principal.accountId,
-						nowMs,
-						config.presenceStaleMs,
-					),
-			);
-			const environments = [...owned, ...shared];
+			const environments = yield* store.listEnvironments(principal.accountId);
 			const machines = yield* MachineStore;
 			const readyCloudEnvironmentIds = new Set(
 				(yield* machines.listMachines(principal.accountId))
@@ -896,12 +884,7 @@ const route = (
 			const environment = yield* store.getEnvironment(environmentId);
 			if (
 				environment === null ||
-				!(yield* canDiscoverEnvironment(
-					environment,
-					principal.accountId,
-					nowMs,
-					config.presenceStaleMs,
-				))
+				environment.accountId !== principal.accountId
 			) {
 				return yield* Effect.fail(notFound());
 			}
@@ -926,12 +909,7 @@ const route = (
 			const environment = yield* store.getEnvironment(environmentId);
 			if (
 				environment === null ||
-				!(yield* canDiscoverEnvironment(
-					environment,
-					principal.accountId,
-					nowMs,
-					config.presenceStaleMs,
-				))
+				environment.accountId !== principal.accountId
 			) {
 				return yield* Effect.fail(notFound());
 			}

@@ -5,7 +5,6 @@ import { expect, it } from "vitest";
 import { Migration0055StagingApiOrigin } from "../../src/persistence/migrations/0055_staging_api_origin.ts";
 import { Migration0056DeviceBridge } from "../../src/persistence/migrations/0056_device_bridge.ts";
 import { Migration0057DeviceBridgeDefaultAccess } from "../../src/persistence/migrations/0057_device_bridge_default_access.ts";
-import { Migration0058CollaborationFoundation } from "../../src/persistence/migrations/0058_collaboration_foundation.ts";
 import { Migration0058QuestionAnswerDeliveries } from "../../src/persistence/migrations/0058_question_answer_deliveries.ts";
 import { Migration0060ChatUserMessageTime } from "../../src/persistence/migrations/0060_chat_user_message_time.ts";
 import {
@@ -45,7 +44,9 @@ it.each([
 						yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (58, 'question_answer_deliveries')`;
 					}
 				}
-				yield* Migration0058CollaborationFoundation;
+				// Existing installations keep their historical tables; new installs
+				// only reserve the migration slot while shared-host work is deferred.
+				yield* sql`CREATE TABLE collaboration_teams (id TEXT PRIMARY KEY, name TEXT, created_at TEXT, updated_at TEXT)`;
 				yield* sql`INSERT INTO effect_sql_migrations (migration_id, name) VALUES (${legacyId}, 'collaboration_foundation')`;
 				yield* sql`INSERT INTO collaboration_teams (id, name, created_at, updated_at) VALUES ('team', 'Preserved', '2026-09-01', '2026-09-01')`;
 				if (recency) {
