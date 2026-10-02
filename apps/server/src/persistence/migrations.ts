@@ -58,10 +58,11 @@ import { Migration0054ProviderEffectOutcomes } from "./migrations/0054_provider_
 import { Migration0055StagingApiOrigin } from "./migrations/0055_staging_api_origin.ts";
 import { Migration0056DeviceBridge } from "./migrations/0056_device_bridge.ts";
 import { Migration0057DeviceBridgeDefaultAccess } from "./migrations/0057_device_bridge_default_access.ts";
-import { Migration0058CollaborationFoundation } from "./migrations/0058_collaboration_foundation.ts";
 import { Migration0058QuestionAnswerDeliveries } from "./migrations/0058_question_answer_deliveries.ts";
 import { Migration0059EventSequenceIndex } from "./migrations/0059_event_sequence_index.ts";
 import { Migration0060ChatUserMessageTime } from "./migrations/0060_chat_user_message_time.ts";
+import { Migration0061SharedHostCompatibility } from "./migrations/0061_shared_host_compatibility.ts";
+import { Migration0062SharedHostAccess } from "./migrations/0062_shared_host_access.ts";
 
 /**
  * Runs every numbered migration on boot. `fromRecord` keys must match
@@ -152,7 +153,8 @@ const MigrationDefinitionsThrough0059 = {
 const MigrationDefinitions = {
 	...MigrationDefinitionsThrough0059,
 	"0060_chat_user_message_time": Migration0060ChatUserMessageTime,
-	"0061_collaboration_foundation": Migration0058CollaborationFoundation,
+	"0061_collaboration_foundation": Migration0061SharedHostCompatibility,
+	"0062_shared_host_access": Migration0062SharedHostAccess,
 } as const;
 
 /** Shipped 0.16 schema boundary, exported for upgrade compatibility tests. */
