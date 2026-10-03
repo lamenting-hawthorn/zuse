@@ -52,3 +52,19 @@ the original plugin deployment. Contracts/API/server/renderer type checks,
 the staging alias serves the new bundle. The original signed-in session needs
 a reload to load the new frontend; an authenticated post-fix settings request
 was not captured during this deployment.
+
+## OAuth callback follow-up
+
+The public callback returned HTTP 500 because both mailbox directive parsing
+and response-effect cleanup tried to mutate immutable Durable Object response
+headers. The internal callback fetch also followed its redirect instead of
+returning it to the browser. Commits `7ec1c537` and `3d711aec` fix redirect
+handling and shared middleware response handling.
+
+Staging API version: `3eda9335-3ecb-4bc2-a4d3-a2dc4531da7b`. API type checks,
+Biome, and 17 targeted tests passed. The OAuth integration regression now
+crosses the Worker-to-Durable-Object boundary and mailbox/header middleware,
+then verifies owner confirmation and replay rejection. A live callback request
+without OAuth credentials changed from HTTP 500 to the expected HTTP 400.
+The user's authorization code was not replayed. Failed attempts must be
+cancelled and restarted to obtain a fresh confirmation redirect.
