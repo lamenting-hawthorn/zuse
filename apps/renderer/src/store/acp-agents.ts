@@ -1,4 +1,8 @@
-import type { AcpCatalogEntry, AcpDefinition } from "@zuse/contracts";
+import type {
+	AcpCatalogEntry,
+	AcpDefinition,
+	AcpProviderId,
+} from "@zuse/contracts";
 import { Effect } from "effect";
 import { formatError } from "../lib/format-error.ts";
 import { refreshProviderMetadata } from "../lib/refresh-provider-metadata.ts";
@@ -16,6 +20,8 @@ interface HostAgents {
 	definitions: readonly AcpDefinition[];
 	catalog: readonly AcpCatalogEntry[];
 	catalogLoading: boolean;
+	/** Connection tests run per agent and do not lock the host. */
+	testing: readonly AcpProviderId[];
 	busy: string | null;
 	error: string | null;
 }
@@ -23,6 +29,7 @@ export const EMPTY_ACP_HOST: HostAgents = {
 	definitions: [],
 	catalog: [],
 	catalogLoading: false,
+	testing: [],
 	busy: null,
 	error: null,
 };
@@ -66,6 +73,26 @@ export const runAcpOperation = async <A>(
 		update(host, { busy: null });
 	}
 };
+const hostState = (host: string) =>
+	useAcpAgentsStore.getState().hosts[host] ?? EMPTY_ACP_HOST;
+
+export const testAcpAgent = async (host: string, id: AcpProviderId) => {
+	if (hostState(host).testing.includes(id)) return;
+	update(host, { testing: [...hostState(host).testing, id], error: null });
+	try {
+		const client = await runtimeOperationClient(host);
+		await Effect.runPromise(client["provider.acp.test"]({ id }));
+		await loadAcpAgents(host);
+		void refreshProviderMetadata(host);
+	} catch (error) {
+		update(host, { error: formatError(error) });
+	} finally {
+		update(host, {
+			testing: hostState(host).testing.filter((item) => item !== id),
+		});
+	}
+};
+
 /** Read-only, so it does not take the host's operation lock. */
 export const loadAcpCatalog = async (host: string) => {
 	if (useAcpAgentsStore.getState().hosts[host]?.catalogLoading) return;
@@ -93,7 +120,7 @@ export const cancelAcpSignIn = (host: string) => {
 
 export const authenticateAcpAgent = async (
 	host: string,
-	id: import("@zuse/contracts").AcpProviderId,
+	id: AcpProviderId,
 	methodId: string,
 ) => {
 	if (useAcpAgentsStore.getState().hosts[host]?.busy) return;

@@ -99,6 +99,8 @@ export const installCatalogAgent = async (
 	directory: string,
 	fetcher: typeof fetch = fetch,
 	resolveExecutable: (name: string) => Promise<string> = async (name) => name,
+	/** Shared across installs so updates and re-adds reuse downloaded packages. */
+	cacheDirectory = directory,
 ) => {
 	const distribution = distributionFor(agent);
 	if (!distribution)
@@ -130,8 +132,8 @@ export const installCatalogAgent = async (
 					: `${spec}==${agent.version}`;
 		const cacheEnv: Record<string, string> =
 			distribution.kind === "npx"
-				? { npm_config_cache: join(directory, "npm-cache") }
-				: { UV_CACHE_DIR: join(directory, "uv-cache") };
+				? { npm_config_cache: join(cacheDirectory, "npm-cache") }
+				: { UV_CACHE_DIR: join(cacheDirectory, "uv-cache") };
 		const args =
 			distribution.kind === "npx"
 				? ["--yes", pinned, ...(distribution.value.args ?? [])]

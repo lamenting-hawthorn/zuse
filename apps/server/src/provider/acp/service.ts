@@ -24,6 +24,7 @@ import { CredentialsService } from "../services/credentials-service.ts";
 import {
 	distributionFor,
 	installCatalogAgent,
+	type Registry,
 	type RegistryAgent,
 	readCatalog,
 } from "./catalog.ts";
@@ -191,8 +192,14 @@ export const makeAcpAgentStore = (
 	} = {},
 ) => {
 	const registry = dependencies.catalog ?? readCatalog;
-	const catalog = async (directory: string) => {
-		const result = await registry(directory);
+	// Installs reuse the registry fetched when the catalog was opened.
+	let recentRegistry: { at: number; value: Registry } | undefined;
+	const catalog = async (directory: string, maxAgeMs = 0) => {
+		const result =
+			recentRegistry && Date.now() - recentRegistry.at <= maxAgeMs
+				? recentRegistry.value
+				: await registry(directory);
+		recentRegistry = { at: Date.now(), value: result };
 		return {
 			...result,
 			agents: [
@@ -316,7 +323,8 @@ export const makeAcpAgentStore = (
 			directory,
 			methodId,
 			onStderr,
-			undefined,
+			// The first run of a package agent downloads it before starting.
+			snapshot.probe ? undefined : 180_000,
 			signal,
 		);
 		if (signal?.aborted) throw new Error("Sign in cancelled");
@@ -373,7 +381,7 @@ export const makeAcpAgentStore = (
 			})),
 		install: (catalogId: string, existingId?: AcpProviderId) =>
 			exclusive(async () => {
-				const registry = await catalog(directory);
+				const registry = await catalog(directory, 10 * 60_000);
 				const agent = registry.agents.find((item) => item.id === catalogId);
 				if (!agent) throw new Error("Agent not found in the ACP catalog");
 				const old = existingId ? await get(existingId) : undefined;
@@ -388,6 +396,7 @@ export const makeAcpAgentStore = (
 					destination,
 					fetch,
 					dependencies.resolveExecutable,
+					join(directory, "cache"),
 				);
 				if (old) {
 					const saved = await secrets.get(old.credentialId ?? old.id);
@@ -400,14 +409,13 @@ export const makeAcpAgentStore = (
 						prepared.env = { ...prepared.env, ...env };
 					}
 				}
-				const result = await probe(
-					prepared,
-					directory,
-					undefined,
-					undefined,
-					180_000,
-				);
-				if (result.status === "error") throw new Error(result.message);
+				// Updates must prove the new version works before replacing the old
+				// one. New agents are saved immediately and tested afterwards, so a
+				// slow first download does not hold the dialog or the store lock.
+				const result = old
+					? await probe(prepared, directory, undefined, undefined, 180_000)
+					: undefined;
+				if (result?.status === "error") throw new Error(result.message);
 				const credentialId = `${id}:${randomUUID()}`;
 				const entry: StoredDefinition = {
 					credentialId,
@@ -421,7 +429,7 @@ export const makeAcpAgentStore = (
 					catalogId,
 					version: agent.version,
 					...registryIcon(agent),
-					probe: result,
+					...(result ? { probe: result } : {}),
 				};
 				await secrets.set(credentialId, JSON.stringify(prepared.env));
 				await write([

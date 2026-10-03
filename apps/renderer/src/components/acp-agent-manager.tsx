@@ -20,6 +20,7 @@ import {
 	loadAcpAgents,
 	loadAcpCatalog,
 	runAcpOperation,
+	testAcpAgent,
 	useAcpAgentsStore,
 } from "../store/acp-agents.ts";
 import { AcpAgentLogo } from "./provider-icons.tsx";
@@ -105,6 +106,7 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 							key={agent.id}
 							agent={agent}
 							busy={busy}
+							testing={state.testing.includes(agent.id)}
 							environmentId={environmentId}
 							onEdit={() => setDialog({ kind: "command", agent })}
 						/>
@@ -184,22 +186,26 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 					);
 					if (!result) return;
 					setDialog(null);
-					await runAcpOperation(
-						environmentId,
-						"Testing connection…",
-						(client) => client["provider.acp.test"]({ id: result.id }),
-					);
+					await testAcpAgent(environmentId, result.id);
 				}}
 			/>
 		</>
 	);
 }
 
-function agentStatus(agent: AcpDefinition): {
+function agentStatus(
+	agent: AcpDefinition,
+	testing: boolean,
+): {
 	key: ProviderStatusKey;
 	label: string;
 } {
 	if (!agent.enabled) return { key: "disabled", label: "Disabled" };
+	if (testing)
+		return {
+			key: "loading",
+			label: agent.probe ? "Testing connection…" : "Setting up…",
+		};
 	if (!agent.probe) return { key: "disabled", label: "Connection not tested" };
 	const key: ProviderStatusKey =
 		agent.probe.status === "ready"
@@ -213,17 +219,21 @@ function agentStatus(agent: AcpDefinition): {
 function AcpAgentRow({
 	agent,
 	busy,
+	testing,
 	environmentId,
 	onEdit,
 }: {
 	agent: AcpDefinition;
 	busy: boolean;
+	testing: boolean;
 	environmentId: string;
 	onEdit: () => void;
 }) {
-	const status = agentStatus(agent);
+	const status = agentStatus(agent, testing);
 	const authMethods =
-		agent.enabled && agent.probe?.status === "authentication-required"
+		!testing &&
+		agent.enabled &&
+		agent.probe?.status === "authentication-required"
 			? agent.probe.authMethods
 			: [];
 	const signIn = (methodId: string) =>
@@ -333,14 +343,8 @@ function AcpAgentRow({
 				<MenuPopup align="end">
 					<MenuItem
 						className="h-7"
-						disabled={!agent.enabled}
-						onClick={() =>
-							void runAcpOperation(
-								environmentId,
-								"Testing connection…",
-								(client) => client["provider.acp.test"]({ id: agent.id }),
-							)
-						}
+						disabled={!agent.enabled || testing}
+						onClick={() => void testAcpAgent(environmentId, agent.id)}
 					>
 						Test connection
 					</MenuItem>
@@ -515,7 +519,9 @@ function AcpCatalogDialog({
 													}),
 											);
 											setInstalling(null);
-											if (installed) onClose();
+											if (!installed) return;
+											onClose();
+											void testAcpAgent(environmentId, installed.id);
 										}}
 									>
 										Add

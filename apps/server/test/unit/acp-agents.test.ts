@@ -215,6 +215,47 @@ it("preserves the installed agent and credentials after a failed update", async 
 	expect((await store.get(installed.id)).version).toBe("1.0.0");
 	expect((await store.launch(installed.id)).env).toEqual({ TOKEN: "keep" });
 });
+it("saves new installs before testing and verifies updates first", async () => {
+	const root = await directory();
+	const probes: string[] = [];
+	const caches: string[] = [];
+	const store = makeAcpAgentStore(root, secretStore(), {
+		catalog: async () => ({
+			version: "1",
+			agents: [
+				{
+					id: "fixture",
+					name: "Fixture",
+					description: "",
+					version: "1.0.0",
+					distribution: {},
+				},
+			],
+		}),
+		install: async (_agent, _destination, _fetch, _resolve, cache) => {
+			caches.push(cache ?? "");
+			return { command: process.execPath, args: [fixture], env: {} };
+		},
+		probe: async (launch) => {
+			probes.push(launch.command);
+			return {
+				status: "ready",
+				message: "Connected",
+				authMethods: [],
+				models: [],
+				modes: [],
+				commands: [],
+				loadSession: true,
+			};
+		},
+	});
+	const installed = await store.install("fixture");
+	expect(installed.probe).toBeUndefined();
+	expect(probes).toHaveLength(0);
+	await store.install("fixture", installed.id);
+	expect(probes).toHaveLength(1);
+	expect(new Set(caches)).toEqual(new Set([join(root, "cache")]));
+});
 it("discovers models, modes and commands and handles advertised authentication", async () => {
 	const root = await directory();
 	const launch = {
