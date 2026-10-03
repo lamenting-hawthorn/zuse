@@ -15,12 +15,14 @@ interface HostAgents {
 	>;
 	definitions: readonly AcpDefinition[];
 	catalog: readonly AcpCatalogEntry[];
+	catalogLoading: boolean;
 	busy: string | null;
 	error: string | null;
 }
 export const EMPTY_ACP_HOST: HostAgents = {
 	definitions: [],
 	catalog: [],
+	catalogLoading: false,
 	busy: null,
 	error: null,
 };
@@ -55,7 +57,8 @@ export const runAcpOperation = async <A>(
 		const client = await runtimeOperationClient(host);
 		const result = await Effect.runPromise(operation(client));
 		await loadAcpAgents(host);
-		await refreshProviderMetadata(host);
+		// Pickers catch up in the background; settings stay usable meanwhile.
+		void refreshProviderMetadata(host);
 		return result;
 	} catch (error) {
 		update(host, { error: formatError(error) });
@@ -63,12 +66,19 @@ export const runAcpOperation = async <A>(
 		update(host, { busy: null });
 	}
 };
+/** Read-only, so it does not take the host's operation lock. */
 export const loadAcpCatalog = async (host: string) => {
-	await runAcpOperation(host, "Loading catalog…", (client) =>
-		Effect.map(client["provider.acp.catalog"](), (catalog) =>
-			update(host, { catalog }),
-		),
-	);
+	if (useAcpAgentsStore.getState().hosts[host]?.catalogLoading) return;
+	update(host, { catalogLoading: true, error: null });
+	try {
+		const client = await runtimeOperationClient(host);
+		const catalog = await Effect.runPromise(client["provider.acp.catalog"]());
+		update(host, { catalog });
+	} catch (error) {
+		update(host, { error: formatError(error) });
+	} finally {
+		update(host, { catalogLoading: false });
+	}
 };
 
 export const authenticateAcpAgent = async (

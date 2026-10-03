@@ -147,6 +147,8 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 			<AcpCatalogDialog
 				open={dialog?.kind === "catalog"}
 				catalog={state.catalog}
+				loading={state.catalogLoading}
+				error={state.error}
 				busy={busy}
 				environmentId={environmentId}
 				onClose={() => setDialog(null)}
@@ -380,6 +382,8 @@ function AcpAgentRow({
 function AcpCatalogDialog({
 	open,
 	catalog,
+	loading,
+	error,
 	busy,
 	environmentId,
 	onClose,
@@ -387,12 +391,15 @@ function AcpCatalogDialog({
 }: {
 	open: boolean;
 	catalog: readonly AcpCatalogEntry[];
+	loading: boolean;
+	error: string | null;
 	busy: boolean;
 	environmentId: string;
 	onClose: () => void;
 	onCustom: () => void;
 }) {
 	const [query, setQuery] = useState("");
+	const [installing, setInstalling] = useState<string | null>(null);
 	const entries = useMemo(() => {
 		const needle = query.trim().toLowerCase();
 		return needle
@@ -432,7 +439,7 @@ function AcpCatalogDialog({
 				<DialogPanel className="max-h-80 px-2 pt-0">
 					{catalog.length === 0 ? (
 						<div className="flex justify-center py-6">
-							{busy ? (
+							{loading ? (
 								<Spinner className="size-4" />
 							) : (
 								<CompactEmptyState title="The registry is unavailable" />
@@ -482,7 +489,9 @@ function AcpCatalogDialog({
 										size="sm"
 										variant="settings"
 										disabled={busy}
+										loading={installing === entry.id}
 										onClick={async () => {
+											setInstalling(entry.id);
 											const installed = await runAcpOperation(
 												environmentId,
 												`Installing ${entry.name}…`,
@@ -491,6 +500,7 @@ function AcpCatalogDialog({
 														catalogId: entry.id,
 													}),
 											);
+											setInstalling(null);
 											if (installed) onClose();
 										}}
 									>
@@ -508,6 +518,11 @@ function AcpCatalogDialog({
 						))
 					)}
 				</DialogPanel>
+				{error && (
+					<p role="alert" className="px-4 pb-2 text-[11px] text-destructive">
+						{error}
+					</p>
+				)}
 				<DialogFooter className="sm:justify-between">
 					<Button className="h-7" size="sm" variant="ghost" onClick={onCustom}>
 						Use a custom command…
