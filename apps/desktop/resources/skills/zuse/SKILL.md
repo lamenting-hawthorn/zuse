@@ -155,8 +155,6 @@ Context can be attached while creating a chat or session, or while sending:
 
 - `--attach <path>` uploads an image; repeat it for multiple images.
 - `--file <project-relative-path>` adds a file or directory reference.
-- `--linear <issue-id>` adds prepared issue context; use
-  `--linear-workspace <id>` when needed to disambiguate the workspace.
 - `--transcript <session-id>` exports another session and attaches it as a
   Markdown context file. Add `--through-message <id>` to stop at a fork point.
 - `--plan <session-id>` attaches that session's latest proposed plan.

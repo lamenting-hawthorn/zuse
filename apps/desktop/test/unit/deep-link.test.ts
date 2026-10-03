@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createBufferedChannel,
 	isPairingDeepLink,
+	pluginReturnOf,
 } from "../../src/deep-link.ts";
 
 describe("isPairingDeepLink", () => {
@@ -56,5 +57,39 @@ describe("createBufferedChannel", () => {
 		channel.publish("two");
 		expect(first).toEqual(["one"]);
 		expect(second).toEqual(["two"]);
+	});
+});
+
+describe("pluginReturnOf", () => {
+	const parse = (query: string) =>
+		pluginReturnOf(new URL(`http://localhost:8976/plugins/callback?${query}`));
+
+	it("reads a ticket return", () => {
+		expect(
+			parse("plugin_ticket=t1&plugin_tenant=personal%3Aa&plugin=Linear"),
+		).toEqual({
+			ticket: "t1",
+			tenantId: "personal:a",
+			plugin: "Linear",
+			error: null,
+		});
+	});
+
+	it("reads a cancelled return", () => {
+		expect(parse("plugin_error=cancelled&plugin_tenant=personal%3Aa")).toEqual({
+			ticket: null,
+			tenantId: "personal:a",
+			plugin: null,
+			error: "cancelled",
+		});
+	});
+
+	it.each([
+		"plugin_ticket=t1",
+		"plugin_tenant=personal%3Aa",
+		"plugin_ticket=t1&plugin_error=x&plugin_tenant=personal%3Aa",
+		`plugin_ticket=${"x".repeat(513)}&plugin_tenant=personal%3Aa`,
+	])("rejects %s", (query) => {
+		expect(parse(query)).toBeNull();
 	});
 });

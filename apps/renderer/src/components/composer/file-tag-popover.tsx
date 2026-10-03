@@ -1,4 +1,5 @@
 import "@zuse/i18n/english/projects";
+import "@zuse/i18n/english/plugins";
 import type { EditorView } from "@codemirror/view";
 import type {
 	CommandId,
@@ -11,8 +12,13 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useComposerAnchor } from "~/components/composer/use-composer-anchor";
 import { FileIcon } from "~/components/file-icon";
+import { PluginIcon } from "~/components/plugins/plugin-icon.tsx";
 import { overlaySurface } from "~/components/ui/overlay-surface";
 import { type ActiveTrigger, replaceWithChip } from "~/lib/codemirror/composer";
+import {
+	type ConnectedPlugin,
+	useConnectedPlugins,
+} from "~/lib/connected-plugins.ts";
 import { dispatchEnvironmentShellCommand } from "~/lib/environment-shell-client-bus.ts";
 import { cn } from "~/lib/utils";
 
@@ -39,6 +45,12 @@ interface SearchHit {
 	readonly kind: "file" | "directory";
 }
 
+type Item =
+	| { readonly kind: "plugin"; readonly plugin: ConnectedPlugin }
+	| { readonly kind: "file"; readonly hit: SearchHit };
+
+const PLUGIN_LIMIT = 4;
+
 const basename = (p: string): string => {
 	const i = p.lastIndexOf("/");
 	return i === -1 ? p : p.slice(i + 1);
@@ -58,9 +70,10 @@ export function FileTagPopover({
 	workspaceRoot,
 	onClose,
 }: FileTagPopoverProps) {
-	const { message: uiMessage } = useUiMessages(["projects"]);
+	const { message: uiMessage } = useUiMessages(["projects", "plugins"]);
 
 	const [hits, setHits] = useState<readonly SearchHit[]>([]);
+	const plugins = useConnectedPlugins();
 	const [highlight, setHighlight] = useState(0);
 	const query = trigger.query;
 
@@ -113,20 +126,48 @@ export function FileTagPopover({
 		};
 	}, [environmentId, projectId, worktreeId, workspaceRoot, query]);
 
-	const confirm = (hit: SearchHit) => {
-		const token = `@${hit.relPath}`;
-		replaceWithChip(view, trigger.from, trigger.to, token, {
-			kind: "file",
-			relPath: hit.relPath,
-			absPath: hit.absPath,
-			entryKind: hit.kind,
-		});
+	// Connected plugins lead: there are few, and naming one is a strong intent.
+	const items = useMemo<readonly Item[]>(() => {
+		const needle = query.toLowerCase();
+		const matchingPlugins = plugins
+			.filter(
+				(plugin) =>
+					plugin.name.toLowerCase().includes(needle) ||
+					plugin.id.includes(needle),
+			)
+			.slice(0, PLUGIN_LIMIT)
+			.map((plugin) => ({ kind: "plugin" as const, plugin }));
+		return [
+			...matchingPlugins,
+			...hits
+				.slice(0, 12 - matchingPlugins.length)
+				.map((hit) => ({ kind: "file" as const, hit })),
+		];
+	}, [hits, plugins, query]);
+	useEffect(() => setHighlight(0), [items.length]);
+
+	const confirm = (item: Item) => {
+		if (item.kind === "plugin") {
+			replaceWithChip(view, trigger.from, trigger.to, `@${item.plugin.name}`, {
+				kind: "plugin",
+				pluginId: item.plugin.id,
+				name: item.plugin.name,
+				domain: item.plugin.domain,
+			});
+		} else {
+			replaceWithChip(view, trigger.from, trigger.to, `@${item.hit.relPath}`, {
+				kind: "file",
+				relPath: item.hit.relPath,
+				absPath: item.hit.absPath,
+				entryKind: item.hit.kind,
+			});
+		}
 		onClose();
 	};
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (hits.length === 0) {
+			if (items.length === 0) {
 				if (e.key === "Escape") {
 					e.preventDefault();
 					onClose();
@@ -136,16 +177,16 @@ export function FileTagPopover({
 			if (e.key === "ArrowDown") {
 				e.preventDefault();
 				e.stopPropagation();
-				setHighlight((h) => (h + 1) % hits.length);
+				setHighlight((h) => (h + 1) % items.length);
 			} else if (e.key === "ArrowUp") {
 				e.preventDefault();
 				e.stopPropagation();
-				setHighlight((h) => (h - 1 + hits.length) % hits.length);
+				setHighlight((h) => (h - 1 + items.length) % items.length);
 			} else if (e.key === "Enter" || e.key === "Tab") {
 				e.preventDefault();
 				e.stopPropagation();
-				const hit = hits[highlight];
-				if (hit) confirm(hit);
+				const item = items[highlight];
+				if (item) confirm(item);
 			} else if (e.key === "Escape") {
 				e.preventDefault();
 				onClose();
@@ -153,14 +194,21 @@ export function FileTagPopover({
 		};
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
-		// confirm is stable for `hits[highlight]` reference per render — fine to
+		// confirm is stable for `items[highlight]` reference per render — fine to
 		// re-bind on each iteration.
-	}, [hits, highlight, onClose]);
+	}, [items, highlight, onClose]);
 
-	const visible = useMemo(() => hits.slice(0, 12), [hits, uiMessage]);
 	const anchor = useComposerAnchor(view);
 
-	if (visible.length === 0 || anchor === null) return null;
+	if (items.length === 0 || anchor === null) return null;
+	const pluginCount = items.filter((item) => item.kind === "plugin").length;
+	const sectionClass =
+		"px-2 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground";
+	const rowClass = (active: boolean) =>
+		cn(
+			"flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
+			active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
+		);
 
 	// Portaled to body: inside the composer the glass blur can't sample the
 	// page (nested backdrop-filter roots), so the popup escapes it.
@@ -171,41 +219,68 @@ export function FileTagPopover({
 			style={{ left: anchor.left, bottom: anchor.bottom }}
 			onMouseDown={(e) => e.preventDefault()}
 		>
-			<div className="px-2 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-				{uiMessage("projects:file_tag_popover_files")}
-			</div>
-			{visible.map((hit, i) => {
+			{items.map((item, i) => {
 				const active = i === highlight;
-				const name = basename(hit.relPath);
-				const parent = dirname(hit.relPath);
-				return (
-					<button
-						key={hit.relPath}
-						type="button"
-						role="option"
-						aria-selected={active}
-						onMouseEnter={() => setHighlight(i)}
-						onClick={() => confirm(hit)}
-						className={cn(
-							"flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
-							active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60",
-						)}
-					>
-						<FileIcon
-							name={name}
-							kind={hit.kind}
-							className="inline-flex size-3.5 shrink-0 items-center justify-center"
-						/>
-						<span className="truncate font-medium">{name}</span>
-						{parent !== null && (
-							<span
-								className="ml-auto truncate text-xs text-muted-foreground"
-								title={hit.relPath}
+				const heading =
+					i === 0 && item.kind === "plugin" ? (
+						<div className={sectionClass}>
+							{uiMessage("plugins:plugins_title")}
+						</div>
+					) : i === pluginCount && item.kind === "file" ? (
+						<div className={cn(sectionClass, i > 0 && "mt-1")}>
+							{uiMessage("projects:file_tag_popover_files")}
+						</div>
+					) : null;
+				if (item.kind === "plugin")
+					return (
+						<div key={`plugin:${item.plugin.id}`}>
+							{heading}
+							<button
+								type="button"
+								role="option"
+								aria-selected={active}
+								onMouseEnter={() => setHighlight(i)}
+								onClick={() => confirm(item)}
+								className={rowClass(active)}
 							>
-								{parent}
-							</span>
-						)}
-					</button>
+								<PluginIcon
+									name={item.plugin.name}
+									domain={item.plugin.domain}
+									className="size-4 rounded-[4px] text-[9px] ring-0"
+								/>
+								<span className="truncate font-medium">{item.plugin.name}</span>
+							</button>
+						</div>
+					);
+				const name = basename(item.hit.relPath);
+				const parent = dirname(item.hit.relPath);
+				return (
+					<div key={item.hit.relPath}>
+						{heading}
+						<button
+							type="button"
+							role="option"
+							aria-selected={active}
+							onMouseEnter={() => setHighlight(i)}
+							onClick={() => confirm(item)}
+							className={rowClass(active)}
+						>
+							<FileIcon
+								name={name}
+								kind={item.hit.kind}
+								className="inline-flex size-3.5 shrink-0 items-center justify-center"
+							/>
+							<span className="truncate font-medium">{name}</span>
+							{parent !== null && (
+								<span
+									className="ml-auto truncate text-xs text-muted-foreground"
+									title={item.hit.relPath}
+								>
+									{parent}
+								</span>
+							)}
+						</button>
+					</div>
 				);
 			})}
 		</div>,

@@ -84,9 +84,13 @@ export const HarnessProviderLive = Layer.effect(
 		const permissions = yield* PermissionService;
 		const attachments = yield* AttachmentService;
 		const skillsService = yield* Effect.serviceOption(SkillDiscoveryService);
+		// Only enabled skills are ever shown to or loaded for the model; the
+		// user's `disabledSkills` toggles are enforced here.
 		const discover = (cwd: string) =>
 			Option.isSome(skillsService)
-				? Effect.runPromise(skillsService.value.discover("zuse", cwd))
+				? Effect.runPromise(skillsService.value.discover("zuse", cwd)).then(
+						(skills) => skills.filter((skill) => skill.enabled),
+					)
 				: Promise.resolve([]);
 		const journals =
 			yield* Effect.context<

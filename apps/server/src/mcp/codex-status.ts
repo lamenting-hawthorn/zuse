@@ -36,7 +36,7 @@ export interface CodexLiveMcpSnapshot {
  * through the provider itself so config semantics, live inventory, and token
  * storage remain native to that provider.
  */
-const withCodexApp = <A>(
+export const withCodexApp = <A>(
 	codexPath: string | null,
 	run: (app: CodexAppServerClient) => Promise<A>,
 	options?: {

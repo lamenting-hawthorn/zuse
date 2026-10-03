@@ -37,9 +37,11 @@ interface SkillRow {
 type Row = BuiltinRow | SkillRow;
 
 const filterSkills = (
-	skills: ReadonlyArray<Skill>,
+	all: ReadonlyArray<Skill>,
 	query: string,
 ): ReadonlyArray<Skill> => {
+	// Skills turned off in Settings → Plugins never appear in the menu.
+	const skills = all.filter((skill) => skill.enabled);
 	if (skills.length === 0) return skills;
 	if (!query) return skills;
 	const ranked = fuzzysort.go(query, skills, {

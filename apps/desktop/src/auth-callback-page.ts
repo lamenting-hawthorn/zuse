@@ -7,9 +7,23 @@
  * plain HTML + CSS.
  */
 
-import { clampedText, escapeHtml } from "@zuse/utils/browser-page";
+import {
+	browserPageHeaders,
+	clampedText,
+	escapeHtml,
+} from "@zuse/utils/browser-page";
+import {
+	DITHER_BACKGROUND_SCRIPT,
+	DITHER_BACKGROUND_SCRIPT_SOURCE,
+	DITHER_BACKGROUND_STYLES,
+} from "./dither-background.ts";
 
-export type AuthCallbackFlow = "account" | "linear";
+/** Callback pages run only the dither backdrop script. */
+export const AUTH_CALLBACK_PAGE_HEADERS = browserPageHeaders([
+	DITHER_BACKGROUND_SCRIPT_SOURCE,
+]);
+
+export type AuthCallbackFlow = "account" | "plugin";
 export type AuthCallbackOutcome = "success" | "error";
 
 export interface AuthCallbackPageInput {
@@ -17,12 +31,15 @@ export interface AuthCallbackPageInput {
 	readonly outcome: AuthCallbackOutcome;
 	/** Provider `error_description`; rendered escaped and truncated. */
 	readonly detail?: string | undefined;
+	/** Integration display name for the stamp; defaults to Plugin. */
+	readonly integration?: string | undefined;
 	/** Injectable clock so the rendered reference is testable. */
 	readonly nowMs?: number;
 }
 
 /** Providers echo arbitrary text in `error_description`. */
 const DETAIL_MAX_LENGTH = 180;
+const INTEGRATION_NAME_MAX_LENGTH = 40;
 
 const pad = (value: number): string => String(value).padStart(2, "0");
 
@@ -64,7 +81,7 @@ body{
 	padding:2.5rem 1.25rem;background:var(--bg);color:var(--fg);
 	font-family:var(--font-sans);-webkit-font-smoothing:antialiased;
 }
-.stage{position:relative;display:grid;justify-items:center;gap:2rem;width:100%}
+.stage{position:relative;display:grid;justify-items:center;gap:1.75rem;width:100%}
 .stage::before{
 	content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.55;
 	background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
@@ -73,17 +90,54 @@ body{
 	mask-image:radial-gradient(circle at center,#000,transparent 74%);
 }
 .stage>*{position:relative;z-index:1}
-.hint{
-	display:grid;justify-items:center;gap:.75rem;text-align:center;max-width:26rem;
+/* The artwork and its footer share one column, so their edges line up. */
+.piece{display:grid;gap:1.125rem;width:min(100%,var(--w))}
+.piece>:first-child{width:100%}
+.footer{
+	display:flex;align-items:center;justify-content:space-between;gap:1rem;
+	padding-top:.75rem;border-top:1px dashed color-mix(in srgb,var(--fg) 24%,transparent);
+	font-family:var(--font-mono);font-size:.625rem;font-weight:700;line-height:1;
+	letter-spacing:.08em;text-transform:uppercase;
+	animation:footer-in 420ms 160ms cubic-bezier(0.23,1,0.32,1) both;
 }
-.hint p{margin:0;color:var(--muted);font-size:.8125rem;line-height:1.5}
+@keyframes footer-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.footer span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
 .open{
-	display:inline-flex;align-items:center;gap:.4rem;padding:.5rem .9rem;
-	border:1px solid color-mix(in srgb,var(--fg) 18%,transparent);border-radius:.625rem;
-	color:var(--fg);font-size:.75rem;font-weight:600;letter-spacing:.02em;text-decoration:none;
-	transition:border-color 160ms ease,transform 160ms ease;
+	flex:none;display:inline-flex;align-items:center;gap:.3rem;margin:-.375rem 0;padding:.375rem 0;
+	color:var(--fg);text-decoration:none;
 }
-.open:hover{border-color:color-mix(in srgb,var(--fg) 38%,transparent);transform:translateY(-1px)}
+.open svg{width:10px;height:10px;transition:transform 160ms ease}
+.open:hover svg{transform:translate(1px,-1px)}
+.open:hover{text-decoration:underline;text-underline-offset:3px}
+.open:focus-visible{outline:2px solid var(--fg);outline-offset:3px;border-radius:2px}
+/* Ordered-dither shading on the printed paper: two offset dot grids that
+   thicken toward the lower corner, like a halftone pass. */
+.halftone{position:relative;isolation:isolate}
+.halftone::before{
+	content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+	background:
+		radial-gradient(circle,rgb(24 23 19 / 30%) .65px,transparent 1px) 0 0/3px 3px,
+		radial-gradient(circle,rgb(24 23 19 / 22%) .65px,transparent 1px) 1.5px 1.5px/3px 3px;
+	-webkit-mask-image:linear-gradient(155deg,transparent 28%,rgb(0 0 0 / 55%) 62%,#000 100%);
+	mask-image:linear-gradient(155deg,transparent 28%,rgb(0 0 0 / 55%) 62%,#000 100%);
+}
+.halftone>*{position:relative;z-index:1}
+/* A dithered sphere lit from the upper left: four offset dot lattices share
+   the disc, each starting further from the highlight, so density steps up
+   into the shadow like an ordered-dither pass. */
+.dither-art{position:relative;overflow:hidden;color:var(--ink)}
+.dither-art i{
+	--disc:radial-gradient(circle at 50% 54%,#000 30%,transparent calc(30% + .5px));
+	--lit:radial-gradient(circle at 40% 42%,transparent var(--r),#000 calc(var(--r) + .5px));
+	position:absolute;inset:0;opacity:.6;
+	background:radial-gradient(circle,currentColor 0 .85px,transparent 1.2px) var(--o)/4px 4px;
+	-webkit-mask-image:var(--disc),var(--lit);-webkit-mask-composite:source-in;
+	mask-image:var(--disc),var(--lit);mask-composite:intersect;
+}
+.dither-art i:nth-child(1){--o:0 0;--r:0%}
+.dither-art i:nth-child(2){--o:2px 2px;--r:13%}
+.dither-art i:nth-child(3){--o:2px 0;--r:22%}
+.dither-art i:nth-child(4){--o:0 2px;--r:29%}
 .micro{
 	font-family:var(--font-mono);font-size:.4375rem;font-weight:700;line-height:1;
 	letter-spacing:.09em;text-transform:uppercase;opacity:.62;
@@ -95,7 +149,6 @@ body{
 
 const TICKET_STYLES = `
 .ticket-shell{
-	width:min(100%,18rem);
 	filter:drop-shadow(0 1px 1px rgb(15 15 15 / 10%)) drop-shadow(0 18px 26px rgb(15 15 15 / 13%));
 	transform:rotate(-1.4deg);
 	transition:transform 220ms cubic-bezier(0.23,1,0.32,1);
@@ -132,7 +185,7 @@ const TICKET_STYLES = `
 	position:relative;display:grid;grid-template-rows:auto 1fr auto auto;gap:1rem;
 	padding:20px 21px 25px;min-height:0;overflow:hidden;
 }
-.ticket-body::after{
+.ticket-body.halftone::after{
 	content:"";position:absolute;left:calc(var(--notch) + 6px);right:calc(var(--notch) + 6px);
 	bottom:0;border-bottom:1px dashed currentColor;opacity:.3;
 }
@@ -141,10 +194,7 @@ const TICKET_STYLES = `
 	font-family:var(--font-mono);font-size:.4375rem;font-weight:700;line-height:1;
 	letter-spacing:.09em;text-transform:uppercase;opacity:.72;
 }
-.ticket-pattern{
-	align-self:stretch;min-height:64px;opacity:.16;
-	background:repeating-linear-gradient(45deg,currentColor 0 5px,transparent 5px 11px);
-}
+.ticket-pattern{align-self:stretch;min-height:64px}
 .ticket h1{
 	margin:0;font-size:1.75rem;font-weight:750;line-height:.84;
 	letter-spacing:-.05em;text-transform:uppercase;
@@ -182,7 +232,6 @@ const TICKET_STYLES = `
 
 const STAMP_STYLES = `
 .stamp-shell{
-	width:min(100%,15rem);
 	filter:drop-shadow(0 1px 1px rgb(15 15 15 / 12%)) drop-shadow(0 12px 22px rgb(15 15 15 / 9%));
 	transform:rotate(-2deg);
 	transition:transform 200ms cubic-bezier(0.23,1,0.32,1);
@@ -211,19 +260,20 @@ const STAMP_STYLES = `
 	mask-composite:intersect;
 }
 .stamp-face{
-	position:relative;display:grid;grid-template-rows:auto 1fr auto;gap:.75rem;
+	position:relative;display:grid;grid-template-rows:auto auto 1fr auto;gap:.75rem;
 	height:100%;padding:12px 13px 11px;overflow:hidden;
 	background:var(--paper);
 	box-shadow:inset 0 0 0 1px rgb(24 23 19 / 16%);
 }
 .stamp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}
 .stamp-head strong{font-family:var(--font-mono);font-size:1.0625rem;font-weight:700;line-height:.8;letter-spacing:-.06em}
+.stamp-art{margin:0 -4px;min-height:0}
 .stamp-face h1{
-	margin:0;align-self:center;font-size:1.5rem;font-weight:750;line-height:.85;
+	margin:.25rem 0 0;font-size:1.5rem;font-weight:750;line-height:.85;
 	letter-spacing:-.05em;text-transform:uppercase;
 }
 .stamp-face p{margin:.5rem 0 0;max-width:11rem;font-size:.5625rem;font-weight:600;line-height:1.4}
-.postmark{
+.stamp-face>.postmark{
 	position:absolute;right:14px;bottom:34px;display:grid;place-items:center;
 	width:92px;height:92px;border:2px solid currentColor;border-radius:50%;
 	opacity:.26;transform:rotate(-14deg);text-align:center;
@@ -241,6 +291,7 @@ const documentShell = (input: {
 	readonly title: string;
 	readonly styles: string;
 	readonly body: string;
+	readonly backdrop?: boolean;
 }): string =>
 	`<!doctype html>
 <html lang="en">
@@ -248,14 +299,35 @@ const documentShell = (input: {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escapeHtml(input.title)}</title>
-<style>${BASE_STYLES}${input.styles}</style>
+<style>${BASE_STYLES}${input.backdrop ? DITHER_BACKGROUND_STYLES : ""}${input.styles}</style>
 </head>
 <body>
 ${input.body}
+${input.backdrop ? DITHER_BACKGROUND_SCRIPT : ""}
 </body>
 </html>`;
 
-const openAppLink = `<a class="open" href="zuse://">Open Zuse</a>`;
+const ARROW = `<svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5l5-5M4.5 3.5h4v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/**
+ * Artwork plus a footer rule in the artwork's own label type: what to do next
+ * on the left, the way back on the right. Both share the artwork's width.
+ */
+const piece = (input: {
+	readonly width: string;
+	readonly artwork: string;
+	readonly note: string;
+}): string =>
+	`<div class="piece" style="--w:${input.width}">
+${input.artwork}
+<div class="footer" role="status">
+<span>${input.note}</span>
+<a class="open" href="zuse://">Open Zuse${ARROW}</a>
+</div>
+</div>`;
+
+const SUCCESS_TONE = "#caff00";
+const ERROR_TONE = "#ff7a6b";
 
 const ticket = (input: {
 	readonly outcome: AuthCallbackOutcome;
@@ -264,17 +336,17 @@ const ticket = (input: {
 	readonly reference: string;
 }): string => {
 	const success = input.outcome === "success";
-	const paper = success ? "#caff00" : "#ff7a6b";
+	const paper = success ? SUCCESS_TONE : ERROR_TONE;
 	const headline = success ? "You’re<br>signed in" : "Sign-in<br>didn’t finish";
 	const copy = success
-		? "Your Zuse account is ready. Head back to the app — you can close this tab."
+		? "Your Zuse account is ready to use."
 		: (input.detail ??
 			"The provider cancelled or rejected this sign-in. Return to Zuse and try again.");
 	return `<div class="ticket-shell">
 <article class="ticket" style="--paper:${paper};--ink:#181713" aria-label="Zuse sign-in ticket">
-<div class="ticket-body">
+<div class="ticket-body halftone">
 <div class="ticket-top"><span>Zuse · Account</span><span>${success ? "Admitted" : "Void"}</span></div>
-<div class="ticket-pattern" aria-hidden="true"></div>
+<div class="ticket-pattern dither-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <div>
 <h1>${headline}</h1>
 <p>${copy}</p>
@@ -296,25 +368,28 @@ const ticket = (input: {
 };
 
 const stamp = (input: {
+	readonly name: string;
 	readonly outcome: AuthCallbackOutcome;
 	readonly detail: string | null;
 	readonly date: string;
 	readonly reference: string;
 }): string => {
 	const success = input.outcome === "success";
-	const paper = success ? "#caff00" : "#ff7a6b";
+	const paper = success ? SUCCESS_TONE : ERROR_TONE;
+	const name = escapeHtml(input.name);
 	const copy = success
-		? "Linear is connected to Zuse. You can close this tab."
+		? `${name} is connected to Zuse.`
 		: (input.detail ??
-			"Linear did not finish connecting. Return to Zuse and try again.");
+			`${name} did not finish connecting. Return to Zuse and try again.`);
 	return `<div class="stamp-shell">
-<article class="stamp" style="--ink:#181713" aria-label="Linear integration stamp">
-<div class="stamp-face" style="--paper:${paper}">
+<article class="stamp" style="--ink:#181713" aria-label="${name} integration stamp">
+<div class="stamp-face halftone" style="--paper:${paper}">
 <div class="stamp-head"><span class="micro">Zuse · Integration</span><strong>${success ? "01" : "00"}</strong></div>
 <div>
-<h1>Linear</h1>
+<h1>${name}</h1>
 <p>${copy}</p>
 </div>
+<div class="stamp-art dither-art" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <span class="micro">${escapeHtml(input.reference)}</span>
 <div class="postmark" aria-hidden="true"><span>${success ? "Connected" : "Declined"}<br>${escapeHtml(input.date)}</span></div>
 </div>
@@ -328,29 +403,29 @@ export const renderAuthCallbackPage = (
 	const detail = clampedText(input.detail, DETAIL_MAX_LENGTH);
 	const { date, issued, reference } = stampedAt(input.nowMs ?? Date.now());
 	const success = input.outcome === "success";
-	const isLinear = input.flow === "linear";
-	const artwork = isLinear
-		? stamp({ date, detail, outcome: input.outcome, reference })
+	const isIntegration = input.flow !== "account";
+	const name =
+		input.integration?.trim().slice(0, INTEGRATION_NAME_MAX_LENGTH) || "Plugin";
+	const artwork = isIntegration
+		? stamp({ date, detail, name, outcome: input.outcome, reference })
 		: ticket({ detail, issued, outcome: input.outcome, reference });
-	const title = isLinear
+	const title = isIntegration
 		? success
-			? "Linear connected · Zuse"
-			: "Linear not connected · Zuse"
+			? `${name} connected · Zuse`
+			: `${name} not connected · Zuse`
 		: success
 			? "Signed in · Zuse"
 			: "Sign-in failed · Zuse";
-	const hint = success
-		? "Zuse already picked this up — there is nothing else to do here."
-		: "Nothing was changed. Start the flow again from Zuse.";
 	return documentShell({
 		body: `<main class="stage">
-${artwork}
-<div class="hint">
-<p>${hint}</p>
-${openAppLink}
-</div>
+${piece({
+	width: isIntegration ? "15rem" : "18rem",
+	artwork,
+	note: success ? "Close this tab" : "Nothing changed",
+})}
 </main>`,
-		styles: isLinear ? STAMP_STYLES : TICKET_STYLES,
+		styles: isIntegration ? STAMP_STYLES : TICKET_STYLES,
+		backdrop: true,
 		title,
 	});
 };
@@ -358,11 +433,7 @@ ${openAppLink}
 export const renderNotFoundPage = (): string =>
 	documentShell({
 		body: `<main class="stage">
-<div class="hint">
-<p><strong>Nothing here.</strong></p>
-<p>This address only answers Zuse sign-in callbacks.</p>
-${openAppLink}
-</div>
+${piece({ width: "15rem", artwork: "", note: "Nothing here" })}
 </main>`,
 		styles: "",
 		title: "Not found · Zuse",

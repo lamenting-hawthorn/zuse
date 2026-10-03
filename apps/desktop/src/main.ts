@@ -117,7 +117,7 @@ import fixPath from "fix-path";
 import selfsigned from "selfsigned";
 import { ZUSE_APP_VERSION } from "./app-version.ts";
 import {
-	type AuthCallbackFlow,
+	AUTH_CALLBACK_PAGE_HEADERS,
 	renderAuthCallbackPage,
 	renderNotFoundPage,
 } from "./auth-callback-page.ts";
@@ -175,14 +175,18 @@ import {
 	type DeepEnergyProfileHandle,
 	startDeepEnergyProfile,
 } from "./deep-energy-profiler.ts";
-import { createBufferedChannel, isPairingDeepLink } from "./deep-link.ts";
+import {
+	createBufferedChannel,
+	isPairingDeepLink,
+	type PluginReturn,
+	pluginReturnOf,
+} from "./deep-link.ts";
 import {
 	executableOnPath,
 	listPortableOpenTargets,
 	openPathWithPortableTarget,
 } from "./host/open-targets.ts";
 import { electronServerProtocolLayer } from "./ipc/electron-server-protocol.ts";
-import { isLinearContextImagePath } from "./linear-context-image.ts";
 import {
 	DEFAULT_MENU_ACCELERATORS,
 	installAppMenu,
@@ -481,33 +485,22 @@ const handlePairingDeepLink = (url: string): void => {
 	focusMainWindow();
 };
 
+// Managed-plugin OAuth returns (`/plugins/callback`) carry a one-use ticket the
+// signed-in renderer redeems; main only forwards it. Buffered like pairing
+// links because the browser can finish before the renderer subscribes.
+const pluginReturnChannel = createBufferedChannel<PluginReturn>();
+
+ipcMain.on("plugins:return-subscribe", () => {
+	pluginReturnChannel.subscribe((value) => {
+		mainWindow?.webContents.send("plugins:return", value);
+	});
+});
+ipcMain.handle("plugins:callback-port", () => boundAuthPort);
+
 let deliverAuthUrl: ((url: string) => void) | null = null;
 let pendingAuthUrls: string[] = [];
-let deliverLinearUrl: ((url: string) => void) | null = null;
-let pendingLinearUrls: string[] = [];
-
-// Single source of truth for callback routing: both the loopback server and the
-// deep-link handler classify a callback the same way.
-const authCallbackFlowOf = (parsed: URL): AuthCallbackFlow =>
-	parsed.pathname === "/linear/callback" || parsed.hostname === "linear"
-		? "linear"
-		: "account";
-
-const authCallbackFlow = (url: string): AuthCallbackFlow => {
-	try {
-		return authCallbackFlowOf(new URL(url));
-	} catch {
-		// Invalid callback URLs are delivered to the account flow and rejected there.
-		return "account";
-	}
-};
 
 const handleAuthCallback = (url: string): void => {
-	if (authCallbackFlow(url) === "linear") {
-		if (deliverLinearUrl !== null) deliverLinearUrl(url);
-		else pendingLinearUrls.push(url);
-		return;
-	}
 	if (deliverAuthUrl !== null) {
 		deliverAuthUrl(url);
 	} else {
@@ -562,10 +555,26 @@ const startAuthLoopback = async (): Promise<void> => {
 			res.end();
 			return;
 		}
-		if (
-			parsed.pathname !== "/callback" &&
-			parsed.pathname !== "/linear/callback"
-		) {
+		if (parsed.pathname === "/plugins/callback") {
+			const value = pluginReturnOf(parsed);
+			if (value === null) {
+				res.writeHead(400, BROWSER_PAGE_HEADERS);
+				res.end(renderNotFoundPage());
+				return;
+			}
+			pluginReturnChannel.publish(value);
+			res.writeHead(200, AUTH_CALLBACK_PAGE_HEADERS);
+			res.end(
+				renderAuthCallbackPage({
+					flow: "plugin",
+					integration: value.plugin ?? "Plugin",
+					outcome: value.error === null ? "success" : "error",
+				}),
+			);
+			focusMainWindow();
+			return;
+		}
+		if (parsed.pathname !== "/callback") {
 			res.writeHead(404, BROWSER_PAGE_HEADERS);
 			res.end(renderNotFoundPage());
 			return;
@@ -575,12 +584,12 @@ const startAuthLoopback = async (): Promise<void> => {
 		// owns the rejection; the page only mirrors what the browser was told.
 		const failure = parsed.searchParams.get("error");
 		handleAuthCallback(parsed.toString());
-		res.writeHead(200, BROWSER_PAGE_HEADERS);
+		res.writeHead(200, AUTH_CALLBACK_PAGE_HEADERS);
 		res.end(
 			renderAuthCallbackPage({
 				detail:
 					parsed.searchParams.get("error_description") ?? failure ?? undefined,
-				flow: authCallbackFlowOf(parsed),
+				flow: "account",
 				outcome: failure === null ? "success" : "error",
 			}),
 		);
@@ -1883,9 +1892,6 @@ const authShell = {
 	get redirectUri() {
 		return `http://localhost:${boundAuthPort ?? AUTH_LOOPBACK_PORTS[0]}/callback`;
 	},
-	get linearRedirectUri() {
-		return `http://localhost:${boundAuthPort ?? AUTH_LOOPBACK_PORTS[0]}/linear/callback`;
-	},
 	open: (url: string) =>
 		Effect.tryPromise({
 			try: async () => {
@@ -1910,13 +1916,6 @@ const authShell = {
 			deliverAuthUrl = handler;
 			const queued = pendingAuthUrls;
 			pendingAuthUrls = [];
-			for (const url of queued) handler(url);
-		}),
-	onLinearCallbackUrl: (handler: (url: string) => void) =>
-		Effect.sync(() => {
-			deliverLinearUrl = handler;
-			const queued = pendingLinearUrls;
-			pendingLinearUrls = [];
 			for (const url of queued) handler(url);
 		}),
 };
@@ -3609,7 +3608,6 @@ async function createMainWindow() {
  */
 const ATTACHMENTS_HOST = "attachments";
 const POKEMON_HOST = "pokemon";
-const LINEAR_CONTEXT_HOST = "linear-context";
 const SITE_FAVICON_HOST = "site-favicon";
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -3747,28 +3745,6 @@ const registerZuseProtocol = (): void => {
 		}
 		if (url.host === RENDERER_ASSET_HOST) {
 			return handleRendererAsset(request);
-		}
-		if (url.host === LINEAR_CONTEXT_HOST) {
-			try {
-				const requestedPath = decodeURIComponent(url.pathname);
-				const realPath = await fs.realpath(requestedPath);
-				if (!isLinearContextImagePath(realPath)) {
-					return new Response(null, { status: 403 });
-				}
-				const ext = Path.extname(realPath).slice(1).toLowerCase();
-				const mime = MIME_BY_EXT[ext];
-				if (mime === undefined) return new Response(null, { status: 415 });
-				const response = await net.fetch(pathToFileURL(realPath).toString());
-				const headers = new Headers(response.headers);
-				headers.set("content-type", mime);
-				headers.set("cache-control", "private, max-age=3600");
-				return new Response(response.body, {
-					status: response.status,
-					headers,
-				});
-			} catch {
-				return new Response(null, { status: 404 });
-			}
 		}
 		if (url.host !== ATTACHMENTS_HOST && url.host !== POKEMON_HOST) {
 			return new Response(null, { status: 404 });

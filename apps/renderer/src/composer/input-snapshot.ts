@@ -53,6 +53,16 @@ export const composerSnapshotFromInput = (
 			scope: ref.scope,
 		});
 	}
+	for (const annotation of input.annotations) {
+		if (!("_tag" in annotation) || annotation._tag !== "context") continue;
+		if (!annotation.id.startsWith("plugin:")) continue;
+		addToken(`@${annotation.label}`, {
+			kind: "plugin",
+			pluginId: annotation.id.slice("plugin:".length),
+			name: annotation.label,
+			domain: "",
+		});
+	}
 	for (const attachment of input.attachments) {
 		addToken(`[image:${attachment.id}]`, {
 			kind: "image",

@@ -48,6 +48,7 @@ import {
 	HelpCircleIcon,
 	Login03Icon,
 	PencilIcon,
+	PuzzleIcon,
 	Robot01Icon,
 	ServerStack01Icon,
 	Settings01Icon,
@@ -1201,6 +1202,11 @@ function SidebarFolderRow({
  */
 function SidebarActions() {
 	const { message: uiMessage } = useUiMessages(["common", "projects"]);
+	const pluginsOpen = useUiStore(
+		(state) => state.view === "chat" && state.activeMainTab === "plugins",
+	);
+	// Plugins belong to a Zuse account; the app itself works signed out.
+	const { isSignedIn } = useAuth();
 
 	return (
 		<div className="flex flex-col gap-0.5 px-1.5 py-1">
@@ -1215,6 +1221,18 @@ function SidebarActions() {
 				label={uiMessage("projects:projects_sidebar_new_project")}
 				onClick={() => dispatchCommand("open-project")}
 			/>
+			{isSignedIn && (
+				<SidebarActionRow
+					icon={PuzzleIcon}
+					label={uiMessage("projects:projects_sidebar_plugins")}
+					active={pluginsOpen}
+					onClick={() => {
+						const ui = useUiStore.getState();
+						ui.setView("chat");
+						ui.setActiveMainTab("plugins");
+					}}
+				/>
+			)}
 		</div>
 	);
 }
@@ -1223,18 +1241,26 @@ function SidebarActionRow({
 	icon,
 	label,
 	shortcut,
+	active = false,
 	onClick,
 }: {
 	icon: IconSvgElement;
 	label: string;
 	shortcut?: string;
+	active?: boolean;
 	onClick: () => void;
 }) {
 	return (
 		<button
 			type="button"
 			onClick={onClick}
-			className="flex min-h-6 w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			aria-current={active ? "page" : undefined}
+			className={cn(
+				"flex min-h-6 w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-left text-[12px] transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+				active
+					? "bg-sidebar-accent text-sidebar-accent-foreground"
+					: "text-muted-foreground",
+			)}
 		>
 			<HugeiconsIcon icon={icon} className="size-4 shrink-0" />
 			<span className="min-w-0 flex-1 truncate">{label}</span>

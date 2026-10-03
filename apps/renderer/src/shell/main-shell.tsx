@@ -187,6 +187,11 @@ const UpdateBanner = lazy(() =>
 	})),
 );
 
+const PluginsPage = lazy(() =>
+	import("../components/plugins/plugins-page.tsx").then((module) => ({
+		default: module.PluginsPage,
+	})),
+);
 const ArchivedChatsPage = lazy(() =>
 	import("../components/archived-chats-page.tsx").then((module) => ({
 		default: module.ArchivedChatsPage,
@@ -585,7 +590,9 @@ export function MainShell() {
 		changesTabOpen ||
 		!leftSidebarOpen;
 	const fullWidthPage =
-		activeMainTab === "archives" || activeMainTab === "usage";
+		activeMainTab === "archives" ||
+		activeMainTab === "usage" ||
+		activeMainTab === "plugins";
 	const showMainTabs = showMainChrome && !fullWidthPage;
 
 	// Persist the three-pane layout in localStorage so widths survive reloads.
@@ -811,6 +818,16 @@ export function MainShell() {
 													selectedFolder?.name ?? "No repository selected"
 												}
 											/>
+										</Suspense>
+									)}
+								</div>
+								<div
+									hidden={activeMainTab !== "plugins"}
+									className="flex min-h-0 flex-1 flex-col"
+								>
+									{activeMainTab === "plugins" && (
+										<Suspense fallback={<SurfaceFallback />}>
+											<PluginsPage />
 										</Suspense>
 									)}
 								</div>

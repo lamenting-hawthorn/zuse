@@ -1,6 +1,5 @@
+import type { ProviderId, Skill, SkillConfigError } from "@zuse/contracts";
 import { Context, type Effect } from "effect";
-
-import type { ProviderId, Skill } from "@zuse/contracts";
 
 /**
  * Per-provider skill discovery on disk.
@@ -12,15 +11,31 @@ import type { ProviderId, Skill } from "@zuse/contracts";
  * disk instead of routing through the SDK API for 0.03.
  *
  * Returns a flat `Skill[]` with project-scoped entries first (popover
- * precedence): project skills shadow globals with the same name.
+ * precedence): project skills shadow globals with the same name. Every skill
+ * carries its effective `enabled` / `toggleSupported`; disabled skills are
+ * still returned so settings can list them — consumers that inject skills
+ * into a model must drop them.
  */
 export interface SkillDiscoveryServiceShape {
-  readonly discover: (
-    providerId: ProviderId,
-    projectCwd: string,
-  ) => Effect.Effect<ReadonlyArray<Skill>>;
+	/** `projectCwd: null` discovers user-level (global) skills only. */
+	readonly discover: (
+		providerId: ProviderId,
+		projectCwd: string | null,
+	) => Effect.Effect<ReadonlyArray<Skill>>;
+
+	/**
+	 * Persist a skill toggle. Claude/Zuse write the global `disabledSkills`
+	 * setting; Codex writes its native skill config. Resolves to the effective
+	 * enabled state after the write.
+	 */
+	readonly setEnabled: (
+		providerId: ProviderId,
+		name: string,
+		enabled: boolean,
+	) => Effect.Effect<boolean, SkillConfigError>;
 }
 
-export class SkillDiscoveryService extends Context.Service<SkillDiscoveryService, SkillDiscoveryServiceShape>()(
-  "memoize/SkillDiscoveryService",
-) {}
+export class SkillDiscoveryService extends Context.Service<
+	SkillDiscoveryService,
+	SkillDiscoveryServiceShape
+>()("memoize/SkillDiscoveryService") {}

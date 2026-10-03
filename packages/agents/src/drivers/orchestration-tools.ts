@@ -7,7 +7,6 @@ import type {
 } from "@zuse/contracts";
 import { z } from "zod";
 import { getToolPolicy } from "../kernel/policy.ts";
-import type { LinearSessionTools } from "./linear-tools.ts";
 import {
 	booleanProp,
 	type JsonSchemaObject,
@@ -183,7 +182,6 @@ export interface OrchestrationPermissionOptions {
 export interface OrchestrationSessionTools {
 	readonly deps: OrchestrationToolDeps;
 	readonly claudeTools: ReturnType<typeof buildOrchestrationTools>;
-	readonly linearTools?: LinearSessionTools;
 }
 
 // ── MCP text-result helpers ─────────────────────────────────────────────────

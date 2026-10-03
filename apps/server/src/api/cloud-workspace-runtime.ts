@@ -16,6 +16,10 @@ import {
 	setDefaultCodexExternalAuthProvider,
 } from "@zuse/agents/drivers/codex-app-server-client";
 import { setDefaultDeviceCommandClient } from "@zuse/agents/drivers/device-command-tools";
+import {
+	createHttpPluginClient,
+	setDefaultPluginClientFactory,
+} from "@zuse/agents/drivers/plugin-tools";
 import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import {
 	type CloudMessageSendPayload,
@@ -2341,10 +2345,17 @@ export const makeCloudWorkspaceRuntimeLayer = (
 						() => runtimeCredential.credential,
 					);
 					setDefaultDeviceCommandClient(deviceClient);
+					setDefaultPluginClientFactory(async () =>
+						createHttpPluginClient(
+							`${config.apiUrl}/v1/plugins/runtime/${encodeURIComponent(config.workspaceId)}/tools`,
+							async () => runtimeCredential.credential,
+						),
+					);
 					yield* Effect.addFinalizer(() =>
 						Effect.sync(() => {
 							deviceClient.close();
 							setDefaultDeviceCommandClient(undefined);
+							setDefaultPluginClientFactory(undefined);
 						}),
 					);
 					if (bootstrap.providerAuthMode !== "broker-v1")

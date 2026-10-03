@@ -165,6 +165,17 @@ export class SettingsFile extends Schema.Class<SettingsFile>("SettingsFile")({
 	 * config files are the source of truth and this stores only overrides.
 	 */
 	mcpDisabledServers: Schema.Array(Schema.String),
+	/**
+	 * Claude/Zuse skills switched off globally, keyed `<providerId>:<name>`
+	 * (e.g. `claude:pdf`, `claude:plugin:skill`). Scope is not part of the key:
+	 * a project skill shadows a same-named global one and providers enforce
+	 * by name. Codex skills are not stored here — Codex's native skill config
+	 * is their source of truth.
+	 */
+	disabledSkills: Schema.Array(Schema.String).pipe(
+		Schema.withConstructorDefault(Effect.succeed([])),
+		Schema.withDecodingDefaultType(Effect.succeed([])),
+	),
 	subagents: Schema.Struct({
 		enableForNewSessions: Schema.Boolean,
 		presets: Schema.Record(Schema.String, SubagentPresetState),
@@ -239,6 +250,7 @@ export const SettingsPatch = Schema.Struct({
 		Schema.Array(OpencodeCustomProvider),
 	),
 	mcpDisabledServers: Schema.optional(Schema.Array(Schema.String)),
+	disabledSkills: Schema.optional(Schema.Array(Schema.String)),
 	subagents: Schema.optional(
 		Schema.Struct({
 			enableForNewSessions: Schema.Boolean,
@@ -285,7 +297,25 @@ export const WorkspaceSettingsValues = SettingsPatch.mapFields(
 		"branchNamingPrefix",
 		"mergePrefs",
 	]),
-);
+).mapFields((fields) => ({
+	...fields,
+	// Persisted account preferences must survive additions to the provider catalog.
+	defaultModelByProvider: Schema.optional(
+		Schema.Record(ProviderId, Schema.optionalKey(Schema.String)),
+	),
+	providerEnabled: Schema.optional(
+		Schema.Record(ProviderId, Schema.optionalKey(Schema.Boolean)),
+	),
+	modelEnabledByProvider: Schema.optional(
+		Schema.Record(
+			ProviderId,
+			Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
+		),
+	),
+	customModelIdsByProvider: Schema.optional(
+		Schema.Record(ProviderId, Schema.optionalKey(Schema.Array(Schema.String))),
+	),
+}));
 export type WorkspaceSettingsValues = typeof WorkspaceSettingsValues.Type;
 
 export const WorkspaceSettings = Schema.Struct({

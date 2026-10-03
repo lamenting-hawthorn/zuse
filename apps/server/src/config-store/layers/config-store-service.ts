@@ -102,6 +102,7 @@ const freshSettings = (): SettingsFile =>
 		opencode2ModelVisibleByProvider: {},
 		opencode2CustomProviders: [],
 		mcpDisabledServers: [],
+		disabledSkills: [],
 		subagents: { enableForNewSessions: true, presets: {} },
 		branchNamingStyle: "username-slug",
 		branchNamingPrefix: "",
@@ -117,6 +118,14 @@ const serialize = (value: unknown): string =>
 	`${JSON.stringify(value, null, 2)}\n`;
 
 /* ───────────── parse helpers — tolerant of legacy / missing fields ───────────── */
+
+/** Non-empty string keys from a hand-editable list; anything else is dropped. */
+const coerceKeyList = (value: unknown): string[] =>
+	Array.isArray(value)
+		? value.filter(
+				(item): item is string => typeof item === "string" && item.length > 0,
+			)
+		: [];
 
 const isProviderId = (v: unknown): v is ProviderId =>
 	v === "claude" ||
@@ -481,14 +490,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		}
 	}
 
-	const mcpDisabledServers: string[] = [];
-	if (Array.isArray(obj.mcpDisabledServers)) {
-		for (const item of obj.mcpDisabledServers) {
-			if (typeof item === "string" && item.length > 0) {
-				mcpDisabledServers.push(item);
-			}
-		}
-	}
+	const mcpDisabledServers = coerceKeyList(obj.mcpDisabledServers);
+	const disabledSkills = coerceKeyList(obj.disabledSkills);
 
 	let subagents = base.subagents;
 	if (typeof obj.subagents === "object" && obj.subagents !== null) {
@@ -583,6 +586,7 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		opencode2ModelVisibleByProvider,
 		opencode2CustomProviders,
 		mcpDisabledServers,
+		disabledSkills,
 		subagents,
 		branchNamingStyle,
 		branchNamingPrefix,
@@ -879,6 +883,7 @@ export const ConfigStoreServiceLive = Layer.effect(
 						patch.opencode2CustomProviders ?? cur.opencode2CustomProviders,
 					mcpDisabledServers:
 						patch.mcpDisabledServers ?? cur.mcpDisabledServers,
+					disabledSkills: patch.disabledSkills ?? cur.disabledSkills,
 					subagents: patch.subagents ?? cur.subagents,
 					branchNamingStyle: patch.branchNamingStyle ?? cur.branchNamingStyle,
 					branchNamingPrefix:
@@ -1018,6 +1023,7 @@ export const ConfigStoreServiceLive = Layer.effect(
 							cur.opencode2ModelVisibleByProvider,
 						opencode2CustomProviders: cur.opencode2CustomProviders,
 						mcpDisabledServers: cur.mcpDisabledServers,
+						disabledSkills: cur.disabledSkills,
 						subagents,
 						branchNamingStyle: cur.branchNamingStyle,
 						branchNamingPrefix: cur.branchNamingPrefix,

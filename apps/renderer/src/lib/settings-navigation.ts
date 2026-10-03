@@ -1,4 +1,5 @@
 import "@zuse/i18n/english/settings";
+import "@zuse/i18n/english/plugins";
 import type { IconSvgElement } from "@hugeicons/react";
 import type { WorkspaceScope } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
@@ -52,20 +53,12 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		section: { kind: "defaults" },
 	},
 	{
-		id: "mcp",
+		id: "plugins",
 		get label() {
-			return uiMessage("settings:settings_navigation_mcp_servers");
+			return uiMessage("plugins:plugins_title");
 		},
 		Icon: PlugSocketIcon,
-		section: { kind: "mcp" },
-	},
-	{
-		id: "integrations",
-		get label() {
-			return uiMessage("settings:settings_navigation_integrations");
-		},
-		Icon: PuzzleIcon,
-		section: { kind: "integrations" },
+		section: { kind: "plugins" },
 	},
 	{
 		id: "devices",

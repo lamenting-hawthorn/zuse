@@ -194,13 +194,6 @@ import {
 	KeybindingsStreamRpc,
 } from "./keybindings.ts";
 import {
-	LinearConnectRpc,
-	LinearDisconnectRpc,
-	LinearListConnectionsRpc,
-	LinearListIssuesRpc,
-	LinearPrepareContextRpc,
-} from "./linear.ts";
-import {
 	AccountAccessConfigureCustomRpc,
 	AccountAccessDisconnectRpc,
 	AccountAccessSetCredentialRpc,
@@ -266,6 +259,7 @@ import {
 	PermissionRevokeDecisionRpc,
 } from "./permission.ts";
 import { PingRpc } from "./ping.ts";
+import { PluginsRequestRpc } from "./plugins.ts";
 import { PokemonEnsureSpriteCachedRpc, PokemonPokedexRpc } from "./pokemon.ts";
 import { PreviewsListServersRpc } from "./previews.ts";
 import {
@@ -353,7 +347,9 @@ import {
 } from "./settings.ts";
 import {
 	SkillListForProjectRpc,
+	SkillListGlobalRpc,
 	SkillListRpc,
+	SkillSetEnabledRpc,
 	SkillStreamRpc,
 } from "./skill.ts";
 import { UsageOverviewRpc, UsageReportRpc, UsageSessionsRpc } from "./usage.ts";
@@ -410,6 +406,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	ModelConnectionPreferredRpc,
 	ModelConnectionDisconnectRpc,
 	ModelConnectionAcknowledgePlanRpc,
+	PluginsRequestRpc,
 	DeviceBridgeControlRpc,
 	CloudDeviceBridgeRpc,
 	PingRpc,
@@ -420,11 +417,6 @@ export const MemoizeRpcs = RpcGroup.make(
 	AuthSignInRpc,
 	AuthSignOutRpc,
 	AuthSessionChangesRpc,
-	LinearListConnectionsRpc,
-	LinearConnectRpc,
-	LinearDisconnectRpc,
-	LinearListIssuesRpc,
-	LinearPrepareContextRpc,
 	PairingStartRpc,
 	PairingListTokensRpc,
 	PairingRevokeTokenRpc,
@@ -679,6 +671,8 @@ export const MemoizeRpcs = RpcGroup.make(
 	SkillListRpc,
 	SkillListForProjectRpc,
 	SkillStreamRpc,
+	SkillListGlobalRpc,
+	SkillSetEnabledRpc,
 	PermissionRequestsRpc,
 	PermissionDecideRpc,
 	PermissionListPendingRpc,

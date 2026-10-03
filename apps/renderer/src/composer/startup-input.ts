@@ -37,8 +37,6 @@ export class StartupInputError extends Error {
 export type StartupInputOptions = Readonly<{
 	/** GitHub issue body chosen through "Create from…"; saved as a context file. */
 	issueMarkdown: string | null;
-	/** Linear preparation owned by the caller (it decides how failures surface). */
-	prepareLinear: ((input: ComposerInput) => Promise<ComposerInput>) | null;
 	pendingContextFiles: ReadonlyArray<PendingDraftContextFile>;
 	pendingAttachments: ReadonlyArray<PendingDraftAttachment>;
 }>;
@@ -46,24 +44,17 @@ export type StartupInputOptions = Readonly<{
 /** True when the first message references bytes that still have to be
  * written into the chat's workspace before an agent can read them. */
 export const startupInputNeedsPreparation = (
-	options: Pick<
-		StartupInputOptions,
-		| "issueMarkdown"
-		| "prepareLinear"
-		| "pendingContextFiles"
-		| "pendingAttachments"
-	>,
+	options: StartupInputOptions,
 ): boolean =>
 	options.issueMarkdown !== null ||
-	options.prepareLinear !== null ||
 	options.pendingContextFiles.length > 0 ||
 	options.pendingAttachments.length > 0;
 
 /**
  * Materialize everything a draft submission referenced into the target
  * session's workspace and return the input that should actually be sent.
- * One sequence for local, remote, and cloud chats: issue context, Linear
- * context, pasted text, then dropped files. Each writes through the target's
+ * One sequence for local, remote, and cloud chats: issue context, pasted
+ * text, then dropped files. Each writes through the target's
  * environment so a cloud sandbox receives its own copies.
  */
 export const finalizeStartupInput = async (
@@ -81,9 +72,6 @@ export const finalizeStartupInput = async (
 			ext: "md",
 		});
 		finalInput = appendContextFileRef(finalInput, contextRef);
-	}
-	if (options.prepareLinear !== null) {
-		finalInput = await options.prepareLinear(finalInput);
 	}
 	try {
 		finalInput = await finalizeDraftContextFiles(
@@ -127,20 +115,13 @@ const TARGET_NOT_READY_TAGS = new Set([
 	"ContextWriteError",
 ]);
 
-export const startupTargetNotReady = (error: unknown): boolean => {
+const startupTargetNotReady = (error: unknown): boolean => {
 	const cause = error instanceof StartupInputError ? error.cause : error;
 	const tag =
 		typeof cause === "object" && cause !== null && "_tag" in cause
 			? (cause as { readonly _tag: unknown })._tag
 			: null;
-	return (
-		(typeof tag === "string" && TARGET_NOT_READY_TAGS.has(tag)) ||
-		(tag === "LinearIntegrationError" &&
-			typeof cause === "object" &&
-			cause !== null &&
-			"reason" in cause &&
-			cause.reason === "Could not resolve the session workspace.")
-	);
+	return typeof tag === "string" && TARGET_NOT_READY_TAGS.has(tag);
 };
 
 const delay = (ms: number): Promise<void> =>

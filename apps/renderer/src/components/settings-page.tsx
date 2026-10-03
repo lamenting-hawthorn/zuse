@@ -3,8 +3,10 @@ import { isHostedProduct } from "../lib/hosted-connect.ts";
 import { refreshHostedProjects } from "../lib/hosted-workspace.ts";
 import { isInputComposing } from "../lib/input-composition.ts";
 import { ModelConnectionsPane } from "./settings/model-connections-pane.tsx";
+import { PluginsSettingsPane } from "./settings/plugins-settings-pane.tsx";
 import { WallpaperSettings } from "./settings/wallpaper-settings";
 import "@zuse/i18n/english/settings";
+import "@zuse/i18n/english/plugins";
 import type { IconSvgElement } from "@hugeicons/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -90,8 +92,6 @@ import { DevicesPane } from "./settings/devices-pane.tsx";
 import { DiagnosticsPane as FullDiagnosticsPane } from "./settings/diagnostics-pane.tsx";
 import { HostedDevicesPane } from "./settings/hosted-devices-pane.tsx";
 import { KeybindingsPane } from "./settings/keybindings-editor.tsx";
-import { LinearIntegrationsPane } from "./settings/linear-integrations-pane.tsx";
-import { McpServersPane } from "./settings/mcp-servers-pane.tsx";
 import { OrganizationSharingPane } from "./settings/organization-sharing-pane.tsx";
 import { OrganizationsPane } from "./settings/organizations-pane.tsx";
 import { PokedexPane } from "./settings/pokedex-pane.tsx";
@@ -398,18 +398,10 @@ function SectionTitle({
 				subtitle: "Choose how new chats start.",
 			};
 		}
-		if (section.kind === "integrations") {
+		if (section.kind === "plugins") {
 			return {
-				title: uiMessage("settings:settings_page_integrations"),
-				subtitle:
-					"Connect issue workspaces and bring tickets into new sessions.",
-			};
-		}
-		if (section.kind === "mcp") {
-			return {
-				title: uiMessage("settings:settings_page_mcp_servers"),
-				subtitle:
-					"Configured servers and provider-managed connectors, with live availability and authentication.",
+				title: uiMessage("plugins:plugins_title"),
+				subtitle: uiMessage("plugins:plugins_settings_subtitle"),
 			};
 		}
 		if (section.kind === "devices") {
@@ -531,8 +523,8 @@ function Pane({ section }: { section: SettingsSection }) {
 	if (section.kind === "defaults") return <DefaultModelsPane />;
 	if (section.kind === "providers")
 		return isHostedProduct() ? <CloudWorkspacePool /> : <ProvidersPane />;
-	if (section.kind === "integrations") return <LinearIntegrationsPane />;
-	if (section.kind === "mcp") return <McpServersPane />;
+	if (section.kind === "plugins")
+		return <PluginsSettingsPane initialTab={section.tab} />;
 	if (section.kind === "devices")
 		return isHostedProduct() ? <HostedDevicesPane /> : <DevicesPane />;
 	if (section.kind === "machines") {

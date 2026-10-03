@@ -265,6 +265,7 @@ const spawnOpencode2Server = (
 	opencode2Path: string,
 	cwd: string,
 	timeoutMs = SERVE_TIMEOUT_MS,
+	managedMcp?: import("../user-mcp/types.ts").ResolvedMcpServer,
 ): Promise<Opencode2ServerProcess> =>
 	findFreePort().then(
 		(port) =>
@@ -274,7 +275,26 @@ const spawnOpencode2Server = (
 				try {
 					child = spawn(opencode2Path, args, {
 						cwd,
-						env: { ...process.env },
+						env: {
+							...process.env,
+							...(managedMcp
+								? {
+										OPENCODE_CONFIG_CONTENT: JSON.stringify({
+											mcp: {
+												servers: {
+													[managedMcp.name]: {
+														type: "remote",
+														url: managedMcp.url,
+														headers: managedMcp.headers,
+														oauth: false,
+														codemode: false,
+													},
+												},
+											},
+										}),
+									}
+								: {}),
+						},
 						detached: process.platform !== "win32",
 						stdio: ["pipe", "pipe", "pipe"],
 					});
@@ -1134,6 +1154,7 @@ export const startOpencode2Session = (
 	sessionId: AgentSessionId,
 	resumeCursor: string | null = null,
 	requestPermission: RequestPermission | null = null,
+	managedMcp?: import("../user-mcp/types.ts").ResolvedMcpServer,
 ): Effect.Effect<
 	Opencode2SessionHandle,
 	AgentSessionStartError,
@@ -1182,7 +1203,12 @@ export const startOpencode2Session = (
 
 		const booted = yield* Effect.tryPromise({
 			try: async () => {
-				const server = await spawnOpencode2Server(opencode2Path, cwd);
+				const server = await spawnOpencode2Server(
+					opencode2Path,
+					cwd,
+					SERVE_TIMEOUT_MS,
+					managedMcp,
+				);
 				const eventAbort = new AbortController();
 				try {
 					let opencodeSessionId: string | null = null;

@@ -402,7 +402,7 @@ export function McpPopover({
 						onClick={() => {
 							setOpen(false);
 							setView("settings");
-							setSettingsSection({ kind: "mcp" });
+							setSettingsSection({ kind: "plugins", tab: "mcps" });
 						}}
 						className="flex min-h-8 w-full items-center justify-between rounded-md px-2 text-[12px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
 					>

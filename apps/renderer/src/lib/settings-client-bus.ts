@@ -562,22 +562,43 @@ const financeOnlyWorkspace = () => {
 	);
 };
 
-const workspaceDefaults = Schema.decodeUnknownSync(WorkspaceSettingsValues)(
-	FALLBACK,
-);
-
-const workspaceProjection = (device: SettingsSlice): SettingsSlice => ({
-	...(nativePersonal() ? device : FALLBACK),
-	...workspaceDefaults,
-	...Schema.decodeUnknownSync(DevicePreferences)(
-		isHostedProduct()
-			? { ...hostedSettings(), ...useBrowserDevicePreferences.getState() }
-			: device,
+// Account settings are sparse persisted overrides. Fill newly added providers
+// from product defaults without discarding existing per-provider preferences.
+const withWorkspaceValues = (
+	base: Omit<
+		SettingsSlice,
+		| "defaultModelByProvider"
+		| "providerEnabled"
+		| "modelEnabledByProvider"
+		| "customModelIdsByProvider"
+	>,
+	values: WorkspaceSettingsValues = {},
+): SettingsSlice => ({
+	...base,
+	...values,
+	defaultModelByProvider: { ...seedModels(), ...values.defaultModelByProvider },
+	providerEnabled: { ...seedProviderEnabled(), ...values.providerEnabled },
+	modelEnabledByProvider: mergeModelEnabled(
+		values.modelEnabledByProvider ?? {},
 	),
-	...(financeOnlyWorkspace()
-		? {}
-		: useWorkspaceSettingsState.getState().data?.values),
+	customModelIdsByProvider: copyCustomModelIds(values.customModelIdsByProvider),
 });
+
+const workspaceProjection = (device: SettingsSlice): SettingsSlice =>
+	withWorkspaceValues(
+		{
+			...(nativePersonal() ? device : FALLBACK),
+			...Schema.decodeUnknownSync(WorkspaceSettingsValues)(FALLBACK),
+			...Schema.decodeUnknownSync(DevicePreferences)(
+				isHostedProduct()
+					? { ...hostedSettings(), ...useBrowserDevicePreferences.getState() }
+					: device,
+			),
+		},
+		financeOnlyWorkspace()
+			? {}
+			: useWorkspaceSettingsState.getState().data?.values,
+	);
 
 const scopedState = (runtime: SettingsState): SettingsState => {
 	if (!usesAccountWorkspaceSettings()) return runtime;
@@ -692,7 +713,7 @@ const update = (patchFor: (current: SettingsSlice) => SettingsPatch): void => {
 			} else {
 				void updateWorkspaceSettings((values) =>
 					Schema.decodeUnknownSync(WorkspaceSettingsValues)(
-						patchFor({ ...FALLBACK, ...values }),
+						patchFor(withWorkspaceValues(FALLBACK, values)),
 					),
 				).catch(() => {
 					if (rendererWorkspaceSnapshot() !== workspace) return;

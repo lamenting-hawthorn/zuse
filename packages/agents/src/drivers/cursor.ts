@@ -440,6 +440,7 @@ export const startCursorSession = (
 	sessionId: AgentSessionId,
 	resumeCursor: string | null = null,
 	initialMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
+	managedMcp?: ResolvedMcpServer,
 ): Effect.Effect<
 	CursorSessionHandle,
 	AgentSessionStartError,
@@ -548,7 +549,11 @@ export const startCursorSession = (
 		let activeRun: Run | null = null;
 		let currentMode: PermissionMode = input.permissionMode ?? "default";
 		let workspaceInstructions = input.workspaceInstructions;
-		let mcpServers = normalizeCursorMcpServers(initialMcpServers);
+		const managedPluginServers = managedMcp ? [managedMcp] : [];
+		let mcpServers = normalizeCursorMcpServers([
+			...initialMcpServers,
+			...managedPluginServers,
+		]);
 		let inflight = Promise.resolve();
 		const emit = (event: AgentEvent): void => {
 			if (!closed) Queue.offerUnsafe(events, event);
@@ -717,7 +722,10 @@ export const startCursorSession = (
 			answerQuestion: () => Effect.void,
 			updateMcpServers: (servers) =>
 				Effect.sync(() => {
-					mcpServers = normalizeCursorMcpServers(servers);
+					mcpServers = normalizeCursorMcpServers([
+						...servers,
+						...managedPluginServers,
+					]);
 				}),
 		};
 	});

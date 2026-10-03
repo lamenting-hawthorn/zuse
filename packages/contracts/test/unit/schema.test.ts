@@ -20,6 +20,7 @@ import {
 	Session,
 	SessionTimelineFrame,
 	SettingsFile,
+	Skill,
 	UserQuestionAnswer,
 	Worktree,
 } from "../../src/index.ts";
@@ -704,84 +705,124 @@ describe("ComposerInput round-trip", () => {
 	});
 });
 
+const SETTINGS_FIXTURE: typeof SettingsFile.Encoded = {
+	schemaVersion: 1,
+	defaultProviderId: "claude",
+	defaultModelByProvider: {
+		claude: "claude-opus-4-8",
+		codex: "gpt-5-codex",
+		grok: "grok-code-fast-1",
+		cursor: "composer-2",
+		gemini: "gemini-3-pro",
+		opencode: "sonnet",
+		opencode2: "opencode/claude-sonnet-5",
+		kiro: "auto",
+		pi: "auto",
+
+		zuse: "",
+	},
+	defaultRuntimeMode: "approval-required",
+	defaultAutoCreateWorktree: false,
+	defaultAutonomyLevel: "off",
+	onboardingCompleted: true,
+	appearanceMode: "system",
+	completionSoundEnabled: true,
+	completionSoundPreset: "bloom",
+	providerEnabled: {
+		claude: true,
+		codex: true,
+		grok: true,
+		cursor: true,
+		gemini: true,
+		opencode: true,
+		opencode2: true,
+		kiro: true,
+		pi: true,
+
+		zuse: true,
+	},
+	modelEnabledByProvider: {
+		...defaultModelEnabledByProvider(),
+	},
+	customModelIdsByProvider: {
+		claude: ["claude-haiku-4-5"],
+		codex: [],
+		grok: [],
+		cursor: [],
+		gemini: [],
+		opencode: [],
+		opencode2: [],
+		kiro: [],
+		pi: [],
+
+		zuse: [],
+	},
+	opencodeProviderVisible: { openai: true, openrouter: false },
+	opencodeModelVisibleByProvider: {
+		openai: { "openai/gpt-5": true },
+	},
+	opencodeCustomProviders: [
+		{
+			id: "my-llm",
+			name: "My LLM",
+			baseURL: "https://api.example.com/v1",
+			npm: "@ai-sdk/openai-compatible",
+			models: [{ id: "my-model", name: "My Model" }],
+		},
+	],
+	opencode2ProviderVisible: {},
+	opencode2ModelVisibleByProvider: {},
+	opencode2CustomProviders: [],
+	mcpDisabledServers: ["claude:posthog"],
+	disabledSkills: ["claude:pdf", "claude:acme:deploy"],
+	subagents: { enableForNewSessions: true, presets: {} },
+	branchNamingStyle: "username-slug",
+	branchNamingPrefix: "",
+	mergePrefs: { method: "squash", deleteBranch: true },
+	notchTrayEnabled: true,
+	notchTrayPinned: false,
+};
+
+const { disabledSkills: _omitted, ...LEGACY_SETTINGS } = SETTINGS_FIXTURE;
+
+describe("Skill enablement schema", () => {
+	it("decodes legacy skills as enabled without toggle support", () => {
+		const skill = Schema.decodeUnknownSync(Skill)({
+			name: "pdf",
+			scope: "global",
+			description: "",
+			arguments: [],
+			filePath: null,
+			providerId: "claude",
+		});
+		expect(skill.enabled).toBe(true);
+		expect(skill.toggleSupported).toBe(false);
+	});
+
+	it("round-trips explicit enablement", () => {
+		roundTrip(Skill, {
+			name: "pdf",
+			scope: "project",
+			description: "",
+			arguments: [],
+			filePath: "/repo/.claude/skills/pdf/SKILL.md",
+			providerId: "claude",
+			enabled: false,
+			toggleSupported: true,
+		});
+	});
+
+	it("defaults disabledSkills to an empty list for older settings files", () => {
+		const encoded = Schema.encodeSync(SettingsFile)(
+			Schema.decodeUnknownSync(SettingsFile)(LEGACY_SETTINGS),
+		);
+		expect(encoded.disabledSkills).toEqual([]);
+	});
+});
+
 describe("SettingsFile round-trip", () => {
 	it("round-trips completion sound settings", () => {
-		roundTrip(SettingsFile, {
-			schemaVersion: 1,
-			defaultProviderId: "claude",
-			defaultModelByProvider: {
-				claude: "claude-opus-4-8",
-				codex: "gpt-5-codex",
-				grok: "grok-code-fast-1",
-				cursor: "composer-2",
-				gemini: "gemini-3-pro",
-				opencode: "sonnet",
-				opencode2: "opencode/claude-sonnet-5",
-				kiro: "auto",
-				pi: "auto",
-
-				zuse: "",
-			},
-			defaultRuntimeMode: "approval-required",
-			defaultAutoCreateWorktree: false,
-			defaultAutonomyLevel: "off",
-			onboardingCompleted: true,
-			appearanceMode: "system",
-			completionSoundEnabled: true,
-			completionSoundPreset: "bloom",
-			providerEnabled: {
-				claude: true,
-				codex: true,
-				grok: true,
-				cursor: true,
-				gemini: true,
-				opencode: true,
-				opencode2: true,
-				kiro: true,
-				pi: true,
-
-				zuse: true,
-			},
-			modelEnabledByProvider: {
-				...defaultModelEnabledByProvider(),
-			},
-			customModelIdsByProvider: {
-				claude: ["claude-haiku-4-5"],
-				codex: [],
-				grok: [],
-				cursor: [],
-				gemini: [],
-				opencode: [],
-				opencode2: [],
-				kiro: [],
-				pi: [],
-
-				zuse: [],
-			},
-			opencodeProviderVisible: { openai: true, openrouter: false },
-			opencodeModelVisibleByProvider: {
-				openai: { "openai/gpt-5": true },
-			},
-			opencodeCustomProviders: [
-				{
-					id: "my-llm",
-					name: "My LLM",
-					baseURL: "https://api.example.com/v1",
-					npm: "@ai-sdk/openai-compatible",
-					models: [{ id: "my-model", name: "My Model" }],
-				},
-			],
-			opencode2ProviderVisible: {},
-			opencode2ModelVisibleByProvider: {},
-			opencode2CustomProviders: [],
-			mcpDisabledServers: ["claude:posthog"],
-			subagents: { enableForNewSessions: true, presets: {} },
-			branchNamingStyle: "username-slug",
-			branchNamingPrefix: "",
-			mergePrefs: { method: "squash", deleteBranch: true },
-			notchTrayEnabled: true,
-			notchTrayPinned: false,
-		});
+		roundTrip(SettingsFile, SETTINGS_FIXTURE);
 	});
 
 	it("rejects an unknown completion sound preset", () => {

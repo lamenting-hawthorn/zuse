@@ -48,11 +48,13 @@ export const runCloudControl = <Result>(
 	effect: (
 		client: Awaited<ReturnType<typeof getCloudControlClient>>,
 	) => Effect.Effect<Result, unknown>,
+	options?: { readonly scope?: "account" },
 ): Promise<Result> =>
 	runScopedControlPlane(
 		async (scope) =>
 			(await import("./cloud-control-client.ts")).getCloudControlClient(scope),
 		effect,
+		options,
 	);
 
 export const controlPlaneClient = (): Promise<MemoizeClient> =>
@@ -75,6 +77,8 @@ export type ControlPlaneCacheOptions<Result> = {
 	readonly refresh?: boolean;
 	readonly maxAgeMs?: number;
 	readonly decode?: (value: unknown) => Result;
+	/** Account-level data (e.g. plugins) is shared across workspaces. */
+	readonly scope?: "account";
 };
 let accountId: string | null = null;
 export const setControlPlaneCacheAccount = (id: string | null): void => {
@@ -88,10 +92,10 @@ const cacheScope = () => {
 			: accountId
 		: subject;
 };
-const storageKey = (key: string) => {
+const storageKey = (key: string, accountScoped = false) => {
 	const workspace = rendererWorkspaceSnapshot();
 	const scopedKey =
-		workspace.scope.kind === "personal"
+		accountScoped || workspace.scope.kind === "personal"
 			? key
 			: `${encodeURIComponent(workspace.key)}:${key}`;
 	const scope = cacheScope();
@@ -99,21 +103,22 @@ const storageKey = (key: string) => {
 		? null
 		: `zuse.control-plane.v1:${encodeURIComponent(scope)}:${scopedKey}`;
 };
-const entryKey = (key: string) =>
+const entryKey = (key: string, accountScoped = false) =>
 	JSON.stringify([
 		cacheScope(),
 		rendererAccountSnapshot().epoch,
-		rendererWorkspaceSnapshot().key,
+		accountScoped ? null : rendererWorkspaceSnapshot().key,
 		key,
 	]);
 const readEntry = <Result>(
 	key: string,
 	options?: ControlPlaneCacheOptions<Result>,
 ): SessionCacheEntry | undefined => {
-	const memoryKey = entryKey(key);
+	const accountScoped = options?.scope === "account";
+	const memoryKey = entryKey(key, accountScoped);
 	const existing = sessionCache.get(memoryKey);
 	if (existing || !options?.decode) return existing;
-	const storedKey = storageKey(key);
+	const storedKey = storageKey(key, accountScoped);
 	if (storedKey === null) return undefined;
 	try {
 		const raw = window.localStorage.getItem(storedKey);
@@ -134,8 +139,11 @@ const readEntry = <Result>(
 export const peekControlPlaneCache = <Result>(
 	key: string,
 	decode: (value: unknown) => Result,
+	scope?: "account",
 ): Result | undefined =>
-	readEntry(key, { decode })?.snapshot as Result | undefined;
+	readEntry(key, { decode, ...(scope ? { scope } : {}) })?.snapshot as
+		| Result
+		| undefined;
 
 export const subscribeControlPlaneSessionCache = (
 	listener: (key: string) => void,
@@ -160,17 +168,18 @@ export const runCachedControlPlane = <Result>(
 ): Promise<Result> => {
 	const account = rendererAccountSnapshot();
 	const workspace = rendererWorkspaceSnapshot();
+	const accountScoped = options?.scope === "account";
 	const current = (value: Result): Result => {
 		assertRendererAccountCurrent(account);
-		assertRendererWorkspaceCurrent(workspace);
-		if (entryKey(key) !== memoryKey)
+		if (!accountScoped) assertRendererWorkspaceCurrent(workspace);
+		if (entryKey(key, accountScoped) !== memoryKey)
 			throw new Error(
 				"The connection account changed. Reconnect this environment.",
 			);
 		return value;
 	};
-	const memoryKey = entryKey(key);
-	const persistedKey = options?.decode ? storageKey(key) : null;
+	const memoryKey = entryKey(key, accountScoped);
+	const persistedKey = options?.decode ? storageKey(key, accountScoped) : null;
 	const previous = readEntry(key, options);
 	// A refresh after a mutation must not join a read started before that write.
 	const entry: SessionCacheEntry = options?.refresh
@@ -192,12 +201,15 @@ export const runCachedControlPlane = <Result>(
 		return cached.then(current);
 	if (!entry.pending) {
 		sessionCache.set(memoryKey, entry);
-		const request = runCloudControl(effect).then(
+		const request = runCloudControl(
+			effect,
+			accountScoped ? { scope: "account" } : undefined,
+		).then(
 			(value) => {
 				current(value);
 				if (
 					sessionCache.get(memoryKey) === entry &&
-					entryKey(key) === memoryKey
+					entryKey(key, accountScoped) === memoryKey
 				) {
 					const changed =
 						!options?.decode ||
@@ -225,7 +237,7 @@ export const runCachedControlPlane = <Result>(
 			(cause) => {
 				if (
 					sessionCache.get(memoryKey) === entry &&
-					entryKey(key) === memoryKey
+					entryKey(key, accountScoped) === memoryKey
 				) {
 					entry.pending = undefined;
 					entry.checkedAt = Date.now();
@@ -234,7 +246,10 @@ export const runCachedControlPlane = <Result>(
 						(cause instanceof CloudWorkspaceOpError &&
 							cause.code === "not-allowed")
 					) {
-						invalidateControlPlaneCache(key);
+						invalidateControlPlaneCache(
+							key,
+							accountScoped ? "account" : undefined,
+						);
 					} else if (!entry.value) sessionCache.delete(memoryKey);
 				}
 				throw cause;
@@ -250,9 +265,12 @@ export const runCachedControlPlane = <Result>(
 };
 
 /** Discard a display snapshot after a write, including its persisted copy. */
-export const invalidateControlPlaneCache = (key: string): void => {
-	sessionCache.delete(entryKey(key));
-	const persistedKey = storageKey(key);
+export const invalidateControlPlaneCache = (
+	key: string,
+	scope?: "account",
+): void => {
+	sessionCache.delete(entryKey(key, scope === "account"));
+	const persistedKey = storageKey(key, scope === "account");
 	if (persistedKey !== null) {
 		try {
 			window.localStorage.removeItem(persistedKey);

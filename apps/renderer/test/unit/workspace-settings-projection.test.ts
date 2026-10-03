@@ -281,3 +281,41 @@ it("hydrates hosted Personal settings without runtime access and stores device c
 	expect(dispatch).not.toHaveBeenCalled();
 	dispatch.mockRestore();
 });
+
+it("fills new provider defaults while preserving saved preferences and edits", async () => {
+	mocks.hosted = true;
+	const defaults = useSettingsStore.getState();
+	mocks.read.mockReturnValue(
+		Effect.succeed({
+			revision: 2,
+			values: {
+				defaultModelByProvider: { claude: "custom-model" },
+				providerEnabled: { claude: false },
+				modelEnabledByProvider: { claude: { "custom-model": false } },
+				customModelIdsByProvider: { claude: ["custom-model"] },
+			},
+		}),
+	);
+	await loadWorkspaceSettings();
+	const settings = useSettingsStore.getState();
+	expect(settings.loaded).toBe(true);
+	expect(settings.defaultModelByProvider.claude).toBe("custom-model");
+	expect(settings.defaultModelByProvider.zuse).toBe(
+		defaults.defaultModelByProvider.zuse,
+	);
+	expect(settings.providerEnabled.claude).toBe(false);
+	expect(settings.providerEnabled.zuse).toBe(defaults.providerEnabled.zuse);
+	expect(settings.modelEnabledByProvider.zuse).toEqual(
+		defaults.modelEnabledByProvider.zuse,
+	);
+	expect(settings.customModelIdsByProvider.zuse).toEqual([]);
+	settings.setBranchNamingPrefix("after-upgrade");
+	await vi.waitFor(() =>
+		expect(useSettingsStore.getState().branchNamingPrefix).toBe(
+			"after-upgrade",
+		),
+	);
+	expect(useSettingsStore.getState().defaultModelByProvider.claude).toBe(
+		"custom-model",
+	);
+});

@@ -14,7 +14,6 @@ import { GitHandlersLayer } from "./git/handlers.ts";
 import { ModelConnectionsHandlersLayer } from "./harness/handlers.ts";
 import { HostHandlersLayer } from "./host/handlers.ts";
 import { LanAuthHandlersLayer } from "./lan-auth/handlers.ts";
-import { LinearHandlersLayer } from "./linear/handlers.ts";
 import { MachineHandlersLayer } from "./machine/handlers.ts";
 import { McpHandlersLayer } from "./mcp/handlers.ts";
 import { ModelCatalogHandlersLayer } from "./model-catalog/handlers.ts";
@@ -47,7 +46,6 @@ export const HandlersLayer = Layer.mergeAll(
 	ApiHandlersLayer,
 	OrganizationHandlersLayer,
 	AuthHandlersLayer,
-	LinearHandlersLayer,
 	MachineHandlersLayer,
 	WorkspaceHandlersLayer,
 	PtyHandlersLayer,

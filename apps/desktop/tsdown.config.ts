@@ -35,7 +35,6 @@ const resolveBuildEnv = (name: string): string => {
 	return "";
 };
 
-const LINEAR_CLIENT_ID = resolveBuildEnv("LINEAR_CLIENT_ID");
 const ZUSE_POSTHOG_KEY = resolveBuildEnv("ZUSE_POSTHOG_KEY");
 const ZUSE_POSTHOG_HOST =
 	resolveBuildEnv("ZUSE_POSTHOG_HOST") || "https://us.i.posthog.com";
@@ -63,7 +62,6 @@ const shared = {
 	// does not inherit the CI environment used to build it.
 	define: {
 		"process.env.WORKOS_CLIENT_ID": JSON.stringify(WORKOS_CLIENT_ID),
-		"process.env.LINEAR_CLIENT_ID": JSON.stringify(LINEAR_CLIENT_ID),
 		"process.env.ZUSE_POSTHOG_KEY": JSON.stringify(ZUSE_POSTHOG_KEY),
 		"process.env.ZUSE_POSTHOG_HOST": JSON.stringify(ZUSE_POSTHOG_HOST),
 		"process.env.ZUSE_POSTHOG_ENABLE_DEV": JSON.stringify(
@@ -176,20 +174,6 @@ export default defineConfig([
 		// resolved next to the main bundle by cloud-ssh-service.ts.
 		entry: {
 			"ssh-bridge-child": "src/ssh/ssh-bridge-child.ts",
-		},
-	},
-	{
-		...shared,
-		entry: {
-			"linear-mcp-child":
-				"../../packages/agents/src/drivers/acp/linear-mcp-child.ts",
-		},
-		deps: {
-			alwaysBundle: [
-				"@zuse/contracts",
-				"@zuse/agents",
-				"@modelcontextprotocol/sdk",
-			],
 		},
 	},
 ]);

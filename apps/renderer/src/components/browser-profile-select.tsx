@@ -26,7 +26,9 @@ export function BrowserProfileSelect({
 		profiles.find((profile) => profile.id === value) ?? profiles[0];
 	return (
 		<Select
-			value={value}
+			// Always controlled: the trigger shows the first profile until one is
+			// chosen, so the select must report the same one (null when none).
+			value={selected?.id ?? null}
 			onValueChange={(next) =>
 				onValueChange(typeof next === "string" ? next : undefined)
 			}

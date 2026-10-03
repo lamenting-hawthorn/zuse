@@ -21,37 +21,3 @@ export const isPreviewableFileName = (name: string): boolean => {
 
 export const defaultFileViewForName = (name: string): "edit" | "preview" =>
 	MARKDOWN_EXTENSIONS.has(extensionOf(name)) ? "preview" : "edit";
-
-/**
- * Resolve a relative image in a local Markdown preview against the directory
- * containing the Markdown file. Keep all other URLs on react-markdown's
- * normal sanitising path, and do not let Markdown traverse above its own
- * directory when resolving an image.
- */
-export const resolveMarkdownPreviewUrl = (
-	value: string,
-	property: string,
-	tagName: string,
-	baseHref: string | undefined,
-): string | null => {
-	if (baseHref === undefined || property !== "src" || tagName !== "img") {
-		return null;
-	}
-	try {
-		const base = new URL(baseHref);
-		if (base.protocol !== "file:") return null;
-		const resolved = new URL(value, base);
-		if (resolved.protocol !== "file:") return null;
-		if (!resolved.pathname.startsWith(base.pathname)) return null;
-		if (
-			!/\/\.context\/linear\/[^/]+\/assets\/[^/]+\/[^/]+$/u.test(
-				resolved.pathname,
-			)
-		) {
-			return null;
-		}
-		return `zuse://linear-context${resolved.pathname}`;
-	} catch {
-		return null;
-	}
-};

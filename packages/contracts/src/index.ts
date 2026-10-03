@@ -26,7 +26,6 @@ export * from "./host.ts";
 export * from "./ids.ts";
 export * from "./keybindings.ts";
 export * from "./keybindings-parse.ts";
-export * from "./linear.ts";
 export type {
 	DesktopLocale,
 	LocaleBridge,
@@ -43,6 +42,7 @@ export * from "./organizations.ts";
 export * from "./pairing.ts";
 export * from "./permission.ts";
 export * from "./ping.ts";
+export * from "./plugins.ts";
 export * from "./pokemon.ts";
 export * from "./power.ts";
 export * from "./previews.ts";

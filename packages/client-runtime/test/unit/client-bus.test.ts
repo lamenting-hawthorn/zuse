@@ -220,6 +220,38 @@ class MemoryPersistence implements ClientPersistence {
 }
 
 describe("ClientBus", () => {
+	it("keeps render-time snapshots pure across an account change", async () => {
+		const persistence = new MemoryPersistence();
+		await persistence.saveResource(
+			timelineKey,
+			{ data: { text: "first" }, cursor: null, storedAt: 1 },
+			"first",
+		);
+		let namespace = "first";
+		const bus = new ClientBus<Client>({
+			resolver: immediateResolver(),
+			persistence,
+			resourceCacheNamespaceFor: () => namespace,
+		});
+		bus.retain(timelineKey, { activation: "cache-only" });
+		await waitUntil(() => bus.snapshot(timelineKey).data !== null);
+		const notified: Array<string | null> = [];
+		bus.subscribe(timelineKey, (view) =>
+			notified.push(view.data?.text ?? null),
+		);
+
+		namespace = "second";
+		const stale = bus.snapshot(timelineKey);
+		// No listener may run synchronously inside a React render read.
+		expect(notified).toEqual([]);
+		expect(stale.data).toBeNull();
+		expect(bus.snapshot(timelineKey)).toBe(stale);
+
+		await Promise.resolve();
+		expect(notified).toContain(null);
+		expect(bus.snapshot(timelineKey).data).toBeNull();
+		await bus.dispose();
+	});
 	it("clears retained account views in place and fences old hydration across A -> B -> A", async () => {
 		const persistence = new MemoryPersistence();
 		const oldLoad = deferred<PersistedResource<unknown> | null>();

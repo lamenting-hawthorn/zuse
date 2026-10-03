@@ -114,7 +114,10 @@ export function ComposerContextPicker({
 		const normalized = query.toLowerCase();
 		if (kind === "dollar") {
 			return skills
-				.filter((skill) => skill.name.toLowerCase().startsWith(normalized))
+				.filter(
+					(skill) =>
+						skill.enabled && skill.name.toLowerCase().startsWith(normalized),
+				)
 				.map((value) => ({ kind: "skill" as const, value }))
 				.slice(0, 6);
 		}

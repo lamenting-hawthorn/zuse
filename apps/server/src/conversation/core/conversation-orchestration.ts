@@ -1,10 +1,6 @@
 /** Builds the session-bound orchestration tool surface. */
 
 import {
-	buildLinearTools,
-	type LinearToolDeps,
-} from "@zuse/agents/drivers/linear-tools";
-import {
 	buildOrchestrationTools,
 	type OrchestrationSessionTools,
 	type OrchestrationToolDeps,
@@ -97,7 +93,6 @@ export interface ConversationOrchestrationDependencies {
 		projectId: FolderId,
 		includeArchived: boolean,
 	) => Effect.Effect<ReadonlyArray<Session>, unknown>;
-	readonly linearTools?: LinearToolDeps;
 }
 
 export const makeConversationOrchestration = (
@@ -439,13 +434,5 @@ export const makeConversationOrchestration = (
 		return {
 			deps: toolDependencies,
 			claudeTools: buildOrchestrationTools(toolDependencies),
-			...(dependencies.linearTools === undefined
-				? {}
-				: {
-						linearTools: {
-							deps: dependencies.linearTools,
-							claudeTools: buildLinearTools(dependencies.linearTools),
-						},
-					}),
 		};
 	});

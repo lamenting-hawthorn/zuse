@@ -50,6 +50,61 @@ export class ApiLinkError extends Data.TaggedError("ApiLinkError")<{
 	readonly reason: string;
 }> {}
 
+/** The account already has as many linked computers as its plan allows. */
+const COMPUTER_LIMIT_REASON = "api_409:computer_limit_reached";
+const AUTO_LINK_LIMIT_RETRY_MS = 10 * 60_000;
+const AUTO_LINK_MAX_RETRY_MS = 60_000;
+
+/**
+ * Delay before the next automatic link attempt. Transient failures back off
+ * exponentially to a minute. A full account won't free up by itself soon, so
+ * it waits ten minutes instead of polling the api every minute.
+ */
+export const autoLinkRetryDelayMs = (
+	error: ApiLinkError,
+	failures: number,
+): number =>
+	error.reason === COMPUTER_LIMIT_REASON
+		? AUTO_LINK_LIMIT_RETRY_MS
+		: Math.min(3_000 * 2 ** failures, AUTO_LINK_MAX_RETRY_MS);
+
+/**
+ * Keep trying to link until it sticks. Linking must never block or fail
+ * server boot, and persistent causes (signed out, api down, a full account)
+ * heal on a later attempt without a restart. A full account is reported once
+ * with what to do, not as a warning every attempt.
+ */
+export const autoLinkUntilLinked = (
+	attempt: Effect.Effect<void, ApiLinkError>,
+): Effect.Effect<void> => {
+	const loop = (
+		failures: number,
+		limitReported: boolean,
+	): Effect.Effect<void> =>
+		attempt.pipe(
+			Effect.catch((error) => {
+				const limit = error.reason === COMPUTER_LIMIT_REASON;
+				const report = limit
+					? limitReported
+						? Effect.void
+						: Effect.logInfo(
+								"api auto-link paused: this account is at its computer limit. Remove an unused computer in Settings → Devices; linking resumes automatically.",
+							)
+					: Effect.logWarning("api auto-link attempt failed", error);
+				// Jitter keeps parallel dev instances from retrying in lockstep.
+				const delay =
+					autoLinkRetryDelayMs(error, failures) * (0.8 + Math.random() * 0.4);
+				return report.pipe(
+					Effect.andThen(Effect.sleep(Math.round(delay))),
+					Effect.andThen(
+						Effect.suspend(() => loop(failures + 1, limit || limitReported)),
+					),
+				);
+			}),
+		);
+	return loop(0, false);
+};
+
 export interface ApiLinkStatusValue {
 	readonly linked: boolean;
 	readonly apiUrl?: string;

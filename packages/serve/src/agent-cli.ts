@@ -22,7 +22,6 @@ import {
 	catalogProviderIds,
 	defaultModelFor,
 	type FileRef,
-	type LinearIssueRef,
 	MemoizeRpcs,
 	type MessageId,
 	modelsForProvider,
@@ -395,7 +394,7 @@ const commandManifest = () => ({
 		"session resume",
 	],
 	commonOptions: ["--computer", "--ws-url", "--token", "--project"],
-	contextOptions: ["--attach", "--file", "--linear", "--transcript", "--plan"],
+	contextOptions: ["--attach", "--file", "--transcript", "--plan"],
 	deleteRequires: "--confirm",
 	schemaVersion: 1,
 });
@@ -551,7 +550,6 @@ const contextFor = async (
 			kind: info.isDirectory() ? "directory" : "file",
 		});
 	}
-	const warnings: unknown[] = [];
 	for (const sourceSession of many(args, "transcript")) {
 		const source = await rpc(
 			client["session.get"]({ sessionId: asSessionId(sourceSession) }),
@@ -607,52 +605,7 @@ const contextFor = async (
 		);
 		fileRefs.push({ ...saved, kind: "file" });
 	}
-	for (const issueSelector of many(args, "linear")) {
-		const workspace = one(args, "linear-workspace");
-		const result = await rpc(
-			client["linear.listIssues"]({
-				query: issueSelector,
-				...(workspace ? { workspaceIds: [workspace] } : {}),
-			}),
-		);
-		const matches = result.issues.filter(
-			(issue) =>
-				issue.identifier.toLowerCase() === issueSelector.toLowerCase() ||
-				issue.issueId === issueSelector,
-		);
-		if (matches.length !== 1)
-			throw new CliError(
-				matches.length ? "ambiguous_linear_issue" : "linear_issue_not_found",
-				`Linear selector matched ${matches.length} exact issues.`,
-				{ candidates: result.issues },
-			);
-		const issue = matches[0];
-		if (issue === undefined)
-			throw new CliError("linear_issue_not_found", "Linear issue not found.");
-		const prepared = await rpc(
-			client["linear.prepareContext"]({
-				sessionId: asSessionId(sessionId),
-				issues: [
-					{
-						workspaceId: issue.workspaceId,
-						issueId: issue.issueId,
-						identifier: issue.identifier,
-					} satisfies LinearIssueRef,
-				],
-				rootPath: project.path,
-			}),
-		);
-		fileRefs.push(
-			...prepared.files.map(({ relPath, absPath }) => ({
-				relPath,
-				absPath,
-				kind: "file" as const,
-			})),
-		);
-		attachments.push(...prepared.attachments);
-		warnings.push(...prepared.warnings);
-	}
-	return { attachments, fileRefs, warnings };
+	return { attachments, fileRefs };
 };
 
 const composer = (
@@ -908,7 +861,7 @@ const execute = async (
 					background: true,
 				}),
 			);
-			return { ...created, warnings: context.warnings };
+			return created;
 		}
 		if (group === "session" && action === "create") {
 			const p = provider(args);
@@ -941,7 +894,7 @@ const execute = async (
 						input: composer(prompt, context),
 					}),
 				);
-			return { session: created, warnings: context.warnings };
+			return { session: created };
 		}
 		const selectedSessionId = asSessionId(
 			required(one(args, "session") ?? args.positionals[2], "--session"),
@@ -1081,7 +1034,6 @@ const execute = async (
 				session: await rpc(
 					client["session.get"]({ sessionId: selectedSessionId }),
 				),
-				warnings: context.warnings,
 			};
 		}
 		if (group === "session" && action === "plan-respond") {
@@ -1150,7 +1102,6 @@ const execute = async (
 							flush: !bool(args, "no-flush"),
 						}),
 					),
-					warnings: context.warnings,
 				};
 			return {
 				item: await rpc(
@@ -1161,7 +1112,6 @@ const execute = async (
 						input,
 					}),
 				),
-				warnings: context.warnings,
 			};
 		}
 		if (group === "session" && action === "queue-delete") {

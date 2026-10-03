@@ -58,6 +58,7 @@ import { ManagedTunnelProvider } from "./managed-tunnel.ts";
 import { routeModelConnectionRequest } from "./model-connection-routes.ts";
 import { ModelConnectionStore } from "./model-connection-store.ts";
 import { routeOrganizationRequest } from "./organizations.ts";
+import { routePluginRequest } from "./plugin-routes.ts";
 import { routePublicApiRequest } from "./public-api-routes.ts";
 import { PushDelivery } from "./push.ts";
 import type { SandboxOfferConfiguration } from "./sandbox-provider-module.ts";
@@ -353,6 +354,8 @@ const route = (
 		if (organizationResponse !== null) return organizationResponse;
 		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
 		if (modelConnectionResponse !== null) return modelConnectionResponse;
+		const pluginResponse = yield* routePluginRequest(request);
+		if (pluginResponse !== null) return pluginResponse;
 		const machineResponse = yield* routeMachineRequest(request);
 		if (machineResponse !== null) return machineResponse;
 		const cloudBillingResponse = yield* routeCloudBillingRequest(request);

@@ -54,7 +54,8 @@
 		"deploy:production": "node scripts/deploy-production.mjs"
 	},
 	"dependencies": {
-		"@zuse/slack": "*",
+		"@effect/sql-pg": "catalog:",
+		"@modelcontextprotocol/sdk": "1.29.0",
 		"@zuse/analytics": "*",
 		"@zuse/billing-providers": "*",
 		"@zuse/cloud-commands": "*",
@@ -62,10 +63,11 @@
 		"@zuse/machine-providers": "*",
 		"@zuse/pokemon-data": "*",
 		"@zuse/sandbox-providers": "*",
+		"@zuse/slack": "*",
 		"@zuse/utils": "*",
-		"@effect/sql-pg": "catalog:",
 		"effect": "catalog:",
-		"jose": "^6.2.3"
+		"jose": "^6.2.3",
+		"@zuse/executor-v2": "*"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260601.1",
@@ -74,7 +76,9 @@
 		"@types/pg": "^8.20.0",
 		"drizzle-kit": "^0.31.4",
 		"drizzle-orm": "^0.44.3",
+		"esbuild": "0.28.1",
 		"jsonc-parser": "^3.3.1",
+		"miniflare": "4.20260701.0",
 		"pg": "^8.22.0",
 		"typescript": "catalog:",
 		"vitest": "catalog:",

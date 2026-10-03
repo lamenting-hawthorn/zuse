@@ -133,6 +133,22 @@ const bridge = {
 			ipcRenderer.send("pairing:link-subscribe");
 		},
 	},
+	plugins: {
+		callbackPort: () =>
+			ipcRenderer.invoke("plugins:callback-port") as Promise<number | null>,
+		onReturn: (handler: (value: unknown) => void) => {
+			const wrapped = (_event: IpcRendererEvent, value: unknown) =>
+				handler(value);
+			ipcRenderer.on("plugins:return", wrapped);
+			return () => {
+				ipcRenderer.off("plugins:return", wrapped);
+			};
+		},
+		// Main buffers returns until this fires (browser may finish first).
+		subscribeReturns: () => {
+			ipcRenderer.send("plugins:return-subscribe");
+		},
+	},
 	browser: {
 		waitUntilReady: () =>
 			ipcRenderer.invoke("browser:waitUntilReady") as Promise<void>,

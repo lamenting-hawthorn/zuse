@@ -8,7 +8,7 @@ import { SessionDomain } from "@zuse/domain/engine/session-domain";
 import { SqlSessionQueries } from "@zuse/domain/queries/sql-session-queries";
 import { GitServiceLive } from "@zuse/git/git-service-live";
 import { WorktreeServiceLive } from "@zuse/git/worktree-service-live";
-import { Duration, Effect, Layer, Schedule } from "effect";
+import { Effect, Layer } from "effect";
 import { RpcServer } from "effect/unstable/rpc";
 import {
 	AccountAccessProcessLive,
@@ -19,6 +19,7 @@ import { ApiActivityPublisherLive } from "./api/activity-publisher.ts";
 import {
 	ApiLinkService,
 	ApiLinkServiceLive,
+	autoLinkUntilLinked,
 	makeDisabledApiLinkService,
 } from "./api/api-link-service.ts";
 import {
@@ -55,7 +56,6 @@ import {
 	LanAuthConfig,
 	LanAuthService,
 } from "./lan-auth/services/lan-auth-service.ts";
-import { LinearServiceLive } from "./linear/layers/linear-service.ts";
 import { MachineControlServiceLive } from "./machine/machine-control-service.ts";
 import {
 	MachineHostServiceLive,
@@ -478,7 +478,10 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(RuntimeModelConnectionsLayer),
 	);
 
+	// Discovery stamps effective enablement from the global `disabledSkills`
+	// setting, so it reads ConfigStore.
 	const SkillDiscoveryLayer = SkillDiscoveryServiceLive.pipe(
+		Layer.provide(ConfigStoreLayer),
 		Layer.provide(NodeServices.layer),
 	);
 	const HarnessProviderLayer = HarnessProviderLive.pipe(
@@ -512,6 +515,8 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		// start resolves the user's native MCP servers through McpService.
 		Layer.provide(ConfigStoreLayer),
 		Layer.provide(McpLayer),
+		// Claude session start resolves the skills allowlist for disabled skills.
+		Layer.provide(SkillDiscoveryLayer),
 		Layer.provide(AnalyticsLayer),
 		Layer.provide(NodeServices.layer),
 	);
@@ -554,13 +559,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(EnrolledLanAuthLayer),
 	);
 
-	const LinearLayer = LinearServiceLive.pipe(
-		Layer.provide(CredentialsLayer),
-		Layer.provide(AuthShellLayer),
-		Layer.provide(AttachmentLayer),
-		Layer.provide(MigratedSqlite),
-		Layer.provide(NodeServices.layer),
-	);
 	const MachineControlLayer = MachineControlServiceLive.pipe(
 		Layer.provide(AuthLayer),
 		Layer.provide(MachineRuntimeRoleLayer),
@@ -599,7 +597,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(ConfigStoreLayer),
 		Layer.provide(TitleGeneratorLayer),
 		Layer.provide(ApiActivityPublisherLayer),
-		Layer.provide(LinearLayer),
 		Layer.provide(ProjectorCatchup),
 		Layer.provide(SessionDomainLayer),
 		Layer.provide(ChatDomainLayer),
@@ -646,6 +643,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 
 	const SkillBridgeLayer = SkillBridgeLive.pipe(
 		Layer.provide(SkillDiscoveryLayer),
+		Layer.provide(ConfigStoreLayer),
 		Layer.provide(ConversationServicesLayer),
 		Layer.provide(WorkspaceLayer),
 	);
@@ -667,38 +665,22 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 					Layer.provide(TelemetryStoreLayer),
 				);
 	const autoApiLink = deps.autoApiLink;
-	// Linking must never block or fail server boot: it runs in a background
-	// fiber and retries with capped backoff until it sticks. Persistent causes
-	// (signed out, api down) self-heal on a later attempt without a restart.
+	// Linking runs in a background fiber and never blocks server boot; see
+	// `autoLinkUntilLinked` for the retry policy.
 	const AutoApiLinkLayer =
 		autoApiLink === undefined
 			? Layer.empty
 			: Layer.effectDiscard(
 					Effect.gen(function* () {
 						const api = yield* ApiLinkService;
-						yield* Effect.gen(function* () {
-							const status = yield* api.status();
-							if (!status.linked) {
-								yield* api.link(autoApiLink);
-							}
-						}).pipe(
-							Effect.tapError((error) =>
-								Effect.logWarning("api auto-link attempt failed", error),
-							),
-							Effect.retry(
-								Schedule.exponential("3 seconds").pipe(
-									Schedule.modifyDelay(({ duration }) =>
-										Effect.succeed(
-											Duration.millis(
-												Math.min(Duration.toMillis(duration), 60_000),
-											),
-										),
-									),
-									Schedule.jittered,
-								),
-							),
-							Effect.forkScoped({ startImmediately: true }),
-						);
+						yield* autoLinkUntilLinked(
+							Effect.gen(function* () {
+								const status = yield* api.status();
+								if (!status.linked) {
+									yield* api.link(autoApiLink);
+								}
+							}),
+						).pipe(Effect.forkScoped({ startImmediately: true }));
 					}),
 				).pipe(Layer.provide(ApiLinkLayer));
 
@@ -749,7 +731,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		EnrolledLanAuthLayer,
 		ApiLinkLayer,
 		ExternalThreadLayer,
-		LinearLayer,
 		ModelConnectionsLayer,
 		MachineControlLayer,
 		MachineHostLayer,

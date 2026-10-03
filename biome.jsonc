@@ -11,7 +11,8 @@
 			"!!**/coverage",
 			"!!**/dist",
 			"!!**/dist-electron",
-			"!!**/node_modules"
+			"!!**/node_modules",
+			"!!packages/executor-v2/vendor/runtime.mjs"
 		]
 	},
 	"css": {

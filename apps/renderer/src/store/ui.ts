@@ -35,8 +35,7 @@ export type SettingsSection =
 	| { readonly kind: "general" }
 	| { readonly kind: "defaults" }
 	| { readonly kind: "providers" }
-	| { readonly kind: "integrations" }
-	| { readonly kind: "mcp" }
+	| { readonly kind: "plugins"; readonly tab?: PluginsSettingsTab }
 	| { readonly kind: "devices" }
 	| { readonly kind: "organizations" }
 	| { readonly kind: "machines" }
@@ -61,7 +60,15 @@ export type SettingsSection =
  * the file tab only exists when `openFile !== null`. Opening a different file
  * replaces (never stacks) the file tab — see specs/0.02-MVP/features/file-viewer.md.
  */
-export type MainTab = "chat" | "file" | "changes" | "archives" | "usage";
+export type PluginsSettingsTab = "plugins" | "mcps" | "skills";
+
+export type MainTab =
+	| "chat"
+	| "file"
+	| "changes"
+	| "archives"
+	| "usage"
+	| "plugins";
 
 /**
  * Whether the Usage dashboard shows every project's usage (`global`, opened

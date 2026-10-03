@@ -645,6 +645,16 @@ const executeSessionCommand: ClientCommandExecutor<MemoizeClient> = {
 					client["mcp.setEnabled"](payload as never),
 				);
 				break;
+			case "skill.listGlobal":
+				result = await Effect.runPromise(
+					client["skill.listGlobal"](payload as never),
+				);
+				break;
+			case "skill.setEnabled":
+				result = await Effect.runPromise(
+					client["skill.setEnabled"](payload as never),
+				);
+				break;
 			case "session.goal.set":
 				result = await Effect.runPromise(
 					client["session.goal.set"](payload as never),
@@ -803,31 +813,6 @@ const executeSessionCommand: ClientCommandExecutor<MemoizeClient> = {
 			case "git.listIssues":
 				result = await Effect.runPromise(
 					client["git.listIssues"](payload as never),
-				);
-				break;
-			case "linear.listConnections":
-				result = await Effect.runPromise(
-					client["linear.listConnections"](payload as never),
-				);
-				break;
-			case "linear.listIssues":
-				result = await Effect.runPromise(
-					client["linear.listIssues"](payload as never),
-				);
-				break;
-			case "linear.connect":
-				result = await Effect.runPromise(
-					client["linear.connect"](payload as never),
-				);
-				break;
-			case "linear.disconnect":
-				result = await Effect.runPromise(
-					client["linear.disconnect"](payload as never),
-				);
-				break;
-			case "linear.prepareContext":
-				result = await Effect.runPromise(
-					client["linear.prepareContext"](payload as never),
 				);
 				break;
 			case "workspace.searchFiles":

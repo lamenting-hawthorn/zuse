@@ -199,6 +199,9 @@ type ResourceEntry = {
 	runtimeUpdates: number;
 	synchronization: Promise<void> | null;
 	synchronizationEpoch: number;
+	/** Stable empty view served by `snapshot` while a namespace change is pending. */
+	staleView: ResourceView<unknown> | null;
+	namespaceRefreshQueued: boolean;
 };
 
 type EnvironmentBinding<Client> = {
@@ -467,10 +470,36 @@ export class ClientBus<Client> {
 		};
 	}
 
+	/**
+	 * Pure read for render-time callers (`useSyncExternalStore`). A namespace
+	 * change (account switch) is applied on a microtask rather than here:
+	 * refreshing notifies listeners, and React forbids updating other
+	 * components during render. Until then the cell reads as empty, so the
+	 * previous owner's data is never shown.
+	 */
 	snapshot<Key extends ResourceKey<unknown>>(
 		key: Key,
 	): ResourceView<ResourceData<Key>> {
-		return this.entry(key).view as ResourceView<ResourceData<Key>>;
+		const entry = this.ensureEntry(key);
+		if (
+			this.options.resourceCacheNamespaceFor?.(entry.key) ===
+			entry.cacheNamespace
+		)
+			return entry.view as ResourceView<ResourceData<Key>>;
+		if (!entry.namespaceRefreshQueued) {
+			entry.namespaceRefreshQueued = true;
+			queueMicrotask(() => {
+				entry.namespaceRefreshQueued = false;
+				if (!this.disposed && this.entries.get(entry.id) === entry)
+					this.refreshResourceNamespace(entry);
+			});
+		}
+		entry.staleView ??= {
+			...emptyResourceView(),
+			connection: entry.view.connection,
+			generation: entry.view.generation,
+		};
+		return entry.staleView as ResourceView<ResourceData<Key>>;
 	}
 
 	subscribe<Key extends ResourceKey<unknown>>(
@@ -1101,6 +1130,13 @@ export class ClientBus<Client> {
 	}
 
 	private entry(key: ResourceKey<unknown>): ResourceEntry {
+		const entry = this.ensureEntry(key);
+		this.refreshResourceNamespace(entry);
+		return entry;
+	}
+
+	/** Find or create a cell without applying namespace changes. */
+	private ensureEntry(key: ResourceKey<unknown>): ResourceEntry {
 		const id = resourceKeyId(key);
 		let entry = this.entries.get(id);
 		if (entry === undefined) {
@@ -1124,10 +1160,11 @@ export class ClientBus<Client> {
 				runtimeUpdates: 0,
 				synchronization: null,
 				synchronizationEpoch: 0,
+				staleView: null,
+				namespaceRefreshQueued: false,
 			};
 			this.entries.set(id, entry);
 		}
-		this.refreshResourceNamespace(entry);
 		return entry;
 	}
 
@@ -1142,6 +1179,7 @@ export class ClientBus<Client> {
 		const namespace = this.options.resourceCacheNamespaceFor?.(entry.key);
 		if (namespace === entry.cacheNamespace) return;
 		entry.cacheNamespace = namespace;
+		entry.staleView = null;
 		entry.runtimeUpdates++;
 		entry.synchronizationEpoch++;
 		entry.synchronization = null;

@@ -201,9 +201,7 @@ interface OpencodeServerProcess {
 	readonly url: string;
 }
 
-const stopOpencodeChild = (
-	child: ChildProcessWithoutNullStreams,
-): void => {
+const stopOpencodeChild = (child: ChildProcessWithoutNullStreams): void => {
 	try {
 		if (process.platform !== "win32" && child.pid !== undefined) {
 			process.kill(-child.pid, "SIGTERM");
@@ -896,6 +894,7 @@ export const startOpencodeSession = (
 	opencodePath: string,
 	sessionId: AgentSessionId,
 	resumeCursor: string | null = null,
+	managedMcp?: import("../user-mcp/types.ts").ResolvedMcpServer,
 ): Effect.Effect<
 	OpencodeSessionHandle,
 	AgentSessionStartError,
@@ -939,7 +938,21 @@ export const startOpencodeSession = (
 				const proc = await spawnOpencodeServer(
 					opencodePath,
 					cwd,
-					buildOpencodeConfigContent(customProviders),
+					JSON.stringify({
+						...JSON.parse(buildOpencodeConfigContent(customProviders)),
+						...(managedMcp
+							? {
+									mcp: {
+										[managedMcp.name]: {
+											type: "remote",
+											url: managedMcp.url,
+											headers: managedMcp.headers,
+											oauth: false,
+										},
+									},
+								}
+							: {}),
+					}),
 				);
 				dlog(`server ready at ${proc.url}`);
 				const c = createOpencodeClient({ baseUrl: proc.url });
@@ -1358,7 +1371,9 @@ interface InventoryProvider {
 	readonly name?: unknown;
 	// Env var(s) the provider's key is read from (e.g. `["OPENAI_API_KEY"]`).
 	readonly env?: ReadonlyArray<unknown> | null;
-	readonly models?: { readonly [key: string]: InventoryProviderModel | null } | null;
+	readonly models?: {
+		readonly [key: string]: InventoryProviderModel | null;
+	} | null;
 }
 
 /**

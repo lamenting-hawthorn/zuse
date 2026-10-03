@@ -51,6 +51,7 @@
 	"vars": {
 		// Staging test rollout; production remains disabled pending multi-user verification.
 		"ORGANIZATION_WORKSPACES_ENABLED": "true",
+		"PLUGIN_APP_ORIGIN": "https://code-staging.zuse.sh",
 		// Enable only after migration 0022, Slack/WorkOS setup, and queue provisioning.
 		// Queue bindings are documented in internal-docs/cloud/slack-app-operations.md.
 		"SLACK_ENABLED": "true",
@@ -139,6 +140,7 @@
 	],
 	"durable_objects": {
 		"bindings": [
+			{ "name": "PLUGIN_VAULT", "class_name": "PluginVault" },
 			{ "name": "WORKSPACE_STARTUP", "class_name": "WorkspaceStartup" },
 			{
 				"name": "WORKSPACE_GATEWAY",
@@ -162,6 +164,7 @@
 		{
 			"tag": "v3-workspace-startup",
 			"new_sqlite_classes": ["WorkspaceStartup"]
-		}
+		},
+		{ "tag": "plugins-v1", "new_sqlite_classes": ["PluginVault"] }
 	]
 }

@@ -10,7 +10,6 @@ import {
 const requiredRuntimeEntries = [
 	"/dist-electron/app-mcp-proxy-child.cjs",
 	"/dist-electron/browser-mcp-child.cjs",
-	"/dist-electron/linear-mcp-child.cjs",
 	"/dist-electron/main.cjs",
 	"/dist-electron/orchestration-mcp-child.cjs",
 	"/dist-electron/preload.cjs",

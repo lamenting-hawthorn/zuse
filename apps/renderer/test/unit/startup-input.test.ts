@@ -36,7 +36,6 @@ const target = {
 
 const emptyOptions = {
 	issueMarkdown: null,
-	prepareLinear: null,
 	pendingContextFiles: [],
 	pendingAttachments: [],
 };
@@ -75,18 +74,12 @@ describe("startup input preparation", () => {
 		expect(
 			startupInputNeedsPreparation({
 				...emptyOptions,
-				prepareLinear: async (input) => input,
-			}),
-		).toBe(true);
-		expect(
-			startupInputNeedsPreparation({
-				...emptyOptions,
 				pendingAttachments: [pendingAttachment("pending-1")],
 			}),
 		).toBe(true);
 	});
 
-	it("writes issue, Linear, pasted text, and files into the target session", async () => {
+	it("writes issue, pasted text, and files into the target session", async () => {
 		saveContextText.mockResolvedValueOnce({
 			relPath: ".context/files/issue.md",
 			absPath: "/sandbox/.context/files/issue.md",
@@ -122,8 +115,6 @@ describe("startup input preparation", () => {
 			target,
 			{
 				issueMarkdown: "# Bug",
-				prepareLinear: async (input) =>
-					ComposerInput.make({ ...input, text: `${input.text} (linear)` }),
 				pendingContextFiles: [
 					{
 						tempRelPath: ".context/files/paste-pending-1.md",
@@ -146,7 +137,6 @@ describe("startup input preparation", () => {
 			expect.any(File),
 			undefined,
 		);
-		expect(finalized.text).toContain("(linear)");
 		expect(finalized.text).toContain("@.context/files/paste-1.md");
 		expect(finalized.attachments).toEqual([
 			{ id: "attachment-1", mimeType: "image/png", originalName: "shot.png" },

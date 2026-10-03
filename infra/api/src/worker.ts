@@ -1,4 +1,7 @@
-import type { DurableObjectState } from "@cloudflare/workers-types";
+import type {
+	DurableObjectNamespace,
+	DurableObjectState,
+} from "@cloudflare/workers-types";
 import { PgClient } from "@effect/sql-pg";
 import {
 	CLOUD_WORKSPACE_OFFER_ID,
@@ -31,6 +34,7 @@ import {
 import { CloudWorkspaceStorePg } from "./cloud-workspace-store.ts";
 import * as Config from "./config.ts";
 import { isConfigured } from "./environment.ts";
+import { withoutResponseHeaders } from "./http.ts";
 import { hyperdrivePoolConfig } from "./hyperdrive.ts";
 import { makeApi } from "./index.ts";
 import {
@@ -41,6 +45,8 @@ import { resolveMachineProviderRuntime } from "./machine-provider-config.ts";
 import { MachineStorePg } from "./machine-store.ts";
 import { ManagedTunnelProviderLive } from "./managed-tunnel.ts";
 import { ModelConnectionStoreLive } from "./model-connection-store.ts";
+import { PluginHost } from "./plugin-host.ts";
+import { makeCloudflarePluginHost } from "./plugin-host-cloudflare.ts";
 import { PushDeliveryLive } from "./push.ts";
 import { availableSandboxProviders } from "./sandbox-provider-availability.ts";
 import {
@@ -61,6 +67,7 @@ import {
 	WorkspaceStartupTask,
 } from "./workspace-startup.ts";
 
+export { PluginVault } from "./plugin-vault.ts";
 export { WorkspaceGateway } from "./workspace-gateway.ts";
 export { WorkspaceMailbox } from "./workspace-mailbox.ts";
 
@@ -111,6 +118,9 @@ interface Env extends SlackBindings {
 	readonly RELAY_MINT_PRIVATE_JWK: string;
 	readonly API_MINT_PUBLIC_JWK: string;
 	readonly CLOUD_DATA_ENCRYPTION_KEY?: string;
+	readonly PLUGIN_ENCRYPTION_KEY?: string;
+	readonly PLUGIN_APP_ORIGIN?: string;
+	readonly PLUGIN_VAULT: DurableObjectNamespace;
 	readonly GITHUB_APP_ID?: string;
 	readonly GITHUB_APP_SLUG?: string;
 	readonly GITHUB_APP_CLIENT_ID?: string;
@@ -499,6 +509,9 @@ const build = (env: Env, directStartup = false): ReturnType<typeof makeApi> => {
 		reconcileLeaseMs: 5 * 60 * 1_000,
 	};
 	const appLayer = Layer.mergeAll(
+		env.PLUGIN_ENCRYPTION_KEY && env.PLUGIN_APP_ORIGIN
+			? Layer.succeed(PluginHost, makeCloudflarePluginHost(env.PLUGIN_VAULT))
+			: Layer.empty,
 		configLayer,
 		ModelConnectionStoreLive.pipe(
 			Layer.provide(Layer.merge(dbLayer, configLayer)),
@@ -594,11 +607,13 @@ const applyResponseEffects = async (
 	const webhookDeliveryAccountId = response.headers.get(
 		"x-zuse-deliver-cloud-webhooks",
 	);
-	response.headers.delete("x-zuse-reconcile-machine");
-	response.headers.delete("x-zuse-reconcile-cloud-build");
-	response.headers.delete("x-zuse-reconcile-cloud-workspace");
-	response.headers.delete("x-zuse-nudge-cloud-workspace");
-	response.headers.delete("x-zuse-deliver-cloud-webhooks");
+	response = withoutResponseHeaders(response, [
+		"x-zuse-reconcile-machine",
+		"x-zuse-reconcile-cloud-build",
+		"x-zuse-reconcile-cloud-workspace",
+		"x-zuse-nudge-cloud-workspace",
+		"x-zuse-deliver-cloud-webhooks",
+	]);
 	if (
 		machineId === null &&
 		cloudBuildId === null &&

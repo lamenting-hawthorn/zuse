@@ -251,10 +251,17 @@ function ServerSettingsRow({
  * enable/disable toggle, and OAuth sign-in for servers that need it.
  * Adding or editing servers happens in the native config files.
  */
-export function McpServersPane() {
+export function McpServersPane({ query = "" }: { readonly query?: string }) {
 	const { message: uiMessage } = useUiMessages(["common", "settings"]);
 
-	const servers = useMcpStore((s) => s.servers);
+	const allServers = useMcpStore((s) => s.servers);
+	const needle = query.trim().toLowerCase();
+	const servers =
+		needle.length === 0
+			? allServers
+			: allServers.filter((server) =>
+					`${server.name} ${server.key}`.toLowerCase().includes(needle),
+				);
 	const statuses = useMcpStore((s) => s.statuses);
 	const refreshing = useMcpStore((s) => s.refreshing);
 	const load = useMcpStore((s) => s.load);
@@ -286,6 +293,7 @@ export function McpServersPane() {
 				const groupServers = servers.filter((server) =>
 					group.sources.includes(server.source),
 				);
+				if (groupServers.length === 0 && needle.length > 0) return null;
 				if (groupServers.length === 0 && group.sources[0] !== "builtin") {
 					return (
 						<SettingsFrame
@@ -345,7 +353,7 @@ export function McpServersPane() {
 								part1: <code className="font-mono text-[12px]" />,
 							}}
 							values={{
-								code0: "[mcp_servers.<name>]",
+								code0: "[mcp_servers.my-server]",
 								code1: "~/.codex/config.toml",
 							}}
 						/>

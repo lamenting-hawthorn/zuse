@@ -4,7 +4,6 @@ import {
 	getDefaultDeviceCommandClient,
 } from "@zuse/agents/drivers/device-command-tools";
 import { IMAGE_MCP_TOOLS } from "@zuse/agents/drivers/image-mcp-tools";
-import { LINEAR_MCP_TOOLS } from "@zuse/agents/drivers/linear-tools";
 import { ORCHESTRATION_MCP_TOOLS } from "@zuse/agents/drivers/orchestration-tools";
 import { mcpGatewayDiagnostics } from "@zuse/agents/mcp-gateway";
 import { probeMcpServer } from "@zuse/agents/user-mcp/probe";
@@ -22,6 +21,7 @@ import { type Cause, Effect, Layer, Queue, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { SqlClient } from "effect/unstable/sql";
 
+import { toggleDisabledKey } from "../../config-store/disabled-keys.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
 import { resolveCliPath } from "../../provider/availability.ts";
 import { BrowserBridgeService } from "../../provider/services/browser-bridge-service.ts";
@@ -141,7 +141,6 @@ const BUILTIN_TOOL_NAMES = [
 	...BROWSER_MCP_TOOLS.map((tool) => tool.name),
 	...IMAGE_MCP_TOOLS.map((tool) => tool.name),
 	...ORCHESTRATION_MCP_TOOLS.map((tool) => tool.name),
-	...LINEAR_MCP_TOOLS.map((tool) => tool.name),
 ];
 
 const placeholderStatus = (
@@ -662,11 +661,7 @@ export const McpServiceLive = Layer.effect(
 					return;
 				}
 				const toggle = (current: ReadonlyArray<string>): string[] =>
-					enabled
-						? current.filter((k) => k !== key)
-						: current.includes(key)
-							? [...current]
-							: [...current, key];
+					toggleDisabledKey(current, key, enabled);
 				if (projectId === undefined) {
 					const settings = yield* configStore.getSettings().pipe(Effect.orDie);
 					yield* configStore

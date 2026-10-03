@@ -155,8 +155,8 @@ export const takeCloudMailboxDirective = (
 	const hasMailboxHeader = mailboxHeaderNames.some((name) =>
 		response.headers.has(name),
 	);
-	for (const name of mailboxHeaderNames) response.headers.delete(name);
 	if (!hasMailboxHeader) return { kind: "none" };
+	for (const name of mailboxHeaderNames) response.headers.delete(name);
 
 	const workspaceId = values.workspaceId?.trim();
 	if (workspaceId === undefined || workspaceId === "")

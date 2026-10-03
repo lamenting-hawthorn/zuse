@@ -59,3 +59,32 @@ export const createBufferedChannel = <T>(): BufferedChannel<T> => {
 		},
 	};
 };
+
+/** A managed-plugin OAuth return delivered to the loopback by the Zuse API. */
+export type PluginReturn = {
+	readonly ticket: string | null;
+	readonly tenantId: string;
+	readonly plugin: string | null;
+	readonly error: string | null;
+};
+
+const PLUGIN_PARAM_MAX_LENGTH = 512;
+
+const pluginParam = (url: URL, name: string): string | null => {
+	const value = url.searchParams.get(name)?.trim() ?? "";
+	return value.length === 0 || value.length > PLUGIN_PARAM_MAX_LENGTH
+		? null
+		: value;
+};
+
+/**
+ * Parse `/plugins/callback?plugin_ticket=…&plugin_tenant=…`. A return names
+ * its tenant and carries either a ticket or an error; anything else is junk.
+ */
+export const pluginReturnOf = (url: URL): PluginReturn | null => {
+	const tenantId = pluginParam(url, "plugin_tenant");
+	const ticket = pluginParam(url, "plugin_ticket");
+	const error = pluginParam(url, "plugin_error");
+	if (tenantId === null || (ticket === null) === (error === null)) return null;
+	return { ticket, tenantId, plugin: pluginParam(url, "plugin"), error };
+};

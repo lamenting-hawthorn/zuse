@@ -27,14 +27,6 @@ import {
 	type ImageMcpToolOptions,
 } from "../drivers/image-mcp-tools.ts";
 import {
-	callLinearTool,
-	ensureLinearToolPermission,
-	isLinearToolName,
-	LINEAR_MCP_TOOLS,
-	type LinearPermissionOptions,
-	type LinearToolDeps,
-} from "../drivers/linear-tools.ts";
-import {
 	callOrchestrationTool,
 	ensureOrchestrationPermission,
 	isOrchestrationToolName,
@@ -42,6 +34,12 @@ import {
 	type OrchestrationPermissionOptions,
 	type OrchestrationToolDeps,
 } from "../drivers/orchestration-tools.ts";
+import {
+	handlePluginTool,
+	PLUGIN_TOOLS,
+	type PluginClient,
+	type PluginPermissionOptions,
+} from "../drivers/plugin-tools.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -67,13 +65,15 @@ export interface AppMcpInteractionOptions {
 }
 
 export interface McpGatewaySessionContext {
+	readonly plugins?: PluginPermissionOptions & {
+		readonly client: PluginClient;
+	};
 	readonly deviceCommands?: DeviceCommandClient;
 	readonly getPermissionMode?: () => string;
 	readonly browser?: BrowserMcpToolOptions;
 	readonly orchestration?: OrchestrationPermissionOptions & {
 		readonly deps: OrchestrationToolDeps;
 	};
-	readonly linear?: LinearPermissionOptions & { readonly deps: LinearToolDeps };
 	readonly images?: ImageMcpToolOptions;
 	readonly interaction?: AppMcpInteractionOptions;
 }
@@ -82,8 +82,8 @@ export interface McpGatewayIssueInput {
 	readonly sessionId: string;
 	readonly scopes: {
 		readonly browser: boolean;
+		readonly plugins?: boolean;
 		readonly orchestration: boolean;
-		readonly linear?: boolean;
 		readonly images?: boolean;
 		readonly deviceCommands?: boolean;
 		readonly interaction?: boolean;
@@ -120,8 +120,8 @@ interface RegistryRecord {
 	readonly tokenHash: string;
 	readonly scopes: {
 		readonly browser: boolean;
+		readonly plugins?: boolean;
 		readonly orchestration: boolean;
-		readonly linear?: boolean;
 		readonly images?: boolean;
 		readonly deviceCommands?: boolean;
 		readonly interaction?: boolean;
@@ -300,6 +300,7 @@ type AppToolDefinition = {
 
 const buildAppServer = (record: RegistryRecord): Server => {
 	const definitions: AppToolDefinition[] = [
+		...(record.scopes.plugins && record.ctx.plugins ? PLUGIN_TOOLS : []),
 		...(record.scopes.deviceCommands && record.ctx.deviceCommands
 			? DEVICE_COMMAND_TOOLS
 			: []),
@@ -308,9 +309,6 @@ const buildAppServer = (record: RegistryRecord): Server => {
 			: []),
 		...(record.scopes.orchestration && record.ctx.orchestration !== undefined
 			? ORCHESTRATION_MCP_TOOLS
-			: []),
-		...(record.scopes.linear && record.ctx.linear !== undefined
-			? LINEAR_MCP_TOOLS
 			: []),
 		...(record.scopes.images && record.ctx.images !== undefined
 			? IMAGE_MCP_TOOLS
@@ -348,6 +346,13 @@ const buildAppServer = (record: RegistryRecord): Server => {
 			};
 		}
 		try {
+			if (PLUGIN_TOOLS.some((tool) => tool.name === name) && record.ctx.plugins)
+				return handlePluginTool(
+					name,
+					args,
+					record.ctx.plugins.client,
+					record.ctx.plugins,
+				);
 			if (BROWSER_MCP_TOOLS.some((tool) => tool.name === name)) {
 				if (record.ctx.browser === undefined)
 					throw new Error("Browser unavailable");
@@ -367,12 +372,6 @@ const buildAppServer = (record: RegistryRecord): Server => {
 					name,
 					args,
 				);
-			}
-			if (isLinearToolName(name)) {
-				if (record.ctx.linear === undefined)
-					throw new Error("Connector unavailable");
-				await ensureLinearToolPermission(name, args, record.ctx.linear);
-				return await callLinearTool(record.ctx.linear.deps, name, args);
 			}
 			if (DEVICE_COMMAND_TOOLS.some((tool) => tool.name === name)) {
 				if (!record.scopes.deviceCommands || !record.ctx.deviceCommands)
@@ -428,7 +427,7 @@ const handleMcpRequest = async (
 const requestHandler = (req: IncomingMessage, res: ServerResponse): void => {
 	void (async () => {
 		const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-		if (path !== APP_MCP_PATH) {
+		if (path !== APP_MCP_PATH && path !== "/plugins") {
 			writeText(res, 404, "not found");
 			return;
 		}
@@ -443,6 +442,34 @@ const requestHandler = (req: IncomingMessage, res: ServerResponse): void => {
 			return;
 		}
 		try {
+			if (path === "/plugins") {
+				if (
+					req.method !== "POST" ||
+					!record.scopes.plugins ||
+					!record.ctx.plugins
+				) {
+					writeText(res, 403, "unavailable");
+					return;
+				}
+				let body = "";
+				for await (const chunk of req) {
+					body += chunk;
+					if (body.length > 128_000) {
+						writeText(res, 413, "too large");
+						return;
+					}
+				}
+				const { name, args } = JSON.parse(body);
+				const result = await handlePluginTool(
+					name,
+					args,
+					record.ctx.plugins.client,
+					record.ctx.plugins,
+				);
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(JSON.stringify(result));
+				return;
+			}
 			await handleMcpRequest(req, res, record);
 		} catch (cause) {
 			if (!res.headersSent) {

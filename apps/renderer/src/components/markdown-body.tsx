@@ -25,15 +25,11 @@ import {
 	useRef,
 	useState,
 } from "react";
-import ReactMarkdown, {
-	type Components,
-	defaultUrlTransform,
-} from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
-import { resolveMarkdownPreviewUrl } from "~/lib/file-preview";
 import { openExternal } from "~/lib/platform-capabilities";
 import { knownSiteLink } from "~/lib/site-link";
 import { cn } from "~/lib/utils";
@@ -565,12 +561,10 @@ function MermaidDiagram({ source }: { source: string }) {
 export const MarkdownBody = memo(function MarkdownBody({
 	children,
 	className,
-	baseHref,
 	githubHtml = false,
 }: {
 	children: string;
 	className?: string;
-	baseHref?: string;
 	githubHtml?: boolean;
 }) {
 	const deferredText = useDeferredValue(children);
@@ -631,16 +625,12 @@ export const MarkdownBody = memo(function MarkdownBody({
 			<ReactMarkdown
 				remarkPlugins={[remarkGfm]}
 				rehypePlugins={githubHtml ? [rehypeRaw, rehypeSanitize] : []}
-				urlTransform={(value, property, node) =>
-					resolveMarkdownPreviewUrl(value, property, node.tagName, baseHref) ??
-					defaultUrlTransform(value)
-				}
 				components={components}
 			>
 				{deferredText}
 			</ReactMarkdown>
 		),
-		[deferredText, githubHtml, baseHref, components],
+		[deferredText, githubHtml, components],
 	);
 	return <div className={cn("fz-prose", className)}>{markdown}</div>;
 });
