@@ -68,3 +68,21 @@ then verifies owner confirmation and replay rejection. A live callback request
 without OAuth credentials changed from HTTP 500 to the expected HTTP 400.
 The user's authorization code was not replayed. Failed attempts must be
 cancelled and restarted to obtain a fresh confirmation redirect.
+
+## Linear issuer confirmation follow-up
+
+Linear advertises `authorization_response_iss_parameter_supported: true`.
+The vault retained the authorization code and state but discarded `iss` before
+calling the SDK's OAuth validator. Commit `805cde89` retains the issuer in the
+encrypted attempt and forwards it unchanged for validation, clearing it with
+the terminal attempt data. Missing or mismatched issuers remain rejected.
+The confirmation UI now uses a general failure message rather than claiming
+that every failure is expiry or an account mismatch.
+
+API version: `c85aaf1d-a37c-47f3-8761-ab1a068fefb6`.
+Web: `https://zuse-be38g26uc-swarajbachus-projects.vercel.app`, aliased to staging.
+API and renderer type checks, Biome, 12 plugin tests and the browser regression
+passed. The OAuth fixture now advertises issuer validation and exercises valid,
+missing and mismatched issuer responses. The valid confirmation test failed
+before the fix and passed afterward. A fresh real-account consent attempt is
+required because previous attempts did not retain the issuer.
