@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { dispatchEnvironmentShellCommand } from "~/lib/environment-shell-client-bus.ts";
 import { PROVIDER_LABEL } from "~/lib/provider-labels";
 import { useEnvironmentCatalogStore } from "~/store/environment-catalog.ts";
+import { PluginsLoading } from "../plugins/plugins-loading.tsx";
 import { Button } from "../ui/button.tsx";
 import { SettingsGroup } from "../ui/settings-panel.tsx";
 import { Switch } from "../ui/switch.tsx";
@@ -110,17 +111,15 @@ export function SkillsSettingsList({
 }) {
 	const { message: m } = useUiMessages(["plugins"]);
 	const needle = query.trim().toLowerCase();
+	if (state.skills === null && !state.failed)
+		return <PluginsLoading label={m("plugins:plugins_loading")} />;
 	if (state.skills === null)
 		return (
 			<p className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-				{state.failed
-					? m("plugins:plugins_skills_load_failed")
-					: m("plugins:plugins_loading")}
-				{state.failed && (
-					<Button variant="ghost" onClick={() => void state.reload()}>
-						{m("plugins:plugins_retry")}
-					</Button>
-				)}
+				{m("plugins:plugins_skills_load_failed")}
+				<Button variant="ghost" onClick={() => void state.reload()}>
+					{m("plugins:plugins_retry")}
+				</Button>
 			</p>
 		);
 	const skills = state.skills

@@ -352,4 +352,32 @@ describe("persistent display cache", () => {
 			observeRendererAccount(null);
 		}
 	});
+
+	it("shares account-scoped snapshots across workspaces and persists them", async () => {
+		observeRendererAccount("account-a");
+		try {
+			const plugins = (value: boolean) =>
+				runCachedControlPlane(
+					"plugins:list:personal",
+					() => Effect.succeed({ connected: value }),
+					{ decode, scope: "account" },
+				);
+			await plugins(true);
+			selectRendererWorkspace({
+				kind: "organization",
+				organizationId: "org-a",
+			});
+			expect(
+				peekControlPlaneCache("plugins:list:personal", decode, "account"),
+			).toEqual({ connected: true });
+			clearControlPlaneSessionCache();
+			// Restored from storage after a reload, in any workspace.
+			expect(
+				peekControlPlaneCache("plugins:list:personal", decode, "account"),
+			).toEqual({ connected: true });
+			selectRendererWorkspace({ kind: "personal" });
+		} finally {
+			observeRendererAccount(null);
+		}
+	});
 });

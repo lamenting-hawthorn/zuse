@@ -8,16 +8,17 @@ import {
 	PuzzleIcon,
 	Search01Icon,
 } from "@zuse/icons/solid-rounded";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePluginAccount } from "~/lib/connected-plugins.ts";
 import {
 	notifyPluginsChanged,
-	onPluginsChanged,
 	pluginRequest,
+	usePluginSnapshot,
 } from "~/lib/plugins-client.ts";
 import { useMcpStore } from "~/store/mcp.ts";
 import { type PluginsSettingsTab, useUiStore } from "~/store/ui.ts";
 import { PluginIcon } from "../plugins/plugin-icon.tsx";
+import { PluginsLoading } from "../plugins/plugins-loading.tsx";
 import { Button } from "../ui/button.tsx";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu.tsx";
 import { SegmentedTabs } from "../ui/segmented-tabs.tsx";
@@ -180,24 +181,8 @@ function rowsOf(snapshot: PluginSnapshot): readonly PluginRow[] {
 }
 
 function useConnectedPluginRows(): ConnectedPluginRows {
+	const { snapshot, failed, refresh } = usePluginSnapshot(usePluginAccount());
 	const account = usePluginAccount();
-	const [snapshot, setSnapshot] = useState<PluginSnapshot | null>(null);
-	const [failed, setFailed] = useState(false);
-	const reload = useCallback(async () => {
-		if (account === null) return;
-		try {
-			const result = await pluginRequest({ action: "list" });
-			if (result.kind === "snapshot") setSnapshot(result);
-			setFailed(false);
-		} catch {
-			setFailed(true);
-		}
-	}, [account]);
-	useEffect(() => {
-		setSnapshot(null);
-		void reload();
-	}, [reload]);
-	useEffect(() => onPluginsChanged(() => void reload()), [reload]);
 	const rows = useMemo(
 		() => (snapshot === null ? null : rowsOf(snapshot)),
 		[snapshot],
@@ -207,7 +192,7 @@ function useConnectedPluginRows(): ConnectedPluginRows {
 		tenantId: snapshot?.tenantId ?? null,
 		rows,
 		failed,
-		reload,
+		reload: refresh,
 	};
 }
 
@@ -272,7 +257,8 @@ function ConnectedPluginList({
 				</Button>
 			</Empty>
 		);
-	if (state.rows === null) return <Empty>{m("plugins:plugins_loading")}</Empty>;
+	if (state.rows === null)
+		return <PluginsLoading label={m("plugins:plugins_loading")} />;
 	if (rows.length === 0)
 		return (
 			<Empty>

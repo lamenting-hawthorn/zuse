@@ -100,14 +100,21 @@ const catalog=[
  ...Array.from({length:60},(_,i)=>entry('tool-'+i,'Tool '+i,'An example MCP server number '+i+'.','example'+i+'.test')),
 ];
 let connections=location.pathname.startsWith('/__plugins-settings')?[{id:'c-linear',pluginId:'linear',label:'Linear',owner:'user',state:'connected',createdAt:1,enabled:true}]:[];
+import {useCallback,useEffect,useState} from 'react';
 const listeners=new Set();
+const snapshot=()=>({kind:'snapshot',tenantId:'personal:fixture',tenants:[{id:'personal:fixture',kind:'personal',name:'Personal'}],catalog,connections,endpoint:''});
 export const notifyPluginsChanged=()=>{for(const l of listeners)l();};
-export const onPluginsChanged=l=>{listeners.add(l);return()=>listeners.delete(l);};
+export function usePluginSnapshot(account){
+ const [value,setValue]=useState(null);
+ const refresh=useCallback(async()=>{setValue(snapshot());for(const l of listeners)if(l!==refresh)l();},[]);
+ useEffect(()=>{if(account===null)return;setValue(snapshot());const l=()=>setValue(snapshot());listeners.add(l);return()=>listeners.delete(l);},[account]);
+ return {snapshot:account===null?null:value,failed:false,refresh};
+}
 export const pluginReturnTo=async()=>({kind:'desktop',port:8976});
 export async function pluginRequest(input){
  if(input.action==='setEnabled'){window.lastPluginToggle=input;connections=connections.map(c=>c.id===input.connectionId?{...c,enabled:input.enabled}:c);return {kind:'ok'};}
  if(input.action==='complete'){connections.push({id:'c-linear',pluginId:'linear',label:'Linear',owner:'user',state:'connected',createdAt:Date.now(),enabled:true});return {kind:'attempt',id:'a',connectionId:'c-linear',state:'connected',authorizationUrl:null,expiresAt:Date.now()};}
- if(input.action==='list')return {kind:'snapshot',tenantId:'personal:fixture',tenants:[{id:'personal:fixture',kind:'personal',name:'Personal'}],catalog,connections,endpoint:''};
+ if(input.action==='list')return snapshot();
  if(input.action==='disconnect'){connections=connections.filter(c=>c.id!==input.connectionId);return {kind:'ok'};}
  if(input.action==='poll')return {kind:'attempt',id:input.attemptId,connectionId:input.attemptId,state:'pending',authorizationUrl:'https://mcp.notion.com/authorize',expiresAt:Date.now()+60000};
  if(input.action==='cancel'){connections=connections.filter(c=>c.id!==input.attemptId);return {kind:'attempt',id:input.attemptId,connectionId:input.attemptId,state:'cancelled',authorizationUrl:null,expiresAt:Date.now()};}

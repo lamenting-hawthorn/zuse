@@ -4,7 +4,6 @@ import type {
 	PluginAttempt,
 	PluginConnection,
 	PluginDefinition,
-	PluginSnapshot,
 } from "@zuse/contracts";
 import { formatDate } from "@zuse/i18n";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
@@ -19,23 +18,20 @@ import {
 } from "@zuse/icons/solid-rounded";
 import {
 	type ReactNode,
-	useCallback,
 	useDeferredValue,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
 } from "react";
 import { useAuth } from "~/hooks/use-auth.ts";
-import { rememberPluginSnapshot } from "~/lib/connected-plugins.ts";
 import {
 	openExternal,
 	rendererPlatformCapabilities,
 } from "~/lib/platform-capabilities.ts";
 import {
-	onPluginsChanged,
 	pluginRequest,
 	pluginReturnTo,
+	usePluginSnapshot,
 } from "~/lib/plugins-client.ts";
 import { useUiStore } from "~/store/ui.ts";
 import { Button } from "../ui/button.tsx";
@@ -43,6 +39,7 @@ import { SegmentedTabs } from "../ui/segmented-tabs.tsx";
 import { Spinner } from "../ui/spinner.tsx";
 import { toastManager } from "../ui/toast.tsx";
 import { PluginIcon } from "./plugin-icon.tsx";
+import { PluginsLoading } from "./plugins-loading.tsx";
 
 type Tab = "browse" | "connected";
 const PAGE_SIZE = 40;
@@ -57,55 +54,47 @@ async function openAuthorization(url: string) {
 function usePlugins() {
 	const { user, isSignedIn } = useAuth();
 	const account = isSignedIn ? (user?.id ?? null) : null;
-	const [snapshot, setSnapshot] = useState<PluginSnapshot | null>(null);
 	const [tenant, setTenant] = useState<string>();
 	const [attempt, setAttempt] = useState<
 		(PluginAttempt & { pluginId: string }) | null
 	>(null);
 	const [busy, setBusy] = useState<string | null>(null);
-	const [failed, setFailed] = useState(false);
-	const generation = useRef(0);
-
-	const load = useCallback(async () => {
-		const current = generation.current;
-		try {
-			const result = await pluginRequest({ action: "list", tenantId: tenant });
-			if (current !== generation.current || result.kind !== "snapshot") return;
-			setSnapshot(result);
-			if (account !== null) rememberPluginSnapshot(account, result);
-			setFailed(false);
-			// Resume an attempt started before the page was closed.
-			const pending = result.connections.find(
-				(connection) => connection.state === "connecting",
-			);
-			if (!pending) return;
-			const status = await pluginRequest({
-				action: "poll",
-				tenantId: result.tenantId,
-				attemptId: pending.id,
-			});
-			if (
-				current === generation.current &&
-				status.kind === "attempt" &&
-				status.state === "pending"
-			)
-				setAttempt({ ...status, pluginId: pending.pluginId });
-		} catch {
-			if (current === generation.current) setFailed(true);
-		}
-	}, [tenant, account]);
+	// Shared, persisted snapshot: shown instantly, revalidated in the background.
+	const { snapshot, failed, refresh } = usePluginSnapshot(account, tenant);
+	const load = refresh;
 
 	useEffect(() => {
-		generation.current++;
-		setSnapshot(null);
 		setAttempt(null);
-		void load();
-		return () => {
-			generation.current++;
-		};
-	}, [load, user?.id]);
+	}, [account, tenant]);
 
-	useEffect(() => onPluginsChanged(() => void load()), [load]);
+	// Resume an attempt started before the page was closed.
+	const pendingId = snapshot?.connections.find(
+		(connection) => connection.state === "connecting",
+	);
+	const pendingTenant = snapshot?.tenantId;
+	useEffect(() => {
+		if (pendingId === undefined || pendingTenant === undefined) return;
+		let cancelled = false;
+		void pluginRequest({
+			action: "poll",
+			tenantId: pendingTenant,
+			attemptId: pendingId.id,
+		})
+			.then((status) => {
+				if (
+					!cancelled &&
+					status.kind === "attempt" &&
+					status.state === "pending"
+				)
+					setAttempt(
+						(current) => current ?? { ...status, pluginId: pendingId.pluginId },
+					);
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [pendingId?.id, pendingId?.pluginId, pendingTenant]);
 
 	// The browser hands the ticket to the app, which redeems it; polling only
 	// notices that the attempt left `pending` so the row can settle.
@@ -415,13 +404,7 @@ export function PluginsPage() {
 									</Button>
 								</div>
 							) : !snapshot ? (
-								<p
-									role="status"
-									className="flex items-center gap-2 py-8 text-muted-foreground"
-								>
-									<Spinner className="size-3.5" />
-									{m("plugins:plugins_loading")}
-								</p>
+								<PluginsLoading label={m("plugins:plugins_loading")} />
 							) : matches.length === 0 ? (
 								<p className="py-12 text-center text-muted-foreground">
 									{deferredQuery
