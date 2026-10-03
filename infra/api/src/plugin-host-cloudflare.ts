@@ -1,6 +1,11 @@
 import type { DurableObjectNamespace } from "@cloudflare/workers-types";
 import type { PluginResponse } from "@zuse/contracts";
-import type { PluginHost, PluginIdentity } from "./plugin-host.ts";
+import {
+	isPluginErrorCode,
+	type PluginHost,
+	type PluginIdentity,
+	PluginOperationError,
+} from "./plugin-host.ts";
 
 export const makeCloudflarePluginHost = (
 	vaults: DurableObjectNamespace,
@@ -11,7 +16,16 @@ export const makeCloudflarePluginHost = (
 			method: "POST",
 			body: JSON.stringify({ identity, ...payload }),
 		});
-		if (!response.ok) throw new Error("Plugin operation failed");
+		if (!response.ok) {
+			const body = (await response.json().catch(() => null)) as {
+				error?: unknown;
+			} | null;
+			throw new PluginOperationError({
+				code: isPluginErrorCode(body?.error)
+					? body.error
+					: "plugin_operation_failed",
+			});
+		}
 		return response.json();
 	};
 	return {

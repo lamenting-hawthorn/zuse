@@ -9,7 +9,7 @@ import { requireRuntime } from "./cloud-workspace-routes.ts";
 import { ApiConfiguration } from "./config.ts";
 import { badRequest, forbidden, serviceUnavailable } from "./errors.ts";
 import { readLimitedJsonBody } from "./http.ts";
-import { PluginHost } from "./plugin-host.ts";
+import { PluginHost, PluginOperationError } from "./plugin-host.ts";
 import { servePluginMcp } from "./plugin-mcp.ts";
 
 export const pluginTenants = (
@@ -37,7 +37,12 @@ export const routePluginRequest = (request: Request) =>
 		const attempt = <A>(f: () => Promise<A>) =>
 			Effect.tryPromise({
 				try: f,
-				catch: () => badRequest("plugin_operation_failed"),
+				catch: (error) =>
+					badRequest(
+						error instanceof PluginOperationError
+							? error.code
+							: "plugin_operation_failed",
+					),
 			});
 		if (
 			/^\/v1\/plugins\/callback\/[a-f0-9]{64}$/.test(url.pathname) &&

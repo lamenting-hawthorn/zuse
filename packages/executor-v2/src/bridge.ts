@@ -44,7 +44,46 @@ import {
 	Stream,
 } from "effect";
 import { FetchHttpClient, HttpClient } from "effect/unstable/http";
-import type { EngineConnection, EngineOptions, PluginEngine } from "./types.ts";
+import type {
+	EngineAuth,
+	EngineConnection,
+	EngineOptions,
+	EnginePlugin,
+	PluginEngine,
+	PluginEngineErrorCode,
+} from "./types.ts";
+
+/** A failure the caller can explain; other failures stay opaque. */
+export class PluginEngineError extends Error {
+	constructor(readonly code: PluginEngineErrorCode) {
+		super(code);
+		this.name = "PluginEngineError";
+	}
+}
+const CLIENT_REGISTRATION_REASONS = new Set([
+	"client_registration_required",
+	"client_not_approved",
+	"client_metadata_rejected",
+	"registration_rejected",
+]);
+/** Classifies OAuth setup failures without exposing provider responses. */
+const oauthSetupError = (error: unknown) => {
+	if (typeof error !== "object" || error === null || !("_tag" in error))
+		return error;
+	const reason = "reason" in error ? error.reason : undefined;
+	if (
+		error._tag === "OAuthClientUnavailable" ||
+		(error._tag === "OAuthSetupFailed" &&
+			typeof reason === "string" &&
+			CLIENT_REGISTRATION_REASONS.has(reason))
+	)
+		return new PluginEngineError("client_registration_unsupported");
+	if (error._tag === "OAuthSetupFailed")
+		return new PluginEngineError(
+			reason === "service_unavailable" ? "unreachable" : "auth_unsupported",
+		);
+	return error;
+};
 
 /** Only these bundled declarations can execute. No user source, eval, or dynamic deployment. */
 export async function createPluginEngine(
@@ -63,53 +102,93 @@ export async function createPluginEngine(
 	const run = managed.runPromise;
 	const io = <A>(work: () => Promise<A>) =>
 		Effect.tryPromise({ try: work, catch: () => new RuntimeProtocolFailed() });
-	const plugins = new Map(
-		await Promise.all(
-			options.plugins.map(async (plugin) => {
-				const provider = defineProvider({
-					name: plugin.name,
-					auth: {
-						oauth: oauth2({
-							discover: plugin.endpoint,
-							scopes: [...plugin.scopes],
-						}),
-					},
-				});
-				const app =
-					plugin.auth === "none"
-						? defineApp({ accounts: {} }, async ({ signal }) => ({
-								tools: await mcpRouter({ url: plugin.endpoint, signal }),
-							}))
-						: defineApp(
-								{ accounts: { service: provider } },
-								async ({ accounts, signal }) => ({
-									tools: await mcpRouter({
-										url: plugin.endpoint,
-										signal,
-										headers: {
-											Authorization: `Bearer ${accounts.service.fields.access_token}`,
+	type Entry = {
+		readonly source: string;
+		readonly build: BuildId;
+		readonly handler: ReturnType<typeof createAppHandler>;
+	};
+	const entries = new Map<string, Promise<Entry>>();
+	const builds = new Map<BuildId, Entry>();
+	const definition = (pluginId: string) => {
+		const plugin = options.plugin(pluginId);
+		if (!plugin) throw new Error("Unknown plugin");
+		return plugin;
+	};
+	// Build IDs hash this source. Its shape is unchanged from eager registration,
+	// so connections created before lazy registration keep their builds.
+	const sourceOf = (plugin: EnginePlugin, auth: EngineAuth) =>
+		`export default ${JSON.stringify({ protocol: 1, id: plugin.id, name: plugin.name, endpoint: plugin.endpoint, auth, scopes: plugin.scopes ?? [], ...(plugin.oauthDiscovery ? { oauthDiscovery: plugin.oauthDiscovery } : {}) })};\n`;
+	/** Registers one definition on demand, memoized per (plugin, auth). */
+	const register = (pluginId: string, auth: EngineAuth): Promise<Entry> => {
+		const key = JSON.stringify([pluginId, auth]);
+		const existing = entries.get(key);
+		if (existing) return existing;
+		const created = (async () => {
+			const plugin = definition(pluginId);
+			const source = sourceOf(plugin, auth);
+			const digest = await crypto.subtle.digest(
+				"SHA-256",
+				new TextEncoder().encode(source),
+			);
+			const build = BuildId.make(
+				`bld_${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`,
+			);
+			const app =
+				auth === "none"
+					? defineApp({ accounts: {} }, async ({ signal }) => ({
+							tools: await mcpRouter({ url: plugin.endpoint, signal }),
+						}))
+					: defineApp(
+							{
+								accounts: {
+									service: defineProvider({
+										name: plugin.name,
+										auth: {
+											oauth: oauth2({
+												discover: plugin.oauthDiscovery ?? plugin.endpoint,
+												scopes: [...(plugin.scopes ?? [])],
+											}),
 										},
 									}),
+								},
+							},
+							async ({ accounts, signal }) => ({
+								tools: await mcpRouter({
+									url: plugin.endpoint,
+									signal,
+									headers: {
+										Authorization: `Bearer ${accounts.service.fields.access_token}`,
+									},
 								}),
-							);
-				const source = `export default ${JSON.stringify({ protocol: 1, id: plugin.id, name: plugin.name, endpoint: plugin.endpoint, auth: plugin.auth, scopes: plugin.scopes })};\n`;
-				const digest = await crypto.subtle.digest(
-					"SHA-256",
-					new TextEncoder().encode(source),
-				);
-				const build = BuildId.make(
-					`bld_${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`,
-				);
-				return [
-					plugin.id,
-					{ plugin, source, build, handler: createAppHandler(app) },
-				] as const;
-			}),
-		),
-	);
-	const builds = new Map(
-		[...plugins.values()].map((entry) => [entry.build, entry]),
-	);
+							}),
+						);
+			const entry = { source, build, handler: createAppHandler(app) };
+			builds.set(build, entry);
+			return entry;
+		})();
+		entries.set(key, created);
+		created.catch(() => entries.delete(key));
+		return created;
+	};
+	/** Retained source names its plugin and auth; only the exact catalog rendering matches. */
+	const entryForSource = async (source: string | undefined) => {
+		if (source === undefined) return undefined;
+		for (const entry of builds.values())
+			if (entry.source === source) return entry;
+		const declared = /^export default (\{.*\});\n$/s.exec(source)?.[1];
+		if (!declared) return undefined;
+		const parsed: unknown = JSON.parse(declared);
+		if (typeof parsed !== "object" || parsed === null) return undefined;
+		const { id, auth } = parsed as { id?: unknown; auth?: unknown };
+		if (
+			typeof id !== "string" ||
+			(auth !== "none" && auth !== "oauth") ||
+			!options.plugin(id)
+		)
+			return undefined;
+		const entry = await register(id, auth);
+		return entry.source === source ? entry : undefined;
+	};
 	const dispatch = (
 		build: string,
 		command: unknown,
@@ -144,9 +223,10 @@ export async function createPluginEngine(
 		build: ({ files }) =>
 			Effect.gen(function* () {
 				const source = files.find((file) => file.path === "index.ts")?.content;
-				const entry = [...plugins.values()].find(
-					(entry) => entry.source === source,
-				);
+				const entry = yield* Effect.tryPromise({
+					try: () => entryForSource(source),
+					catch: () => new RuntimeBuildFailed({ stage: "compile" }),
+				});
 				if (!entry) return yield* new RuntimeBuildFailed({ stage: "compile" });
 				const requirements = yield* dispatch(entry.build, {
 					operation: "requirements",
@@ -294,7 +374,9 @@ export async function createPluginEngine(
 			}),
 		);
 		const ownerOf = (owner: string) => OwnerId.make(owner);
+		/** Ensures the definition the SDK will dispatch to is registered first. */
 		const target = async (owner: string, ref: EngineConnection) => {
+			await register(ref.plugin, ref.auth);
 			const app = AppId.make(ref.app),
 				profile = ProfileId.make(ref.profile);
 			await run(e.apps.get({ app, owner: ownerOf(owner) }));
@@ -302,9 +384,8 @@ export async function createPluginEngine(
 			return { app, profile };
 		};
 		return {
-			async prepare(owner, subject, id, pluginId) {
-				const entry = plugins.get(pluginId);
-				if (!entry) throw new Error("Unknown plugin");
+			async prepare(owner, subject, id, pluginId, auth) {
+				const entry = await register(pluginId, auth);
 				const name = AppName.make(id),
 					own = ownerOf(owner);
 				const existing = await run(e.apps.list({ owner: own, name }));
@@ -328,8 +409,13 @@ export async function createPluginEngine(
 						idempotencyKey: id,
 					}),
 				);
-				if (plugins.get(pluginId)?.plugin.auth === "none")
-					return { app: app.id, profile: profile.id };
+				const ref = {
+					app: app.id,
+					profile: profile.id,
+					plugin: pluginId,
+					auth,
+				};
+				if (auth === "none") return ref;
 				const connection = await run(
 					e.accountConnections.create({
 						owner: own,
@@ -340,7 +426,7 @@ export async function createPluginEngine(
 						},
 					}),
 				);
-				return { app: app.id, profile: profile.id, connection: connection.id };
+				return { ...ref, connection: connection.id };
 			},
 			async start(owner, ref, label, redirectUri) {
 				await target(owner, ref);
@@ -353,7 +439,9 @@ export async function createPluginEngine(
 						label,
 						redirectUri,
 					}),
-				);
+				).catch((error: unknown) => {
+					throw oauthSetupError(error);
+				});
 				if (result.status !== "redirect")
 					throw new Error("Expected authorization redirect");
 				return result.authorizationUrl;

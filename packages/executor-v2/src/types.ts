@@ -1,18 +1,22 @@
 import type { DurableObjectStorage } from "@cloudflare/workers-types";
 
+export type EngineAuth = "none" | "oauth";
+
 /** Plain values only: the upstream Effect runtime stays inside the bundled adapter. */
 export interface EnginePlugin {
 	readonly id: string;
 	readonly name: string;
 	readonly endpoint: string;
-	readonly auth: "none" | "oauth";
-	readonly scopes: readonly string[];
+	/** OAuth discovery URL when it differs from the endpoint. */
+	readonly oauthDiscovery?: string;
+	readonly scopes?: readonly string[];
 }
 export interface EngineOptions {
 	readonly storage: DurableObjectStorage;
 	readonly encryptionKey: string;
 	readonly credentialScope: string;
-	readonly plugins: readonly EnginePlugin[];
+	/** Server-owned catalog lookup. Definitions are registered lazily per (plugin, auth). */
+	readonly plugin: (id: string) => EnginePlugin | undefined;
 	readonly fetch: typeof fetch;
 }
 export interface EngineConnection {
@@ -20,13 +24,22 @@ export interface EngineConnection {
 	readonly profile: string;
 	readonly connection?: string;
 	readonly account?: string;
+	/** Catalog id and resolved auth; select the registered definition after restarts. */
+	readonly plugin: string;
+	readonly auth: EngineAuth;
 }
+/** Failures callers can explain to users. Everything else is an opaque failure. */
+export type PluginEngineErrorCode =
+	| "client_registration_unsupported"
+	| "auth_unsupported"
+	| "unreachable";
 export interface PluginEngine {
 	prepare(
 		owner: string,
 		subject: string,
 		id: string,
 		pluginId: string,
+		auth: EngineAuth,
 	): Promise<EngineConnection>;
 	start(
 		owner: string,
@@ -39,7 +52,11 @@ export interface PluginEngine {
 		ref: EngineConnection,
 		callbackUrl: string,
 	): Promise<EngineConnection>;
-	remove(owner: string, id: string, ref?: EngineConnection): Promise<void>;
+	remove(
+		owner: string,
+		id: string,
+		ref?: Partial<EngineConnection>,
+	): Promise<void>;
 	list(
 		owner: string,
 		ref: EngineConnection,

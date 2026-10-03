@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { Rpc } from "effect/unstable/rpc";
 import { CloudWorkspaceOpError } from "./cloud-workspaces.ts";
 
@@ -10,11 +10,26 @@ export const PluginTenant = Schema.Struct({
 });
 export type PluginTenant = typeof PluginTenant.Type;
 
+/** Display metadata only. Endpoints and auth policy stay server-owned.
+ * Newer fields default when absent so desktop and API versions can skew. */
 export const PluginDefinition = Schema.Struct({
 	id: Schema.String,
 	name: Schema.String,
 	description: Schema.String,
-	auth: Schema.Literals(["oauth", "none"]),
+	/** Provider domain, used for the catalog icon. */
+	domain: Schema.String.pipe(
+		Schema.withConstructorDefault(Effect.succeed("")),
+		Schema.withDecodingDefaultType(Effect.succeed("")),
+	),
+	category: Schema.NullOr(Schema.String).pipe(
+		Schema.withConstructorDefault(Effect.succeed(null)),
+		Schema.withDecodingDefaultType(Effect.succeed(null)),
+	),
+	/** Hand-picked, well-known entries shown first in Browse. */
+	featured: Schema.Boolean.pipe(
+		Schema.withConstructorDefault(Effect.succeed(false)),
+		Schema.withDecodingDefaultType(Effect.succeed(false)),
+	),
 });
 export type PluginDefinition = typeof PluginDefinition.Type;
 
@@ -38,6 +53,18 @@ export const PluginSnapshot = Schema.Struct({
 });
 export type PluginSnapshot = typeof PluginSnapshot.Type;
 
+/** Desktop loopback ports registered by the shell; mirrors the sign-in ports. */
+export const PLUGIN_CALLBACK_PORTS = [8976, 8977, 8978, 8979] as const;
+/** Where the provider callback hands the one-use ticket back to Zuse. */
+export const PluginReturnTo = Schema.Union([
+	Schema.Struct({ kind: Schema.Literal("web") }),
+	Schema.Struct({
+		kind: Schema.Literal("desktop"),
+		port: Schema.Literals(PLUGIN_CALLBACK_PORTS),
+	}),
+]);
+export type PluginReturnTo = typeof PluginReturnTo.Type;
+
 export const PluginAttempt = Schema.Struct({
 	kind: Schema.Literal("attempt"),
 	id: Schema.String,
@@ -59,6 +86,7 @@ export const PluginRequest = Schema.Union([
 		pluginId: Schema.String,
 		label: Schema.String,
 		requestId: Schema.String,
+		returnTo: Schema.optional(PluginReturnTo),
 	}),
 	Schema.Struct({
 		action: Schema.Literal("poll"),

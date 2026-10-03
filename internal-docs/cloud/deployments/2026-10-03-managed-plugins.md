@@ -86,3 +86,17 @@ passed. The OAuth fixture now advertises issuer validation and exercises valid,
 missing and mismatched issuer responses. The valid confirmation test failed
 before the fix and passed afterward. A fresh real-account consent attempt is
 required because previous attempts did not retain the issuer.
+
+## Catalog and return-flow update
+
+Deployed from the uncommitted `swarajbachu/mcp-plugin-ecosystem` working tree
+(on top of `abeb31de`) as API version `cba4bea2-9bf1-4dba-91b4-4ffb7fed1a14`;
+the previous version was `c85aaf1d-a37c-47f3-8761-ab1a068fefb6`. No Durable
+Object migration or secret change. This adds the generated integrations.sh
+catalog (906 entries), lazy engine registration, auth probing, the shared
+outbound policy, and desktop/web OAuth returns without a hosted confirmation
+click. Existing `linear` and `cloudflare` connections keep their build IDs.
+Live checks: unauthenticated `/v1/plugins` returns 401 and an unknown callback
+returns 400. The web app was not redeployed, so `code-staging.zuse.sh` still
+serves the previous renderer; the desktop return needs this branch's desktop
+build.

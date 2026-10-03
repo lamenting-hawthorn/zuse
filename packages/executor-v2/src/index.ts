@@ -1,2 +1,12 @@
-export { createPluginEngine } from "../vendor/runtime.mjs";
-export type { EngineConnection, EngineOptions, PluginEngine } from "./types.ts";
+export {
+	createPluginEngine,
+	PluginEngineError,
+} from "../vendor/runtime.mjs";
+export type {
+	EngineAuth,
+	EngineConnection,
+	EngineOptions,
+	EnginePlugin,
+	PluginEngine,
+	PluginEngineErrorCode,
+} from "./types.ts";

@@ -26,6 +26,16 @@ export class PluginVault extends Vault {
 			);
 			return new Response(null, { status: 204 });
 		}
+		if (url.pathname === "/__test/legacy-reference") {
+			// Rewrites a reference as stored before lazy registration.
+			const key = `engine:alice:${url.searchParams.get("id")}`;
+			const ref =
+				await this.testState.storage.get<Record<string, unknown>>(key);
+			if (!ref) return new Response(null, { status: 404 });
+			const { plugin: _plugin, auth: _auth, ...legacy } = ref;
+			await this.testState.storage.put(key, legacy);
+			return new Response(null, { status: 204 });
+		}
 		if (new URL(request.url).pathname === "/__test/storage") {
 			const tables = this.testState.storage.sql
 				.exec<{ name: string }>(

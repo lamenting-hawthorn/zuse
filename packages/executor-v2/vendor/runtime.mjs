@@ -94251,6 +94251,32 @@ var mcpRouter = (options4, kinds = {}) => Effect_exports.runPromise(
 );
 
 // adapter/bridge.ts
+var PluginEngineError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "PluginEngineError";
+  }
+  code;
+};
+var CLIENT_REGISTRATION_REASONS = /* @__PURE__ */ new Set([
+  "client_registration_required",
+  "client_not_approved",
+  "client_metadata_rejected",
+  "registration_rejected"
+]);
+var oauthSetupError = (error2) => {
+  if (typeof error2 !== "object" || error2 === null || !("_tag" in error2))
+    return error2;
+  const reason = "reason" in error2 ? error2.reason : void 0;
+  if (error2._tag === "OAuthClientUnavailable" || error2._tag === "OAuthSetupFailed" && typeof reason === "string" && CLIENT_REGISTRATION_REASONS.has(reason))
+    return new PluginEngineError("client_registration_unsupported");
+  if (error2._tag === "OAuthSetupFailed")
+    return new PluginEngineError(
+      reason === "service_unavailable" ? "unreachable" : "auth_unsupported"
+    );
+  return error2;
+};
 async function createPluginEngine(options4) {
   const sql = layer3({ storage: options4.storage });
   const managed = ManagedRuntime_exports.make(
@@ -94264,51 +94290,77 @@ async function createPluginEngine(options4) {
   );
   const run4 = managed.runPromise;
   const io = (work) => Effect_exports.tryPromise({ try: work, catch: () => new RuntimeProtocolFailed() });
-  const plugins = new Map(
-    await Promise.all(
-      options4.plugins.map(async (plugin) => {
-        const provider = defineProvider({
-          name: plugin.name,
-          auth: {
-            oauth: oauth22({
-              discover: plugin.endpoint,
-              scopes: [...plugin.scopes]
-            })
-          }
-        });
-        const app3 = plugin.auth === "none" ? defineApp({ accounts: {} }, async ({ signal: signal2 }) => ({
-          tools: await mcpRouter({ url: plugin.endpoint, signal: signal2 })
-        })) : defineApp(
-          { accounts: { service: provider } },
-          async ({ accounts: accounts2, signal: signal2 }) => ({
-            tools: await mcpRouter({
-              url: plugin.endpoint,
-              signal: signal2,
-              headers: {
-                Authorization: `Bearer ${accounts2.service.fields.access_token}`
+  const entries3 = /* @__PURE__ */ new Map();
+  const builds = /* @__PURE__ */ new Map();
+  const definition = (pluginId) => {
+    const plugin = options4.plugin(pluginId);
+    if (!plugin) throw new Error("Unknown plugin");
+    return plugin;
+  };
+  const sourceOf = (plugin, auth2) => `export default ${JSON.stringify({ protocol: 1, id: plugin.id, name: plugin.name, endpoint: plugin.endpoint, auth: auth2, scopes: plugin.scopes ?? [], ...plugin.oauthDiscovery ? { oauthDiscovery: plugin.oauthDiscovery } : {} })};
+`;
+  const register = (pluginId, auth2) => {
+    const key2 = JSON.stringify([pluginId, auth2]);
+    const existing = entries3.get(key2);
+    if (existing) return existing;
+    const created = (async () => {
+      const plugin = definition(pluginId);
+      const source = sourceOf(plugin, auth2);
+      const digest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(source)
+      );
+      const build2 = BuildId.make(
+        `bld_${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`
+      );
+      const app3 = auth2 === "none" ? defineApp({ accounts: {} }, async ({ signal: signal2 }) => ({
+        tools: await mcpRouter({ url: plugin.endpoint, signal: signal2 })
+      })) : defineApp(
+        {
+          accounts: {
+            service: defineProvider({
+              name: plugin.name,
+              auth: {
+                oauth: oauth22({
+                  discover: plugin.oauthDiscovery ?? plugin.endpoint,
+                  scopes: [...plugin.scopes ?? []]
+                })
               }
             })
+          }
+        },
+        async ({ accounts: accounts2, signal: signal2 }) => ({
+          tools: await mcpRouter({
+            url: plugin.endpoint,
+            signal: signal2,
+            headers: {
+              Authorization: `Bearer ${accounts2.service.fields.access_token}`
+            }
           })
-        );
-        const source = `export default ${JSON.stringify({ protocol: 1, id: plugin.id, name: plugin.name, endpoint: plugin.endpoint, auth: plugin.auth, scopes: plugin.scopes })};
-`;
-        const digest = await crypto.subtle.digest(
-          "SHA-256",
-          new TextEncoder().encode(source)
-        );
-        const build2 = BuildId.make(
-          `bld_${Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("")}`
-        );
-        return [
-          plugin.id,
-          { plugin, source, build: build2, handler: createAppHandler2(app3) }
-        ];
-      })
-    )
-  );
-  const builds = new Map(
-    [...plugins.values()].map((entry2) => [entry2.build, entry2])
-  );
+        })
+      );
+      const entry2 = { source, build: build2, handler: createAppHandler2(app3) };
+      builds.set(build2, entry2);
+      return entry2;
+    })();
+    entries3.set(key2, created);
+    created.catch(() => entries3.delete(key2));
+    return created;
+  };
+  const entryForSource = async (source) => {
+    if (source === void 0) return void 0;
+    for (const entry3 of builds.values())
+      if (entry3.source === source) return entry3;
+    const declared = /^export default (\{.*\});\n$/s.exec(source)?.[1];
+    if (!declared) return void 0;
+    const parsed = JSON.parse(declared);
+    if (typeof parsed !== "object" || parsed === null) return void 0;
+    const { id: id2, auth: auth2 } = parsed;
+    if (typeof id2 !== "string" || auth2 !== "none" && auth2 !== "oauth" || !options4.plugin(id2))
+      return void 0;
+    const entry2 = await register(id2, auth2);
+    return entry2.source === source ? entry2 : void 0;
+  };
   const dispatch2 = (build2, command, context3 = hostContext({})) => io(async () => {
     const item = builds.get(BuildId.make(build2));
     if (!item) throw new Error("Unknown plugin build");
@@ -94336,9 +94388,10 @@ async function createPluginEngine(options4) {
   const runtime = {
     build: ({ files }) => Effect_exports.gen(function* () {
       const source = files.find((file3) => file3.path === "index.ts")?.content;
-      const entry2 = [...plugins.values()].find(
-        (entry3) => entry3.source === source
-      );
+      const entry2 = yield* Effect_exports.tryPromise({
+        try: () => entryForSource(source),
+        catch: () => new RuntimeBuildFailed({ stage: "compile" })
+      });
       if (!entry2) return yield* new RuntimeBuildFailed({ stage: "compile" });
       const requirements2 = yield* dispatch2(entry2.build, {
         operation: "requirements"
@@ -94475,15 +94528,15 @@ async function createPluginEngine(options4) {
     );
     const ownerOf = (owner) => OwnerId.make(owner);
     const target2 = async (owner, ref) => {
+      await register(ref.plugin, ref.auth);
       const app3 = AppId.make(ref.app), profile = ProfileId.make(ref.profile);
       await run4(e.apps.get({ app: app3, owner: ownerOf(owner) }));
       await run4(e.apps.profiles.get({ app: app3, profile, owner: ownerOf(owner) }));
       return { app: app3, profile };
     };
     return {
-      async prepare(owner, subject, id2, pluginId) {
-        const entry2 = plugins.get(pluginId);
-        if (!entry2) throw new Error("Unknown plugin");
+      async prepare(owner, subject, id2, pluginId, auth2) {
+        const entry2 = await register(pluginId, auth2);
         const name = AppName.make(id2), own2 = ownerOf(owner);
         const existing = await run4(e.apps.list({ owner: own2, name }));
         const app3 = existing[0] ?? (await run4(
@@ -94502,8 +94555,13 @@ async function createPluginEngine(options4) {
             idempotencyKey: id2
           })
         );
-        if (plugins.get(pluginId)?.plugin.auth === "none")
-          return { app: app3.id, profile: profile.id };
+        const ref = {
+          app: app3.id,
+          profile: profile.id,
+          plugin: pluginId,
+          auth: auth2
+        };
+        if (auth2 === "none") return ref;
         const connection = await run4(
           e.accountConnections.create({
             owner: own2,
@@ -94514,7 +94572,7 @@ async function createPluginEngine(options4) {
             }
           })
         );
-        return { app: app3.id, profile: profile.id, connection: connection.id };
+        return { ...ref, connection: connection.id };
       },
       async start(owner, ref, label, redirectUri) {
         await target2(owner, ref);
@@ -94527,7 +94585,9 @@ async function createPluginEngine(options4) {
             label,
             redirectUri
           })
-        );
+        ).catch((error2) => {
+          throw oauthSetupError(error2);
+        });
         if (result6.status !== "redirect")
           throw new Error("Expected authorization redirect");
         return result6.authorizationUrl;
@@ -94600,5 +94660,6 @@ async function createPluginEngine(options4) {
   }
 }
 export {
+  PluginEngineError,
   createPluginEngine
 };

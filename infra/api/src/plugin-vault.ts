@@ -1,26 +1,35 @@
 import type { DurableObjectState } from "@cloudflare/workers-types";
-import type {
-	PluginAttempt,
-	PluginConnection,
-	PluginRequest,
-	PluginToolRequest,
+import {
+	PLUGIN_CALLBACK_PORTS,
+	type PluginAttempt,
+	type PluginConnection,
+	type PluginRequest,
+	type PluginReturnTo,
+	type PluginToolRequest,
 } from "@zuse/contracts";
 import {
 	createPluginEngine,
 	type EngineConnection,
 	type PluginEngine,
+	PluginEngineError,
+	type PluginEngineErrorCode,
 } from "@zuse/executor-v2";
 import {
 	decryptAesGcmEnvelope,
 	encryptAesGcmEnvelope,
 	importAesGcmKey,
 } from "./aes-gcm-envelope.ts";
+import { findCatalogPlugin, publicPluginCatalog } from "./plugin-catalog.ts";
 import {
 	assertPluginUrl,
-	PLUGIN_CATALOG,
-	publicPluginCatalog,
-} from "./plugin-catalog.ts";
-import type { PluginIdentity } from "./plugin-host.ts";
+	pluginFetch,
+	probePluginAuth,
+} from "./plugin-egress.ts";
+import {
+	type PluginErrorCode,
+	type PluginIdentity,
+	PluginOperationError,
+} from "./plugin-host.ts";
 
 export interface PluginVaultEnv {
 	readonly PLUGIN_ENCRYPTION_KEY?: string;
@@ -32,11 +41,29 @@ interface Attempt extends PluginAttempt {
 	readonly tenant: string;
 	readonly pluginId: string;
 	readonly label: string;
+	readonly returnTo?: PluginReturnTo;
 	readonly stateToken?: string;
 	readonly ticket?: string;
+	/** Provider callback query, replayed verbatim to Executor on completion. */
+	readonly query?: string;
+	/** Pre-`query` attempts only. */
 	readonly code?: string;
 	readonly issuer?: string;
 }
+/** References written before lazy registration lack `plugin` and `auth`. */
+type StoredRef = Omit<EngineConnection, "plugin" | "auth"> &
+	Partial<Pick<EngineConnection, "plugin" | "auth">>;
+const ENGINE_ERRORS: Record<PluginEngineErrorCode, PluginErrorCode> = {
+	client_registration_unsupported: "plugin_client_registration_unsupported",
+	auth_unsupported: "plugin_auth_unsupported",
+	unreachable: "plugin_unreachable",
+};
+const errorCode = (error: unknown): PluginErrorCode =>
+	error instanceof PluginOperationError
+		? error.code
+		: error instanceof PluginEngineError
+			? ENGINE_ERRORS[error.code]
+			: "plugin_operation_failed";
 const TTL = 10 * 60_000;
 const encoder = new TextEncoder();
 const publicAttempt = (a: Attempt): PluginAttempt => ({
@@ -68,27 +95,8 @@ export class PluginVault {
 				storage: ctx.storage,
 				encryptionKey: env.PLUGIN_ENCRYPTION_KEY,
 				credentialScope: ctx.id.toString(),
-				plugins: PLUGIN_CATALOG,
-				fetch: async (input, init) => {
-					assertPluginUrl(
-						typeof input === "string"
-							? input
-							: input instanceof URL
-								? input.href
-								: input.url,
-					);
-					const response = await fetch(input, {
-						...init,
-						redirect: "manual",
-						signal: AbortSignal.any([
-							...(init?.signal ? [init.signal] : []),
-							AbortSignal.timeout(30_000),
-						]),
-					});
-					if (response.status >= 300 && response.status < 400)
-						throw new Error("Plugin redirects are not allowed");
-					return response;
-				},
+				plugin: findCatalogPlugin,
+				fetch: pluginFetch,
 			});
 			await ctx.storage.put("schema-version", 2);
 			return engine;
@@ -100,12 +108,18 @@ export class PluginVault {
 	private refKey(subject: string, id: string) {
 		return `engine:${subject}:${id}`;
 	}
-	private async ref(subject: string, id: string) {
-		const ref = await this.ctx.storage.get<EngineConnection>(
-			this.refKey(subject, id),
-		);
-		if (!ref) throw new Error("Connection unavailable");
-		return ref;
+	private async ref(
+		subject: string,
+		id: string,
+		pluginId: string,
+	): Promise<EngineConnection> {
+		const ref = await this.ctx.storage.get<StoredRef>(this.refKey(subject, id));
+		if (!ref || (ref.plugin !== undefined && ref.plugin !== pluginId))
+			throw new Error("Connection unavailable");
+		// Legacy references predate probing; their catalog entries carry fixed auth.
+		const auth = ref.auth ?? findCatalogPlugin(pluginId)?.auth;
+		if (!auth) throw new Error("Connection unavailable");
+		return { ...ref, plugin: pluginId, auth };
 	}
 	private cryptoKey?: Promise<CryptoKey>;
 	private async key() {
@@ -170,11 +184,8 @@ export class PluginVault {
 									})(),
 							),
 				);
-			} catch {
-				return Response.json(
-					{ error: "plugin_operation_failed" },
-					{ status: 400 },
-				);
+			} catch (error) {
+				return Response.json({ error: errorCode(error) }, { status: 400 });
 			}
 		});
 		this.queue = task.catch(() => undefined);
@@ -207,7 +218,7 @@ export class PluginVault {
 			await e.remove(
 				this.owner(identity),
 				row.id,
-				await this.ctx.storage.get<EngineConnection>(
+				await this.ctx.storage.get<StoredRef>(
 					this.refKey(identity.subject, row.id),
 				),
 			);
@@ -226,8 +237,9 @@ export class PluginVault {
 				throw new Error("Invalid request");
 			const old = await this.read<Attempt>(`attempt:${identity.subject}:${id}`);
 			if (old) return publicAttempt(old);
-			const plugin = PLUGIN_CATALOG.find((p) => p.id === input.pluginId);
+			const plugin = findCatalogPlugin(input.pluginId);
 			if (!plugin) throw new Error("Unknown plugin");
+			if (input.returnTo) this.returnTarget(input.returnTo);
 			const a: Attempt = {
 				kind: "attempt",
 				id,
@@ -238,6 +250,7 @@ export class PluginVault {
 				...identity,
 				pluginId: plugin.id,
 				label: input.label.trim() || plugin.name,
+				...(input.returnTo ? { returnTo: input.returnTo } : {}),
 			};
 			if ((await this.ctx.storage.list({ prefix })).size >= 50)
 				throw new Error("Connection limit reached");
@@ -252,14 +265,17 @@ export class PluginVault {
 				createdAt: Date.now(),
 			});
 			try {
+				// The resolved auth is persisted in the reference for later restarts.
+				const auth = plugin.auth ?? (await probePluginAuth(plugin.endpoint));
 				const ref = await e.prepare(
 					this.owner(identity),
 					identity.subject,
 					id,
 					plugin.id,
+					auth,
 				);
 				await this.ctx.storage.put(this.refKey(identity.subject, id), ref);
-				if (plugin.auth === "none") {
+				if (auth === "none") {
 					await this.finish(a);
 					return publicAttempt({ ...a, state: "connected" });
 				}
@@ -270,8 +286,7 @@ export class PluginVault {
 					a.label,
 					redirectUri,
 				);
-				if (!plugin.origins.includes(new URL(authorizationUrl).origin))
-					throw new Error("Unexpected OAuth origin");
+				assertPluginUrl(authorizationUrl);
 				const state = new URL(authorizationUrl).searchParams.get("state");
 				if (!state) throw new Error("Missing OAuth state");
 
@@ -291,9 +306,9 @@ export class PluginVault {
 				});
 				await this.ctx.storage.setAlarm(Date.now() + TTL);
 				return publicAttempt(next);
-			} catch {
+			} catch (error) {
 				await this.fail(a, "failed");
-				throw new Error("Could not connect plugin");
+				throw new PluginOperationError({ code: errorCode(error) });
 			}
 		}
 		let a: Attempt | undefined;
@@ -315,7 +330,12 @@ export class PluginVault {
 			return publicAttempt(await this.fail(a, "cancelled"));
 		}
 		if (input.action === "poll") return publicAttempt(a);
-		if (!a.stateToken || !a.code || !a.ticket || a.ticket !== input.ticket)
+		if (
+			!a.stateToken ||
+			!(a.query || a.code) ||
+			!a.ticket ||
+			a.ticket !== input.ticket
+		)
 			throw new Error("Invalid confirmation");
 		// Consume before exchanging. Never retry a code or an ambiguous token exchange.
 		await this.ctx.storage.delete(`ticket:${a.ticket}`);
@@ -323,12 +343,15 @@ export class PluginVault {
 			const callback = new URL(
 				`${this.env.API_PUBLIC_ORIGIN}/v1/plugins/callback/${this.ctx.id}`,
 			);
-			callback.searchParams.set("state", a.stateToken);
-			callback.searchParams.set("code", a.code);
-			if (a.issuer !== undefined) callback.searchParams.set("iss", a.issuer);
+			if (a.query !== undefined) callback.search = a.query;
+			else {
+				callback.searchParams.set("state", a.stateToken);
+				callback.searchParams.set("code", a.code ?? "");
+				if (a.issuer !== undefined) callback.searchParams.set("iss", a.issuer);
+			}
 			const ref = await e.complete(
 				this.owner(identity),
-				await this.ref(identity.subject, a.id),
+				await this.ref(identity.subject, a.id, a.pluginId),
 				callback.href,
 			);
 			await this.ctx.storage.put(this.refKey(identity.subject, a.id), ref);
@@ -350,6 +373,7 @@ export class PluginVault {
 				[attemptKey]: await this.seal(attemptKey, {
 					...a,
 					state: "connected",
+					query: undefined,
 					code: undefined,
 					issuer: undefined,
 					ticket: undefined,
@@ -368,6 +392,7 @@ export class PluginVault {
 			...a,
 			state,
 			authorizationUrl: null,
+			query: undefined,
 			code: undefined,
 			issuer: undefined,
 			ticket: undefined,
@@ -377,7 +402,7 @@ export class PluginVault {
 		const row = await this.ctx.storage.get<PluginConnection>(connectionKey);
 		if (row)
 			await this.ctx.storage.put(connectionKey, { ...row, state: "error" });
-		const ref = await this.ctx.storage.get<EngineConnection>(
+		const ref = await this.ctx.storage.get<StoredRef>(
 			this.refKey(a.subject, a.id),
 		);
 		await (await this.ready).remove(this.owner(a), a.id, ref);
@@ -402,38 +427,50 @@ export class PluginVault {
 			throw new Error("Expired OAuth state");
 		if (url.searchParams.has("error")) {
 			await this.fail(a, "cancelled");
-			return new Response("Connection cancelled. You can close this window.", {
-				headers: { "content-type": "text/plain", "cache-control": "no-store" },
-			});
+			return this.redirectBack(a, { plugin_error: "cancelled" });
 		}
 		const code = url.searchParams.get("code");
-		if (!code || code.length > 8192) throw new Error("Missing OAuth code");
-		const issuer = url.searchParams.get("iss") ?? undefined;
-		if (issuer !== undefined && (issuer.length === 0 || issuer.length > 4096))
-			throw new Error("Invalid OAuth issuer");
+		if (!code || code.length > 8192 || url.search.length > 16_384)
+			throw new Error("Missing OAuth code");
 		const ticket = crypto.randomUUID();
 		const attemptKey = `attempt:${a.subject}:${a.id}`;
 		const ticketKey = `ticket:${ticket}`;
 		await this.commit(
 			{
+				// Executor validates the full response, including duplicate or extra parameters.
 				[attemptKey]: await this.seal(attemptKey, {
 					...a,
-					code,
-					issuer,
+					query: url.search.slice(1),
 					ticket,
 				}),
 				[ticketKey]: await this.seal(ticketKey, pointer),
 			},
 			[`state:${state}`],
 		);
-		const target = new URL(
-			this.env.PLUGIN_APP_ORIGIN ??
-				(() => {
-					throw new Error("Plugin app origin is missing");
-				})(),
+		return this.redirectBack(a, {
+			plugin_ticket: ticket,
+			plugin_tenant: a.tenant,
+		});
+	}
+	/** Desktop loopback for registered ports only; otherwise the hosted app. */
+	private returnTarget(returnTo: PluginReturnTo | undefined) {
+		if (returnTo?.kind === "desktop") {
+			if (!PLUGIN_CALLBACK_PORTS.some((port) => port === returnTo.port))
+				throw new Error("Invalid plugin callback port");
+			return new URL(`http://127.0.0.1:${returnTo.port}/plugins/callback`);
+		}
+		if (!this.env.PLUGIN_APP_ORIGIN)
+			throw new Error("Plugin app origin is missing");
+		return new URL(this.env.PLUGIN_APP_ORIGIN);
+	}
+	private redirectBack(a: Attempt, params: Record<string, string>) {
+		const target = this.returnTarget(a.returnTo);
+		for (const [key, value] of Object.entries(params))
+			target.searchParams.set(key, value);
+		target.searchParams.set(
+			"plugin",
+			findCatalogPlugin(a.pluginId)?.name ?? a.pluginId,
 		);
-		target.searchParams.set("plugin_ticket", ticket);
-		target.searchParams.set("plugin_tenant", a.tenant);
 		return new Response(null, {
 			status: 302,
 			headers: {
@@ -460,10 +497,16 @@ export class PluginVault {
 			for (const row of connected) {
 				const list = await e.list(
 					this.owner(identity),
-					await this.ref(identity.subject, row.id),
+					await this.ref(identity.subject, row.id, row.pluginId),
 				);
+				// Match the plugin's id and name too, so "linear" finds every Linear tool.
+				const plugin = `${row.pluginId} ${row.label}`;
 				for (const tool of list) {
-					if (`${tool.name} ${tool.description}`.toLowerCase().includes(query))
+					if (
+						`${plugin} ${tool.name} ${tool.description}`
+							.toLowerCase()
+							.includes(query)
+					)
 						tools.push({
 							address: prefix(row) + tool.name,
 							description: tool.description,
@@ -475,7 +518,7 @@ export class PluginVault {
 		}
 		const row = connected.find((r) => input.address.startsWith(prefix(r)));
 		if (!row) throw new Error("Connection unavailable");
-		const ref = await this.ref(identity.subject, row.id);
+		const ref = await this.ref(identity.subject, row.id, row.pluginId);
 		const tool = input.address.slice(prefix(row).length);
 		return input.action === "schema"
 			? e.schema(this.owner(identity), ref, tool)
