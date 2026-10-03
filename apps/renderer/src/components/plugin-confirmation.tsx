@@ -73,7 +73,7 @@ export function PluginConfirmation() {
 								setCompleted(true);
 							} catch {
 								setMessage(
-									"This connection expired or belongs to another Zuse account. Return to Plugins and try again.",
+									"Could not finish connecting. Return to Plugins, cancel this attempt, and connect again using the same Zuse account.",
 								);
 							} finally {
 								setBusy(false);

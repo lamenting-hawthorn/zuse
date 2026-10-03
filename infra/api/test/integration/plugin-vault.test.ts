@@ -45,6 +45,7 @@ const outboundService = async (request: Request): Promise<Response> => {
 	)
 		return Response.json({
 			issuer: "https://mcp.linear.app",
+			authorization_response_iss_parameter_supported: true,
 			authorization_endpoint: "https://mcp.linear.app/authorize",
 			token_endpoint: "https://mcp.linear.app/token",
 			registration_endpoint: "https://mcp.linear.app/register",
@@ -261,6 +262,7 @@ test("OAuth requires owner confirmation and rejects callback replay", async () =
 	);
 	callbackUrl.searchParams.set("state", state);
 	callbackUrl.searchParams.set("code", "one-use-code");
+	callbackUrl.searchParams.set("iss", "https://mcp.linear.app");
 	const callback = await mf.dispatchFetch(callbackUrl.href, {
 		redirect: "manual",
 	});
@@ -334,7 +336,10 @@ test("OAuth requires owner confirmation and rejects callback replay", async () =
 	expect(accounts?.[1]).toEqual([]);
 }, 60_000);
 
-async function authorize(a: Awaited<ReturnType<typeof client>>) {
+async function authorize(
+	a: Awaited<ReturnType<typeof client>>,
+	issuer: string | null = "https://mcp.linear.app",
+) {
 	const started = await a.request({
 		action: "connect",
 		pluginId: "linear",
@@ -346,7 +351,7 @@ async function authorize(a: Awaited<ReturnType<typeof client>>) {
 		"state",
 	);
 	const callback = await a.vault.fetch(
-		`https://internal/callback?state=${encodeURIComponent(state ?? "")}&code=fixture-code`,
+		`https://internal/callback?state=${encodeURIComponent(state ?? "")}&code=fixture-code${issuer === null ? "" : `&iss=${encodeURIComponent(issuer)}`}`,
 		{ redirect: "manual" },
 	);
 	expect(callback.status).toBe(302);
@@ -462,4 +467,12 @@ test("cleans SDK setup when the connection reference was not retained", async ()
 	);
 	expect(apps).toBeDefined();
 	expect(apps?.[1]).toEqual([]);
+}, 60_000);
+
+test("rejects missing and mismatched OAuth issuers instead of bypassing validation", async () => {
+	const a = await client(create());
+	for (const issuer of [null, "https://wrong-issuer.test"]) {
+		const ticket = await authorize(a, issuer);
+		expect((await a.request({ action: "complete", ticket })).status).toBe(400);
+	}
 }, 60_000);

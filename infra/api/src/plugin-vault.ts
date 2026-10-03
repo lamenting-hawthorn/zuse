@@ -35,6 +35,7 @@ interface Attempt extends PluginAttempt {
 	readonly stateToken?: string;
 	readonly ticket?: string;
 	readonly code?: string;
+	readonly issuer?: string;
 }
 const TTL = 10 * 60_000;
 const encoder = new TextEncoder();
@@ -324,6 +325,7 @@ export class PluginVault {
 			);
 			callback.searchParams.set("state", a.stateToken);
 			callback.searchParams.set("code", a.code);
+			if (a.issuer !== undefined) callback.searchParams.set("iss", a.issuer);
 			const ref = await e.complete(
 				this.owner(identity),
 				await this.ref(identity.subject, a.id),
@@ -349,6 +351,7 @@ export class PluginVault {
 					...a,
 					state: "connected",
 					code: undefined,
+					issuer: undefined,
 					ticket: undefined,
 					authorizationUrl: null,
 				}),
@@ -366,6 +369,7 @@ export class PluginVault {
 			state,
 			authorizationUrl: null,
 			code: undefined,
+			issuer: undefined,
 			ticket: undefined,
 		};
 		await this.write(`attempt:${a.subject}:${a.id}`, next);
@@ -404,12 +408,20 @@ export class PluginVault {
 		}
 		const code = url.searchParams.get("code");
 		if (!code || code.length > 8192) throw new Error("Missing OAuth code");
+		const issuer = url.searchParams.get("iss") ?? undefined;
+		if (issuer !== undefined && (issuer.length === 0 || issuer.length > 4096))
+			throw new Error("Invalid OAuth issuer");
 		const ticket = crypto.randomUUID();
 		const attemptKey = `attempt:${a.subject}:${a.id}`;
 		const ticketKey = `ticket:${ticket}`;
 		await this.commit(
 			{
-				[attemptKey]: await this.seal(attemptKey, { ...a, code, ticket }),
+				[attemptKey]: await this.seal(attemptKey, {
+					...a,
+					code,
+					issuer,
+					ticket,
+				}),
 				[ticketKey]: await this.seal(ticketKey, pointer),
 			},
 			[`state:${state}`],
