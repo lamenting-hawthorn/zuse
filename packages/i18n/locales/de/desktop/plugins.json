@@ -59,5 +59,6 @@
 	"plugins_skills_always_on": "Immer an",
 	"plugins_skills_personal": "Persönlich",
 	"plugins_skills_project": "Projekt",
-	"plugins_skills_codex_note": "Codex-Schalter werden in der Codex-Konfiguration gespeichert und gelten auch außerhalb von Zuse."
+	"plugins_skills_codex_note": "Codex-Schalter werden in der Codex-Konfiguration gespeichert und gelten auch außerhalb von Zuse.",
+	"plugins_skills_loading": "Skills werden geladen…"
 }

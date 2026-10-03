@@ -2700,6 +2700,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "404",
+		name: "404",
+		description:
+			"404.directory provides agent discovery and trust infrastructure for AI agents, including official-docs search, tool discovery, website verification, webpage…",
+		domain: "404.directory",
+		category: null,
+		featured: false,
+		endpoint: "https://404.directory/mcp",
+		popularity: 0,
+	},
+	{
 		id: "789-sudoku",
 		name: "789 Sudoku",
 		description:
@@ -2940,6 +2951,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "adjacent",
+		name: "Adjacent",
+		description:
+			"Adjacent News provides indexing, benchmarking, and market data for prediction markets and event contracts, including indices, reference rates, markets…",
+		domain: "adjacent.markets",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.adjacent.markets/mcp",
+		popularity: 0,
+	},
+	{
 		id: "adobe-acrobat",
 		name: "Adobe Acrobat",
 		description:
@@ -2987,6 +3009,84 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "agent",
+		name: "Agent",
+		description:
+			"AgentNews is a news feed for autonomous AI agents where agents bid to publish posts and can read, search, vote, and comment on content. It publishes…",
+		domain: "agent.news",
+		category: null,
+		featured: false,
+		endpoint: "https://agent.news/mcp",
+		popularity: 0,
+	},
+	{
+		id: "agentdomainsearch",
+		name: "Agent Domain Search",
+		description:
+			"Agent Domain Search is a domain registration and DNS management service designed for programmatic use. It lets users check availability, register and renew…",
+		domain: "agentdomainsearch.com",
+		category: null,
+		featured: false,
+		endpoint: "https://agentdomainsearch.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "agenta",
+		name: "Agenta",
+		description:
+			"Agenta is an LLMOps platform for building, evaluating, deploying, and observing LLM applications and workflows. It provides prompt management, evaluation…",
+		domain: "agenta.ai",
+		category: null,
+		featured: false,
+		endpoint:
+			"https://mcp.eu.algolia.com/1/M_CIMvH38zVydbZOtDAzTjI3szBOMUq0tDA0NTJOMjO3TEtLtUwxNDUxNrfOrdRNyU8u1s1NLMpOyS_PszY0NzMyNDA1sDQFAA/mcp",
+		popularity: 0,
+	},
+	{
+		id: "agentcloud",
+		name: "AgentCloud",
+		description:
+			"AgentCloud provides hosted iOS Simulator sessions for cloud coding agents so they can build, launch, inspect, and operate iOS apps remotely. It focuses on a…",
+		domain: "agentcloud.so",
+		category: null,
+		featured: false,
+		endpoint: "https://api.agentcloud.so/mcp",
+		popularity: 0,
+	},
+	{
+		id: "agentgrade",
+		name: "AgentGrade",
+		description:
+			"AgentGrade scans websites for AI-agent readiness, checking discovery files, payment protocols, MCP/OpenAPI support, identity signals, and related…",
+		domain: "agentgrade.com",
+		category: null,
+		featured: false,
+		endpoint: "https://agentgrade.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "agentmail",
+		name: "AgentMail",
+		description:
+			"AgentMail provides programmatic email inboxes for AI agents so they can send, receive, reply to, and manage threaded email conversations. It also supports…",
+		domain: "agentmail.to",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.agentmail.to/mcp",
+		popularity: 0,
+	},
+	{
+		id: "agentservices",
+		name: "AgentServices",
+		description:
+			"AgentServices is a hosted API platform for AI agents that offers crypto market data, web research, on-chain analytics, inference, and ERC-8004…",
+		domain: "agentservices.to",
+		category: null,
+		featured: false,
+		endpoint: "https://agentservices.to/mcp",
+		popularity: 0,
+	},
+	{
 		id: "agiflow",
 		name: "Agiflow",
 		description:
@@ -2996,6 +3096,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://agiflow.io/api/v1/chatgpt-app/0.0.1",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "agilitycms",
+		name: "Agility CMS",
+		description:
+			"Agility CMS is a headless, cloud-based content management system for modeling, managing, and delivering content and pages across digital channels. It provides…",
+		domain: "agilitycms.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.agilitycms.com/api/mcp",
 		popularity: 0,
 	},
 	{
@@ -3056,6 +3167,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://wisebase.chatgptapps.sider.ai/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "airbyte",
+		name: "Airbyte",
+		description:
+			"Airbyte provides data movement and integration software plus a hosted Airbyte Agents platform for connecting AI agents to business systems and data. Its…",
+		domain: "airbyte.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.airbyte.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -3447,6 +3569,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "apify",
+		name: "Apify",
+		description:
+			"Apify is a cloud platform and marketplace for running web scraping, automation, and data extraction tools called Actors. It also provides hosted storage…",
+		domain: "apify.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.apify.com/",
+		popularity: 0,
+	},
+	{
 		id: "apixel",
 		name: "Apixel",
 		description:
@@ -3507,6 +3640,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "arcjet",
+		name: "Arcjet",
+		description:
+			"Arcjet is a runtime security platform for protecting applications and AI systems with controls such as bot protection, rate limiting, prompt injection…",
+		domain: "arcjet.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.arcjet.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "aris-digital-consultant",
 		name: "Aris - Digital Consultant",
 		description:
@@ -3528,6 +3672,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chatgpt-app-with-next-js-t66k.vercel.app/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "artue-2",
+		name: "Artue",
+		description:
+			"Artue is an online marketplace for discovering and buying original artworks, with a focus on Korean and international contemporary artists. It also offers…",
+		domain: "artue.io",
+		category: null,
+		featured: false,
+		endpoint: "https://artue.io/api/mcp",
 		popularity: 0,
 	},
 	{
@@ -3588,6 +3743,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.atlys.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "authzed",
+		name: "AuthZed",
+		description:
+			"AuthZed provides authorization infrastructure for modern applications and develops SpiceDB, an open source permissions database inspired by Google's Zanzibar…",
+		domain: "authzed.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.authzed.com/",
 		popularity: 0,
 	},
 	{
@@ -3652,6 +3818,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "avalara",
+		name: "Avalara",
+		description:
+			"Avalara provides tax calculation, compliance, returns, e-invoicing, and related tax-data products for businesses. Its developer portal covers APIs and AI…",
+		domain: "avalara.com",
+		category: null,
+		featured: false,
+		endpoint: "https://avi.avalara.com/a2a/avi",
+		popularity: 0,
+	},
+	{
 		id: "avito",
 		name: "Avito.ma",
 		description:
@@ -3673,6 +3850,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint:
 			"https://mcp.trymalcolm.com/mcp-ab2a870c-468a-418a-b695-09a30559a22a",
+		popularity: 0,
+	},
+	{
+		id: "avo",
+		name: "Avo",
+		description:
+			"Avo is an analytics tracking-plan and data-governance platform for defining events, properties, metrics, and branches, then generating implementation code and…",
+		domain: "avo.app",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.avo.app/mcp",
+		popularity: 0,
+	},
+	{
+		id: "awardtravelfinder",
+		name: "Award Travel Finder",
+		description:
+			"Award Travel Finder is a travel search service focused on finding award-flight availability and related loyalty-program data using points and miles. It offers…",
+		domain: "awardtravelfinder.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.awardtravelfinder.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -3795,6 +3994,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "baremetrics",
+		name: "Baremetrics",
+		description:
+			"Baremetrics is a subscription analytics and revenue recovery platform for SaaS businesses. It connects billing data from systems like Stripe, Chargebee, and…",
+		domain: "baremetrics.com",
+		category: null,
+		featured: false,
+		endpoint: "https://app.baremetrics.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "basbas",
 		name: "Basbas",
 		description:
@@ -3855,6 +4065,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "beehiiv",
+		name: "beehiiv",
+		description:
+			"beehiiv is a newsletter publishing platform for creators, publishers, and brands. It provides tools to create, distribute, grow, and monetize newsletters…",
+		domain: "beehiiv.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.beehiiv.com/_mcp/server",
+		popularity: 0,
+	},
+	{
+		id: "berlin-group",
+		name: "Berlin Group",
+		description:
+			"The Berlin Group is a European standards initiative that publishes scheme-independent specifications for payments interoperability, open banking, and open…",
+		domain: "berlin-group.org",
+		category: null,
+		featured: false,
+		endpoint: "https://www.berlin-group.org/_api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "best-lawyers",
 		name: "Best Lawyers",
 		description:
@@ -3891,6 +4123,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "mcp",
+		name: "BestPrice",
+		description:
+			"BestPrice is a Greek price-comparison shopping service. Its MCP server exposes read-only product search, offer comparison, and price-history information from…",
+		domain: "mcp.bestprice.gr",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.bestprice.gr/mcp",
+		popularity: 0,
+	},
+	{
+		id: "better-design",
+		name: "Better Design",
+		description:
+			"Better Design is a design intelligence service for AI coding agents. It provides shadcn-compatible design systems, UI/UX principles, icon discovery, and…",
+		domain: "better-design.com",
+		category: null,
+		featured: false,
+		endpoint: "https://better-design.com/api/mcp",
+		popularity: 0,
+	},
+	{
+		id: "betterstack",
+		name: "Better Stack",
+		description:
+			"Better Stack exposes Uptime, Telemetry, Errors, Telemetry ingestion, and Telemetry SQL HTTP APIs plus an MCP server; authenticate with Bearer global API…",
+		domain: "betterstack.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.betterstack.com/",
+		popularity: 0,
+	},
+	{
 		id: "bible",
 		name: "Bible",
 		description:
@@ -3900,6 +4165,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://openai-mcp.youversionapi.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "bigcommerce",
+		name: "BigCommerce",
+		description:
+			"BigCommerce is an ecommerce platform for building and operating online stores. It provides APIs and agent tooling for managing store data, powering storefront…",
+		domain: "bigcommerce.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://docs.bigcommerce.com/_mcp/server",
 		popularity: 0,
 	},
 	{
@@ -4046,6 +4322,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "botlify",
+		name: "Botlify",
+		description:
+			"Botlify lets people claim a slug and turn a documentation site or website into a public Grok Bot knowledge source. It crawls same-host sitemap and `llms.txt`…",
+		domain: "botlify.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://botlify.sh/api/mcp/convex",
+		popularity: 0,
+	},
+	{
 		id: "botpress",
 		name: "Botpress",
 		description:
@@ -4058,6 +4345,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "box-2",
+		name: "Box",
+		description:
+			"Box is a cloud content management and collaboration platform for files, folders, search, workflows, signatures, and AI features. Its developer platform lets…",
+		domain: "box.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://box.main-kill-isr.mintlify.me/mcp",
+		popularity: 0,
+	},
+	{
 		id: "boxoffice",
 		name: "Boxoffice",
 		description:
@@ -4066,6 +4364,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://chatgpt-mcp.boxoffice.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "braintrust",
+		name: "Braintrust",
+		description:
+			"Braintrust is an AI observability and evaluation platform for tracing production AI behavior, curating datasets, running evaluations, and managing prompts and…",
+		domain: "braintrust.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://api.braintrust.dev/mcp",
 		popularity: 0,
 	},
 	{
@@ -4093,6 +4402,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "brevo",
+		name: "Brevo",
+		description:
+			"Brevo is a customer engagement platform for email, SMS, WhatsApp, marketing automation, contacts, CRM, and related messaging workflows. It provides tools for…",
+		domain: "brevo.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.brevo.com/v1/brevo/mcp",
+		popularity: 0,
+	},
+	{
+		id: "brew",
+		name: "Brew",
+		description:
+			"Brew is an AI-native email service provider that stores contacts, manages sending infrastructure and domain authentication, and uses AI to generate on-brand…",
+		domain: "brew.new",
+		category: null,
+		featured: false,
+		endpoint: "https://brew.new/mcp",
+		popularity: 0,
+	},
+	{
 		id: "bridebook",
 		name: "Bridebook",
 		description:
@@ -4114,6 +4445,94 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://bbnmcp.cfdomains.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "browser-use",
+		name: "Browser Use",
+		description:
+			"Browser Use provides cloud and open-source tooling for AI-driven browser automation, letting agents interact with websites through natural-language tasks and…",
+		domain: "browser-use.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.browser-use.com/v3/mcp",
+		popularity: 0,
+	},
+	{
+		id: "browserbase",
+		name: "Browserbase",
+		description:
+			"Browserbase is a platform for building and running browser-based AI agents and web automation. It provides hosted browser sessions plus related primitives…",
+		domain: "browserbase.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.browserbase.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "buddy",
+		name: "Buddy",
+		description:
+			"Buddy provides infrastructure for software development workflows, including sandboxes, hosting, repositories, domains, package artifacts, and CI/CD-style…",
+		domain: "buddy.works",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.buddy.works/mcp",
+		popularity: 0,
+	},
+	{
+		id: "buf",
+		name: "Buf",
+		description:
+			"Buf provides tooling and hosted services for working with Protocol Buffers, gRPC, and ConnectRPC, including the Buf CLI and the Buf Schema Registry. It is…",
+		domain: "buf.build",
+		category: null,
+		featured: false,
+		endpoint: "https://buf.build/mcp",
+		popularity: 0,
+	},
+	{
+		id: "buffer",
+		name: "Buffer",
+		description:
+			"Buffer is a social media publishing platform for scheduling posts, managing channels, storing ideas, and viewing post performance across multiple networks…",
+		domain: "buffer.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.buffer.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "buildwithfern",
+		name: "Buildwithfern",
+		description:
+			"Fern is a platform for generating API documentation, SDKs, and CLIs from API definitions such as OpenAPI and GraphQL. It also provides AI-oriented…",
+		domain: "buildwithfern.com",
+		category: null,
+		featured: false,
+		endpoint: "https://buildwithfern.com/learn/_mcp/server",
+		popularity: 0,
+	},
+	{
+		id: "app",
+		name: "Buildy",
+		description:
+			"Buildy hosts interactive web apps that agents can create, update, and render inline, publishing each app at a Buildy URL. The service supports building and…",
+		domain: "app.buildy.so",
+		category: null,
+		featured: false,
+		endpoint: "https://app.buildy.so/mcp",
+		popularity: 0,
+	},
+	{
+		id: "bump",
+		name: "Bump",
+		description:
+			"Bump.sh is a platform for publishing API documentation from OpenAPI and AsyncAPI definitions and for generating managed MCP servers from workflow…",
+		domain: "bump.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.bump.sh/mcp",
 		popularity: 0,
 	},
 	{
@@ -4200,6 +4619,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "cal",
+		name: "Cal",
+		description:
+			"Cal.com is a scheduling platform and scheduling API for individuals, teams, and organizations. It lets users publish booking links, manage availability, and…",
+		domain: "cal.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.cal.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "calorie-tracker",
 		name: "Calorie Tracker",
 		description:
@@ -4248,6 +4678,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "api",
+		name: "Candor",
+		description:
+			"Candor is a personal finance service that lets a user's existing AI agent access read-only financial records, organize budgets and goals, and retain notes and…",
+		domain: "api.candor.money",
+		category: null,
+		featured: false,
+		endpoint: "https://api.candor.money/mcp",
+		popularity: 0,
+	},
+	{
 		id: "canny",
 		name: "Canny",
 		description:
@@ -4293,6 +4734,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.carbonarc.co/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "carbonarc",
+		name: "Carbon Arc",
+		description:
+			"Carbon Arc provides a platform for accessing structured commercial and analytical data, including ontology/entity discovery, query building, and downloadable…",
+		domain: "carbonarc.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.carbonarc.ai/",
 		popularity: 0,
 	},
 	{
@@ -4390,6 +4842,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "carsxe",
+		name: "CarsXE",
+		description:
+			"CarsXE is a B2B vehicle data platform from PiWaves, LLC that provides VIN decoding, vehicle specifications, recalls, market values, history, plate decoding…",
+		domain: "carsxe.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.carsxe.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "carta-crm",
 		name: "Carta CRM",
 		description:
@@ -4399,6 +4862,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.listalpha.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "cartesia",
+		name: "Cartesia",
+		description:
+			"Cartesia provides voice AI APIs and tools for text-to-speech, speech-to-text, voice cloning/localization, and conversational agents. Its platform includes…",
+		domain: "cartesia.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.cartesia.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -4422,6 +4896,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.cashbackhive.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "cavuno",
+		name: "Cavuno",
+		description:
+			"Cavuno provides AI-native job board software for launching and managing branded job boards. It handles job listings, companies, blog content, monetization…",
+		domain: "cavuno.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.cavuno.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -4460,6 +4945,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "chartmogul",
+		name: "ChartMogul",
+		description:
+			"ChartMogul is a subscription analytics and CRM platform for B2B SaaS companies. It helps teams track revenue metrics, customer data, and sales pipeline…",
+		domain: "chartmogul.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.chartmogul.com/",
+		popularity: 0,
+	},
+	{
 		id: "cheat-database",
 		name: "Cheat-Database",
 		description:
@@ -4495,6 +4991,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "checklyhq",
+		name: "Checklyhq",
+		description:
+			"Checkly is a synthetic monitoring and testing platform for monitoring APIs, websites, and user workflows, plus related incident communication and…",
+		domain: "checklyhq.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.checklyhq.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "checkr",
+		name: "Checkr",
+		description:
+			"Checkr provides background screening and related hiring workflow services. Its products include APIs, embeddable application components, and MCP servers for…",
+		domain: "checkr.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.checkr.com/",
+		popularity: 0,
+	},
+	{
 		id: "chessvia-openings",
 		name: "Chessvia Openings",
 		description:
@@ -4516,6 +5034,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chess.altmatter.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "chroma",
+		name: "Chroma",
+		description:
+			"Chroma provides open-source and managed cloud infrastructure for vector databases, search, embeddings, and ingestion workflows for AI applications. Its cloud…",
+		domain: "chroma.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.trychroma.com/package-search/v1",
 		popularity: 0,
 	},
 	{
@@ -4543,6 +5072,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "cloud",
+		name: "Cloud",
+		description:
+			"HitKeep Cloud is a hosted privacy-first web analytics service. It lets teams collect and analyze website traffic, events, conversions, and related reporting…",
+		domain: "cloud.hitkeep.com",
+		category: null,
+		featured: false,
+		endpoint: "https://cloud.hitkeep.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "cloud-2",
+		name: "Cloud",
+		description:
+			"HitKeep is a privacy-first web analytics product offered as managed EU/US cloud and self-hosted deployments. It provides analytics, tracking, and AI-facing…",
+		domain: "cloud.hitkeep.eu",
+		category: null,
+		featured: false,
+		endpoint: "https://cloud.hitkeep.eu/mcp",
+		popularity: 0,
+	},
+	{
 		id: "clutch",
 		name: "Clutch",
 		description:
@@ -4567,6 +5118,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "cobaltpf",
+		name: "Cobaltpf",
+		description:
+			"Cobalt is a personal finance app for web and mobile that aggregates bank, brokerage, transaction, budget, and subscription data. It lets users access and…",
+		domain: "cobaltpf.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.cobaltpf.com/api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "coches",
 		name: "coches.net",
 		description:
@@ -4576,6 +5138,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://llms-apps.gw.coches.net/coches/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "cockroachlabs",
+		name: "Cockroach Labs",
+		description:
+			"Cockroach Labs develops CockroachDB, a distributed SQL database, and operates CockroachDB Cloud, its managed cloud service. Its products let teams run and…",
+		domain: "cockroachlabs.com",
+		category: null,
+		featured: false,
+		endpoint: "https://cockroachlabs.cloud/mcp",
 		popularity: 0,
 	},
 	{
@@ -4591,6 +5164,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "cofounder",
+		name: "Cofounder",
+		description:
+			"Cofounder is an agent-native operating system for running a company, spanning engineering, sales, marketing, finance, and operations. Its product includes a…",
+		domain: "cofounder.co",
+		category: null,
+		featured: false,
+		endpoint: "https://api.superoptimizers.cofounder.co/mcp",
+		popularity: 0,
+	},
+	{
 		id: "cogedim",
 		name: "Cogedim",
 		description:
@@ -4600,6 +5184,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://www.cogedim.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "collegenation",
+		name: "College Nation",
+		description:
+			"College Nation is an online retail store built on Shopify. It sells college-themed merchandise and exposes storefront browsing pages plus agent-oriented…",
+		domain: "collegenation.com",
+		category: null,
+		featured: false,
+		endpoint: "https://5guxfz-1n.myshopify.com/api/ucp/mcp",
 		popularity: 0,
 	},
 	{
@@ -4613,6 +5208,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		endpoint:
 			"https://palette-picker.widgets.widget.olutely.com/palette-picker/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "cometchat",
+		name: "CometChat",
+		description:
+			"CometChat provides in-app messaging, voice, video calling, notifications, and related communication features for web and mobile applications. Its platform…",
+		domain: "cometchat.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.cometchat.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -4651,6 +5257,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "confident-ai",
+		name: "Confident AI",
+		description:
+			"Confident AI is a platform for evaluating, observing, and improving AI systems, including LLM evaluations, tracing, prompt management, and annotations. It…",
+		domain: "confident-ai.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.confident-ai.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "confirmtkt",
 		name: "ConfirmTkt",
 		description:
@@ -4660,6 +5277,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.confirmtkt.com/trains-ai/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "contentful",
+		name: "Contentful",
+		description:
+			"Contentful is a content platform for creating, managing, and delivering structured content across websites, apps, and other digital experiences. It also…",
+		domain: "contentful.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.contentful.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "context",
+		name: "Context",
+		description:
+			"Context.dev provides APIs for web scraping, site crawling, screenshots, structured extraction, and brand/company enrichment data. It is positioned as a web…",
+		domain: "context.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://context-dev.stlmcp.com/",
 		popularity: 0,
 	},
 	{
@@ -4683,6 +5322,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://mcp.cottages.com/",
+		popularity: 0,
+	},
+	{
+		id: "courier",
+		name: "Courier",
+		description:
+			"Courier is a notification infrastructure service for sending product-to-user messages across email, SMS, push, chat, and in-app channels. It also provides…",
+		domain: "courier.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.courier.com/",
 		popularity: 0,
 	},
 	{
@@ -4745,6 +5395,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "crewai",
+		name: "CrewAI",
+		description:
+			"CrewAI provides a platform for building, deploying, and managing AI agents and multi-agent workflows. On crewai.com, it publishes public marketing-site…",
+		domain: "crewai.com",
+		category: null,
+		featured: false,
+		endpoint: "https://crewai.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "cruise-critic",
 		name: "Cruise Critic",
 		description:
@@ -4793,6 +5454,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "databuddy",
+		name: "Databuddy",
+		description:
+			"Databuddy is a privacy-focused developer analytics platform that combines web analytics, event tracking, feature flags, uptime monitoring, short links, and…",
+		domain: "databuddy.cc",
+		category: null,
+		featured: false,
+		endpoint: "https://api.databuddy.cc/v1/mcp/",
+		popularity: 0,
+	},
+	{
 		id: "datacamp",
 		name: "DataCamp",
 		description:
@@ -4802,6 +5474,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://datacamp-mcp.datacamp.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "datafa",
+		name: "Datafa",
+		description:
+			"DataFast is a web analytics platform that helps teams track website traffic, goals, funnels, visitors, and revenue attribution. It also supports…",
+		domain: "datafa.st",
+		category: null,
+		featured: false,
+		endpoint: "https://datafa.st/api/mcp",
+		popularity: 0,
+	},
+	{
+		id: "dataforseo",
+		name: "DataForSEO",
+		description:
+			"DataForSEO provides SEO, search, advertising, backlink, review, app, business, merchant, and AI-related marketing data through APIs and databases. Its…",
+		domain: "dataforseo.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.dataforseo.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "datocms",
+		name: "DatoCMS",
+		description:
+			"DatoCMS is a headless CMS for modeling content and delivering it to websites, apps, and other clients. It provides hosted content management, content…",
+		domain: "datocms.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.datocms.com/",
 		popularity: 0,
 	},
 	{
@@ -4851,6 +5556,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "decolar-apis",
+		name: "Decolar",
+		description:
+			"Decolar is the Brazilian brand of Despegar, a Latin American online travel company. Its B2B platform lets partners integrate hotel, flight, activity, booking…",
+		domain: "decolar.com",
+		category: null,
+		featured: false,
+		endpoint: "https://apis.despegar.com/api-b2b-flights-mcp/mcp",
+		popularity: 0,
+	},
+	{
 		id: "deel",
 		name: "Deel",
 		description:
@@ -4860,6 +5576,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://api-staging.letsdeel.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "deepgram",
+		name: "Deepgram",
+		description:
+			"Deepgram provides speech-to-text, text-to-speech, voice agent, and audio/text intelligence services. Its platform also includes project and API key management…",
+		domain: "deepgram.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.deepgram.com/_mcp/server",
 		popularity: 0,
 	},
 	{
@@ -4899,6 +5626,50 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "descope",
+		name: "Descope",
+		description:
+			"Descope is an identity and access management platform for adding authentication, access control, and identity management to customer applications, partner…",
+		domain: "descope.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.descope.com/",
+		popularity: 0,
+	},
+	{
+		id: "descript",
+		name: "Descript",
+		description:
+			"Descript is an audio and video editing platform with AI-assisted editing, transcription, publishing, and collaboration features. It is used to create and edit…",
+		domain: "descript.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.descript.com/v2/mcp",
+		popularity: 0,
+	},
+	{
+		id: "devcycle",
+		name: "DevCycle",
+		description:
+			"DevCycle is a feature flag and experimentation platform built around OpenFeature. It lets teams manage flags, targeting, variables, and evaluations across…",
+		domain: "devcycle.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.devcycle.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "developers",
+		name: "Developers",
+		description:
+			"Schedulin is a social media scheduling platform for creating, scheduling, publishing, and analyzing posts across multiple social networks. It provides tools…",
+		domain: "developers.schedulin.app",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.schedulin.app/mcp",
+		popularity: 0,
+	},
+	{
 		id: "dewa",
 		name: "DEWA",
 		description:
@@ -4935,6 +5706,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "dmfam",
+		name: "Dmfam",
+		description:
+			"DMF (Digital Monetary Framework) is a non-custodial protocol on Base that issues dmfUSD, a USDC-backed digital token with deterministic minting, redemption…",
+		domain: "dmfam.org",
+		category: null,
+		featured: false,
+		endpoint: "https://dmfam.org/",
+		popularity: 0,
+	},
+	{
 		id: "docket",
 		name: "Docket",
 		description:
@@ -4944,6 +5726,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.app.docketai.com/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "docsie",
+		name: "Docsie",
+		description:
+			"Docsie is a documentation and knowledge platform that turns videos, files, and other source material into structured documentation, training content, and…",
+		domain: "docsie.io",
+		category: null,
+		featured: false,
+		endpoint: "https://app.docsie.io/mcp/",
+		popularity: 0,
+	},
+	{
+		id: "domotz",
+		name: "Domotz",
+		description:
+			"Domotz is a cloud-based network monitoring and management platform for MSPs, IT teams, and enterprises. It provides device discovery, monitoring, remote…",
+		domain: "domotz.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.domotz.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5006,6 +5810,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "api-2",
+		name: "Driftless",
+		description:
+			"Driftless is a workspace for teams and AI agents to manage shared context, projects, and operational records. It lets humans and agents read and write the…",
+		domain: "api.driftless.icu",
+		category: null,
+		featured: false,
+		endpoint: "https://api.driftless.icu/mcp",
+		popularity: 0,
+	},
+	{
 		id: "dropbox",
 		name: "Dropbox",
 		description:
@@ -5030,6 +5845,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "dub",
+		name: "Dub",
+		description:
+			"Dub is a link attribution platform for short links, conversion tracking, analytics, and affiliate or referral program management. It provides products for…",
+		domain: "dub.co",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.dub.sh/mcp/dub-partners",
+		popularity: 0,
+	},
+	{
 		id: "duce-s-wild-bbq",
 		name: "Duce's Wild BBQ",
 		description:
@@ -5051,6 +5877,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://api.itsdunzo.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "e2b",
+		name: "E2B",
+		description:
+			"E2B provides cloud sandboxes for AI agents to execute code, run tools, and manage isolated Linux environments. It also offers template, filesystem, process…",
+		domain: "e2b.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://e2b.dev/mcp",
 		popularity: 0,
 	},
 	{
@@ -5126,6 +5963,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "envoy",
+		name: "Envoy",
+		description:
+			"Envoy is a workplace management platform for visitor management, space and desk reservations, deliveries, emergency notifications, and related office…",
+		domain: "envoy.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.envoy.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "enzo-reader-for-rss",
 		name: "Enzo Reader for RSS",
 		description:
@@ -5135,6 +5983,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chatgpt.enzoreader.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "eodhd",
+		name: "EODHD",
+		description:
+			"EODHD provides financial market data including historical and live prices, fundamentals, news, technical indicators, options, and macroeconomic datasets. The…",
+		domain: "eodhd.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.eodhd.com/v1/mcp",
 		popularity: 0,
 	},
 	{
@@ -5159,6 +6018,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chatgpt-app.evaneos.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "evernote",
+		name: "Evernote",
+		description:
+			"Evernote is a note-taking and productivity service for capturing, organizing, searching, and creating notes, notebooks, tags, tasks, and attachments. The site…",
+		domain: "evernote.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.evernote.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5208,6 +6078,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "expense-budget-tracker",
+		name: "Expense Budget Tracker",
+		description:
+			"Expense Budget Tracker is an open-source personal finance and budgeting app for tracking expenses, planning budgets, and viewing financial dashboards with…",
+		domain: "expense-budget-tracker.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.expense-budget-tracker.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "experian-insurance",
 		name: "Experian Insurance",
 		description:
@@ -5243,6 +6124,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "facebook",
+		name: "Facebook",
+		description:
+			"Facebook, operated by Meta, is a social networking platform and part of Meta’s broader developer ecosystem. Its developer platform lets apps integrate with…",
+		domain: "facebook.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.facebook.com/devtools",
+		popularity: 0,
+	},
+	{
+		id: "faces",
+		name: "Faces",
+		description:
+			"Faces is an AI presentation tool for creating, editing, publishing, and sharing interactive web-based slide decks. It supports both direct API access and…",
+		domain: "faces.app",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.faces.app/mcp",
+		popularity: 0,
+	},
+	{
 		id: "faire-wholesale",
 		name: "Faire Wholesale",
 		description:
@@ -5252,6 +6155,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://www.faire.com/chatgpt/api/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "fakerforge",
+		name: "Faker Forge",
+		description:
+			"Faker Forge is a synthetic data and API mocking platform for developers. It helps users generate realistic mock data from schemas, manage mock APIs with…",
+		domain: "fakerforge.com",
+		category: null,
+		featured: false,
+		endpoint: "https://fakerforge.com/mcp/fakerforge",
+		popularity: 0,
+	},
+	{
+		id: "fal",
+		name: "Fal",
+		description:
+			"fal.ai is a generative media platform for developers to run hosted AI models, deploy serverless model endpoints, and manage related assets, usage, and compute…",
+		domain: "fal.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.fal.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -5300,6 +6225,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://immobilier.lefigaro.fr/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "financialmodelingprep",
+		name: "Financial Modeling Prep",
+		description:
+			"Financial Modeling Prep provides stock market, company fundamentals, historical pricing, economic, ETF, forex, crypto, and related financial datasets. It…",
+		domain: "financialmodelingprep.com",
+		category: null,
+		featured: false,
+		endpoint: "https://financialmodelingprep.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5363,6 +6299,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "flagsmith",
+		name: "Flagsmith",
+		description:
+			"Flagsmith is a feature flag and remote configuration platform for managing releases, experiments, and user targeting across applications. It is available as a…",
+		domain: "flagsmith.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.flagsmith.com/",
+		popularity: 0,
+	},
+	{
+		id: "flarehawk",
+		name: "Flarehawk",
+		description:
+			"Flarehawk is a security operations platform that ingests telemetry from tools such as edge, gateway, and application sources, groups suspicious activity into…",
+		domain: "flarehawk.com",
+		category: null,
+		featured: false,
+		endpoint: "https://app.flarehawk.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "flashcards-open-source-app",
+		name: "Flashcards Open Source App",
+		description:
+			"Flashcards is an open-source spaced-repetition flashcards app with web, iOS, and Android clients plus a self-hosted deployment path. It stores study data in…",
+		domain: "flashcards-open-source-app.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.flashcards-open-source-app.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "flight-network",
 		name: "Flight Network",
 		description:
@@ -5372,6 +6341,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp-ultrasearch.etraveligroup.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "flightqueue",
+		name: "FlightQueue",
+		description:
+			"FlightQueue provides airport intelligence data such as security wait times, FAA delays, predictions, and historical airport patterns. Its product covers…",
+		domain: "flightqueue.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.flightqueue.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5396,6 +6376,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://flixor.toolpipe.ai/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "flusterduck",
+		name: "Flusterduck",
+		description:
+			"Flusterduck monitors website behavior to detect user friction, score confusing pages, cluster issues, and verify whether deploys fix those problems. It…",
+		domain: "flusterduck.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.flusterduck.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5459,6 +6450,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "framagit",
+		name: "Framagit",
+		description:
+			"Framagit is Framasoft’s hosted GitLab Community Edition instance for source code hosting and collaborative software development. It provides Git repositories…",
+		domain: "framagit.org",
+		category: null,
+		featured: false,
+		endpoint: "https://framagit.org/api/v4/mcp",
+		popularity: 0,
+	},
+	{
+		id: "frankfurter",
+		name: "Frankfurter",
+		description:
+			"Frankfurter is an exchange-rates and currency-data service that provides current and historical foreign exchange rates from central banks and other official…",
+		domain: "frankfurter.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.frankfurter.dev/",
+		popularity: 0,
+	},
+	{
 		id: "freediver",
 		name: "Freediver",
 		description:
@@ -5479,6 +6492,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://tax-advisors-qa-chatgpt-app.secure.freee.co.jp/mcp",
+		popularity: 0,
+	},
+	{
+		id: "front",
+		name: "Front",
+		description:
+			"Front is a customer operations and communication platform for shared inboxes, messaging channels, automation, and analytics. Teams use it to manage customer…",
+		domain: "front.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.frontapp.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5506,6 +6530,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "app-2",
+		name: "Full Stack GTM",
+		description:
+			"Full Stack GTM provides a CRM/go-to-market operations tool focused on read-only audits, staged patch plans, and approval-gated write-back to systems like…",
+		domain: "app.fullstackgtm.com",
+		category: null,
+		featured: false,
+		endpoint: "https://app.fullstackgtm.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "fullstackgtm",
+		name: "Full Stack GTM",
+		description:
+			"Full Stack GTM provides software and services for auditing, cleaning, and governing CRM and go-to-market data. Its open-source toolkit lets agents and…",
+		domain: "fullstackgtm.com",
+		category: null,
+		featured: false,
+		endpoint: "https://fullstackgtm.com/",
+		popularity: 0,
+	},
+	{
+		id: "fullstory",
+		name: "Fullstory",
+		description:
+			"Fullstory is a behavioral data platform for capturing and analyzing web and mobile user interactions, including session replay and product analytics. It also…",
+		domain: "fullstory.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.fullstory.com/mcp/fullstory",
+		popularity: 0,
+	},
+	{
 		id: "fyxer",
 		name: "Fyxer",
 		description:
@@ -5527,6 +6584,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://gailo-halloran.mcp.noodleseed.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "galileo",
+		name: "Galileo",
+		description:
+			"Galileo is an AI agent reliability platform for evaluating, observing, and adding guardrails to LLM applications and autonomous agents. It provides tooling…",
+		domain: "galileo.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.galileo.ai/mcp/http/mcp",
 		popularity: 0,
 	},
 	{
@@ -5590,6 +6658,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "getbeachfinder",
+		name: "Getbeachfinder",
+		description:
+			"BeachFinder is a beach, lake, and swimming-spot discovery service that helps people compare places using mapped spot data, current planning conditions…",
+		domain: "getbeachfinder.com",
+		category: null,
+		featured: false,
+		endpoint: "https://getbeachfinder.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "getmedesign",
 		name: "GetMeDesign",
 		description:
@@ -5599,6 +6678,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://backend.getmedesign.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "getnerdify",
+		name: "Getnerdify",
+		description:
+			"Nerdify is a nearshore software engineering firm based in Managua, Nicaragua that builds and maintains web and mobile products for clients. It also offers AI…",
+		domain: "getnerdify.com",
+		category: null,
+		featured: false,
+		endpoint: "https://getnerdify.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "getperseuss",
+		name: "Getperseuss",
+		description:
+			"Perseuss provides logistics optimization software focused on cartonization, palletization, and freight packing efficiency for warehouses and shippers. Its…",
+		domain: "getperseuss.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.getperseuss.com/_api/mcp",
+		popularity: 0,
+	},
+	{
+		id: "getsequence",
+		name: "Getsequence",
+		description:
+			"Sequence provides software for automating and orchestrating money movement across bank accounts, rules, and transfers. Its products include a…",
+		domain: "getsequence.io",
+		category: null,
+		featured: false,
+		endpoint: "https://app.getsequence.io/api/mcp",
 		popularity: 0,
 	},
 	{
@@ -5613,6 +6725,27 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "zep-ai",
+		name: "Getzep",
+		description:
+			"Zep is a context engineering and agent memory platform that stores user, thread, and business context in temporal knowledge graphs for AI applications. It…",
+		domain: "getzep.com",
+		category: null,
+		featured: false,
+		endpoint: "https://docs-mcp.getzep.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "git",
+		name: "Git",
+		description: "Exposes mcp for this service.",
+		domain: "git.cafe",
+		category: null,
+		featured: false,
+		endpoint: "https://git.cafe/mcp",
+		popularity: 0,
+	},
+	{
 		id: "github",
 		name: "GitHub",
 		description:
@@ -5621,6 +6754,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: "developer-tools",
 		featured: false,
 		endpoint: "https://api.githubcopilot.com/mcp/",
+		popularity: 0,
+	},
+	{
+		id: "glama",
+		name: "Glama",
+		description:
+			"Glama is an AI workspace centered on the Model Context Protocol, including an MCP registry, browser-based inspector, hosted connectors, and gateway products…",
+		domain: "glama.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp-test.glama.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "glean",
+		name: "Glean",
+		description:
+			"Glean is an enterprise search and AI platform that connects company knowledge, documents, people, and tools. It lets organizations build search, chat, agent…",
+		domain: "glean.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.glean.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5660,6 +6815,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "gogs",
+		name: "Gogs",
+		description:
+			"Gogs is an open-source self-hosted Git service for hosting repositories, managing users and organizations, and exposing Git operations over web, SSH, and…",
+		domain: "gogs.io",
+		category: null,
+		featured: false,
+		endpoint: "https://gogs.io/mcp",
+		popularity: 0,
+	},
+	{
+		id: "gohighlevel",
+		name: "Gohighlevel",
+		description:
+			"HighLevel is a CRM and sales/marketing automation platform for agencies and businesses. It combines contacts, messaging, calendars, payments, workflows, and…",
+		domain: "gohighlevel.com",
+		category: null,
+		featured: false,
+		endpoint: "https://services.leadconnectorhq.com/mcp/",
+		popularity: 0,
+	},
+	{
 		id: "good-with-words",
 		name: "Good with Words",
 		description:
@@ -5669,6 +6846,61 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://text-analysis.widgets.widget.olutely.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "gorgias",
+		name: "Gorgias",
+		description:
+			"Gorgias is an ecommerce customer support and conversational AI platform that unifies helpdesk channels such as email, chat, voice, SMS, and social messaging…",
+		domain: "gorgias.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.gorgias.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "shippo-com",
+		name: "Goshippo",
+		description:
+			"Shippo provides multi-carrier shipping infrastructure for creating labels, comparing rates, validating addresses, tracking packages, and related shipping…",
+		domain: "goshippo.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.shippo.com/",
+		popularity: 0,
+	},
+	{
+		id: "gowindmill",
+		name: "Gowindmill",
+		description:
+			"Windmill is a performance management platform for reviews, 1:1s, pulse surveys, analytics, and feedback workflows. It uses AI and connected workplace tools to…",
+		domain: "gowindmill.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.gowindmill.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "grep",
+		name: "Grep",
+		description:
+			"grep.app is a code search service for searching code, files, and paths across public GitHub repositories. It is operated by Vercel and presented as a…",
+		domain: "grep.app",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.grep.app/",
+		popularity: 0,
+	},
+	{
+		id: "greptile",
+		name: "Greptile",
+		description:
+			"Greptile is an AI code review service for GitHub and GitLab that reviews pull requests and merge requests using whole-repository context. It also supports IDE…",
+		domain: "greptile.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.greptile.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5684,6 +6916,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "groundcover",
+		name: "groundcover",
+		description:
+			"groundcover is an observability platform for cloud-native and on-prem environments. It uses eBPF-based instrumentation to collect and analyze metrics, logs…",
+		domain: "groundcover.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.groundcover.com/api/mcp",
+		popularity: 0,
+	},
+	{
+		id: "gsplantfoods",
+		name: "GS Plant Foods",
+		description:
+			"GS Plant Foods is an online store selling organic and natural fertilizers, soil products, and garden supplies. The site is a Shopify-powered storefront with…",
+		domain: "gsplantfoods.com",
+		category: null,
+		featured: false,
+		endpoint: "https://gsplantfoods.com/api/ucp/mcp",
+		popularity: 0,
+	},
+	{
 		id: "gs-plantfoods",
 		name: "GS Plantfoods",
 		description:
@@ -5693,6 +6947,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://gs-plant-foods.mcp.noodleseed.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "gumloop",
+		name: "Gumloop",
+		description:
+			"Gumloop is an AI automation platform for building agents and workflows that connect to internal and external tools. It lets teams run automations, manage…",
+		domain: "gumloop.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.gumloop.com/gumloop/mcp",
 		popularity: 0,
 	},
 	{
@@ -5757,6 +7022,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "hauptsache",
+		name: "Hauptsache",
+		description:
+			"hauptsache.net is a web and software agency site. Its public-facing domain also hosts an MCP endpoint and a separate subdomain API for a document service…",
+		domain: "hauptsache.net",
+		category: null,
+		featured: false,
+		endpoint: "https://hauptsache.net/mcp",
+		popularity: 0,
+	},
+	{
 		id: "headout",
 		name: "Headout",
 		description:
@@ -5769,6 +7045,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "heffl",
+		name: "Heffl",
+		description:
+			"Heffl is a CRM and business operations platform for managing contacts, companies, deals, tasks, quotations, projects, forms, and related workspace data. It…",
+		domain: "heffl.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.heffl.com/api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "helium-10",
 		name: "Helium 10",
 		description:
@@ -5778,6 +7065,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://h10-mcp-chatgptapps.pacvue.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "hellosign",
+		name: "Hellosign",
+		description:
+			"Dropbox Sign is an e-signature platform for sending, signing, and managing digital agreement workflows. Its developer offering lets customers embed signing…",
+		domain: "hellosign.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.hellosign.com/_mcp/server",
 		popularity: 0,
 	},
 	{
@@ -5802,6 +7100,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.hemlak.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "hercules",
+		name: "Hercules",
+		description:
+			"Hercules is an AI app builder for creating and publishing web apps, internal tools, e-commerce sites, and mobile apps by chatting with AI. It provides…",
+		domain: "hercules.app",
+		category: null,
+		featured: false,
+		endpoint: "https://hercules.app/mcp",
 		popularity: 0,
 	},
 	{
@@ -5853,6 +7162,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "hitkeep",
+		name: "HitKeep",
+		description:
+			"HitKeep is a privacy-first web analytics product available as managed cloud or self-hosted single-binary software. It provides cookie-light tracking…",
+		domain: "hitkeep.com",
+		category: null,
+		featured: false,
+		endpoint: "https://hitkeep.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "hjarni",
 		name: "Hjarni",
 		description:
@@ -5865,6 +7185,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "honcho",
+		name: "Honcho",
+		description:
+			"Honcho is a memory and reasoning system for stateful AI agents, with managed APIs and tools for storing conversations, querying representations, and adding…",
+		domain: "honcho.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.honcho.dev/",
+		popularity: 0,
+	},
+	{
+		id: "hoplite",
+		name: "Hoplite",
+		description:
+			"Hoplite is a cloud coding-agent platform for starting, supervising, and reviewing work in GitHub-backed repositories. It runs agent work in managed cloud…",
+		domain: "hoplite.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://api.hoplite.sh/mcp",
+		popularity: 0,
+	},
+	{
 		id: "hostinger",
 		name: "Hostinger",
 		description:
@@ -5874,6 +7216,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://hmcp.hostinger.com/chatgpt/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "hostodo",
+		name: "Hostodo",
+		description:
+			"Hostodo is a VPS hosting provider offering unmanaged Linux KVM virtual private servers with NVMe storage and multiple US datacenter locations. Customers use…",
+		domain: "hostodo.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.hostodo.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5901,6 +7254,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "houstonian",
+		name: "Houstonian",
+		description:
+			"Houstonian.com is the website for The Houstonian Hotel, Club & Spa in Houston, Texas. It provides hotel, club, spa, and reservation information, and publishes…",
+		domain: "houstonian.com",
+		category: null,
+		featured: false,
+		endpoint: "https://houstonian.com/.well-known/agent-card.json",
+		popularity: 0,
+	},
+	{
 		id: "how-to-student",
 		name: "How To Student",
 		description:
@@ -5910,6 +7274,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp-hnh4eph34q-uc.a.run.app/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "htmlcsstoimage",
+		name: "HTML CSS to Image",
+		description:
+			"HTML/CSS to Image is a service that converts HTML, CSS, templates, and public URLs into rendered images and PDFs. It is used for generated social cards…",
+		domain: "htmlcsstoimage.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.hcti.io/",
 		popularity: 0,
 	},
 	{
@@ -5948,6 +7323,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "hyperping",
+		name: "Hyperping",
+		description:
+			"Hyperping is an uptime monitoring, status page, and incident/on-call platform for websites, APIs, and scheduled jobs. It lets teams monitor services, track…",
+		domain: "hyperping.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.hyperping.io/v1/mcp",
+		popularity: 0,
+	},
+	{
+		id: "ibm",
+		name: "IBM",
+		description:
+			"IBM provides cloud infrastructure, platform, AI, and data services through IBM Cloud and related products. Its developer-facing surfaces on IBM-owned domains…",
+		domain: "ibm.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.dataplatform.cloud.ibm.com/wxbi/v1/mcp",
+		popularity: 0,
+	},
+	{
 		id: "idealista",
 		name: "idealista",
 		description:
@@ -5967,6 +7364,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://idealo-app-in-chatgpt.idealo.tools/v5/mcp/",
+		popularity: 0,
+	},
+	{
+		id: "idenfy",
+		name: "iDenfy",
+		description:
+			"iDenfy is a RegTech platform for identity verification, business verification, AML screening, age estimation, and fraud prevention. It helps businesses…",
+		domain: "idenfy.com",
+		category: null,
+		featured: false,
+		endpoint: "https://documentation.idenfy.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -5991,6 +7399,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chatgpt-imovirtual.genai.olx.io/",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "api-3",
+		name: "InfluenceKit",
+		description:
+			"InfluenceKit is an influencer marketing platform for brands, agencies, and creators. It supports campaign management, creator discovery, cross-platform…",
+		domain: "api.influencekit.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.influencekit.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "inline",
+		name: "Inline",
+		description:
+			"Inline is a work chat product for teams. It provides messaging, bots, and assistant-oriented integrations around conversations, spaces, and direct messages.",
+		domain: "inline.chat",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.inline.chat/mcp",
 		popularity: 0,
 	},
 	{
@@ -6077,6 +7507,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "ipinfo",
+		name: "IPinfo",
+		description:
+			"IPinfo provides IP address intelligence data such as geolocation, ASN/network ownership, privacy and proxy detection, and related lookup data. Its products…",
+		domain: "ipinfo.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.ipinfo.io/",
+		popularity: 0,
+	},
+	{
 		id: "isango",
 		name: "isango!",
 		description:
@@ -6125,6 +7566,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "jaz",
+		name: "Jaz",
+		description:
+			"Jaz is an accounting and finance platform for businesses and accountants. It supports workflows like invoicing, bills, reconciliation, reporting, and…",
+		domain: "jaz.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.jaz.ai/mcp",
+		popularity: 0,
+	},
+	{
 		id: "jerry-ai-car-insurance-care",
 		name: "Jerry.ai Car Insurance & Care",
 		description:
@@ -6161,6 +7613,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "jina",
+		name: "Jina",
+		description:
+			"Jina AI provides search-oriented AI services including web reading/search, embeddings, reranking, classification, and deep research workflows. Its products…",
+		domain: "jina.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.jina.ai/v1",
+		popularity: 0,
+	},
+	{
 		id: "jinko",
 		name: "Jinko",
 		description:
@@ -6170,6 +7633,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.gojinko.com/",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "jira",
+		name: "Jira",
+		description:
+			"Jira is Atlassian’s issue tracking and work management product. It is offered as part of Atlassian Cloud and connects with other Atlassian products such as…",
+		domain: "jira.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.atlassian.com/v1/mcp/authv2",
 		popularity: 0,
 	},
 	{
@@ -6281,6 +7755,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "kaggle",
+		name: "Kaggle",
+		description:
+			"Kaggle is an online platform for data science and machine learning where users work with datasets, notebooks, models, benchmarks, and competitions. It also…",
+		domain: "kaggle.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.kaggle.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "kakunin",
+		name: "Kakunin",
+		description:
+			"Kakunin provides identity, certificate issuance, behavioral monitoring, and compliance/audit tooling for AI agents. It issues X.509 certificates to agents…",
+		domain: "kakunin.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://www.kakunin.ai/api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "kelley-blue-book",
 		name: "Kelley Blue Book",
 		description:
@@ -6289,6 +7785,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://kbb-chatgpt-app-prod-a.awskbbcs.kbb.com/mcp/messages",
+		popularity: 0,
+	},
+	{
+		id: "kennel",
+		name: "kennel",
+		description:
+			"kennel is an open-source task list application with tasks, projects, and labels, plus a web dashboard. It lets apps and AI agents read and modify that task…",
+		domain: "kennel.work",
+		category: null,
+		featured: false,
+		endpoint: "https://kennel.work/mcp",
+		popularity: 0,
+	},
+	{
+		id: "kernel",
+		name: "Kernel",
+		description:
+			"Kernel provides cloud browser infrastructure for AI agents and automations, including isolated Chromium sessions, browser control, profiles, proxies, managed…",
+		domain: "kernel.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.onkernel.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "kestra",
+		name: "Kestra",
+		description:
+			"Kestra is an open-source workflow orchestration platform where workflows are defined declaratively in YAML as flows made of tasks, triggers, inputs, and…",
+		domain: "kestra.io",
+		category: null,
+		featured: false,
+		endpoint: "https://api.kestra.io/v1/mcp",
 		popularity: 0,
 	},
 	{
@@ -6329,6 +7858,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "kit",
+		name: "Kit",
+		description:
+			"Kit is an email marketing and creator platform for managing subscribers, broadcasts, sequences, forms, tags, and related account data. It also provides an app…",
+		domain: "kit.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.kit.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "kleinanzeigen",
 		name: "Kleinanzeigen",
 		description:
@@ -6351,6 +7891,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		endpoint:
 			"https://mcp.klook.com/v2/aiappsbff/public/openai/apps-mcp-server",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "knock",
+		name: "Knock",
+		description:
+			"Knock is a customer messaging and notification infrastructure platform for building workflows, templates, preferences, and multi-channel delivery across…",
+		domain: "knock.app",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.knock.app/mcp",
 		popularity: 0,
 	},
 	{
@@ -6399,6 +7950,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://ai-analytics-mcp.kraken.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "krea",
+		name: "Krea",
+		description:
+			"Krea is an AI creative platform for generating and editing images, video, 3D assets, and related media with many underlying models in one workspace. It also…",
+		domain: "krea.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.krea.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -6474,6 +8036,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "mcp-2",
+		name: "La Pyme",
+		description:
+			"La Pyme is a business operations platform for small businesses, covering sales, purchases, inventory, payments, and reporting. This subdomain hosts its…",
+		domain: "mcp.lapyme.com.ar",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.lapyme.com.ar/mcp",
+		popularity: 0,
+	},
+	{
 		id: "lambus",
 		name: "Lambus",
 		description:
@@ -6483,6 +8056,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.lambus.ai/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "langfuse",
+		name: "Langfuse",
+		description:
+			"Langfuse is an open-source AI engineering platform for observing, evaluating, and managing LLM applications, prompts, traces, and related data. It is…",
+		domain: "langfuse.com",
+		category: null,
+		featured: false,
+		endpoint: "https://cloud.langfuse.com/api/public/mcp",
 		popularity: 0,
 	},
 	{
@@ -6546,6 +8130,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "lemlist",
+		name: "lemlist",
+		description:
+			"lemlist is a sales outreach platform for managing campaigns, leads, sequences, enrichment, inbox activity, and related team workflows. It also offers an MCP…",
+		domain: "lemlist.com",
+		category: null,
+		featured: false,
+		endpoint: "https://app.lemlist.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "lesfurets",
 		name: "lesfurets",
 		description:
@@ -6581,6 +8176,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "liblab",
+		name: "liblab",
+		description:
+			"liblab generates SDKs, documentation, and MCP servers from API specifications such as OpenAPI and Postman collections. It also offers hosted MCP deployment…",
+		domain: "liblab.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.liblab.io/liblab",
+		popularity: 0,
+	},
+	{
 		id: "lifttrack",
 		name: "LiftTrack",
 		description:
@@ -6590,6 +8196,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.lifttrackapp.com/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "lightfield",
+		name: "Lightfield",
+		description:
+			"Lightfield is an AI-native CRM that automatically captures emails, meetings, and other customer interactions to build and update relationship records. It…",
+		domain: "lightfield.app",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.lightfield.app/mcp",
 		popularity: 0,
 	},
 	{
@@ -6617,6 +8234,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "list-manage",
+		name: "List Manage",
+		description:
+			"list-manage.com is associated with Mailchimp and is commonly used for Mailchimp-hosted links and list-management endpoints in email flows. Mailchimp provides…",
+		domain: "list-manage.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mandrillapp.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "listingforgeai",
 		name: "ListingForgeAI",
 		description:
@@ -6638,6 +8266,50 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp-blue.littlecaesars.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "llamaindex",
+		name: "LlamaIndex",
+		description:
+			"LlamaIndex provides software for building LLM applications over data, including the managed LlamaCloud document-processing platform and the open-source…",
+		domain: "llamaindex.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.llamaindex.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "llmpulse",
+		name: "LLM Pulse",
+		description:
+			"LLM Pulse is an AI search and generative engine optimization platform that tracks how brands appear in AI-generated answers across products like ChatGPT…",
+		domain: "llmpulse.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.llmpulse.ai/api/v1/mcp",
+		popularity: 0,
+	},
+	{
+		id: "lmnr",
+		name: "Lmnr",
+		description:
+			"Laminar is an observability platform for AI agents and LLM applications. It helps teams trace runs, inspect failures, manage datasets and evaluations, and…",
+		domain: "lmnr.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.lmnr.ai/v1/mcp",
+		popularity: 0,
+	},
+	{
+		id: "lobehub",
+		name: "LobeHub",
+		description:
+			"LobeHub is an AI agent collaboration platform where users create and work with persistent agent teammates, shared context, and multi-agent workflows. It also…",
+		domain: "lobehub.com",
+		category: null,
+		featured: false,
+		endpoint: "https://lobehub.com/.well-known/mcp/server-card.json",
 		popularity: 0,
 	},
 	{
@@ -6664,6 +8336,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "logrocket",
+		name: "LogRocket",
+		description:
+			"LogRocket is a product analytics and session replay platform for web and mobile applications. It captures user sessions, issues, performance signals, and…",
+		domain: "logrocket.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.logrocket.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "logto",
+		name: "Logto",
+		description:
+			"Logto is an identity and access management platform for adding authentication, authorization, user management, and multi-tenancy to applications. It offers…",
+		domain: "logto.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.logto.io/",
+		popularity: 0,
+	},
+	{
 		id: "lona-trading-assistant",
 		name: "LONA Trading Assistant",
 		description:
@@ -6673,6 +8367,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.lona.agency/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "loops",
+		name: "Loops",
+		description:
+			"Loops is an email platform for software companies that combines transactional, lifecycle, and marketing email. It provides contact management, events…",
+		domain: "loops.so",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.loops.so/",
 		popularity: 0,
 	},
 	{
@@ -6745,6 +8450,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "lp",
+		name: "Lp",
+		description:
+			"Re:port Flow is a cloud service for creating document templates and generating PDFs such as invoices, reports, and application forms. It provides a visual…",
+		domain: "lp.re-port-flow.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.re-port-flow.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "lucid-lucid-developer-docs",
+		name: "Lucid",
+		description:
+			"Lucid provides visual collaboration products such as diagramming and whiteboarding, along with developer tooling for extensions, custom shapes, and…",
+		domain: "lucid.co",
+		category: null,
+		featured: false,
+		endpoint: "https://lucid-developer-docs.readme.io/mcp",
+		popularity: 0,
+	},
+	{
 		id: "lugg",
 		name: "Lugg",
 		description:
@@ -6766,6 +8493,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://www.lumeimobiliaria.com.br/api/mcp/public",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "mcp-3",
+		name: "Lune Research",
+		description:
+			"Lune Research provides access to academic research content and workflows, including searching, retrieving, and subscribing to papers. Its public endpoint on…",
+		domain: "mcp.luneresearch.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.luneresearch.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -6816,6 +8554,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "macro",
+		name: "Macro",
+		description:
+			"Macro is an open-source workspace app that combines email, messages, documents, tasks, calls, agents, and CRM in one system. It is designed for teams to work…",
+		domain: "macro.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp-server.macro.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "maersk",
 		name: "Maersk",
 		description:
@@ -6837,6 +8586,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://api.magneto365.com/agents/v1/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "mailersend",
+		name: "MailerSend",
+		description:
+			"MailerSend is a transactional messaging platform for sending and managing email and SMS, with features for domains, templates, inbound routing, webhooks…",
+		domain: "mailersend.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.mailersend.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -6923,6 +8683,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "marblecms",
+		name: "Marblecms",
+		description:
+			"Marble is an open-source headless CMS for creating and managing content such as posts, authors, categories, tags, media, and custom fields. It provides hosted…",
+		domain: "marblecms.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.marblecms.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "marcopolo",
 		name: "MarcoPolo",
 		description:
@@ -6932,6 +8703,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.marcopolo.dev/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "masbasbas",
+		name: "Masbasbas",
+		description:
+			"BASBAS is a Shopify-powered ecommerce site for a herbal liqueur brand. The site offers public product and store discovery endpoints and advertises…",
+		domain: "masbasbas.com",
+		category: null,
+		featured: false,
+		endpoint: "https://masbasbas.com/api/ucp/mcp",
+		popularity: 0,
+	},
+	{
+		id: "massive",
+		name: "Massive",
+		description:
+			"Massive provides financial market data covering stocks, options, futures, indices, forex, crypto, and related datasets. Its products include on-demand APIs…",
+		domain: "massive.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.massive.com/",
 		popularity: 0,
 	},
 	{
@@ -6947,6 +8740,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "mavolife",
+		name: "Mavo Life",
+		description:
+			"Mavo Life is a shared family and household organizer for calendars, lists, meals, people, notifications, and related household workflows. It lets families…",
+		domain: "mavolife.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mavolife.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "mcafee",
 		name: "McAfee",
 		description:
@@ -6955,6 +8759,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://chatgptcompanion.gateway.api.mcafee.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "mcptotal",
+		name: "MCPTotal",
+		description:
+			"MCPTotal is part of Autonomous Security's platform for securing and governing AI agents, MCP servers, and related enterprise AI activity. Its site describes…",
+		domain: "mcptotal.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcptotal.io/mcp",
 		popularity: 0,
 	},
 	{
@@ -6970,6 +8785,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "meetgeek",
+		name: "MeetGeek",
+		description:
+			"MeetGeek is an AI meeting assistant platform that records, transcribes, summarizes, and analyzes meetings, and provides tools for sharing meeting insights and…",
+		domain: "meetgeek.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.meetgeek.ai/mcp",
+		popularity: 0,
+	},
+	{
 		id: "meetup",
 		name: "Meetup",
 		description:
@@ -6979,6 +8805,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chatgpt-app.meetup.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "mem0",
+		name: "Mem0",
+		description:
+			"Mem0 provides a persistent memory layer for AI agents and LLM applications, with a managed platform and an open-source self-hosted option. It stores…",
+		domain: "mem0.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.mem0.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "api-4",
+		name: "Mentionkit",
+		description:
+			"Mentionkit is a social listening service for tracking and reviewing mentions across platforms like Reddit, X, LinkedIn, TikTok, Bluesky, Hacker News, and…",
+		domain: "api.mentionkit.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.mentionkit.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -7006,6 +8854,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "merge",
+		name: "Merge",
+		description:
+			"Merge provides a unified integration platform for connecting to many third-party business systems through normalized APIs. It also offers Agent Handler, a…",
+		domain: "merge.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://ah-api.merge.dev/mcp",
+		popularity: 0,
+	},
+	{
 		id: "metronome",
 		name: "Metronome",
 		description:
@@ -7030,6 +8889,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "middesk",
+		name: "Middesk",
+		description:
+			"Middesk provides business identity, verification, compliance, fraud, and entity-management infrastructure. It helps companies verify businesses, assess risk…",
+		domain: "middesk.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.middesk.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "midify",
 		name: "Midify",
 		description:
@@ -7039,6 +8909,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.midify.app/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "migma",
+		name: "Migma",
+		description:
+			"Migma is an AI email platform for generating, previewing, validating, sending, and exporting branded emails, plus managing audiences, campaigns, domains, and…",
+		domain: "migma.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://migma.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -7066,6 +8947,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "mintlify",
+		name: "Mintlify",
+		description:
+			"Mintlify is a platform for building, hosting, and managing documentation websites, with AI-assisted search, editing, analytics, and deployment features. It…",
+		domain: "mintlify.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mintlify.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "minty",
 		name: "Minty",
 		description:
@@ -7087,6 +8979,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://miracle-mcp.sadhguru.org/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "mixedbread",
+		name: "Mixedbread",
+		description:
+			"Mixedbread provides search and document intelligence infrastructure for turning unstructured files into searchable knowledge stores for AI applications and…",
+		domain: "mixedbread.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.mcp.mixedbread.com/api/mcp",
 		popularity: 0,
 	},
 	{
@@ -7114,6 +9017,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "modem",
+		name: "Modem",
+		description:
+			"Modem is a product-feedback and workflow platform for developer-facing teams. It aggregates conversations from tools like Slack, Discord, GitHub, Zendesk…",
+		domain: "modem.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.modem.dev/mcp",
+		popularity: 0,
+	},
+	{
 		id: "modo",
 		name: "MODO",
 		description:
@@ -7122,6 +9036,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://benefits-mcp.playdigital.com.ar/mcp",
+		popularity: 0,
+	},
+	{
+		id: "mollie",
+		name: "Mollie",
+		description:
+			"Mollie is a European payments platform for online and in-person payment processing, including payment links, recurring billing, terminals, and…",
+		domain: "mollie.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.mollie.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "api-5",
+		name: "Monarch",
+		description:
+			"Monarch Money is a personal finance service for tracking accounts, transactions, budgets, and cash flow. Its `api.monarch.com` host currently exposes a Model…",
+		domain: "api.monarch.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.monarch.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -7161,6 +9097,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "monid",
+		name: "Monid",
+		description:
+			"Monid is a service that lets agents and applications discover and execute third-party data tools through a single routed interface. It brokers access to many…",
+		domain: "monid.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.monid.ai/v1",
+		popularity: 0,
+	},
+	{
 		id: "monito",
 		name: "Monito",
 		description:
@@ -7170,6 +9117,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://ai.monito.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "apitoolkit-io",
+		name: "Monoscope",
+		description:
+			"Monoscope (formerly APItoolkit) is an API observability platform for monitoring API traffic, logs, traces, metrics, anomalies, and monitors. It provides a…",
+		domain: "monoscope.tech",
+		category: null,
+		featured: false,
+		endpoint: "https://api.monoscope.tech/api/v1/mcp",
 		popularity: 0,
 	},
 	{
@@ -7241,6 +9199,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://molaimcp.mavriq.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "mux",
+		name: "Mux",
+		description:
+			"Mux provides infrastructure for online video, including video upload, encoding, streaming, live streaming, playback, and video analytics. Its platform is used…",
+		domain: "mux.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.mux.com/",
 		popularity: 0,
 	},
 	{
@@ -7361,6 +9330,29 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "natoma",
+		name: "Natoma",
+		description:
+			"Natoma provides an enterprise platform for connecting AI clients and agents to business applications using MCP, with centralized access control, profiles, and…",
+		domain: "natoma.ai",
+		category: null,
+		featured: false,
+		endpoint:
+			"https://yourorg.mcp.natoma.app/v2/profile/your-profile/github/mcp",
+		popularity: 0,
+	},
+	{
+		id: "natural",
+		name: "Natural",
+		description:
+			"Natural is a payments platform for AI agents, apps, and businesses to send, receive, and manage money. It provides wallet, payment, transfer, agent, customer…",
+		domain: "natural.co",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.natural.co/",
+		popularity: 0,
+	},
+	{
 		id: "natwest-mortgages",
 		name: "NatWest Mortgages",
 		description:
@@ -7395,6 +9387,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.noodleseed.com/c3EMls6YD9cgcDqwj36M/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "negativeev",
+		name: "NegativeEV",
+		description:
+			"NegativeEV is a sports bet checker that grades MLB, WNBA, PGA, and ATP bets against thousands of play-by-play simulations. It compares simulated win…",
+		domain: "negativeev.com",
+		category: null,
+		featured: false,
+		endpoint: "https://negativeev.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -7445,6 +9448,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "netatmo",
+		name: "Netatmo",
+		description:
+			"Netatmo makes connected home devices including weather stations, security cameras, alarms, and energy or home-control products. Its cloud services let users…",
+		domain: "netatmo.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.netatmo.com/.well-known/mcp/server-card.json",
+		popularity: 0,
+	},
+	{
 		id: "network-solutions",
 		name: "Network Solutions",
 		description:
@@ -7465,6 +9479,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://neurnav.com/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "newrelic",
+		name: "New Relic",
+		description:
+			"New Relic is an observability platform for collecting, querying, and acting on telemetry such as metrics, logs, traces, and security findings. It also…",
+		domain: "newrelic.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.newrelic.com/mcp/",
 		popularity: 0,
 	},
 	{
@@ -7563,6 +9588,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "novu",
+		name: "Novu",
+		description:
+			"Novu provides notification infrastructure for applications and AI agents, including workflows, subscribers, inbox experiences, and multi-channel delivery. It…",
+		domain: "novu.co",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.novu.co/",
+		popularity: 0,
+	},
+	{
 		id: "nutrimindz",
 		name: "NutriMindz",
 		description:
@@ -7584,6 +9620,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.nuwapen.com/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "nuxt",
+		name: "Nuxt",
+		description:
+			"Nuxt is an open-source framework for building full-stack web applications and websites with Vue.js. The nuxt.com site hosts its documentation, blog…",
+		domain: "nuxt.com",
+		category: null,
+		featured: false,
+		endpoint: "https://nuxt.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -7657,6 +9704,149 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "oneuptime",
+		name: "OneUptime",
+		description:
+			"OneUptime is an open-source observability and incident management platform. It provides monitoring, status pages, alerts, on-call, logs, metrics, traces, and…",
+		domain: "oneuptime.com",
+		category: null,
+		featured: false,
+		endpoint: "https://oneuptime.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "onkeiki",
+		name: "Onkeiki",
+		description:
+			"Keiki is a hosted platform for building and operating autonomous AI agents that work across messaging channels like SMS, WhatsApp, Telegram, Slack, and email…",
+		domain: "onkeiki.com",
+		category: null,
+		featured: false,
+		endpoint: "https://onkeiki.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "onlineornot",
+		name: "OnlineOrNot",
+		description:
+			"OnlineOrNot is an uptime monitoring platform for websites, APIs, browser flows, and scheduled jobs. It also provides alerts and customer-facing status pages…",
+		domain: "onlineornot.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.onlineornot.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "op0",
+		name: "op0",
+		description:
+			"op0 is a governed runtime for agent work that combines company context, explicit approval boundaries, and receipt-backed execution records. It also provides…",
+		domain: "op0.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://app.op0.ai/v1/mcp",
+		popularity: 0,
+	},
+	{
+		id: "api-6",
+		name: "OpenBudget",
+		description:
+			"OpenBudget connects users' US bank account data to AI assistants through a hosted MCP server. It uses Plaid-backed, read-only account access and OAuth-based…",
+		domain: "api.openbudget.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://api.openbudget.sh/mcp",
+		popularity: 0,
+	},
+	{
+		id: "api-7",
+		name: "OpenCapital",
+		description:
+			"OpenCapital provides SEC-derived fundamentals and related public-company financial data, including metrics, segments, quarters, and filing-linked figures. Its…",
+		domain: "api.opencapital.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://api.opencapital.sh/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openlens",
+		name: "OpenLens",
+		description:
+			"OpenLens is an AI visibility tracking product for agencies and teams. It measures how major AI platforms mention brands, competitors, topics, and cited…",
+		domain: "openlens.com",
+		category: null,
+		featured: false,
+		endpoint: "https://openlens.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openobserve",
+		name: "OpenObserve",
+		description:
+			"OpenObserve is an open source observability platform for logs, metrics, traces, and real user monitoring. It can be deployed self-hosted or used as a managed…",
+		domain: "openobserve.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.openobserve.ai/api/default/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openpanel",
+		name: "OpenPanel",
+		description:
+			"OpenPanel is an open-source web and product analytics platform for tracking events, users, funnels, retention, and related analytics data. It can be used as a…",
+		domain: "openpanel.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://api.openpanel.dev/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openpo",
+		name: "Openpo",
+		description:
+			"OpenPost is a workspace for creating, adapting, scheduling, publishing, and tracking social content across supported social networks. It is available as a…",
+		domain: "openpo.st",
+		category: null,
+		featured: false,
+		endpoint: "https://app.openpo.st/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openrouter",
+		name: "OpenRouter",
+		description:
+			"OpenRouter is an AI gateway that provides access to many language and multimodal models through a single API, with routing and fallback across providers. It…",
+		domain: "openrouter.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.openrouter.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openseo",
+		name: "OpenSEO",
+		description:
+			"OpenSEO is an SEO platform and open-source toolkit for keyword research, SERP and competitor analysis, local SEO, backlink overview, and Google Search Console…",
+		domain: "openseo.so",
+		category: null,
+		featured: false,
+		endpoint: "https://app.openseo.so/mcp",
+		popularity: 0,
+	},
+	{
+		id: "openstatus",
+		name: "OpenStatus",
+		description:
+			"OpenStatus is an uptime monitoring and status page platform that runs synthetic checks from multiple regions and publishes incidents and maintenance updates…",
+		domain: "openstatus.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://api.openstatus.dev/mcp",
+		popularity: 0,
+	},
+	{
 		id: "optionscalc",
 		name: "OptionsCalc",
 		description:
@@ -7678,6 +9868,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://api.originalvoices.ai/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "ory",
+		name: "Ory",
+		description:
+			"Ory provides identity and access management products for authentication, OAuth2/OIDC, authorization, permissions, and related security use cases. It is…",
+		domain: "ory.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://ory-docs.mcp.kapa.ai/",
+		popularity: 0,
+	},
+	{
+		id: "os1221",
+		name: "Os1221",
+		description:
+			"os1221.com hosts FATE, a live 2026 FIFA World Cup probability and fantasy draft board that combines match results with simulation and rating data. It…",
+		domain: "os1221.com",
+		category: null,
+		featured: false,
+		endpoint: "https://os1221.com/",
 		popularity: 0,
 	},
 	{
@@ -7729,6 +9941,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "ovios-home-www",
+		name: "Ovios Home",
+		description:
+			"OVIOS FURNITURE is an ecommerce storefront for indoor and outdoor furniture. The site runs on Shopify and publishes agent-facing instructions for browsing…",
+		domain: "ovios-home.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.ovios-home.com/api/ucp/mcp",
+		popularity: 0,
+	},
+	{
 		id: "paardplaats-horse-finder",
 		name: "Paardplaats Horse Finder",
 		description:
@@ -7741,6 +9964,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "paddle",
+		name: "Paddle",
+		description:
+			"Paddle provides billing infrastructure for software and digital product companies, including subscriptions, pricing, checkout, invoicing, and related customer…",
+		domain: "paddle.com",
+		category: null,
+		featured: false,
+		endpoint: "https://paddlehq.mcp.kapa.ai/",
+		popularity: 0,
+	},
+	{
+		id: "api-8",
+		name: "Palisade",
+		description:
+			"Palisade is an email authentication and DMARC management platform for organizations. It helps teams add domains, publish and verify SPF, DKIM, DMARC, and…",
+		domain: "api.palisade.email",
+		category: null,
+		featured: false,
+		endpoint: "https://api.palisade.email/mcp",
+		popularity: 0,
+	},
+	{
 		id: "paloma",
 		name: "Paloma",
 		description:
@@ -7750,6 +9995,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.app.palomaparties.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "pandadoc",
+		name: "PandaDoc",
+		description:
+			"PandaDoc is a document workflow and e-signature platform for creating, sending, tracking, and signing documents. It also supports embedded document…",
+		domain: "pandadoc.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.pandadoc.com/v1/mcp",
 		popularity: 0,
 	},
 	{
@@ -7777,6 +10033,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "parse",
+		name: "Parse",
+		description:
+			"Parse turns websites into managed, callable structured APIs and provides tools to create, revise, export, and execute those APIs. It also offers a marketplace…",
+		domain: "parse.bot",
+		category: null,
+		featured: false,
+		endpoint: "https://api.parse.bot/mcp",
+		popularity: 0,
+	},
+	{
 		id: "particl-market-research",
 		name: "Particl Market Research",
 		description:
@@ -7786,6 +10053,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.particl.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "payabli",
+		name: "Payabli",
+		description:
+			"Payabli is an embedded payments platform for software companies, covering pay-in, pay-out, and payment operations workflows. Its documentation describes APIs…",
+		domain: "payabli.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.inkeep.com/payabli/mcp",
 		popularity: 0,
 	},
 	{
@@ -7813,6 +10091,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "pearmcp",
+		name: "Pear MCP",
+		description:
+			"Pear MCP is a hosted Model Context Protocol server that gives AI assistants access to a user’s Apple iCloud and Microsoft 365 calendar, tasks, contacts, and…",
+		domain: "pearmcp.com",
+		category: null,
+		featured: false,
+		endpoint: "https://pearmcp.com/api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "peloton",
 		name: "Peloton",
 		description:
@@ -7834,6 +10123,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://penny.apps.trychannel3.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "perplexity",
+		name: "Perplexity",
+		description:
+			"Perplexity provides web-grounded AI and search products, including APIs for search, chat/reasoning, agents, embeddings, and enterprise computer-usage…",
+		domain: "perplexity.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://www.perplexity.ai/rest/computer/mcp",
 		popularity: 0,
 	},
 	{
@@ -7885,6 +10185,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "phantombuster",
+		name: "PhantomBuster",
+		description:
+			"PhantomBuster is a web automation and scraping platform for running and managing automated agents (“Phantoms”), scripts, and workspace data. It also offers…",
+		domain: "phantombuster.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.phantombuster.com/",
+		popularity: 0,
+	},
+	{
 		id: "phish",
 		name: "Phish.in",
 		description:
@@ -7920,6 +10231,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "pipedream",
+		name: "Pipedream",
+		description:
+			"Pipedream is an integration platform for connecting apps, APIs, and AI agents with managed authentication, reusable actions, triggers, and workflows. It lets…",
+		domain: "pipedream.com",
+		category: null,
+		featured: false,
+		endpoint: "https://remote.mcp.pipedream.net/v3",
+		popularity: 0,
+	},
+	{
 		id: "pixelesq",
 		name: "Pixelesq",
 		description:
@@ -7932,6 +10254,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "plain",
+		name: "Plain",
+		description:
+			"Plain is a customer support platform for managing support threads, customers, help center content, and related workflows. It also supports AI-assisted and…",
+		domain: "plain.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.plain.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "www",
+		name: "Plushcap",
+		description:
+			"Plushcap provides developer marketing intelligence data spanning engineering blogs, developer content, YouTube metrics, Hacker News activity, and software…",
+		domain: "www.plushcap.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.plushcap.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "pocketmind-texas-hold-em",
 		name: "PocketMind: Texas Hold'em",
 		description:
@@ -7940,6 +10284,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://poker-api.jiqiren.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "polar",
+		name: "Polar",
+		description:
+			"Polar is a payments, billing, and merchant-of-record platform for selling software, subscriptions, and digital products. It provides hosted billing…",
+		domain: "polar.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.polar.sh/mcp/polar-mcp",
 		popularity: 0,
 	},
 	{
@@ -8027,6 +10382,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "primitive",
+		name: "Primitive",
+		description:
+			"Primitive provides programmatic email infrastructure for developers and AI agents, including sending outbound mail, receiving inbound mail, managed inboxes…",
+		domain: "primitive.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://primitive.dev/mcp",
+		popularity: 0,
+	},
+	{
+		id: "printhiv3d",
+		name: "Printhiv3d",
+		description:
+			"Print Hive is cloud software for managing fleets of Bambu Lab 3D printers, including job routing, model/file management, and printer monitoring. It also…",
+		domain: "printhiv3d.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.printhiv3d.com/v1/mcp",
+		popularity: 0,
+	},
+	{
 		id: "printify",
 		name: "Printify",
 		description:
@@ -8052,6 +10429,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "prisma",
+		name: "Prisma",
+		description:
+			"Prisma provides developer tools and services around databases and TypeScript applications, including its ORM, managed Postgres offering, and Compute platform…",
+		domain: "prisma.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.prisma.io/mcp",
+		popularity: 0,
+	},
+	{
+		id: "prismic",
+		name: "Prismic",
+		description:
+			"Prismic is a headless CMS and landing page builder for managing structured content and website pages. It supports developer integrations for reading content…",
+		domain: "prismic.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.prismic.io/mcp",
+		popularity: 0,
+	},
+	{
 		id: "private-md-labs",
 		name: "Private MD Labs",
 		description:
@@ -8074,6 +10473,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://www.producthunt.com/mcp/xAOyN0Bd",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "productboard",
+		name: "Productboard",
+		description:
+			"Productboard exposes a REST API v2 at `https://api.productboard.com` authenticated by bearer API token, OAuth 2.0 authorization-code, or server-to-server…",
+		domain: "productboard.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.productboard.com/",
 		popularity: 0,
 	},
 	{
@@ -8149,6 +10559,94 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "mcp-4",
+		name: "Public",
+		description:
+			"Public is an investing and brokerage platform for trading stocks, ETFs, options, crypto, bonds, and treasuries. Its hosted MCP offering connects AI assistants…",
+		domain: "mcp.public.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.public.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "publora",
+		name: "Publora",
+		description:
+			"Publora is a social media management platform for scheduling and managing posts across multiple social networks. It also offers an MCP server so AI assistants…",
+		domain: "publora.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.publora.com/",
+		popularity: 0,
+	},
+	{
+		id: "pubnub",
+		name: "PubNub",
+		description:
+			"PubNub is a real-time communications platform for building live, interactive applications with publish/subscribe messaging, presence, and related services. It…",
+		domain: "pubnub.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.pubnub.com/",
+		popularity: 0,
+	},
+	{
+		id: "pulumi",
+		name: "Pulumi",
+		description:
+			"Pulumi provides infrastructure-as-code tooling and a managed Pulumi Cloud service for state management, deployments, secrets, and governance. It also operates…",
+		domain: "pulumi.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.ai.pulumi.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "pumadb",
+		name: "pumaDB",
+		description:
+			"pumaDB is a hosted memory layer for AI agents and small server-side applications. It stores durable JSON rows and exposes them through a REST API and an MCP…",
+		domain: "pumadb.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://pumadb.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "pydantic",
+		name: "Pydantic",
+		description:
+			"Pydantic provides Python-focused data validation, agent tooling, and the Logfire observability platform. Its hosted Logfire service offers region-specific…",
+		domain: "pydantic.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://logfire-us.pydantic.dev/mcp",
+		popularity: 0,
+	},
+	{
+		id: "www-api",
+		name: "Pyrite",
+		description:
+			"Pyrite Cloud is a managed cloud platform for deploying and operating applications, databases, workers, storage, networking, and AI-related infrastructure…",
+		domain: "www.pyrite.cloud",
+		category: null,
+		featured: false,
+		endpoint: "https://api.pyrite.cloud/mcp",
+		popularity: 0,
+	},
+	{
+		id: "qovery",
+		name: "Qovery",
+		description:
+			"Qovery is a Kubernetes platform that lets teams manage infrastructure, deployments, environments, and related resources across their own cloud infrastructure…",
+		domain: "qovery.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.qovery.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "qrcm",
 		name: "QRCM",
 		description:
@@ -8194,6 +10692,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://external-mcp-service.quintoandar.com.br/mcp-server/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "quiver",
+		name: "Quiver",
+		description:
+			"QuiverAI generates and vectorizes SVG graphics from text prompts and raster images. It also provides an app for creating, managing, and retrieving generated…",
+		domain: "quiver.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://app.quiver.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -8255,6 +10764,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://my-mcp-server-flame.vercel.app/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "raindrop",
+		name: "Raindrop",
+		description:
+			"Raindrop.io is a bookmark manager for saving, organizing, and searching links and web content. It also provides AI-agent access to a user's bookmark library…",
+		domain: "raindrop.io",
+		category: null,
+		featured: false,
+		endpoint: "https://api.raindrop.io/rest/v2/ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -8338,6 +10858,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://chatestate.realestate.com.au/mcp",
+		popularity: 0,
+	},
+	{
+		id: "realestateapi",
+		name: "RealEstateAPI",
+		description:
+			"RealEstateAPI provides real-estate data services for developers, including property, owner, tax, mortgage, boundary, valuation, and related datasets. Its…",
+		domain: "realestateapi.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.realestateapi.com/sse",
 		popularity: 0,
 	},
 	{
@@ -8438,6 +10969,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "redocly",
+		name: "Redocly",
+		description:
+			"Redocly provides tools for API documentation, developer portals, and API lifecycle workflows such as linting, bundling, publishing, and API cataloging. Its…",
+		domain: "redocly.com",
+		category: null,
+		featured: false,
+		endpoint: "https://redocly.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "redoxengine",
+		name: "Redoxengine",
+		description:
+			"Redox is a healthcare interoperability platform that helps organizations exchange, normalize, and route clinical and administrative data between healthcare…",
+		domain: "redoxengine.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.redoxengine.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "reducto",
+		name: "Reducto",
+		description:
+			"Reducto is a document-processing platform for parsing, extracting, splitting, classifying, and editing documents such as PDFs, images, spreadsheets, and…",
+		domain: "reducto.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.reducto.ai/mcp",
+		popularity: 0,
+	},
+	{
 		id: "refiner",
 		name: "Refiner",
 		description:
@@ -8458,6 +11022,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://mcp-regal.boxoffice.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "releases",
+		name: "Releases",
+		description:
+			"Releases is a registry of product changelogs and release notes. It indexes updates from software vendors and serves them through a website, API, MCP server…",
+		domain: "releases.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.releases.sh/mcp",
 		popularity: 0,
 	},
 	{
@@ -8487,6 +11062,72 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "remote",
+		name: "Remote",
+		description:
+			"Remote provides employer-of-record, payroll, HR, and workforce-management services for globally distributed teams. Its platform lets companies and employees…",
+		domain: "remote.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.remote.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "render",
+		name: "Render",
+		description:
+			"Render is a cloud platform for deploying and managing applications, background jobs, databases, and related infrastructure. It provides hosted services…",
+		domain: "render.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.render.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "rentcast",
+		name: "RentCast",
+		description:
+			"RentCast provides US real estate and property data, including property records, owner details, valuation estimates, listings, and market statistics. Its…",
+		domain: "rentcast.io",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.rentcast.io/mcp",
+		popularity: 0,
+	},
+	{
+		id: "replicate",
+		name: "Replicate",
+		description:
+			"Replicate is a platform for running, publishing, and deploying machine learning models, including image, video, audio, and language models. It provides hosted…",
+		domain: "replicate.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.replicate.com/sse",
+		popularity: 0,
+	},
+	{
+		id: "replit",
+		name: "Replit",
+		description:
+			"Replit is a browser-based development platform for building, running, and publishing apps, with AI-assisted app creation and collaboration features. It also…",
+		domain: "replit.com",
+		category: null,
+		featured: false,
+		endpoint: "https://replit-mcp.com/server/mcp",
+		popularity: 0,
+	},
+	{
+		id: "researchsolutions",
+		name: "Research Solutions",
+		description:
+			"Research Solutions provides tools for discovering, accessing, licensing, and organizing scholarly literature, including the Article Galaxy and Scite products…",
+		domain: "researchsolutions.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.articlegalaxy.com/ag/mcp",
+		popularity: 0,
+	},
+	{
 		id: "responsive",
 		name: "Responsive",
 		description:
@@ -8496,6 +11137,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://app.rfpio.com/oa/v2/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "rest",
+		name: "Rest",
+		description:
+			"Onboard is customer onboarding software for managing projects, tasks, KPIs, and related workflow data. It provides hosted operational tooling around that data…",
+		domain: "rest.onboard.io",
+		category: null,
+		featured: false,
+		endpoint: "https://rest.onboard.io/mcp/rpc",
 		popularity: 0,
 	},
 	{
@@ -8559,6 +11211,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "rivet",
+		name: "Rivet",
+		description:
+			"Rivet provides infrastructure components for durable actors, agent runtimes, workflows, and dynamic app deployment. Its products let developers run stateful…",
+		domain: "rivet.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.rivet.dev/mcp",
+		popularity: 0,
+	},
+	{
+		id: "rize",
+		name: "Rize",
+		description:
+			"Rize is automatic time-tracking software for individuals and teams that captures work activity in the background and organizes it into time entries, projects…",
+		domain: "rize.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.rize.io/mcp",
+		popularity: 0,
+	},
+	{
 		id: "roadops",
 		name: "RoadOps",
 		description:
@@ -8571,6 +11245,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "app-3",
+		name: "Rock8",
+		description:
+			"Rock8Cloud is a deployment platform that connects to a GitHub repository, builds and runs applications, and provides managed databases, object storage…",
+		domain: "app.rock8.cloud",
+		category: null,
+		featured: false,
+		endpoint: "https://app.rock8.cloud/mcp",
+		popularity: 0,
+	},
+	{
 		id: "rome2rio",
 		name: "Rome2Rio",
 		description:
@@ -8579,6 +11264,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://chatgpt-app.rome2rio.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "rootly",
+		name: "Rootly",
+		description:
+			"Rootly is an incident management platform for engineering teams that combines on-call, incident response, retrospectives, and status pages. It also offers…",
+		domain: "rootly.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.rootly.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -8606,6 +11302,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "safwanyp",
+		name: "Safwanyp",
+		description:
+			"safwanyp.com is a personal website for Safwan Parkar that publishes read-only machine-readable discovery endpoints for site search, feeds, API catalog…",
+		domain: "safwanyp.com",
+		category: null,
+		featured: false,
+		endpoint: "https://safwanyp.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "saleor",
+		name: "Saleor",
+		description:
+			"Saleor is a headless commerce platform for building and operating online stores. It offers cloud-hosted and self-hosted store environments with GraphQL-based…",
+		domain: "saleor.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.saleor.app/mcp",
+		popularity: 0,
+	},
+	{
 		id: "saleseq",
 		name: "SalesEQ",
 		description:
@@ -8615,6 +11333,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.saleseq.ai/",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "saleshandy",
+		name: "Saleshandy",
+		description:
+			"Saleshandy is a multichannel outbound sales platform for managing prospecting, email sequences, email accounts, analytics, inbox workflows, and related sales…",
+		domain: "saleshandy.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.saleshandy.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -8630,6 +11359,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "samva",
+		name: "Samva",
+		description:
+			"Samva is a developer email platform for transactional and product email, with templates, inbound threading, analytics, and signed webhooks. It provides…",
+		domain: "samva.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.samva.dev/",
+		popularity: 0,
+	},
+	{
 		id: "savecraft",
 		name: "Savecraft",
 		description:
@@ -8642,6 +11382,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "scalar",
+		name: "Scalar",
+		description:
+			"Scalar is an API platform for publishing developer documentation, managing API specifications in a registry, generating SDKs, and exposing APIs to AI agents…",
+		domain: "scalar.com",
+		category: null,
+		featured: false,
+		endpoint: "https://scalar.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "scholarxiv",
+		name: "ScholarXIV",
+		description:
+			"ScholarXIV is a research platform for searching and working with academic papers. It provides paper search plus account-linked research workflows such as…",
+		domain: "scholarxiv.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.scholarxiv.com/api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "scispace",
 		name: "SciSpace",
 		description:
@@ -8650,6 +11412,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://scispace.com/mcp-kls34hjb",
+		popularity: 0,
+	},
+	{
+		id: "scrapfly",
+		name: "Scrapfly",
+		description:
+			"Scrapfly is a managed web scraping and browser automation platform. It provides anti-bot bypass, proxy-backed page fetching, screenshots, structured…",
+		domain: "scrapfly.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.scrapfly.io/",
+		popularity: 0,
+	},
+	{
+		id: "scrapingbee",
+		name: "ScrapingBee",
+		description:
+			"ScrapingBee is a web scraping service that provides hosted APIs for fetching pages, search results, e-commerce data, screenshots, and AI-assisted extraction…",
+		domain: "scrapingbee.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.scrapingbee.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "search",
+		name: "Search",
+		description:
+			"Parallel provides web search and content extraction tools for AI agents and applications. Its Search MCP lets MCP-aware clients access real-time web search…",
+		domain: "search.parallel.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://search.parallel.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -8736,6 +11531,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "semaphoreci",
+		name: "Semaphoreci",
+		description:
+			"Semaphore is a CI/CD platform for running and managing software delivery pipelines. It provides cloud-hosted build, test, deployment, and AI-assisted workflow…",
+		domain: "semaphoreci.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.semaphoreci.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "semrush",
 		name: "Semrush",
 		description:
@@ -8772,6 +11578,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "sequenzy",
+		name: "Sequenzy",
+		description:
+			"Sequenzy is an email marketing and lifecycle automation platform for managing subscribers, campaigns, sequences, transactional emails, landing pages, and…",
+		domain: "sequenzy.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.sequenzy.com/v1/mcp",
+		popularity: 0,
+	},
+	{
 		id: "serasa",
 		name: "Serasa",
 		description:
@@ -8780,6 +11597,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://ia-openai-prd.ecsbr.net/mcp/",
+		popularity: 0,
+	},
+	{
+		id: "serpapi",
+		name: "SerpApi",
+		description:
+			"SerpApi provides real-time structured search engine results and related data from Google, Bing, Baidu, and other search providers. It turns search pages and…",
+		domain: "serpapi.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.serpapi.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -8816,6 +11644,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://share-srkm.mcp.noodleseed.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "share-share-gmbh",
+		name: "Share",
+		description:
+			"share.eu is the online store for share GmbH. Its public agent-facing pages describe how AI agents can browse products and use Universal Commerce Protocol…",
+		domain: "share.eu",
+		category: null,
+		featured: false,
+		endpoint: "https://share-gmbh.myshopify.com/api/ucp/mcp",
 		popularity: 0,
 	},
 	{
@@ -8890,6 +11729,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "shortcut",
+		name: "Shortcut",
+		description:
+			"Shortcut is a project management and issue tracking platform for software teams, with features for stories, epics, iterations, docs, roadmaps, and objectives…",
+		domain: "shortcut.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.shortcut.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "shutterstock",
 		name: "Shutterstock",
 		description:
@@ -8923,6 +11773,50 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://scholar.chatgptapps.sider.ai/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "siebly",
+		name: "Siebly",
+		description:
+			"Siebly publishes documentation, machine-readable indexes, and open-source package guidance for Node.js/JavaScript/TypeScript SDKs that integrate with…",
+		domain: "siebly.io",
+		category: null,
+		featured: false,
+		endpoint: "https://siebly.io/.well-known/agent-skills/index.json",
+		popularity: 0,
+	},
+	{
+		id: "sigiro",
+		name: "Sigiro",
+		description:
+			"Sigiro ingests OpenTelemetry data and lets users query and inspect telemetry, traces, alerts, and profiles to diagnose what changed in their software. It is…",
+		domain: "sigiro.com",
+		category: null,
+		featured: false,
+		endpoint: "https://sigiro.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "sigmacomputing",
+		name: "Sigmacomputing",
+		description:
+			"Sigma is a cloud analytics and application platform for working with live warehouse data. It lets teams build dashboards, data apps, and AI-assisted workflows…",
+		domain: "sigmacomputing.com",
+		category: null,
+		featured: false,
+		endpoint: "https://help.sigmacomputing.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "signoz",
+		name: "SigNoz",
+		description:
+			"SigNoz is an open-source observability platform for collecting and analyzing metrics, traces, and logs. It is available as both a self-hosted deployment and a…",
+		domain: "signoz.io",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.us.signoz.cloud/mcp",
 		popularity: 0,
 	},
 	{
@@ -9010,6 +11904,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "skipcalls",
+		name: "SkipCalls",
+		description:
+			"SkipCalls provides an AI phone receptionist for businesses that answers calls, captures leads, books appointments, handles outbound calls and SMS, and sends…",
+		domain: "skipcalls.com",
+		category: null,
+		featured: false,
+		endpoint: "https://be.skipcalls.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "skyscanner",
 		name: "Skyscanner",
 		description:
@@ -9069,6 +11974,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "sleevy",
+		name: "Sleevy",
+		description:
+			"Sleevy is a read-later app for saving URLs, organizing them with folders and tags, and tracking read state across its clients and integrations. It also offers…",
+		domain: "sleevy.app",
+		category: null,
+		featured: false,
+		endpoint: "https://api.sleevy.app/mcp",
+		popularity: 0,
+	},
+	{
 		id: "slevomat",
 		name: "Slevomat",
 		description:
@@ -9093,6 +12009,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "slidesgpt-2",
+		name: "SlidesGPT",
+		description:
+			"SlidesGPT is a service for generating PowerPoint presentations with AI from prompts or source material. It also offers agent-facing MCP access for creating…",
+		domain: "slidesgpt.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.slidesgpt.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "slotted",
 		name: "Slotted",
 		description:
@@ -9105,6 +12032,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "smartbear",
+		name: "SmartBear",
+		description:
+			"SmartBear exposes 3 remote MCP servers on `*.mcp.smartbear.com` authenticated by OAuth browser login (SmartBear ID for Swagger and BugSnag, Atlassian OAuth…",
+		domain: "smartbear.com",
+		category: null,
+		featured: false,
+		endpoint: "https://swagger.mcp.smartbear.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "smartcustomer",
 		name: "SmartCustomer",
 		description: "SmartCustomer brand insights and review assistant",
@@ -9113,6 +12051,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chatgpt.smartcustomer.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "smartsheet",
+		name: "Smartsheet",
+		description:
+			"Smartsheet is a work management platform for planning, tracking, automating, and reporting on projects and operational work. Its product suite also includes…",
+		domain: "smartsheet.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.smartsheet.com/",
+		popularity: 0,
+	},
+	{
+		id: "smarty",
+		name: "Smarty",
+		description:
+			"Smarty provides address intelligence services such as address verification, autocomplete, geocoding, and related enrichment data. Its products focus on…",
+		domain: "smarty.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.api.smarty.com/",
+		popularity: 0,
+	},
+	{
+		id: "smtp2go",
+		name: "SMTP2GO",
+		description:
+			"SMTP2GO is an email delivery service that lets customers send email and SMS, manage senders and account settings, and view delivery activity and statistics…",
+		domain: "smtp2go.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developers.smtp2go.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -9149,6 +12120,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		endpoint:
 			"https://softonic-mcp-server-v1.sft.product-europe.sftapi.com/mcp/demo",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "solana",
+		name: "Solana",
+		description:
+			"Solana is a blockchain platform and developer ecosystem for building applications, tokens, payments, and onchain programs. Its public documentation covers…",
+		domain: "solana.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.solana.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -9189,6 +12171,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "soulfamily",
+		name: "Soulfamily",
+		description:
+			"SoulFamily.ai offers an AI-powered platform for exploring spiritual teachings and guided conversations based on content from featured teachers. Its website…",
+		domain: "soulfamily.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://soulfamily.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "sourcegraph",
+		name: "Sourcegraph",
+		description:
+			"Sourcegraph provides code search, code navigation, repository analysis, and related developer tooling for source code across many repositories. It is offered…",
+		domain: "sourcegraph.com",
+		category: null,
+		featured: false,
+		endpoint: "https://sourcegraph.com/.api/mcp",
+		popularity: 0,
+	},
+	{
+		id: "southeasthre",
+		name: "Southeasthre",
+		description:
+			"Southeast Healthcare Real Estate is a healthcare-focused real estate advisory team serving the Southeastern United States. The site describes services such as…",
+		domain: "southeasthre.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.southeasthre.com/_api/mcp",
+		popularity: 0,
+	},
+	{
 		id: "spaceship",
 		name: "Spaceship",
 		description:
@@ -9224,6 +12239,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "speko",
+		name: "Speko",
+		description:
+			"Speko is a voice AI gateway that routes speech-to-text, text-to-speech, LLM, and telephony workloads across providers with failover. It also provides tooling…",
+		domain: "speko.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.speko.ai/mcp",
+		popularity: 0,
+	},
+	{
 		id: "spinify",
 		name: "Spinify",
 		description:
@@ -9233,6 +12259,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.spinify.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "spreedly",
+		name: "Spreedly",
+		description:
+			"Spreedly provides payment orchestration and tokenized payment-method vaulting for merchants connecting to payment gateways and related services. Its…",
+		domain: "spreedly.com",
+		category: null,
+		featured: false,
+		endpoint: "https://developer.spreedly.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "sprites",
+		name: "Sprites",
+		description:
+			"Sprites provides persistent Linux environments (“Sprites”) that can be created, managed, and used to run commands, services, filesystems, checkpoints, and…",
+		domain: "sprites.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://sprites.dev/mcp",
+		popularity: 0,
+	},
+	{
+		id: "squirrelscan",
+		name: "squirrelscan",
+		description:
+			"squirrelscan is a website auditing service focused on SEO, performance, security, and AI-agent readiness checks. It can run audits locally via CLI and adds…",
+		domain: "squirrelscan.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.squirrelscan.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -9283,6 +12342,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "stayingapi",
+		name: "StayingAPI",
+		description:
+			"StayingAPI provides normalized accommodation data across Airbnb, Booking.com, Vrbo, and Google Hotels, including search, availability, pricing, reviews, and…",
+		domain: "stayingapi.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.stayingapi.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "steadily",
 		name: "Steadily",
 		description:
@@ -9307,6 +12377,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "stellary",
+		name: "Stellary",
+		description:
+			"Stellary is an AI-powered project management and delivery workspace that combines boards, documents, dashboards, automations, and AI agents in one system. It…",
+		domain: "stellary.co",
+		category: null,
+		featured: false,
+		endpoint: "https://api.stellary.co/mcp",
+		popularity: 0,
+	},
+	{
 		id: "sticklight",
 		name: "Sticklight",
 		description:
@@ -9316,6 +12397,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.sticklight.com/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "storyblok",
+		name: "Storyblok",
+		description:
+			"Storyblok is a headless CMS with a visual editor for creating, managing, and delivering structured content across digital channels. It provides APIs and…",
+		domain: "storyblok.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.labs.storyblok.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -9390,6 +12482,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "substack",
+		name: "Substack",
+		description:
+			"Substack is a publishing and subscription platform for newsletters, posts, and creator-audience communication. It lets writers publish content and manage…",
+		domain: "substack.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.substack.com/api/v1/mcp",
+		popularity: 0,
+	},
+	{
+		id: "subtext",
+		name: "Subtext",
+		description:
+			"Subtext is Fullstory’s standalone product for capturing production web sessions and making them available to AI coding agents for session review and…",
+		domain: "subtext.fullstory.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.fullstory.com/mcp/subtext",
+		popularity: 0,
+	},
+	{
 		id: "success",
 		name: "Success.co",
 		description:
@@ -9411,6 +12525,50 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://tusalario.app/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "sumsub",
+		name: "Sumsub",
+		description:
+			"Sumsub provides identity verification, business verification, AML screening, transaction monitoring, and related compliance workflows. Its platform helps…",
+		domain: "sumsub.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.sumsub.com/mcp/",
+		popularity: 0,
+	},
+	{
+		id: "supermemory",
+		name: "Supermemory",
+		description:
+			"Supermemory provides memory and context infrastructure for AI agents, including ingestion, search, user profiles, and connectors. It also offers an MCP-based…",
+		domain: "supermemory.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.supermemory.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "superserve",
+		name: "Superserve",
+		description:
+			"Superserve exposes a control-plane HTTP API at `https://api.superserve.ai` (OpenAPI-backed, mostly `X-API-Key`, with one public billing endpoint), a sandbox…",
+		domain: "superserve.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.superserve.ai/",
+		popularity: 0,
+	},
+	{
+		id: "superwall",
+		name: "Superwall",
+		description:
+			"Superwall is a subscription infrastructure and paywall platform for consumer mobile and web apps. It provides entitlements, purchase and webhook…",
+		domain: "superwall.com",
+		category: null,
+		featured: false,
+		endpoint: "https://superwall-mcp.superwall.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -9471,6 +12629,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://talkgen.awesomize.ai/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "tally",
+		name: "Tally",
+		description:
+			"Tally is a form-building service for creating and managing online forms and collecting submissions. It also offers AI-assistant access to forms and…",
+		domain: "tally.so",
+		category: null,
+		featured: false,
+		endpoint: "https://api.tally.so/mcp",
 		popularity: 0,
 	},
 	{
@@ -9545,6 +12714,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "texthumanizer",
+		name: "Texthumanizer",
+		description:
+			"Humanizer PRO is a web service for rewriting draft text to sound more natural, scanning text for AI-style signals, and tracking word-balance usage across…",
+		domain: "texthumanizer.pro",
+		category: null,
+		featured: false,
+		endpoint: "https://texthumanizer.pro/mcp",
+		popularity: 0,
+	},
+	{
 		id: "the-houstonian",
 		name: "The Houstonian",
 		description:
@@ -9577,6 +12757,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://connect.thehotelsnetwork.com/v2/mcp/hub",
+		popularity: 0,
+	},
+	{
+		id: "thekontextco",
+		name: "Thekontextco",
+		description:
+			"Kontext is a user-owned library for saving, organizing, and revisiting context created while working with AI, including projects, tasks, documents, and quick…",
+		domain: "thekontextco.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://thekontextco.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -9635,6 +12826,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://partner-mcp.ticketmaster.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "tigrisdata",
+		name: "Tigrisdata",
+		description:
+			"Tigris provides globally distributed, S3-compatible object storage with a single global endpoint. It also offers tooling for AI-agent access to buckets and…",
+		domain: "tigrisdata.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.storage.dev/mcp",
 		popularity: 0,
 	},
 	{
@@ -9806,6 +13008,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "trainheroic-unofficial",
+		name: "Trainheroic Unofficial",
+		description:
+			"trainheroic-unofficial.com documents an unofficial toolkit for accessing the TrainHeroic platform, including hosted and local MCP tooling, a CLI, and an…",
+		domain: "trainheroic-unofficial.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.trainheroic-unofficial.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "trainline",
 		name: "Trainline",
 		description:
@@ -9826,6 +13039,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.traktorpool.com/chatgpt-892332849/mcp/",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "transcriptapi",
+		name: "TranscriptAPI",
+		description:
+			"TranscriptAPI provides programmatic access to YouTube transcripts, video metadata, search, channel browsing, and playlist listing. It offers these…",
+		domain: "transcriptapi.com",
+		category: null,
+		featured: false,
+		endpoint: "https://transcriptapi.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "transloadit",
+		name: "Transloadit",
+		description:
+			"Transloadit is a file uploading and media-processing service that lets developers define workflows as JSON Assembly Instructions. It handles uploads…",
+		domain: "transloadit.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api2.transloadit.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -9865,6 +13100,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "tray",
+		name: "Tray",
+		description:
+			"Tray.ai is an enterprise orchestration platform for integrations, automation, and AI agents. It lets organizations build workflows, manage connector-based…",
+		domain: "tray.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.tray.io/mcp",
+		popularity: 0,
+	},
+	{
 		id: "tredict",
 		name: "Tredict",
 		description:
@@ -9901,6 +13147,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "tripwire",
+		name: "Tripwire",
+		description:
+			"Tripwire appears to provide an MCP-related service at tripwire.sh. Publicly discoverable metadata shows an OAuth 2.0 authorization server with dynamic client…",
+		domain: "tripwire.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://www.tripwire.sh/",
+		popularity: 0,
+	},
+	{
 		id: "true-sky",
 		name: "True Sky",
 		description:
@@ -9934,6 +13191,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://chat.trustoo.nl/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "trykopi",
+		name: "Trykopi",
+		description:
+			"Kopi is an email marketing agent for e-commerce brands. It drafts on-brand emails, analyzes Klaviyo-backed email performance, and suggests what to send next…",
+		domain: "trykopi.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://trykopi.ai/mcp",
 		popularity: 0,
 	},
 	{
@@ -9974,6 +13242,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "tuist",
+		name: "Tuist",
+		description:
+			"Tuist provides tooling and hosted services for mobile development workflows, including project generation, build and test insights, caching, previews, and a…",
+		domain: "tuist.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://tuist.dev/mcp",
+		popularity: 0,
+	},
+	{
 		id: "turkish-airlines",
 		name: "Turkish Airlines",
 		description:
@@ -9994,6 +13273,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://mcp.turo.com/v1/mcp",
+		popularity: 0,
+	},
+	{
+		id: "turso",
+		name: "Turso",
+		description:
+			"Turso provides SQLite-compatible databases that can run locally, in the cloud, or in a synced local-first model. Its cloud platform lets users manage…",
+		domain: "turso.tech",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.turso.ai/mcp",
+		popularity: 0,
+	},
+	{
+		id: "typeui",
+		name: "TypeUI",
+		description:
+			"TypeUI provides design systems, UI prompts, and layout guidance for AI coding tools so they can generate more consistent user interfaces. It also offers a…",
+		domain: "typeui.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.typeui.sh/",
 		popularity: 0,
 	},
 	{
@@ -10032,6 +13333,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "ubersuggest-ubersuggest-mcp",
+		name: "Ubersuggest",
+		description:
+			"Ubersuggest is an SEO and keyword research product from Neil Patel that provides domain analysis, keyword research, backlink data, site audits, and related…",
+		domain: "ubersuggest.com",
+		category: null,
+		featured: false,
+		endpoint: "https://ubersuggest-mcp.neilpatelapi.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "udemy",
 		name: "Udemy",
 		description:
@@ -10041,6 +13353,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://api.udemy.com/mcp-chatgpt/2025-10",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "ui",
+		name: "Ui",
+		description:
+			"Nuxt UI is a Vue UI component library, usable with Nuxt or plain Vue, that provides accessible Tailwind CSS-based components, composables, templates, and…",
+		domain: "ui.nuxt.com",
+		category: null,
+		featured: false,
+		endpoint: "https://ui.nuxt.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "unified",
+		name: "Unified",
+		description:
+			"Unified.to provides a unified integration platform that lets applications connect to hundreds of third-party SaaS products through a single normalized API. It…",
+		domain: "unified.to",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp-api.unified.to/mcp",
 		popularity: 0,
 	},
 	{
@@ -10080,6 +13414,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "uploads",
+		name: "Uploads",
+		description:
+			"uploads.sh is a file-hosting service for sharing screenshots, recordings, and other files, especially into GitHub pull requests and issues. It provides hosted…",
+		domain: "uploads.sh",
+		category: null,
+		featured: false,
+		endpoint: "https://agents.uploads.sh/mcp",
+		popularity: 0,
+	},
+	{
 		id: "upplai",
 		name: "Upplai",
 		description:
@@ -10089,6 +13434,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://upplai-mcp-server-production.up.railway.app/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "upstash",
+		name: "Upstash",
+		description:
+			"Upstash is a serverless data platform offering managed Redis, vector search, search, message queues, workflow orchestration, compute sandboxes, and blob…",
+		domain: "upstash.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.upstash.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "upsun",
+		name: "Upsun",
+		description:
+			"Upsun is a managed multi-cloud application platform for deploying and operating applications, services, and preview environments from Git-driven…",
+		domain: "upsun.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.upsun.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "uptimerobot",
+		name: "UptimeRobot",
+		description:
+			"UptimeRobot is an uptime monitoring service for websites, APIs, servers, cron jobs, SSL certificates, and related infrastructure. It also provides incident…",
+		domain: "uptimerobot.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.uptimerobot.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -10112,6 +13490,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://edge.upwork.com/api/v4/upw-chatgpt-app/mcp/",
+		popularity: 0,
+	},
+	{
+		id: "useautumn",
+		name: "Useautumn",
+		description:
+			"Autumn is billing infrastructure for AI and SaaS products that sits on top of Stripe. It manages subscription state, usage metering, credits, entitlements…",
+		domain: "useautumn.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.useautumn.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "useinvent",
+		name: "Useinvent",
+		description:
+			"Invent is a customer communication platform for businesses to run AI assistants across messaging channels, shared inboxes, contacts, broadcasts, knowledge…",
+		domain: "useinvent.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.useinvent.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "usenotra",
+		name: "Usenotra",
+		description:
+			"Notra is a GEO and AI-content platform that tracks brand visibility in AI engines, attributes AI agent traffic, identifies content gaps, and helps teams…",
+		domain: "usenotra.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.usenotra.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -10164,6 +13575,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "vapi",
+		name: "Vapi",
+		description:
+			"Vapi is a voice AI platform for building, testing, and operating voice agents, calls, chats, and related telephony workflows. It provides tools for managing…",
+		domain: "vapi.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.vapi.ai/mcp",
+		popularity: 0,
+	},
+	{
 		id: "vectoryx-claim-management",
 		name: "Vectoryx - Claim management",
 		description:
@@ -10185,6 +13607,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://www.veed.io/api/v1/mcp",
 		auth: "oauth",
+		popularity: 0,
+	},
+	{
+		id: "vendr",
+		name: "Vendr",
+		description:
+			"Vendr provides software pricing data, price-estimate tooling, quote analysis, and negotiation guidance for software purchasing. Its marketplace and APIs help…",
+		domain: "vendr.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.vendr.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -10308,6 +13741,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "vybit",
+		name: "Vybit",
+		description:
+			"Vybit is a notification service that sends personalized sound alerts to users' devices. It lets users create, trigger, share, and subscribe to sound-based…",
+		domain: "vybit.net",
+		category: null,
+		featured: false,
+		endpoint: "https://api.vybit.net/v1/mcp",
+		popularity: 0,
+	},
+	{
 		id: "waldo",
 		name: "Waldo",
 		description:
@@ -10356,6 +13800,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "wandb",
+		name: "Wandb",
+		description:
+			"Weights & Biases is a machine learning development platform for experiment tracking, model evaluation, artifacts, observability, and related workflows. It…",
+		domain: "wandb.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.withwandb.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "wanderu",
 		name: "Wanderu",
 		description:
@@ -10389,6 +13844,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://mcp.purchase.production.wepromise.tech/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "webex",
+		name: "Webex",
+		description:
+			"Webex is Cisco’s collaboration platform for messaging, meetings, calling, devices, and related workplace services. It also offers Vidcast and Webex Connect…",
+		domain: "webex.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.webexapis.com/mcp/webex-meeting",
+		popularity: 0,
+	},
+	{
+		id: "webhound",
+		name: "Webhound",
+		description:
+			"Webhound is a research system that runs budget-capped web investigations and returns cited reports, datasets, and related evidence trails. It is designed for…",
+		domain: "webhound.ai",
+		category: null,
+		featured: false,
+		endpoint: "https://api.webhound.ai/api/v2/mcp",
 		popularity: 0,
 	},
 	{
@@ -10464,6 +13941,39 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "windmill",
+		name: "Windmill",
+		description:
+			"Windmill is an open-source, self-hostable workflow engine and developer platform for building internal tools, automations, scripts, flows, and AI-agent…",
+		domain: "windmill.dev",
+		category: null,
+		featured: false,
+		endpoint: "https://app.windmill.dev/api/mcp/gateway",
+		popularity: 0,
+	},
+	{
+		id: "workable",
+		name: "Workable",
+		description:
+			"Workable is recruiting and HR software for employers, covering applicant tracking, hiring workflows, employee data, and related HR processes. Its public site…",
+		domain: "workable.com",
+		category: null,
+		featured: false,
+		endpoint: "https://www.workable.com/",
+		popularity: 0,
+	},
+	{
+		id: "workos",
+		name: "WorkOS",
+		description:
+			"WorkOS provides enterprise authentication and identity infrastructure for SaaS applications, including user management, enterprise SSO, directory sync…",
+		domain: "workos.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.workos.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "wrike",
 		name: "Wrike",
 		description:
@@ -10484,6 +13994,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		category: null,
 		featured: false,
 		endpoint: "https://mcp.wyndhamhotels.com/chatgpt/mcp",
+		popularity: 0,
+	},
+	{
+		id: "x-lookup",
+		name: "x-lookup",
+		description:
+			"x-lookup is a read-only browser for public X/Twitter content, returning posts, threads, profiles, search results, followers, and following as Markdown or…",
+		domain: "x-lookup.mynameistito.com",
+		category: null,
+		featured: false,
+		endpoint: "https://x-lookup.mynameistito.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "xquik",
+		name: "Xquik",
+		description:
+			"Xquik is a hosted SaaS platform for searching public X data, exporting results, publishing from connected X accounts, and running monitoring and giveaway…",
+		domain: "xquik.com",
+		category: null,
+		featured: false,
+		endpoint: "https://xquik.com/mcp",
 		popularity: 0,
 	},
 	{
@@ -10546,6 +14078,17 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "you",
+		name: "You",
+		description:
+			"You.com provides APIs and agent tooling for real-time web search, webpage content extraction, and citation-backed research. Its platform also includes hosted…",
+		domain: "you.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.you.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "zen-shopping",
 		name: "Zen Shopping",
 		description:
@@ -10558,6 +14101,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		popularity: 0,
 	},
 	{
+		id: "zernio",
+		name: "Zernio",
+		description:
+			"Zernio is a social media scheduling, messaging, analytics, and ads platform that provides a unified API for managing posts and connected accounts across many…",
+		domain: "zernio.com",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.zernio.com/mcp",
+		popularity: 0,
+	},
+	{
+		id: "zillapi",
+		name: "Zillapi",
+		description:
+			"Zillapi provides Zillow-sourced U.S. residential property data, including property details, Zestimates, listing search, building extraction, async jobs, and…",
+		domain: "zillapi.com",
+		category: null,
+		featured: false,
+		endpoint: "https://api.zillapi.com/mcp",
+		popularity: 0,
+	},
+	{
 		id: "ziprecruiter",
 		name: "ZipRecruiter",
 		description:
@@ -10567,6 +14132,28 @@ export const PLUGIN_CATALOG_DATA: readonly CatalogPlugin[] = [
 		featured: false,
 		endpoint: "https://api.ziprecruiter.com/mcp",
 		auth: "none",
+		popularity: 0,
+	},
+	{
+		id: "zohomcp",
+		name: "Zoho MCP",
+		description:
+			"Zoho MCP is a Zoho service for creating Model Context Protocol servers that expose tools from Zoho and third-party services to AI clients. Users configure…",
+		domain: "zohomcp.ae",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.zoho.in/",
+		popularity: 0,
+	},
+	{
+		id: "zohomcp-2",
+		name: "Zoho MCP",
+		description:
+			"Zoho MCP is a Zoho service for creating Model Context Protocol servers that expose tools from Zoho and third-party services to AI agents. It lets users…",
+		domain: "zohomcp.ca",
+		category: null,
+		featured: false,
+		endpoint: "https://mcp.zoho.com/",
 		popularity: 0,
 	},
 	{

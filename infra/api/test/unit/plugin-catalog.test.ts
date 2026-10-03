@@ -58,9 +58,19 @@ const entry = (overrides: Partial<FeedEntry> & { id: string }): FeedEntry => ({
 test("generator filters, dedupes by preference, and applies query defaults", () => {
 	const catalog = buildCatalog([
 		entry({
-			id: "discovered/junk",
+			id: "discovered/apigee-googleapis-com-mcp",
 			feeds: ["discovered"],
-			connectUrl: "https://junk.example.com/mcp",
+			domain: "apigee.googleapis.com",
+			connectUrl: "https://apigee.googleapis.com/mcp",
+		}),
+		entry({
+			id: "discovered/betterstack-com-mcp",
+			name: "betterstack.com",
+			feeds: ["discovered"],
+			domain: "betterstack.com",
+			description: "Better Stack is an observability platform.",
+			connectUrl: "https://mcp.betterstack.com",
+			popularity: 1_000,
 		}),
 		entry({
 			id: "mcp/insecure",
@@ -98,7 +108,18 @@ test("generator filters, dedupes by preference, and applies query defaults", () 
 		}),
 	]);
 	expect(catalog.map((plugin) => plugin.id).sort()).toEqual(
-		["acme", "cloudflare", "cloudflare-bindings", "linear", "posthog"].sort(),
+		[
+			"acme",
+			"betterstack",
+			"cloudflare",
+			"cloudflare-bindings",
+			"linear",
+			"posthog",
+		].sort(),
+	);
+	// Discovered servers get their product name and rank after the feeds.
+	expect(catalog.find((p) => p.id === "betterstack")?.name).toBe(
+		"Better Stack",
 	);
 	expect(catalog.find((p) => p.id === "acme")).toMatchObject({
 		name: "Acme",

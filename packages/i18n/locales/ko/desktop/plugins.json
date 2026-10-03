@@ -59,5 +59,6 @@
 	"plugins_skills_always_on": "항상 켜짐",
 	"plugins_skills_personal": "개인",
 	"plugins_skills_project": "프로젝트",
-	"plugins_skills_codex_note": "Codex 설정은 Codex 자체 구성에 저장되므로 Zuse 밖에서도 적용됩니다."
+	"plugins_skills_codex_note": "Codex 설정은 Codex 자체 구성에 저장되므로 Zuse 밖에서도 적용됩니다.",
+	"plugins_skills_loading": "스킬을 불러오는 중…"
 }

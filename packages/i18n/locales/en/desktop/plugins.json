@@ -59,5 +59,6 @@
 	"plugins_skills_always_on": "Always on",
 	"plugins_skills_personal": "Personal",
 	"plugins_skills_project": "Project",
-	"plugins_skills_codex_note": "Codex toggles are saved in Codex's own config, so they also apply outside Zuse."
+	"plugins_skills_codex_note": "Codex toggles are saved in Codex's own config, so they also apply outside Zuse.",
+	"plugins_skills_loading": "Loading skills…"
 }

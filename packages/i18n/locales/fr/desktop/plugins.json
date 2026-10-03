@@ -59,5 +59,6 @@
 	"plugins_skills_always_on": "Toujours actif",
 	"plugins_skills_personal": "Personnel",
 	"plugins_skills_project": "Projet",
-	"plugins_skills_codex_note": "Les réglages Codex sont enregistrés dans la configuration de Codex et s'appliquent aussi en dehors de Zuse."
+	"plugins_skills_codex_note": "Les réglages Codex sont enregistrés dans la configuration de Codex et s'appliquent aussi en dehors de Zuse.",
+	"plugins_skills_loading": "Chargement des compétences…"
 }

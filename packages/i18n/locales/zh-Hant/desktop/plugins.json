@@ -59,5 +59,6 @@
 	"plugins_skills_always_on": "永遠開啟",
 	"plugins_skills_personal": "個人",
 	"plugins_skills_project": "專案",
-	"plugins_skills_codex_note": "Codex 的開關儲存在 Codex 本身的設定中，因此在 Zuse 之外也會生效。"
+	"plugins_skills_codex_note": "Codex 的開關儲存在 Codex 本身的設定中，因此在 Zuse 之外也會生效。",
+	"plugins_skills_loading": "正在載入技能…"
 }

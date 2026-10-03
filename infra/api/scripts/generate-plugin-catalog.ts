@@ -96,9 +96,48 @@ const QUERY_DEFAULTS = [
 	{ host: "mcp.cloudflare.com", name: "codemode", value: "false" },
 ];
 
-const FEED_RANK: Record<string, number> = { curated: 0, claude: 1, openai: 2 };
+const FEED_RANK: Record<string, number> = {
+	curated: 0,
+	claude: 1,
+	openai: 2,
+	discovered: 4,
+};
 const rank = (entry: FeedEntry) =>
-	Math.min(3, ...(entry.feeds ?? []).map((feed) => FEED_RANK[feed] ?? 3));
+	Math.min(4, ...(entry.feeds ?? []).map((feed) => FEED_RANK[feed] ?? 3));
+const discoveredOnly = (entry: FeedEntry) =>
+	(entry.feeds ?? []).every((feed) => feed === "discovered");
+
+/**
+ * Discovered servers are named by their domain. Prefer the product name their
+ * description opens with ("Better Stack is…" for betterstack.com), else a
+ * readable form of the domain.
+ */
+const PREFIX_LABELS = new Set(["api", "mcp", "app", "www", "docs"]);
+export const productName = (entry: FeedEntry): string => {
+	const parts = (entry.domain ?? "").toLowerCase().split(".");
+	while (parts.length > 2 && PREFIX_LABELS.has(parts[0] ?? "")) parts.shift();
+	const label = parts[0] ?? "";
+	const compact = (value: string) =>
+		value.toLowerCase().replace(/[^a-z0-9]/g, "");
+	const words = (entry.description ?? "").match(/[A-Za-z0-9][\w.&'+-]*/g) ?? [];
+	for (let count = 1; count <= 4; count++) {
+		const candidate = words.slice(0, count);
+		if (
+			candidate.length === count &&
+			compact(candidate.join("")) === compact(label)
+		)
+			return candidate.join(" ").replace(/[.,]+$/, "");
+	}
+	return label
+		.split("-")
+		.filter(Boolean)
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(" ");
+};
+
+/** Google Cloud API endpoints need a pre-registered Google OAuth client. */
+const needsRegisteredClient = (entry: FeedEntry) =>
+	(entry.domain ?? "").endsWith("googleapis.com");
 
 const dedupeKey = (href: string) => href.replace(/\/+$/, "").toLowerCase();
 
@@ -177,7 +216,7 @@ export function buildCatalog(
 ): readonly GeneratedPlugin[] {
 	const candidates = feed
 		.filter((entry) => entry.kind === "mcp")
-		.filter((entry) => (entry.feeds ?? []).some((f) => f !== "discovered"))
+		.filter((entry) => !(discoveredOnly(entry) && needsRegisteredClient(entry)))
 		.flatMap((entry) => {
 			const original = usableUrl(entry.connectUrl);
 			return original ? [{ entry, original }] : [];
@@ -215,7 +254,9 @@ export function buildCatalog(
 				? { ...legacy, popularity: common.popularity }
 				: {
 						id: uniqueId(entry, original, used),
-						name: entry.name.trim(),
+						name: discoveredOnly(entry)
+							? productName(entry) || entry.name.trim()
+							: entry.name.trim(),
 						...common,
 						endpoint,
 						...(discovery !== endpoint ? { oauthDiscovery: discovery } : {}),

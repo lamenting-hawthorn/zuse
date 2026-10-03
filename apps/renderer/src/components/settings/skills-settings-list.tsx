@@ -112,7 +112,7 @@ export function SkillsSettingsList({
 	const { message: m } = useUiMessages(["plugins"]);
 	const needle = query.trim().toLowerCase();
 	if (state.skills === null && !state.failed)
-		return <PluginsLoading label={m("plugins:plugins_loading")} />;
+		return <PluginsLoading label={m("plugins:plugins_skills_loading")} />;
 	if (state.skills === null)
 		return (
 			<p className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
