@@ -569,6 +569,14 @@ const UsageLimitEvent = Schema.TaggedStruct("UsageLimit", {
 	windowMinutes: Schema.NullOr(Schema.Number),
 });
 
+/**
+ * Emitted when the provider starts a top-level turn without an application
+ * send — e.g. Claude Code waking its main agent when a background task
+ * finishes. The kernel turn protocol opens an application turn for it so the
+ * work persists and the session reads as running until the provider settles.
+ */
+const ProviderTurnStartedEvent = Schema.TaggedStruct("ProviderTurnStarted", {});
+
 const CompletedEvent = Schema.TaggedStruct("Completed", {
 	reason: Schema.Literals(["ended", "interrupted", "error"]),
 });
@@ -742,6 +750,7 @@ export const AgentEvent = Schema.Union([
 	PermissionModeChangedEvent,
 	GoalUpdatedEvent,
 	GoalClearedEvent,
+	ProviderTurnStartedEvent,
 	CompletedEvent,
 	InterruptedEvent,
 	ErrorEvent,

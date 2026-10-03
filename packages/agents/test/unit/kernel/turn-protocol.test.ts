@@ -4,7 +4,7 @@ import type {
 	AgentTurnId,
 	ProviderEventEnvelope,
 } from "@zuse/contracts";
-import { Effect, Fiber, Queue, Stream } from "effect";
+import { type Cause, Effect, Fiber, Queue, Stream } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import type {
 	ProviderDriverEvent,
@@ -252,5 +252,165 @@ describe("turn-scoped provider protocol", () => {
 			turnId,
 			event: { _tag: "Completed", reason: "error" },
 		});
+	});
+
+	it("attributes background work to its spawning turn and opens provider turns", async () => {
+		const agentId = "agent-1" as AgentItemId;
+		const scoped = await Effect.runPromise(
+			makeTurnScopedSessionHandle(
+				handleWithEvents([
+					// Already inside the application turn: nothing new to open.
+					{ _tag: "ProviderTurnStarted" },
+					{
+						_tag: "ToolUse",
+						itemId: agentId,
+						tool: "Agent",
+						input: { prompt: "build", run_in_background: true },
+					},
+					{ _tag: "Completed", reason: "ended" },
+					{
+						_tag: "AssistantMessage",
+						itemId: "child-1" as AgentItemId,
+						text: "working",
+						parentItemId: agentId,
+					},
+					{
+						_tag: "SubagentSummary",
+						itemId: agentId,
+						agentName: "builder",
+						model: "inherit",
+						turns: 1,
+						durationMs: 5,
+						summary: "built",
+						isError: false,
+					},
+					{ _tag: "ProviderTurnStarted" },
+					{ _tag: "AssistantMessage", itemId, text: "builder finished" },
+					{ _tag: "Completed", reason: "ended" },
+					// Top-level output with no open turn stays uncorrelated.
+					{ _tag: "AssistantMessage", itemId, text: "stray" },
+				]),
+			),
+		);
+		await Effect.runPromise(scoped.send(turnId, "start builders"));
+		const events = Array.from(
+			await Effect.runPromise(Stream.runCollect(scoped.events)),
+		) as ReadonlyArray<ProviderEventEnvelope>;
+
+		expect(
+			events.map((envelope) => [
+				envelope.scope === "turn" ? envelope.turnId : null,
+				envelope.event._tag,
+			]),
+		).toEqual([
+			[turnId, "ToolUse"],
+			[turnId, "Completed"],
+			[turnId, "AssistantMessage"],
+			[turnId, "SubagentSummary"],
+			[expect.stringMatching(/^turn_/), "ProviderTurnStarted"],
+			[expect.stringMatching(/^turn_/), "AssistantMessage"],
+			[expect.stringMatching(/^turn_/), "Completed"],
+		]);
+		const providerTurns = new Set(
+			events
+				.slice(4)
+				.map((envelope) =>
+					envelope.scope === "turn" ? envelope.turnId : null,
+				),
+		);
+		expect(providerTurns.size).toBe(1);
+		expect(providerTurns.has(turnId)).toBe(false);
+	});
+
+	it("routes a background child to its origin while a later turn runs", async () => {
+		const agentId = "agent-1" as AgentItemId;
+		const secondTurnId = "turn-2" as AgentTurnId;
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const events = yield* Queue.make<AgentEvent, Cause.Done>();
+				const scoped = yield* makeTurnScopedSessionHandle({
+					...handleWithEvents([]),
+					events: Stream.fromQueue(events),
+				});
+				yield* scoped.send(turnId, "first");
+				yield* Queue.offerAll(events, [
+					{
+						_tag: "ToolUse",
+						itemId: agentId,
+						tool: "Agent",
+						input: { prompt: "build", run_in_background: true },
+					},
+					{ _tag: "Completed", reason: "ended" },
+				]);
+				const firstBatch = yield* Stream.take(scoped.events, 2).pipe(
+					Stream.runCollect,
+				);
+				expect(Array.from(firstBatch).length).toBe(2);
+				yield* scoped.send(secondTurnId, "second");
+				yield* Queue.offerAll(events, [
+					{
+						_tag: "ToolUse",
+						itemId: "child-tool" as AgentItemId,
+						tool: "Read",
+						input: {},
+						parentItemId: agentId,
+					},
+					{ _tag: "AssistantMessage", itemId, text: "reply" },
+				]);
+				yield* Queue.end(events);
+				const rest = Array.from(
+					yield* Stream.runCollect(scoped.events),
+				) as ReadonlyArray<ProviderEventEnvelope>;
+				expect(
+					rest.map((envelope) =>
+						envelope.scope === "turn" ? envelope.turnId : null,
+					),
+				).toEqual([turnId, secondTurnId, secondTurnId, secondTurnId]);
+				expect(rest.at(-1)?.event).toEqual({
+					_tag: "Completed",
+					reason: "error",
+				});
+			}),
+		);
+	});
+
+	it("adopts a provider-opened turn into a racing application send", async () => {
+		const send = vi.fn(() => Effect.void);
+		await Effect.runPromise(
+			Effect.gen(function* () {
+				const events = yield* Queue.make<AgentEvent, Cause.Done>();
+				const scoped = yield* makeTurnScopedSessionHandle({
+					...handleWithEvents([]),
+					events: Stream.fromQueue(events),
+					send,
+				});
+				yield* Queue.offerAll(events, [
+					{ _tag: "ProviderTurnStarted" },
+					{ _tag: "AssistantMessage", itemId, text: "woke up" },
+				]);
+				const opened = Array.from(
+					yield* Stream.take(scoped.events, 2).pipe(Stream.runCollect),
+				) as ReadonlyArray<ProviderEventEnvelope>;
+				const providerTurn =
+					opened[0]?.scope === "turn" ? opened[0].turnId : undefined;
+				expect(providerTurn).toMatch(/^turn_/);
+
+				yield* scoped.send(turnId, "hi");
+				yield* Queue.offerAll(events, [
+					{ _tag: "AssistantMessage", itemId, text: "reply" },
+					{ _tag: "Completed", reason: "ended" },
+				]);
+				yield* Queue.end(events);
+				const rest = Array.from(
+					yield* Stream.runCollect(scoped.events),
+				) as ReadonlyArray<ProviderEventEnvelope>;
+				expect(
+					rest.map((envelope) =>
+						envelope.scope === "turn" ? envelope.turnId : null,
+					),
+				).toEqual([turnId, turnId]);
+			}),
+		);
+		expect(send).toHaveBeenCalledOnce();
 	});
 });

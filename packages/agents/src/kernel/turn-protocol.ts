@@ -1,5 +1,6 @@
 import type {
 	AgentEvent,
+	AgentItemId,
 	AgentTurnId,
 	ProviderEventEnvelope,
 } from "@zuse/contracts";
@@ -21,7 +22,21 @@ type ActiveTurn = {
 	readonly turnId: AgentTurnId;
 	readonly released: Deferred.Deferred<void>;
 	readonly sent: boolean;
+	/** `provider` turns were opened by `ProviderTurnStarted`, not by `send`. */
+	readonly origin: "application" | "provider";
 };
+
+/**
+ * Upper bound on remembered tool-use origins. Background work only needs the
+ * anchors of recent turns; the oldest entries are evicted first.
+ */
+const MAX_ITEM_TURNS = 4096;
+
+const terminalEventTags = new Set<AgentEvent["_tag"]>([
+	"Completed",
+	"Interrupted",
+	"Error",
+]);
 
 type NormalizedBatch = {
 	readonly events: ReadonlyArray<TurnScopedProviderEventEnvelope>;
@@ -65,11 +80,30 @@ const turnEnvelope = (
 	event: AgentEvent,
 ): ProviderEventEnvelope => ({ scope: "turn", turnId, event });
 
+const parentItemIdOf = (event: AgentEvent): string | undefined =>
+	"parentItemId" in event && typeof event.parentItemId === "string"
+		? event.parentItemId
+		: undefined;
+
+/** Events whose own `itemId` refers back to an earlier `ToolUse`. */
+const referencesToolUse = (
+	event: AgentEvent,
+): event is Extract<AgentEvent, { readonly itemId: AgentItemId }> =>
+	event._tag === "ToolUse" ||
+	event._tag === "ToolResult" ||
+	event._tag === "SubagentSummary";
+
 /**
  * Converts every legacy provider handle at one kernel boundary. This is the
  * only place allowed to correlate native events with an application turn.
  * The server admits at most one provider turn through this handle, so a new
  * send cannot silently supersede an unsettled turn.
+ *
+ * Work can outlive the turn that started it: background sub-agents and shells
+ * keep emitting after their parent turn settles. Those events are attributed
+ * to the turn whose `ToolUse` spawned them rather than dropped or folded into
+ * whichever turn is current. When the provider starts a top-level turn on its
+ * own (`ProviderTurnStarted`), a provider-origin turn is opened for it.
  */
 export const makeTurnScopedSessionHandle = (
 	handle: ProviderSessionHandle,
@@ -80,8 +114,33 @@ export const makeTurnScopedSessionHandle = (
 		const activeTurn = yield* Ref.make<ActiveTurn | null>(
 			initialTurnId === undefined
 				? null
-				: { turnId: initialTurnId, released: initialReleased, sent: false },
+				: {
+						turnId: initialTurnId,
+						released: initialReleased,
+						sent: false,
+						origin: "application",
+					},
 		);
+		// Tool-use item id → the turn that emitted it. Insertion order doubles as
+		// eviction order.
+		const itemTurns = new Map<string, AgentTurnId>();
+		const rememberItem = (event: AgentEvent, turnId: AgentTurnId) => {
+			if (event._tag !== "ToolUse") return;
+			itemTurns.delete(event.itemId);
+			itemTurns.set(event.itemId, turnId);
+			if (itemTurns.size > MAX_ITEM_TURNS) {
+				const oldest = itemTurns.keys().next().value;
+				if (oldest !== undefined) itemTurns.delete(oldest);
+			}
+		};
+		const originTurnOf = (event: AgentEvent): AgentTurnId | undefined => {
+			if (terminalEventTags.has(event._tag)) return undefined;
+			const parent = parentItemIdOf(event);
+			const fromParent =
+				parent === undefined ? undefined : itemTurns.get(parent);
+			if (fromParent !== undefined) return fromParent;
+			return referencesToolUse(event) ? itemTurns.get(event.itemId) : undefined;
+		};
 		const releaseBatch = (
 			batch: NormalizedBatch,
 		): Effect.Effect<ReadonlyArray<TurnScopedProviderEventEnvelope>> =>
@@ -95,6 +154,25 @@ export const makeTurnScopedSessionHandle = (
 		): Effect.Effect<ReadonlyArray<TurnScopedProviderEventEnvelope>> => {
 			if (event._tag === "QuestionCallbackReleased") {
 				return Effect.succeed([sessionEnvelope(event)]);
+			}
+			if (event._tag === "ProviderTurnStarted") {
+				return Ref.modify(
+					activeTurn,
+					(active): readonly [NormalizedBatch, ActiveTurn | null] => {
+						// Already inside a turn: the provider is continuing it.
+						if (active !== null) return [{ events: [] }, active] as const;
+						const turnId = `turn_${crypto.randomUUID()}` as AgentTurnId;
+						return [
+							{ events: [turnEnvelope(turnId, event)] },
+							{
+								turnId,
+								released: Deferred.makeUnsafe<void>(),
+								sent: true,
+								origin: "provider",
+							},
+						] as const;
+					},
+				).pipe(Effect.flatMap(releaseBatch));
 			}
 			return Ref.modify(
 				activeTurn,
@@ -142,6 +220,12 @@ export const makeTurnScopedSessionHandle = (
 							] as const;
 						}
 						return [{ events: [sessionEnvelope(event)] }, active] as const;
+					}
+
+					const origin = originTurnOf(event);
+					if (origin !== undefined && origin !== active?.turnId) {
+						rememberItem(event, origin);
+						return [{ events: [turnEnvelope(origin, event)] }, active] as const;
 					}
 
 					if (active === null) {
@@ -194,6 +278,7 @@ export const makeTurnScopedSessionHandle = (
 							null,
 						] as const;
 					}
+					rememberItem(event, active.turnId);
 					return [
 						{ events: [turnEnvelope(active.turnId, event)] },
 						active,
@@ -260,6 +345,19 @@ export const makeTurnScopedSessionHandle = (
 											{ ...active, sent: true },
 										] as const);
 							}
+							if (active.origin === "provider") {
+								// The provider opened its own turn while the application was
+								// admitting this one. The server resolves that provider turn
+								// onto this application turn, so adopt it: the provider queues
+								// this input behind its current work, and everything it emits
+								// from here belongs to the application turn.
+								return [
+									Deferred.succeed(active.released, undefined).pipe(
+										Effect.andThen(handle.send(...args)),
+									),
+									{ turnId, released, sent: true, origin: "application" },
+								] as const;
+							}
 							return [
 								Effect.die(
 									new Error(
@@ -271,7 +369,7 @@ export const makeTurnScopedSessionHandle = (
 						}
 						return [
 							handle.send(...args),
-							{ turnId, released, sent: true },
+							{ turnId, released, sent: true, origin: "application" },
 						] as const;
 					});
 					yield* send.pipe(

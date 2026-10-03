@@ -301,7 +301,10 @@ interface TranslateState {
 	/** Maps SDK background task ids to their originating Agent tool use. */
 	backgroundTaskParents: Map<string, AgentItemId>;
 	/** Shell inputs retained until the SDK classifies them as background. */
-	backgroundShellInputs: Map<string, unknown>;
+	backgroundShellInputs: Map<
+		string,
+		{ readonly input: unknown; readonly parentItemId: AgentItemId | undefined }
+	>;
 	/** SDK task ids mapped to their dedicated BackgroundTask timeline item. */
 	localBackgroundTasks: Map<string, AgentItemId>;
 	/**
@@ -351,9 +354,18 @@ interface TranslateState {
 	 * owns terminal synthesis. Reset per turn once consumed.
 	 */
 	interrupted: boolean;
+	/**
+	 * True while the CLI is inside a top-level turn: from an application send
+	 * (or the first top-level output of a turn the CLI started itself) until
+	 * the top-level `result`. Top-level output while this is false means the
+	 * CLI woke its main agent on its own — e.g. a background task finished.
+	 */
+	topLevelTurnOpen: boolean;
 }
 
-const newTranslateState = (): TranslateState => ({
+const newTranslateState = (
+	options: { readonly topLevelTurnOpen?: boolean } = {},
+): TranslateState => ({
 	thinkingByIndex: new Map(),
 	currentMessageId: null,
 	streamedMessageIds: new Set(),
@@ -368,6 +380,7 @@ const newTranslateState = (): TranslateState => ({
 	pendingCompact: null,
 	emittedAuthError: false,
 	interrupted: false,
+	topLevelTurnOpen: options.topLevelTurnOpen ?? false,
 });
 
 const isAgentToolUse = (block: { type?: string; name?: string }): boolean =>
@@ -570,12 +583,33 @@ export const claudeResultErrorText = (msg: SDKMessage): string | null => {
 };
 
 /**
+ * Translate one SDKMessage into zero-or-more wire AgentEvents, announcing
+ * turns the CLI starts on its own. Claude Code wakes its main agent when a
+ * background task finishes; that turn has no application send, so the first
+ * top-level output while no turn is open is preceded by `ProviderTurnStarted`.
+ */
+const translate = (
+	msg: SDKMessage,
+	state: TranslateState,
+): ReadonlyArray<AgentEvent> => {
+	const type = (msg as { type?: unknown }).type;
+	const opensTurn =
+		!state.topLevelTurnOpen &&
+		(type === "stream_event" || type === "assistant" || type === "user") &&
+		typeof (msg as { parent_tool_use_id?: unknown }).parent_tool_use_id !==
+			"string";
+	if (!opensTurn) return translateMessage(msg, state);
+	state.topLevelTurnOpen = true;
+	return [{ _tag: "ProviderTurnStarted" }, ...translateMessage(msg, state)];
+};
+
+/**
  * Translate one SDKMessage into zero-or-more wire AgentEvents. Mostly
  * stateless, but the `state` carries thinking-delta accumulators across
  * `stream_event` messages so we can emit one Thinking event per content
  * block at its `content_block_stop`.
  */
-const translate = (
+const translateMessage = (
 	msg: SDKMessage,
 	state: TranslateState,
 ): ReadonlyArray<AgentEvent> => {
@@ -681,7 +715,10 @@ const translate = (
 						state.exitPlanModeIds.add(id as string);
 					}
 					if (block.name === "Bash") {
-						state.backgroundShellInputs.set(id as string, block.input);
+						state.backgroundShellInputs.set(id as string, {
+							input: block.input,
+							parentItemId,
+						});
 					}
 					// If this tool_use is the parent agent kicking off a sub-agent,
 					// remember it so the eventual paired tool_result can pop a
@@ -1056,6 +1093,7 @@ const translate = (
 		// A sub-agent's `result` does NOT close the parent's turn — the SDK
 		// continues running until the parent emits its own top-level result.
 		if (parentItemId === undefined) {
+			state.topLevelTurnOpen = false;
 			state.streamedMessageIds.clear();
 			// Emit the exact context occupancy for the turn. The real window
 			// comes from `modelUsage[model].contextWindow`; the used tokens are
@@ -1113,10 +1151,11 @@ const translate = (
 		if (msg.task_type === "local_bash") {
 			const itemId = `background_task_${msg.task_id}` as AgentItemId;
 			state.localBackgroundTasks.set(msg.task_id, itemId);
-			const originalInput =
+			const shell =
 				msg.tool_use_id === undefined
 					? undefined
 					: state.backgroundShellInputs.get(msg.tool_use_id);
+			const originalInput = shell?.input;
 			if (msg.tool_use_id !== undefined) {
 				state.backgroundShellInputs.delete(msg.tool_use_id);
 			}
@@ -1138,6 +1177,10 @@ const translate = (
 					tool: "Bash",
 					input,
 					backgroundTask: { taskId: msg.task_id },
+					// A sub-agent's background shell belongs under that sub-agent.
+					...(shell?.parentItemId === undefined
+						? {}
+						: { parentItemId: shell.parentItemId }),
 				},
 			];
 		}
@@ -1243,10 +1286,17 @@ const translate = (
 	return [];
 };
 
+/**
+ * Translates a recorded SDK message sequence. Recorded transcripts are read
+ * as one turn unless `liveTurns` asks for the live session's turn tracking.
+ */
 export const translateClaudeSdkMessages = (
 	messages: ReadonlyArray<SDKMessage>,
+	options: { readonly liveTurns?: boolean } = {},
 ): ReadonlyArray<AgentEvent> => {
-	const state = newTranslateState();
+	const state = newTranslateState({
+		topLevelTurnOpen: options.liveTurns !== true,
+	});
 	return messages.flatMap((message) => translate(message, state));
 };
 
@@ -1706,7 +1756,10 @@ export const startClaudeSession = (
 		// calls `translate`) and the `canUseTool` callback see the same map of
 		// pending Agent invocations and the same `latestParentItemId`. Built
 		// here, populated by `translate`, read by `canUseTool`.
-		const translateState = newTranslateState();
+		const translateState = newTranslateState({
+			topLevelTurnOpen:
+				input.initialPrompt !== undefined && input.initialPrompt.length > 0,
+		});
 		const emit = (event: AgentEvent): void => {
 			Queue.offerUnsafe(events, event);
 		};
@@ -2073,6 +2126,7 @@ export const startClaudeSession = (
 							],
 						)}`,
 					);
+					translateState.topLevelTurnOpen = true;
 					inputChannel.push(
 						makeClaudeUserMessage(promptText, attachmentBlocks),
 					);

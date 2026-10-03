@@ -264,4 +264,108 @@ describe("Claude background agents", () => {
 			false,
 		);
 	});
+
+	it("announces a turn the CLI starts on its own after a background task", () => {
+		const result = sdk({
+			type: "result",
+			subtype: "success",
+			is_error: false,
+			result: "",
+			parent_tool_use_id: null,
+		});
+		const reply = (text: string) =>
+			sdk({
+				type: "assistant",
+				parent_tool_use_id: null,
+				message: { id: `msg-${text}`, content: [{ type: "text", text }] },
+			});
+		const events = translateClaudeSdkMessages(
+			[
+				// The CLI woke on a task notification: no application send is open.
+				reply("Builder A is done"),
+				result,
+				// Sub-agent output between turns does not open a top-level turn.
+				sdk({
+					type: "assistant",
+					parent_tool_use_id: "agent-1",
+					message: {
+						id: "msg-child",
+						content: [{ type: "text", text: "still building" }],
+					},
+				}),
+				reply("Builder B is done"),
+			],
+			{ liveTurns: true },
+		);
+
+		expect(
+			events
+				.filter(
+					(event) =>
+						event._tag === "ProviderTurnStarted" ||
+						event._tag === "AssistantMessage" ||
+						event._tag === "Completed",
+				)
+				.map((event) =>
+					event._tag === "AssistantMessage" ? event.text : event._tag,
+				),
+		).toEqual([
+			"ProviderTurnStarted",
+			"Builder A is done",
+			"Completed",
+			"still building",
+			"ProviderTurnStarted",
+			"Builder B is done",
+		]);
+	});
+
+	it("does not announce provider turns in recorded transcripts", () => {
+		const events = translateClaudeSdkMessages([
+			sdk({
+				type: "assistant",
+				parent_tool_use_id: null,
+				message: { id: "msg-1", content: [{ type: "text", text: "hi" }] },
+			}),
+		]);
+
+		expect(events.some((event) => event._tag === "ProviderTurnStarted")).toBe(
+			false,
+		);
+	});
+
+	it("nests a sub-agent's background shell under that sub-agent", () => {
+		const events = translateClaudeSdkMessages([
+			sdk({
+				type: "assistant",
+				parent_tool_use_id: "agent-1",
+				message: {
+					content: [
+						{
+							type: "tool_use",
+							id: "child-shell",
+							name: "Bash",
+							input: { command: "render", run_in_background: true },
+						},
+					],
+				},
+			}),
+			sdk({
+				type: "system",
+				subtype: "task_started",
+				task_id: "child-task",
+				tool_use_id: "child-shell",
+				description: "Render frames",
+				task_type: "local_bash",
+			}),
+		]);
+
+		expect(events).toContainEqual(
+			expect.objectContaining({
+				_tag: "ToolUse",
+				itemId: "background_task_child-task",
+				backgroundTask: { taskId: "child-task" },
+				parentItemId: "agent-1",
+			}),
+		);
+	});
 });

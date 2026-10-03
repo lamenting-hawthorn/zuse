@@ -208,11 +208,18 @@ export const makeMessageOperations = Effect.fn("MessageOperations.make")(
 				// context when the driver supports it.
 				yield* closeProvider(sessionId);
 				yield* interruptProviderFiber(sessionId);
-				const turnId = yield* resolveActiveTurn(sessionId);
+				const activeTurnId = yield* resolveActiveTurn(sessionId);
 				const request =
-					turnId === undefined
+					activeTurnId === undefined
 						? null
-						: yield* pendingProviderTurn(sessionId, turnId);
+						: yield* pendingProviderTurn(sessionId, activeTurnId);
+				// A turn the provider opened itself has no request to replay; the
+				// process that owned it is gone, so settle it rather than leave the
+				// reopened session running forever.
+				if (activeTurnId !== undefined && request === null) {
+					yield* settleTurn(sessionId, activeTurnId, "interrupted");
+				}
+				const turnId = request === null ? undefined : activeTurnId;
 				// When a durable turn is active, reopen replays that exact request. The
 				// renderer must not submit the last user message again after success.
 				yield* ensureForTurn(session.id, {
