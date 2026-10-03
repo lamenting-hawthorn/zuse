@@ -110,3 +110,9 @@ describe("cloud mailbox internal directive", () => {
 		});
 	});
 });
+
+test("leaves immutable callback redirects without mailbox directives unchanged", () => {
+	const response = Response.redirect("https://code.zuse.test/", 302);
+	expect(takeCloudMailboxDirective(response)).toEqual({ kind: "none" });
+	expect(response.headers.get("location")).toBe("https://code.zuse.test/");
+});

@@ -2,6 +2,7 @@ import type {
 	DurableObjectNamespace,
 	DurableObjectState,
 } from "@cloudflare/workers-types";
+import { takeCloudMailboxDirective } from "../../src/cloud-mailbox-directive.ts";
 import { withoutResponseHeaders } from "../../src/http.ts";
 import { makeCloudflarePluginHost } from "../../src/plugin-host-cloudflare.ts";
 import {
@@ -52,6 +53,7 @@ export default {
 		const response = await makeCloudflarePluginHost(env.PLUGIN_VAULT).callback(
 			request,
 		);
+		takeCloudMailboxDirective(response);
 		return withoutResponseHeaders(response, ["x-zuse-reconcile-machine"]);
 	},
 };
