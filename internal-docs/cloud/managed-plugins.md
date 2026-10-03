@@ -28,9 +28,10 @@ Worker Loader, R2 build bucket or Postgres database is needed for plugins.
 
 The Durable Object's internal schema marker is now `2`; `plugins-v1` remains the
 Wrangler class-creation migration tag, not an Executor schema version. Existing
-v1 objects fail closed before running v2 SQL migrations. This work has not been
-deployed, so the intended first deployment uses fresh plugin objects. If an
-earlier build was deployed independently, preserve that data and plan an explicit
+v1 objects fail closed before running v2 SQL migrations. The first staging
+deployment on 2026-10-03 used a fresh plugin namespace; see the
+[deployment record](deployments/2026-10-03-managed-plugins.md). If an
+earlier build was deployed elsewhere, preserve that data and plan an explicit
 conversion before deploying; never clear a namespace or initialize over it.
 
 Do not replace this key on a running deployment without migrating stored
