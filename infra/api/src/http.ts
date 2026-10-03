@@ -84,3 +84,18 @@ export const readLimitedJsonBody = async (
 		reader.releaseLock();
 	}
 };
+
+/** Remove internal response metadata before returning a response to the client. */
+export const withoutResponseHeaders = (
+	response: Response,
+	names: readonly string[],
+): Response => {
+	if (!names.some((name) => response.headers.has(name))) return response;
+	const headers = new Headers(response.headers);
+	for (const name of names) headers.delete(name);
+	return new Response(response.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
+};

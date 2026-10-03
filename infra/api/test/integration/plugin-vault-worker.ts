@@ -1,4 +1,9 @@
-import type { DurableObjectState } from "@cloudflare/workers-types";
+import type {
+	DurableObjectNamespace,
+	DurableObjectState,
+} from "@cloudflare/workers-types";
+import { withoutResponseHeaders } from "../../src/http.ts";
+import { makeCloudflarePluginHost } from "../../src/plugin-host-cloudflare.ts";
 import {
 	type PluginVaultEnv,
 	PluginVault as Vault,
@@ -43,7 +48,10 @@ export class PluginVault extends Vault {
 	}
 }
 export default {
-	fetch() {
-		return new Response("test");
+	async fetch(request: Request, env: { PLUGIN_VAULT: DurableObjectNamespace }) {
+		const response = await makeCloudflarePluginHost(env.PLUGIN_VAULT).callback(
+			request,
+		);
+		return withoutResponseHeaders(response, ["x-zuse-reconcile-machine"]);
 	},
 };

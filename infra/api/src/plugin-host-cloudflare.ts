@@ -24,6 +24,7 @@ export const makeCloudflarePluginHost = (
 			const stub = vaults.get(vaults.idFromString(id));
 			return (await stub.fetch(
 				`https://plugins.internal/callback${url.search}`,
+				{ redirect: "manual" },
 			)) as unknown as Response;
 		},
 	};

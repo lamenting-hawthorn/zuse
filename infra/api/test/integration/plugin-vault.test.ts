@@ -256,10 +256,14 @@ test("OAuth requires owner confirmation and rejects callback replay", async () =
 	const authorization = new URL(String(started.body.authorizationUrl));
 	expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
 	const state = authorization.searchParams.get("state") ?? "";
-	const callback = await a.vault.fetch(
-		`https://internal/callback?state=${encodeURIComponent(state)}&code=one-use-code`,
-		{ redirect: "manual" },
+	const callbackUrl = new URL(
+		authorization.searchParams.get("redirect_uri") ?? "",
 	);
+	callbackUrl.searchParams.set("state", state);
+	callbackUrl.searchParams.set("code", "one-use-code");
+	const callback = await mf.dispatchFetch(callbackUrl.href, {
+		redirect: "manual",
+	});
 	expect(callback.status).toBe(302);
 	const ticket = new URL(
 		callback.headers.get("location") ?? "",

@@ -34,6 +34,7 @@ import {
 import { CloudWorkspaceStorePg } from "./cloud-workspace-store.ts";
 import * as Config from "./config.ts";
 import { isConfigured } from "./environment.ts";
+import { withoutResponseHeaders } from "./http.ts";
 import { hyperdrivePoolConfig } from "./hyperdrive.ts";
 import { makeApi } from "./index.ts";
 import {
@@ -606,11 +607,13 @@ const applyResponseEffects = async (
 	const webhookDeliveryAccountId = response.headers.get(
 		"x-zuse-deliver-cloud-webhooks",
 	);
-	response.headers.delete("x-zuse-reconcile-machine");
-	response.headers.delete("x-zuse-reconcile-cloud-build");
-	response.headers.delete("x-zuse-reconcile-cloud-workspace");
-	response.headers.delete("x-zuse-nudge-cloud-workspace");
-	response.headers.delete("x-zuse-deliver-cloud-webhooks");
+	response = withoutResponseHeaders(response, [
+		"x-zuse-reconcile-machine",
+		"x-zuse-reconcile-cloud-build",
+		"x-zuse-reconcile-cloud-workspace",
+		"x-zuse-nudge-cloud-workspace",
+		"x-zuse-deliver-cloud-webhooks",
+	]);
 	if (
 		machineId === null &&
 		cloudBuildId === null &&
