@@ -83,6 +83,11 @@ interface WorktreeRow {
 // than basing the worktree off a stale local ref.
 const FETCH_TIMEOUT = "60 seconds" as const;
 
+// Chats are often created in bursts. A base fetched this recently is as fresh
+// as a new round trip would be on a slow link, so later creates reuse it
+// instead of each blocking on the network again.
+const REMOTE_BASE_REUSE_MS = 60_000;
+
 const isSetupStatus = (value: string): value is WorktreeSetupStatus =>
 	value === "pending" ||
 	value === "running" ||
@@ -1038,6 +1043,10 @@ export const WorktreeServiceLive = Layer.effect(
 			string,
 			Deferred.Deferred<RemoteBase, WorktreeCreateError>
 		>();
+		const recentRemoteBases = new Map<
+			string,
+			{ readonly base: RemoteBase; readonly fetchedAt: number }
+		>();
 		const remoteRefreshLock = yield* Semaphore.make(1);
 		const refreshRemoteBase = (
 			projectId: FolderId,
@@ -1046,6 +1055,13 @@ export const WorktreeServiceLive = Layer.effect(
 			Effect.gen(function* () {
 				const acquired = yield* remoteRefreshLock.withPermits(1)(
 					Effect.gen(function* () {
+						const recent = recentRemoteBases.get(repoPath);
+						if (
+							recent !== undefined &&
+							Date.now() - recent.fetchedAt < REMOTE_BASE_REUSE_MS
+						) {
+							return { recent: recent.base } as const;
+						}
 						const existing = remoteRefreshes.get(repoPath);
 						if (existing !== undefined) {
 							return { deferred: existing, owner: false } as const;
@@ -1058,23 +1074,38 @@ export const WorktreeServiceLive = Layer.effect(
 						return { deferred, owner: true } as const;
 					}),
 				);
+				if (acquired.recent !== undefined) return acquired.recent;
 				if (acquired.owner) {
 					const fail = (reason: string) =>
 						new WorktreeCreateError({ projectId, reason });
 					const refresh: Effect.Effect<RemoteBase, WorktreeCreateError> =
 						Effect.gen(function* () {
-							const symrefRaw = yield* runGit(repoPath, [
-								"ls-remote",
-								"--symref",
-								"origin",
-								"HEAD",
-							]).pipe(Effect.result);
-							let defaultBranch: string | null = null;
-							if (symrefRaw._tag === "Success") {
-								const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(
-									symrefRaw.success,
-								);
-								defaultBranch = match?.[1] ?? null;
+							// The clone records origin's default branch locally; only ask
+							// the remote when that symref is missing.
+							const localHead = (yield* runGit(repoPath, [
+								"symbolic-ref",
+								"--quiet",
+								"--short",
+								"refs/remotes/origin/HEAD",
+							]).pipe(Effect.orElseSucceed(() => ""))).trim();
+							let defaultBranch: string | null =
+								localHead.startsWith("origin/") &&
+								localHead.length > "origin/".length
+									? localHead.slice("origin/".length)
+									: null;
+							if (defaultBranch === null) {
+								const symrefRaw = yield* runGit(repoPath, [
+									"ls-remote",
+									"--symref",
+									"origin",
+									"HEAD",
+								]).pipe(Effect.result);
+								if (symrefRaw._tag === "Success") {
+									const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(
+										symrefRaw.success,
+									);
+									defaultBranch = match?.[1] ?? null;
+								}
 							}
 							if (defaultBranch === null) {
 								for (const candidate of ["main", "master"]) {
@@ -1128,10 +1159,12 @@ export const WorktreeServiceLive = Layer.effect(
 									),
 								);
 							}
-							return {
+							const base = {
 								baseBranch: defaultBranch,
 								baseRef: `origin/${defaultBranch}`,
 							};
+							recentRemoteBases.set(repoPath, { base, fetchedAt: Date.now() });
+							return base;
 						});
 					yield* refresh.pipe(
 						Effect.matchEffect({
