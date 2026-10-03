@@ -119,3 +119,149 @@ describe("usage limits store", () => {
 		expect(useUsageLimitsStore.getState().history).toEqual([point]);
 	});
 });
+
+describe("usage refresh ordering", () => {
+	const value = (providerId: "claude" | "codex", usedPercent: number) => ({
+		providerId,
+		planLabel: null,
+		creditsRemaining: null,
+		fetchedAt: new Date().toISOString(),
+		source: "api" as const,
+		windows: [
+			{
+				id: "session",
+				label: "Session",
+				scope: "session" as const,
+				usedPercent,
+				resetsAt: null,
+				windowMinutes: 300,
+			},
+		],
+	});
+	beforeEach(() => {
+		rpc.mockReset();
+		useUsageLimitsStore.setState({
+			providers: [],
+			history: [],
+			loading: false,
+			error: null,
+			lastLoadedAt: null,
+		});
+	});
+	it("retries Claude failures after five seconds without requiring a Kiro failure", async () => {
+		rpc.mockReturnValue(
+			Effect.succeed({
+				providers: [{ ...value("claude", 1), unavailableReason: "expired" }],
+			}),
+		);
+		await useUsageLimitsStore.getState().load();
+		await useUsageLimitsStore.getState().load();
+		expect(rpc).toHaveBeenCalledTimes(1);
+		useUsageLimitsStore.setState({ lastLoadedAt: Date.now() - 5001 });
+		await useUsageLimitsStore.getState().load();
+		expect(rpc).toHaveBeenCalledTimes(2);
+	});
+	it("deduplicates concurrent manual refreshes", async () => {
+		rpc.mockReturnValue(Effect.succeed({ providers: [value("claude", 1)] }));
+		await Promise.all([
+			useUsageLimitsStore.getState().refresh(true),
+			useUsageLimitsStore.getState().refresh(true),
+		]);
+		expect(rpc).toHaveBeenCalledTimes(1);
+	});
+	it("does not let an older full response overwrite a newer provider read", async () => {
+		let resolve!: (response: { providers: ReturnType<typeof value>[] }) => void;
+		rpc.mockReturnValueOnce(
+			Effect.promise(
+				() =>
+					new Promise((done) => {
+						resolve = done;
+					}),
+			),
+		);
+		const all = useUsageLimitsStore.getState().refresh(true);
+		rpc.mockReturnValueOnce(
+			Effect.succeed({ providers: [value("claude", 50)] }),
+		);
+		await useUsageLimitsStore.getState().refresh(true, "claude");
+		expect(useUsageLimitsStore.getState().loading).toBe(true);
+		resolve({ providers: [value("claude", 10), value("codex", 20)] });
+		await all;
+		expect(
+			useUsageLimitsStore
+				.getState()
+				.providers.find((p) => p.providerId === "claude")?.windows[0]
+				?.usedPercent,
+		).toBe(50);
+		expect(
+			useUsageLimitsStore
+				.getState()
+				.providers.find((p) => p.providerId === "codex")?.windows[0]
+				?.usedPercent,
+		).toBe(20);
+		expect(useUsageLimitsStore.getState().loading).toBe(false);
+	});
+	it("sends a forced request while a normal refresh is pending", async () => {
+		let resolve!: (response: { providers: ReturnType<typeof value>[] }) => void;
+		rpc.mockReturnValueOnce(
+			Effect.promise(
+				() =>
+					new Promise((done) => {
+						resolve = done;
+					}),
+			),
+		);
+		const normal = useUsageLimitsStore.getState().refresh(false);
+		rpc.mockReturnValueOnce(
+			Effect.succeed({ providers: [value("claude", 50)] }),
+		);
+		await useUsageLimitsStore.getState().refresh(true);
+		expect(rpc).toHaveBeenLastCalledWith({
+			forceRefresh: true,
+			providerId: undefined,
+		});
+		resolve({ providers: [value("claude", 10)] });
+		await normal;
+		expect(
+			useUsageLimitsStore.getState().providers[0]?.windows[0]?.usedPercent,
+		).toBe(50);
+	});
+	it("reloads an invalidated provider after a partial full response", async () => {
+		let resolve!: (response: { providers: ReturnType<typeof value>[] }) => void;
+		rpc.mockReturnValueOnce(
+			Effect.promise(
+				() =>
+					new Promise((done) => {
+						resolve = done;
+					}),
+			),
+		);
+		const pending = useUsageLimitsStore.getState().load();
+		useUsageLimitsStore.getState().invalidate("claude");
+		resolve({ providers: [value("claude", 10), value("codex", 20)] });
+		await pending;
+		expect(useUsageLimitsStore.getState().lastLoadedAt).toBeNull();
+		rpc.mockReturnValueOnce(
+			Effect.succeed({ providers: [value("claude", 50)] }),
+		);
+		await useUsageLimitsStore.getState().load();
+		expect(rpc).toHaveBeenCalledTimes(2);
+	});
+
+	it("clears an account and ignores its pending response", async () => {
+		let resolve!: (response: { providers: ReturnType<typeof value>[] }) => void;
+		rpc.mockReturnValueOnce(
+			Effect.promise(
+				() =>
+					new Promise((done) => {
+						resolve = done;
+					}),
+			),
+		);
+		const pending = useUsageLimitsStore.getState().refresh(true, "claude");
+		useUsageLimitsStore.getState().invalidate("claude");
+		resolve({ providers: [value("claude", 10)] });
+		await pending;
+		expect(useUsageLimitsStore.getState().providers).toEqual([]);
+	});
+});
