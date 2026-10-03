@@ -129,7 +129,7 @@ function InteractiveQuestionCard({
 		}
 	};
 	const cancel = async (): Promise<void> => {
-		if (disabled || authoritativeSubmitting || submittingRef.current) return;
+		if (authoritativeSubmitting || submittingRef.current) return;
 		submittingRef.current = true;
 		setSubmitting(true);
 		try {
@@ -236,7 +236,6 @@ function InteractiveQuestionCard({
 		<div
 			className="rounded-xl bg-card/95 p-3 shadow-overlay-sm ring-1 ring-border/70"
 			aria-busy={submitting || authoritativeSubmitting || undefined}
-			aria-disabled={disabled || undefined}
 		>
 			<div className="flex items-start justify-between gap-3">
 				<div className="text-[13px] font-medium leading-5 text-foreground">
@@ -246,7 +245,7 @@ function InteractiveQuestionCard({
 					type="button"
 					className="-mr-1 grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
 					aria-label={uiMessage("chat:question_card_dismiss")}
-					disabled={interactionDisabled}
+					disabled={submitting || authoritativeSubmitting}
 					onClick={() => {
 						void cancel();
 					}}

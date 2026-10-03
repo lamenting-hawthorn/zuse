@@ -669,6 +669,19 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 					return yield* Effect.fail(new SessionNotFoundError({ sessionId }));
 				}
 
+				const persistCancellation = Effect.gen(function* () {
+					return yield* dispatchSessionCommandWithId(
+						sessionId,
+						questionCancellationCommandId(sessionId, itemId),
+						{
+							_tag: "ResolveQuestion",
+							itemId,
+							resolution: "cancelled",
+							resolvedAt: yield* currentTimestamp,
+						},
+					);
+				});
+
 				const rows = yield* sql<{
 					readonly action: "answer" | "cancel";
 					readonly answers_json: string | null;
@@ -679,21 +692,45 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 					LIMIT 1
 				`.pipe(Effect.orDie);
 				const existing = rows[0];
-				if (existing === undefined) {
-					if (!(yield* provider.hasQuestionAttachment(sessionId, itemId))) {
+				if (
+					existing !== undefined &&
+					(existing.action !== "cancel" || existing.answers_json !== null)
+				) {
+					return yield* Effect.fail(new SessionNotFoundError({ sessionId }));
+				}
+				if (!(yield* provider.hasQuestionAttachment(sessionId, itemId))) {
+					// Cancellation does not claim an answer reached the provider. A
+					// durable question can be dismissed after its callback disappears;
+					// reconciliation replays this receipt if the callback returns.
+					const questions = yield* sql<{ readonly found: number }>`
+						SELECT 1 AS found FROM messages
+						WHERE session_id = ${sessionId}
+						  AND kind = 'user_question'
+						  AND json_valid(content_json)
+						  AND json_extract(content_json, '$.itemId') = ${itemId}
+						LIMIT 1
+					`.pipe(Effect.orDie);
+					if (questions.length === 0) {
 						return yield* Effect.fail(new SessionNotFoundError({ sessionId }));
 					}
+					yield* persistCancellation;
+					return yield* settleDurableQuestionResolution(
+						sql,
+						provider,
+						sessionId,
+						itemId,
+						{ _tag: "cancel" },
+					).pipe(
+						Effect.mapError(() => new SessionNotFoundError({ sessionId })),
+					);
+				}
+				if (existing === undefined) {
 					const now = yield* currentTimestamp;
 					yield* sql`
 						INSERT INTO question_answer_deliveries (
 							session_id, item_id, action, answers_json, created_at, updated_at
 						) VALUES (${sessionId}, ${itemId}, 'cancel', NULL, ${now}, ${now})
 					`.pipe(Effect.orDie);
-				} else if (
-					existing.action !== "cancel" ||
-					existing.answers_json !== null
-				) {
-					return yield* Effect.fail(new SessionNotFoundError({ sessionId }));
 				}
 
 				if (!(yield* provider.hasQuestionAttachment(sessionId, itemId))) {
@@ -702,16 +739,7 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 				yield* provider
 					.cancelQuestion(sessionId, itemId)
 					.pipe(Effect.mapError(() => new SessionNotFoundError({ sessionId })));
-				yield* dispatchSessionCommandWithId(
-					sessionId,
-					questionCancellationCommandId(sessionId, itemId),
-					{
-						_tag: "ResolveQuestion",
-						itemId,
-						resolution: "cancelled",
-						resolvedAt: yield* currentTimestamp,
-					},
-				);
+				yield* persistCancellation;
 				yield* sql`
 					DELETE FROM question_answer_deliveries
 					WHERE session_id = ${sessionId} AND item_id = ${itemId}

@@ -6539,7 +6539,10 @@ describe("ConversationServices — provider event persistence", () => {
 		}
 	});
 
-	it("persists cancellation without a blank answer and rejects answer/cancel conflicts", async () => {
+	it.each([
+		true,
+		false,
+	])("persists cancellation without a blank answer and rejects answer/cancel conflicts (attached: %s)", async (attached) => {
 		const itemId = "question-cancel" as never;
 		scriptedEvents = [
 			{
@@ -6548,7 +6551,7 @@ describe("ConversationServices — provider event persistence", () => {
 				questions: [{ question: "Continue?", options: ["Continue", "Stop"] }],
 			},
 		];
-		providerQuestionAttached = true;
+		providerQuestionAttached = attached;
 		try {
 			await withRuntime(async (run) => {
 				const { initialSession } = await run(
@@ -6575,6 +6578,16 @@ describe("ConversationServices — provider event persistence", () => {
 						),
 					)
 					.toBe(true);
+
+				if (!attached) {
+					await expect(
+						run(
+							Effect.flatMap(store, (service) =>
+								service.cancelQuestion(sessionId, "missing-question" as never),
+							),
+						),
+					).rejects.toThrow();
+				}
 
 				await run(
 					Effect.flatMap(store, (service) =>
@@ -6616,8 +6629,8 @@ describe("ConversationServices — provider event persistence", () => {
 						};
 					}),
 				);
-				expect(providerCancelAttempts).toBe(2);
-				expect(providerQuestionContinuations).toBe(2);
+				expect(providerCancelAttempts).toBe(attached ? 2 : 1);
+				expect(providerQuestionContinuations).toBe(attached ? 2 : 1);
 				expect(
 					persisted.messages.filter(
 						(message) => message.content._tag === "user_question_answer",
