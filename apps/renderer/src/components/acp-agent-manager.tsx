@@ -1,9 +1,12 @@
+import "@zuse/i18n/english/common";
+import "@zuse/i18n/english/settings";
 import type {
 	AcpCatalogEntry,
 	AcpDefinition,
 	AcpDefinitionInput,
 } from "@zuse/contracts";
 import { EnvironmentId } from "@zuse/contracts";
+import { useMessages } from "@zuse/i18n/react";
 import { ExternalLink, MoreHorizontal, Plus, Search } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { openExternal } from "../lib/platform-capabilities.ts";
@@ -13,7 +16,6 @@ import {
 } from "../lib/provider-status.ts";
 import { cn } from "../lib/utils.ts";
 import {
-	ACP_SIGN_IN_LABEL,
 	authenticateAcpAgent,
 	cancelAcpSignIn,
 	EMPTY_ACP_HOST,
@@ -47,6 +49,8 @@ import { SettingsGroup } from "./ui/settings-panel.tsx";
 import { Spinner } from "./ui/spinner.tsx";
 import { Switch } from "./ui/switch.tsx";
 
+type Message = ReturnType<typeof useMessages>["message"];
+
 type DialogState =
 	| { kind: "catalog" }
 	| { kind: "command"; agent?: AcpDefinition }
@@ -56,6 +60,7 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 	const state = useAcpAgentsStore(
 		(store) => store.hosts[environmentId] ?? EMPTY_ACP_HOST,
 	);
+	const { message: t } = useMessages(["common", "settings"]);
 	const [dialog, setDialog] = useState<DialogState>(null);
 	useEffect(() => {
 		void loadAcpAgents(environmentId);
@@ -63,14 +68,12 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 	}, [environmentId]);
 	const busy = state.busy !== null;
 	const signingIn =
-		state.terminal !== undefined ||
-		Boolean(state.authUrl) ||
-		state.busy === ACP_SIGN_IN_LABEL;
+		state.signingIn || state.terminal !== undefined || Boolean(state.authUrl);
 
 	return (
 		<>
 			<SettingsGroup
-				title="ACP agents"
+				title={t("settings:acp_agents_title")}
 				action={
 					<div className="flex items-center gap-1.5">
 						{state.busy && (
@@ -93,13 +96,13 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 							}}
 						>
 							<Plus className="size-3.5" />
-							Add
+							{t("common:add")}
 						</Button>
 					</div>
 				}
 			>
 				{state.definitions.length === 0 ? (
-					<CompactEmptyState title="No ACP agents yet" />
+					<CompactEmptyState title={t("settings:acp_agents_empty")} />
 				) : (
 					state.definitions.map((agent) => (
 						<AcpAgentRow
@@ -117,11 +120,13 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 						<div className="flex h-7 items-center gap-2">
 							<Spinner className="size-3" />
 							<p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-								{state.authUrl
-									? "Finish signing in in your browser."
-									: state.terminal
-										? "Finish signing in below."
-										: "Waiting for sign in…"}
+								{t(
+									state.authUrl
+										? "settings:acp_agents_sign_in_browser"
+										: state.terminal
+											? "settings:acp_agents_sign_in_terminal"
+											: "settings:acp_agents_sign_in_waiting",
+								)}
 							</p>
 							{state.authUrl && (
 								<Button
@@ -131,7 +136,7 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 									onClick={() => void openExternal(state.authUrl ?? "")}
 								>
 									<ExternalLink className="size-3.5" />
-									Open sign-in page
+									{t("settings:acp_agents_open_sign_in")}
 								</Button>
 							)}
 							<Button
@@ -140,7 +145,7 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 								variant="ghost"
 								onClick={() => cancelAcpSignIn(environmentId)}
 							>
-								Cancel
+								{t("common:cancel")}
 							</Button>
 						</div>
 						{state.terminal && (
@@ -152,7 +157,7 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 									serverPtyId={state.terminal.ptyId}
 									processEpoch={state.terminal.processEpoch}
 									ownerId={state.terminal.ownerId}
-									title="Agent sign in"
+									title={t("settings:acp_agents_sign_in_terminal_title")}
 								/>
 							</div>
 						)}
@@ -185,7 +190,7 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 				save={async (input) => {
 					const result = await runAcpOperation(
 						environmentId,
-						"Saving agent…",
+						t("settings:acp_agents_busy_saving"),
 						(client) => client["provider.acp.save"](input),
 					);
 					if (!result) return;
@@ -200,17 +205,27 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 function agentStatus(
 	agent: AcpDefinition,
 	testing: boolean,
+	t: Message,
 ): {
 	key: ProviderStatusKey;
 	label: string;
 } {
-	if (!agent.enabled) return { key: "disabled", label: "Disabled" };
+	if (!agent.enabled)
+		return { key: "disabled", label: t("settings:acp_agents_status_disabled") };
 	if (testing)
 		return {
 			key: "loading",
-			label: agent.probe ? "Testing connection…" : "Setting up…",
+			label: t(
+				agent.probe
+					? "settings:acp_agents_status_testing"
+					: "settings:acp_agents_status_setting_up",
+			),
 		};
-	if (!agent.probe) return { key: "disabled", label: "Connection not tested" };
+	if (!agent.probe)
+		return {
+			key: "disabled",
+			label: t("settings:acp_agents_status_not_tested"),
+		};
 	const key: ProviderStatusKey =
 		agent.probe.status === "ready"
 			? "ready"
@@ -233,7 +248,8 @@ function AcpAgentRow({
 	environmentId: string;
 	onEdit: () => void;
 }) {
-	const status = agentStatus(agent, testing);
+	const { message: t } = useMessages(["common", "settings"]);
+	const status = agentStatus(agent, testing, t);
 	const authMethods =
 		!testing &&
 		agent.enabled &&
@@ -290,7 +306,7 @@ function AcpAgentRow({
 					disabled={busy}
 					onClick={() => signIn(authMethods[0]?.id ?? "")}
 				>
-					Sign in
+					{t("settings:acp_agents_sign_in")}
 				</Button>
 			)}
 			{authMethods.length > 1 && (
@@ -305,7 +321,7 @@ function AcpAgentRow({
 							/>
 						}
 					>
-						Sign in
+						{t("settings:acp_agents_sign_in")}
 					</MenuTrigger>
 					<MenuPopup align="end">
 						{authMethods.map((method) => (
@@ -323,10 +339,12 @@ function AcpAgentRow({
 			<Switch
 				checked={agent.enabled}
 				disabled={busy}
-				aria-label={`Enable ${agent.name}`}
+				aria-label={t("settings:acp_agents_enable", { name: agent.name })}
 				onCheckedChange={(enabled) =>
-					void runAcpOperation(environmentId, "Saving…", (client) =>
-						client["provider.acp.save"]({ ...agent, enabled }),
+					void runAcpOperation(
+						environmentId,
+						t("settings:acp_agents_busy_saving"),
+						(client) => client["provider.acp.save"]({ ...agent, enabled }),
 					)
 				}
 			/>
@@ -338,7 +356,9 @@ function AcpAgentRow({
 							size="icon-sm"
 							variant="ghost"
 							disabled={busy}
-							aria-label={`${agent.name} actions`}
+							aria-label={t("settings:acp_agents_actions", {
+								name: agent.name,
+							})}
 						/>
 					}
 				>
@@ -350,20 +370,22 @@ function AcpAgentRow({
 						disabled={!agent.enabled || testing}
 						onClick={() => void testAcpAgent(environmentId, agent.id)}
 					>
-						Test connection
+						{t("settings:acp_agents_test_connection")}
 					</MenuItem>
 					<MenuItem className="h-7" onClick={onEdit}>
-						Edit
+						{t("common:edit")}
 					</MenuItem>
 					<MenuItem
 						className="h-7"
 						onClick={() =>
-							void runAcpOperation(environmentId, "Duplicating…", (client) =>
-								client["provider.acp.duplicate"]({ id: agent.id }),
+							void runAcpOperation(
+								environmentId,
+								t("settings:acp_agents_busy_duplicating"),
+								(client) => client["provider.acp.duplicate"]({ id: agent.id }),
 							)
 						}
 					>
-						Duplicate
+						{t("settings:acp_agents_duplicate")}
 					</MenuItem>
 					{agent.catalogId && (
 						<MenuItem
@@ -371,7 +393,7 @@ function AcpAgentRow({
 							onClick={() =>
 								void runAcpOperation(
 									environmentId,
-									"Updating agent…",
+									t("settings:acp_agents_busy_updating"),
 									(client) =>
 										client["provider.acp.install"]({
 											catalogId: agent.catalogId ?? "",
@@ -380,7 +402,7 @@ function AcpAgentRow({
 								)
 							}
 						>
-							Update
+							{t("settings:acp_agents_update")}
 						</MenuItem>
 					)}
 					<MenuSeparator />
@@ -388,12 +410,14 @@ function AcpAgentRow({
 						className="h-7"
 						variant="destructive"
 						onClick={() =>
-							void runAcpOperation(environmentId, "Removing agent…", (client) =>
-								client["provider.acp.remove"]({ id: agent.id }),
+							void runAcpOperation(
+								environmentId,
+								t("settings:acp_agents_busy_removing"),
+								(client) => client["provider.acp.remove"]({ id: agent.id }),
 							)
 						}
 					>
-						Remove
+						{t("common:remove")}
 					</MenuItem>
 				</MenuPopup>
 			</Menu>
@@ -420,6 +444,7 @@ function AcpCatalogDialog({
 	onClose: () => void;
 	onCustom: () => void;
 }) {
+	const { message: t } = useMessages(["common", "settings"]);
 	const [query, setQuery] = useState("");
 	const [installing, setInstalling] = useState<string | null>(null);
 	const entries = useMemo(() => {
@@ -439,7 +464,7 @@ function AcpCatalogDialog({
 		>
 			<DialogPopup className="max-w-md" showCloseButton={false}>
 				<DialogHeader>
-					<DialogTitle>Add ACP agent</DialogTitle>
+					<DialogTitle>{t("settings:acp_agents_add_title")}</DialogTitle>
 				</DialogHeader>
 				<div className="px-4 pb-2">
 					<div className="relative">
@@ -450,8 +475,8 @@ function AcpCatalogDialog({
 						<Input
 							className="h-7 [&_input]:ps-7"
 							type="search"
-							placeholder="Search agents…"
-							aria-label="Search ACP agents"
+							placeholder={t("settings:acp_agents_search_placeholder")}
+							aria-label={t("settings:acp_agents_search_label")}
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
 							autoFocus
@@ -464,11 +489,13 @@ function AcpCatalogDialog({
 							{loading ? (
 								<Spinner className="size-4" />
 							) : (
-								<CompactEmptyState title="The registry is unavailable" />
+								<CompactEmptyState
+									title={t("settings:acp_agents_registry_unavailable")}
+								/>
 							)}
 						</div>
 					) : entries.length === 0 ? (
-						<CompactEmptyState title="No matching agents" />
+						<CompactEmptyState title={t("settings:acp_agents_no_matches")} />
 					) : (
 						entries.map((entry) => (
 							<div
@@ -485,7 +512,7 @@ function AcpCatalogDialog({
 										</span>
 										{entry.origin === "community" && (
 											<span className="shrink-0 rounded-sm bg-muted px-1 text-[10px] text-muted-foreground">
-												Community
+												{t("settings:acp_agents_community")}
 											</span>
 										)}
 									</div>
@@ -500,7 +527,9 @@ function AcpCatalogDialog({
 									className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
 									size="icon-sm"
 									variant="ghost"
-									aria-label={`${entry.name} source`}
+									aria-label={t("settings:acp_agents_source", {
+										name: entry.name,
+									})}
 									onClick={() => void openExternal(entry.source)}
 								>
 									<ExternalLink className="size-3.5" />
@@ -516,7 +545,9 @@ function AcpCatalogDialog({
 											setInstalling(entry.id);
 											const installed = await runAcpOperation(
 												environmentId,
-												`Installing ${entry.name}…`,
+												t("settings:acp_agents_busy_installing", {
+													name: entry.name,
+												}),
 												(client) =>
 													client["provider.acp.install"]({
 														catalogId: entry.id,
@@ -528,14 +559,14 @@ function AcpCatalogDialog({
 											void testAcpAgent(environmentId, installed.id);
 										}}
 									>
-										Add
+										{t("common:add")}
 									</Button>
 								) : (
 									<span
 										className="flex h-7 shrink-0 items-center text-[10px] text-muted-foreground"
-										title="Not available on this host"
+										title={t("settings:acp_agents_unavailable_hint")}
 									>
-										Unavailable
+										{t("settings:acp_agents_unavailable")}
 									</span>
 								)}
 							</div>
@@ -549,16 +580,18 @@ function AcpCatalogDialog({
 				)}
 				<DialogFooter className="sm:justify-between">
 					<Button className="h-7" size="sm" variant="ghost" onClick={onCustom}>
-						Use a custom command…
+						{t("settings:acp_agents_custom_command")}
 					</Button>
 					<Button className="h-7" size="sm" variant="ghost" onClick={onClose}>
-						Done
+						{t("common:done")}
 					</Button>
 				</DialogFooter>
 			</DialogPopup>
 		</Dialog>
 	);
 }
+
+class UnclosedQuoteError extends Error {}
 
 /** Splits a command line with POSIX-style quoting (no expansion). */
 const splitCommandLine = (line: string): string[] => {
@@ -585,7 +618,7 @@ const splitCommandLine = (line: string): string[] => {
 			current = (current ?? "") + char;
 		}
 	}
-	if (quote) throw new Error("Close the open quote.");
+	if (quote) throw new UnclosedQuoteError();
 	if (current !== null) tokens.push(current);
 	return tokens;
 };
@@ -606,6 +639,7 @@ function AcpCommandDialog({
 	onClose: () => void;
 	save: (input: AcpDefinitionInput) => Promise<void>;
 }) {
+	const { message: t } = useMessages(["common", "settings"]);
 	const [name, setName] = useState(agent?.name ?? "");
 	const [command, setCommand] = useState(agent?.command ?? "");
 	const [args, setArgs] = useState(
@@ -622,7 +656,11 @@ function AcpCommandDialog({
 			const pairs = splitCommandLine(env).map((pair) => {
 				const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s.exec(pair);
 				if (!match)
-					throw new Error(`"${pair.split("=")[0]}" is not a KEY=value pair.`);
+					throw new Error(
+						t("settings:acp_agents_invalid_variable", {
+							name: pair.split("=")[0] ?? pair,
+						}),
+					);
 				return [match[1] ?? "", match[2] ?? ""] as const;
 			});
 			setError(null);
@@ -637,7 +675,13 @@ function AcpCommandDialog({
 					: {}),
 			});
 		} catch (cause) {
-			setError(cause instanceof Error ? cause.message : String(cause));
+			setError(
+				cause instanceof UnclosedQuoteError
+					? t("settings:acp_agents_unclosed_quote")
+					: cause instanceof Error
+						? cause.message
+						: String(cause),
+			);
 		}
 	};
 
@@ -658,21 +702,23 @@ function AcpCommandDialog({
 				>
 					<DialogHeader>
 						<DialogTitle>
-							{agent ? `Edit ${agent.name}` : "Custom ACP command"}
+							{agent
+								? t("settings:acp_agents_edit_title", { name: agent.name })
+								: t("settings:acp_agents_custom_title")}
 						</DialogTitle>
 					</DialogHeader>
 					<DialogPanel className="flex flex-col gap-3">
-						<Field label="Name">
+						<Field label={t("settings:acp_agents_name")}>
 							<Input
 								required
 								className="h-7"
-								placeholder="My agent"
+								placeholder={t("settings:acp_agents_name_placeholder")}
 								value={name}
 								onChange={(event) => setName(event.target.value)}
 								autoFocus
 							/>
 						</Field>
-						<Field label="Executable">
+						<Field label={t("settings:acp_agents_executable")}>
 							<Input
 								required
 								className="h-7 font-mono"
@@ -681,7 +727,7 @@ function AcpCommandDialog({
 								onChange={(event) => setCommand(event.target.value)}
 							/>
 						</Field>
-						<Field label="Arguments">
+						<Field label={t("settings:acp_agents_arguments")}>
 							<Input
 								className="h-7 font-mono"
 								placeholder="--acp"
@@ -690,21 +736,23 @@ function AcpCommandDialog({
 							/>
 						</Field>
 						<Field
-							label="Environment"
+							label={t("settings:acp_agents_environment")}
 							hint={
 								savedKeys.length > 0 ? (
 									<>
-										Saved: {savedKeys.join(", ")}.{" "}
+										{t("settings:acp_agents_saved_variables", {
+											keys: savedKeys.join(", "),
+										})}{" "}
 										<button
 											type="button"
 											className="underline-offset-2 hover:text-foreground hover:underline"
 											onClick={() => setClearEnv(true)}
 										>
-											Clear
+											{t("settings:acp_agents_clear_variables")}
 										</button>
 									</>
 								) : clearEnv ? (
-									"Saved variables will be removed."
+									t("settings:acp_agents_variables_cleared")
 								) : undefined
 							}
 						>
@@ -731,7 +779,7 @@ function AcpCommandDialog({
 							variant="ghost"
 							onClick={onClose}
 						>
-							Cancel
+							{t("common:cancel")}
 						</Button>
 						<Button
 							type="submit"
@@ -739,7 +787,7 @@ function AcpCommandDialog({
 							size="sm"
 							disabled={busy}
 						>
-							Save
+							{t("common:save")}
 						</Button>
 					</DialogFooter>
 				</form>

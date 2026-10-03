@@ -23,5 +23,20 @@
 		"file": "apps/renderer/src/components/settings/cloud-workspace-auth.tsx",
 		"text": "https://api.example.com",
 		"reason": "Technical endpoint or package identifier; must remain verbatim."
+	},
+	{
+		"file": "apps/renderer/src/components/acp-agent-manager.tsx",
+		"text": "my-agent",
+		"reason": "Technical endpoint or package identifier; must remain verbatim."
+	},
+	{
+		"file": "apps/renderer/src/components/acp-agent-manager.tsx",
+		"text": "--acp",
+		"reason": "Technical endpoint or package identifier; must remain verbatim."
+	},
+	{
+		"file": "apps/renderer/src/components/acp-agent-manager.tsx",
+		"text": "API_KEY=… OTHER=…",
+		"reason": "Technical endpoint or package identifier; must remain verbatim."
 	}
 ]

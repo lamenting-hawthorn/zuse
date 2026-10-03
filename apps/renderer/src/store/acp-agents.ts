@@ -3,9 +3,12 @@ import type {
 	AcpDefinition,
 	AcpProviderId,
 } from "@zuse/contracts";
+import "@zuse/i18n/english/settings";
+import { message } from "@zuse/i18n";
 import { Effect } from "effect";
 import { toastManager } from "../components/ui/toast.tsx";
 import { formatError } from "../lib/format-error.ts";
+import { providerDisplayName } from "../lib/provider-labels.ts";
 import { refreshProviderMetadata } from "../lib/refresh-provider-metadata.ts";
 import type { MemoizeClient } from "../lib/rpc-client.ts";
 import { runtimeOperationClient } from "../lib/runtime-operation-client.ts";
@@ -24,6 +27,7 @@ interface HostAgents {
 	/** Connection tests run per agent and do not lock the host. */
 	testing: readonly AcpProviderId[];
 	busy: string | null;
+	signingIn: boolean;
 	error: string | null;
 }
 export const EMPTY_ACP_HOST: HostAgents = {
@@ -32,6 +36,7 @@ export const EMPTY_ACP_HOST: HostAgents = {
 	catalogLoading: false,
 	testing: [],
 	busy: null,
+	signingIn: false,
 	error: null,
 };
 export const useAcpAgentsStore = createAtomStore<{
@@ -109,14 +114,18 @@ export const loadAcpCatalog = async (host: string) => {
 	}
 };
 
-export const ACP_SIGN_IN_LABEL = "Waiting for sign in…";
 const signInOwners = new Map<string, StreamOperationOwner>();
 
 /** Stops a pending sign-in; the server closes the agent process with the stream. */
 export const cancelAcpSignIn = (host: string) => {
 	signInOwners.get(host)?.cancel();
 	signInOwners.delete(host);
-	update(host, { terminal: undefined, authUrl: null, busy: null });
+	update(host, {
+		terminal: undefined,
+		authUrl: null,
+		busy: null,
+		signingIn: false,
+	});
 };
 
 export const authenticateAcpAgent = async (
@@ -125,7 +134,12 @@ export const authenticateAcpAgent = async (
 	methodId: string,
 ) => {
 	if (useAcpAgentsStore.getState().hosts[host]?.busy) return;
-	update(host, { busy: ACP_SIGN_IN_LABEL, error: null, authUrl: null });
+	update(host, {
+		busy: message("settings:acp_agents_sign_in_waiting"),
+		signingIn: true,
+		error: null,
+		authUrl: null,
+	});
 	const owner = new StreamOperationOwner();
 	signInOwners.set(host, owner);
 	await owner.run(
@@ -140,17 +154,19 @@ export const authenticateAcpAgent = async (
 			if (event._tag === "done") {
 				update(host, { terminal: undefined, authUrl: null });
 				if (!event.ok)
-					update(host, { error: event.reason ?? "Sign in failed" });
+					update(host, {
+						error:
+							event.reason ?? message("settings:acp_agents_sign_in_failed"),
+					});
 				await loadAcpAgents(host);
 				void refreshProviderMetadata(host);
 				if (event.ok) {
-					const name = hostState(host).definitions.find(
-						(agent) => agent.id === id,
-					)?.name;
 					toastManager.add({
 						type: "success",
-						title: name ? `Signed in to ${name}` : "Signed in",
-						description: "You can close the browser tab.",
+						title: message("settings:acp_agents_signed_in", {
+							name: providerDisplayName(id),
+						}),
+						description: message("settings:acp_agents_close_browser_tab"),
 					});
 				}
 			}
@@ -160,5 +176,10 @@ export const authenticateAcpAgent = async (
 	// A cancelled attempt already reset state; a newer attempt owns it now.
 	if (signInOwners.get(host) !== owner) return;
 	signInOwners.delete(host);
-	update(host, { busy: null, terminal: undefined, authUrl: null });
+	update(host, {
+		busy: null,
+		signingIn: false,
+		terminal: undefined,
+		authUrl: null,
+	});
 };
