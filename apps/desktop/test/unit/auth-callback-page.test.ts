@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import { BROWSER_PAGE_HEADERS } from "@zuse/utils/browser-page";
 import { describe, expect, it } from "vitest";
 
 import {
+	AUTH_CALLBACK_PAGE_HEADERS,
 	renderAuthCallbackPage,
 	renderNotFoundPage,
 } from "../../src/auth-callback-page.ts";
@@ -80,10 +82,30 @@ describe("auth callback page", () => {
 			renderNotFoundPage(),
 		]) {
 			expect(page).not.toMatch(/(?:src|href)="https?:/u);
-			expect(page).not.toContain("<script");
 			expect(page).toContain("prefers-color-scheme:dark");
 			expect(page).toContain("prefers-reduced-motion:reduce");
 		}
+	});
+
+	it("runs only the hashed, offline dither script", () => {
+		const csp = AUTH_CALLBACK_PAGE_HEADERS["content-security-policy"] ?? "";
+		for (const flow of ["account", "linear", "plugin"] as const) {
+			const scripts = [
+				...renderAuthCallbackPage({ flow, nowMs, outcome: "success" }).matchAll(
+					/<script>([\s\S]*?)<\/script>/gu,
+				),
+			].map((match) => match[1] ?? "");
+			expect(scripts).toHaveLength(1);
+			const hash = createHash("sha256")
+				.update(scripts[0] ?? "")
+				.digest("base64");
+			expect(csp).toContain(`script-src 'sha256-${hash}'`);
+			expect(scripts[0]).not.toMatch(/fetch|XMLHttpRequest|https?:\/\//u);
+		}
+		expect(renderNotFoundPage()).not.toContain("<script");
+		expect(BROWSER_PAGE_HEADERS["content-security-policy"]).not.toContain(
+			"script-src",
+		);
 	});
 
 	it("keeps callback responses uncacheable", () => {
@@ -92,5 +114,16 @@ describe("auth callback page", () => {
 		expect(BROWSER_PAGE_HEADERS["content-security-policy"]).toContain(
 			"default-src 'none'",
 		);
+	});
+	it("stamps a named plugin and escapes its name", () => {
+		const html = renderAuthCallbackPage({
+			flow: "plugin",
+			integration: "<Notion>",
+			nowMs,
+			outcome: "success",
+		});
+		expect(html).toContain("&lt;Notion&gt; is connected to Zuse");
+		expect(html).toContain("<title>&lt;Notion&gt; connected · Zuse</title>");
+		expect(html).not.toContain("<Notion>");
 	});
 });

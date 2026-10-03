@@ -41,11 +41,23 @@ export const clampedText = (
  * authorization codes and checkout ids, so nothing is cached, referred, or
  * framed, and the pages are built to need no resource beyond inline styles.
  */
-export const BROWSER_PAGE_HEADERS: Readonly<Record<string, string>> = {
+/**
+ * Hardened headers for a self-contained page. Scripts are off unless a page
+ * opts in with CSP sources for its exact inline scripts (`'sha256-…'`).
+ */
+export const browserPageHeaders = (
+	scriptSources: readonly string[] = [],
+): Readonly<Record<string, string>> => ({
 	"cache-control": "no-store",
-	"content-security-policy":
-		"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'",
+	"content-security-policy": [
+		"default-src 'none'",
+		"style-src 'unsafe-inline'",
+		...(scriptSources.length ? [`script-src ${scriptSources.join(" ")}`] : []),
+		"frame-ancestors 'none'",
+	].join("; "),
 	"content-type": "text/html; charset=utf-8",
 	"referrer-policy": "no-referrer",
 	"x-content-type-options": "nosniff",
-};
+});
+
+export const BROWSER_PAGE_HEADERS = browserPageHeaders();

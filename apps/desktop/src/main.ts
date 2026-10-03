@@ -117,6 +117,7 @@ import fixPath from "fix-path";
 import selfsigned from "selfsigned";
 import { ZUSE_APP_VERSION } from "./app-version.ts";
 import {
+	AUTH_CALLBACK_PAGE_HEADERS,
 	type AuthCallbackFlow,
 	renderAuthCallbackPage,
 	renderNotFoundPage,
@@ -175,7 +176,12 @@ import {
 	type DeepEnergyProfileHandle,
 	startDeepEnergyProfile,
 } from "./deep-energy-profiler.ts";
-import { createBufferedChannel, isPairingDeepLink } from "./deep-link.ts";
+import {
+	createBufferedChannel,
+	isPairingDeepLink,
+	type PluginReturn,
+	pluginReturnOf,
+} from "./deep-link.ts";
 import {
 	executableOnPath,
 	listPortableOpenTargets,
@@ -481,6 +487,18 @@ const handlePairingDeepLink = (url: string): void => {
 	focusMainWindow();
 };
 
+// Managed-plugin OAuth returns (`/plugins/callback`) carry a one-use ticket the
+// signed-in renderer redeems; main only forwards it. Buffered like pairing
+// links because the browser can finish before the renderer subscribes.
+const pluginReturnChannel = createBufferedChannel<PluginReturn>();
+
+ipcMain.on("plugins:return-subscribe", () => {
+	pluginReturnChannel.subscribe((value) => {
+		mainWindow?.webContents.send("plugins:return", value);
+	});
+});
+ipcMain.handle("plugins:callback-port", () => boundAuthPort);
+
 let deliverAuthUrl: ((url: string) => void) | null = null;
 let pendingAuthUrls: string[] = [];
 let deliverLinearUrl: ((url: string) => void) | null = null;
@@ -562,6 +580,25 @@ const startAuthLoopback = async (): Promise<void> => {
 			res.end();
 			return;
 		}
+		if (parsed.pathname === "/plugins/callback") {
+			const value = pluginReturnOf(parsed);
+			if (value === null) {
+				res.writeHead(400, BROWSER_PAGE_HEADERS);
+				res.end(renderNotFoundPage());
+				return;
+			}
+			pluginReturnChannel.publish(value);
+			res.writeHead(200, AUTH_CALLBACK_PAGE_HEADERS);
+			res.end(
+				renderAuthCallbackPage({
+					flow: "plugin",
+					integration: value.plugin ?? "Plugin",
+					outcome: value.error === null ? "success" : "error",
+				}),
+			);
+			focusMainWindow();
+			return;
+		}
 		if (
 			parsed.pathname !== "/callback" &&
 			parsed.pathname !== "/linear/callback"
@@ -575,7 +612,7 @@ const startAuthLoopback = async (): Promise<void> => {
 		// owns the rejection; the page only mirrors what the browser was told.
 		const failure = parsed.searchParams.get("error");
 		handleAuthCallback(parsed.toString());
-		res.writeHead(200, BROWSER_PAGE_HEADERS);
+		res.writeHead(200, AUTH_CALLBACK_PAGE_HEADERS);
 		res.end(
 			renderAuthCallbackPage({
 				detail:
