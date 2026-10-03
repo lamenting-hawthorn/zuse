@@ -1,7 +1,8 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	distributionFor,
@@ -313,6 +314,45 @@ it("rejects binary checksum failures before creating the executable", async () =
 		),
 	).rejects.toThrow("checksum");
 	await expect(readFile(join(root, "agent"))).rejects.toThrow();
+});
+it("keeps helper executables runnable when extracting zip agents", async () => {
+	const root = await directory();
+	const archive = zipSync({
+		"bin/agent": [
+			new TextEncoder().encode("#!/bin/sh\n"),
+			{ os: 3, attrs: 0o755 << 16 },
+		],
+		"bin/helper": [
+			new TextEncoder().encode("#!/bin/sh\n"),
+			{ os: 3, attrs: 0o755 << 16 },
+		],
+		"README.md": [
+			new TextEncoder().encode("docs"),
+			{ os: 3, attrs: 0o644 << 16 },
+		],
+	});
+	const installed = await installCatalogAgent(
+		{
+			id: "zip",
+			name: "Zip",
+			description: "",
+			version: "1",
+			distribution: {
+				binary: {
+					[platformTarget()]: {
+						archive: "https://example.com/agent.zip",
+						cmd: "./bin/agent",
+					},
+				},
+			},
+		},
+		root,
+		async () => new Response(archive),
+	);
+	expect(installed.command).toBe(join(root, "bin/agent"));
+	expect((await stat(join(root, "bin/helper"))).mode & 0o100).toBe(0o100);
+	expect((await stat(join(root, "README.md"))).mode & 0o111).toBe(0);
+	await expect(stat(join(root, "download"))).rejects.toThrow();
 });
 it("reports missing package runners with a setup instruction", async () => {
 	await expect(

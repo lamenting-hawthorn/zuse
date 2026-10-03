@@ -115,9 +115,14 @@ export const launchAcpProcess = (
 		close();
 	});
 	child.on("error", finish);
-	child.on("close", (code) =>
-		finish(new Error(`ACP process exited (${code ?? "signal"})`)),
-	);
+	child.on("close", (code, signal) => {
+		const lastLine = stderr.trim().split(/\r?\n/).at(-1)?.slice(0, 200);
+		finish(
+			new Error(
+				`ACP process exited (${code ?? signal ?? "unknown"})${lastLine ? `: ${lastLine}` : ""}`,
+			),
+		);
+	});
 	return {
 		rpc,
 		close,
