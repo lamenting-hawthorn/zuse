@@ -14,7 +14,7 @@ import { useMemo } from "react";
 import { deriveAgentActivityState } from "../lib/agent-activity-state.ts";
 import { useCloudChatSummaryForSelection } from "../lib/cloud-workspaces.ts";
 import { waitingCloudMessagePresentation } from "../lib/composer-delivery.ts";
-import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
+import { useProviderDisplayName } from "../lib/provider-labels.ts";
 import {
 	providerStartupLabel,
 	useProviderStartupDelay,
@@ -62,7 +62,7 @@ export function ChatWorkingRow({
 	const { message: uiMessage } = useUiMessages(["chat", "common"]);
 
 	const waitingCommand = waitingCloudMessagePresentation(pendingCommands);
-	const providerLabel = PROVIDER_LABEL[providerId] ?? providerId;
+	const providerLabel = useProviderDisplayName(providerId);
 	const cloudSummary = useCloudChatSummaryForSelection({ chatId, sessionId });
 	const initialCloudAgentStart =
 		cloudSummary !== null && cloudSummary.startupPhase === "starting-agent";

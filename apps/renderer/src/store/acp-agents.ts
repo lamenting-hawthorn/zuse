@@ -4,6 +4,7 @@ import type {
 	AcpProviderId,
 } from "@zuse/contracts";
 import { Effect } from "effect";
+import { toastManager } from "../components/ui/toast.tsx";
 import { formatError } from "../lib/format-error.ts";
 import { refreshProviderMetadata } from "../lib/refresh-provider-metadata.ts";
 import type { MemoizeClient } from "../lib/rpc-client.ts";
@@ -141,7 +142,17 @@ export const authenticateAcpAgent = async (
 				if (!event.ok)
 					update(host, { error: event.reason ?? "Sign in failed" });
 				await loadAcpAgents(host);
-				await refreshProviderMetadata(host);
+				void refreshProviderMetadata(host);
+				if (event.ok) {
+					const name = hostState(host).definitions.find(
+						(agent) => agent.id === id,
+					)?.name;
+					toastManager.add({
+						type: "success",
+						title: name ? `Signed in to ${name}` : "Signed in",
+						description: "You can close the browser tab.",
+					});
+				}
 			}
 		},
 		(error) => update(host, { error: formatError(error) }),

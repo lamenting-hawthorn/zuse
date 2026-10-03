@@ -32,7 +32,7 @@ import { Tooltip } from "~/components/dither-kit/tooltip";
 import { XAxis } from "~/components/dither-kit/x-axis";
 import { YAxis } from "~/components/dither-kit/y-axis";
 import { useUsageSessions } from "~/hooks/use-usage-sessions";
-import { PROVIDER_DISPLAY } from "~/lib/provider-status";
+import { providerDisplayName } from "~/lib/provider-labels";
 import { usagePace } from "~/lib/usage-pace";
 import { cn } from "~/lib/utils";
 import { useUiStore } from "~/store/ui";
@@ -491,7 +491,7 @@ function LimitPlaceholder({
 			</div>
 			<div className="min-w-0">
 				<div className="text-xs font-medium">
-					{PROVIDER_DISPLAY[providerId]}
+					{providerDisplayName(providerId)}
 				</div>
 				<div className="mt-1 truncate text-[11px] text-muted-foreground">
 					{message}
@@ -538,7 +538,7 @@ function LimitCard({ provider }: { provider: ProviderUsageLimits }) {
 				<div className="flex items-center justify-between gap-3">
 					<div className="min-w-0">
 						<div className="truncate text-xs font-medium">
-							{PROVIDER_DISPLAY[provider.providerId]}
+							{providerDisplayName(provider.providerId)}
 						</div>
 						<div className="truncate text-[10px] text-muted-foreground">
 							{provider.planLabel ??
@@ -1161,7 +1161,7 @@ function SessionsExplorer({
 							</option>
 							{PROVIDER_ORDER.map((id) => (
 								<option key={id} value={id}>
-									{PROVIDER_DISPLAY[id]}
+									{providerDisplayName(id)}
 								</option>
 							))}
 						</select>

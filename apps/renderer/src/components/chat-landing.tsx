@@ -142,7 +142,7 @@ import { useUiStore } from "~/store/ui";
 import { useWorkspaceStore } from "~/store/workspace";
 import { EMPTY_WORKTREES, useWorktreesStore } from "~/store/worktrees";
 import { bindCloudWorkspaceToLocalDevice } from "../lib/device-bridge-binding.ts";
-import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
+import { providerDisplayName } from "../lib/provider-labels.ts";
 import {
 	assertRendererWorkspaceCurrent,
 	rendererWorkspaceSnapshot,
@@ -2012,7 +2012,7 @@ export function filterImportThreads(
 function providerThreadLabel(providerId: ProviderId): string {
 	if (providerId === "claude") return "Claude Code";
 	if (providerId === "codex") return "Codex";
-	return PROVIDER_LABEL[providerId] ?? providerId;
+	return providerDisplayName(providerId);
 }
 
 function QueuedComposerPreview({

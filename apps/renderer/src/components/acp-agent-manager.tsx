@@ -117,7 +117,11 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 						<div className="flex h-7 items-center gap-2">
 							<Spinner className="size-3" />
 							<p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-								Finish signing in on this host.
+								{state.authUrl
+									? "Finish signing in in your browser."
+									: state.terminal
+										? "Finish signing in below."
+										: "Waiting for sign in…"}
 							</p>
 							{state.authUrl && (
 								<Button

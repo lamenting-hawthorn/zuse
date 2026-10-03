@@ -8,7 +8,7 @@ import type {
 import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
 import { Analytics01Icon } from "@zuse/icons/solid-rounded";
 
-import { PROVIDER_DISPLAY } from "~/lib/provider-status";
+import { providerDisplayName } from "~/lib/provider-labels";
 import {
 	boundedUsagePercent,
 	creditUsage,
@@ -155,7 +155,7 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 			<MenuSubTrigger className="h-7" disabled={waitingForInitialData}>
 				<ProviderIcon providerId={providerId} className="size-3.5" />
 				<span className="min-w-0 flex-1 truncate">
-					{PROVIDER_DISPLAY[providerId]}
+					{providerDisplayName(providerId)}
 				</span>
 				{summaryText !== "" ? (
 					<span className="max-w-[7.5rem] shrink-0 truncate text-right text-[11px] tabular-nums text-muted-foreground">
@@ -169,7 +169,7 @@ function ProviderMenuItem({ providerId }: { providerId: ProviderId }) {
 						<ProviderIcon providerId={providerId} className="size-4" />
 						<div>
 							<div className="text-sm font-medium">
-								{PROVIDER_DISPLAY[providerId]}
+								{providerDisplayName(providerId)}
 							</div>
 							<div className="text-[11px] text-muted-foreground">
 								{provider.planLabel ??
