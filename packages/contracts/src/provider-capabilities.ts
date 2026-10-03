@@ -1,4 +1,8 @@
-import type { ProviderId } from "./agent.ts";
+import {
+	type BuiltinProviderId,
+	isAcpProviderId,
+	type ProviderId,
+} from "./agent.ts";
 
 /** Static provider traits; runtime integration stays in the owning application. */
 export const PROVIDER_CAPABILITIES = {
@@ -116,7 +120,21 @@ export const PROVIDER_CAPABILITIES = {
 	}
 >;
 export type CliProviderId = {
-	[P in ProviderId]: (typeof PROVIDER_CAPABILITIES)[P]["cliBacked"] extends true
+	[P in BuiltinProviderId]: (typeof PROVIDER_CAPABILITIES)[P]["cliBacked"] extends true
 		? P
 		: never;
-}[ProviderId];
+}[BuiltinProviderId];
+
+export const providerCapabilities = (id: ProviderId) =>
+	isAcpProviderId(id)
+		? {
+				planMode: false,
+				appTools: true,
+				cliBacked: true,
+				enabledByDefault: true,
+				credentialSource: "provider" as const,
+				nativeSubagentsByDefault: false,
+				authoritativeModels: true,
+				skillFolders: [] as readonly string[],
+			}
+		: PROVIDER_CAPABILITIES[id];

@@ -10,14 +10,15 @@ import {
 	type CompletionSoundPreset,
 	defaultModelEnabledByProvider,
 	defaultModelFor,
+	isAcpProviderId,
 	type KeybindingRule,
 	KeybindingsFile,
 	MAX_KEYBINDING_RULES,
 	type MergePrefs,
 	modelsForProvider,
-	PROVIDER_CAPABILITIES,
 	PROVIDER_IDS,
 	type ProviderId,
+	providerCapabilities,
 	resolveModelSlug,
 	SettingsFile,
 	type SubagentPresetState,
@@ -64,7 +65,7 @@ const seedModels = (): Record<ProviderId, string> => {
 const seedProviderEnabled = (): Record<ProviderId, boolean> => {
 	const out = {} as Record<ProviderId, boolean>;
 	for (const id of PROVIDER_IDS)
-		out[id] = PROVIDER_CAPABILITIES[id].enabledByDefault;
+		out[id] = providerCapabilities(id).enabledByDefault;
 	return out;
 };
 
@@ -135,7 +136,10 @@ const isProviderId = (v: unknown): v is ProviderId =>
 	v === "gemini" ||
 	v === "opencode" ||
 	v === "opencode2" ||
-	v === "kiro";
+	v === "kiro" ||
+	v === "pi" ||
+	v === "zuse" ||
+	(typeof v === "string" && isAcpProviderId(v));
 
 const isRuntimeMode = (v: unknown): v is SettingsFile["defaultRuntimeMode"] =>
 	v === "auto" ||
@@ -233,7 +237,7 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 			? (obj.defaultModelByProvider as Record<string, unknown>)
 			: {};
 	const models: Record<ProviderId, string> = { ...base.defaultModelByProvider };
-	for (const id of PROVIDER_IDS) {
+	for (const id of Object.keys(inputModels).filter(isProviderId)) {
 		const v = inputModels[id];
 		if (typeof v === "string" && v.length > 0) {
 			models[id] = resolveModelSlug(BUNDLED_MODEL_CATALOG, id, v);
@@ -278,7 +282,7 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 	};
 	if (typeof obj.providerEnabled === "object" && obj.providerEnabled !== null) {
 		const flags = obj.providerEnabled as Record<string, unknown>;
-		for (const id of PROVIDER_IDS) {
+		for (const id of Object.keys(flags).filter(isProviderId)) {
 			const v = flags[id];
 			if (typeof v === "boolean") providerEnabled[id] = v;
 		}
@@ -290,7 +294,8 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		obj.modelEnabledByProvider !== null
 	) {
 		const byProvider = obj.modelEnabledByProvider as Record<string, unknown>;
-		for (const id of PROVIDER_IDS) {
+		for (const id of Object.keys(byProvider).filter(isProviderId)) {
+			modelEnabledByProvider[id] ??= {};
 			const providerModels = byProvider[id];
 			if (typeof providerModels !== "object" || providerModels === null) {
 				continue;
@@ -314,7 +319,7 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 		obj.customModelIdsByProvider !== null
 	) {
 		const byProvider = obj.customModelIdsByProvider as Record<string, unknown>;
-		for (const id of PROVIDER_IDS) {
+		for (const id of Object.keys(byProvider).filter(isProviderId)) {
 			const values = byProvider[id];
 			if (!Array.isArray(values)) continue;
 			const knownModelIds = new Set(
@@ -571,8 +576,9 @@ const coerceSettings = (raw: unknown): SettingsFile => {
 				? (Object.fromEntries(
 						Object.entries(obj.providerBinaryPaths).filter(
 							([key, value]) =>
-								PROVIDER_IDS.includes(key as ProviderId) &&
-								typeof value === "string",
+								(PROVIDER_IDS as readonly ProviderId[]).includes(
+									key as ProviderId,
+								) && typeof value === "string",
 						),
 					) as Record<string, string>)
 				: {},

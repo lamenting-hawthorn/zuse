@@ -4,11 +4,10 @@ import { Rpc } from "effect/unstable/rpc";
 import { AgentItemId, AgentSessionId, AgentTurnId, FolderId } from "./ids.ts";
 
 /**
- * Identifier for a provider implementation (driver). v1 ships claude + codex;
- * the literal union is the contract — adding a new provider is an additive
- * change here plus a new driver in `@zuse/agents`.
+ * Built-in driver identifiers retain their wire values. User-configured ACP
+ * instances use the separate acp- namespace and do not extend this list.
  */
-export const ProviderId = Schema.Literals([
+export const BuiltinProviderId = Schema.Literals([
 	"claude",
 	"codex",
 	"grok",
@@ -20,10 +19,24 @@ export const ProviderId = Schema.Literals([
 	"pi",
 	"zuse",
 ]);
+export type BuiltinProviderId = typeof BuiltinProviderId.Type;
+export const AcpProviderId = Schema.TemplateLiteral([
+	"acp-",
+	Schema.String,
+]).check(Schema.isPattern(/^acp-[a-z0-9][a-z0-9-]{0,95}$/));
+export type AcpProviderId = typeof AcpProviderId.Type;
+export const ProviderId = Schema.Union([BuiltinProviderId, AcpProviderId]);
 export type ProviderId = typeof ProviderId.Type;
+export const isAcpProviderId = (id: string): id is AcpProviderId =>
+	/^acp-[a-z0-9][a-z0-9-]{0,95}$/.test(id);
 
-/** Every provider id in canonical order (picker + settings iteration). */
-export const PROVIDER_IDS: ReadonlyArray<ProviderId> = ProviderId.literals;
+/** All persisted built-in identifiers, including legacy integrations. */
+export const PROVIDER_IDS: ReadonlyArray<BuiltinProviderId> =
+	BuiltinProviderId.literals;
+
+/** Built-ins offered for new setup. Legacy IDs remain valid for saved chats. */
+export const BUILTIN_PROVIDER_CHOICES: ReadonlyArray<BuiltinProviderId> =
+	PROVIDER_IDS.filter((id) => id !== "gemini");
 
 /**
  * How a session is being driven. `spawn-cli` is just a PTY launch with a known

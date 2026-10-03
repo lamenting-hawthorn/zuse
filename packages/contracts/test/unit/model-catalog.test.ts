@@ -14,9 +14,9 @@ import {
 	ModelCatalog,
 	modelsForProvider,
 	normalizeModelCatalog,
-	PROVIDER_CAPABILITIES,
 	PROVIDER_IDS,
 	pickNewerModelCatalog,
+	providerCapabilities,
 	ResolvedModelCatalog,
 	resolveModelCatalog,
 	resolveModelSlug,
@@ -55,7 +55,7 @@ describe("bundled model catalog", () => {
 	it("covers provider catalogs; connection-backed models come from live inventory", () => {
 		const bundledProviders = PROVIDER_IDS.filter(
 			(providerId) =>
-				PROVIDER_CAPABILITIES[providerId].credentialSource === "provider",
+				providerCapabilities(providerId).credentialSource === "provider",
 		);
 		expect(catalogProviderIds(catalog)).toEqual(bundledProviders);
 		expect(modelsForProvider(catalog, "zuse")).toEqual([]);

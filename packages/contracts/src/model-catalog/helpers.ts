@@ -1,5 +1,9 @@
 import type { ModelOption, ProviderId } from "../agent.ts";
-import { PROVIDER_IDS } from "../agent.ts";
+import {
+	BUILTIN_PROVIDER_CHOICES,
+	isAcpProviderId,
+	PROVIDER_IDS,
+} from "../agent.ts";
 import { BUNDLED_MODEL_CATALOG } from "./bundled.ts";
 import type { ModelPricing } from "./schema.ts";
 
@@ -140,9 +144,19 @@ export const pricingFor = (
 /** Providers present in this catalog, in canonical `ProviderId` order. */
 export const catalogProviderIds = (
 	catalog: ModelCatalogView,
-): ReadonlyArray<ProviderId> =>
-	PROVIDER_IDS.filter(
+): ReadonlyArray<ProviderId> => [
+	...PROVIDER_IDS.filter(
 		(providerId) => catalog.providers[providerId] !== undefined,
+	),
+	...Object.keys(catalog.providers).filter(isAcpProviderId),
+];
+
+/** Providers offered for new selection; legacy catalogs remain readable. */
+export const selectableCatalogProviderIds = (
+	catalog: ModelCatalogView,
+): ReadonlyArray<ProviderId> =>
+	catalogProviderIds(catalog).filter(
+		(id) => isAcpProviderId(id) || BUILTIN_PROVIDER_CHOICES.includes(id),
 	);
 
 /**

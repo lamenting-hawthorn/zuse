@@ -18,4 +18,4 @@ export const PROVIDER_LABELS: Readonly<Record<ProviderId, string>> = {
 };
 
 export const providerLabel = (providerId: ProviderId): string =>
-	PROVIDER_LABELS[providerId];
+	PROVIDER_LABELS[providerId] ?? "ACP agent";

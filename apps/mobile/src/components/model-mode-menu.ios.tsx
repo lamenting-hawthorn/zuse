@@ -610,10 +610,12 @@ const providerSystemImage = (providerId: ProviderId): string => {
 			return "function";
 		case "kiro":
 			return "face.smiling";
+		default:
+			return "terminal";
 	}
 };
 
 const sf = (name: string) => name as never;
 
 export const providerDisplayName = (providerId: ProviderId): string =>
-	PROVIDER_LABEL[providerId];
+	PROVIDER_LABEL[providerId] ?? "ACP agent";

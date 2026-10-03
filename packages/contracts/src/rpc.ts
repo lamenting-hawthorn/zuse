@@ -1,5 +1,15 @@
 import { RpcGroup } from "effect/unstable/rpc";
 import {
+	AcpAuthenticateRpc,
+	AcpCatalogRpc,
+	AcpDuplicateRpc,
+	AcpInstallRpc,
+	AcpListRpc,
+	AcpRemoveRpc,
+	AcpSaveRpc,
+	AcpTestRpc,
+} from "./acp-agents.ts";
+import {
 	ProviderAvailabilityRpc,
 	ProviderOpencode2AddCustomRpc,
 	ProviderOpencode2RemoveAuthRpc,
@@ -393,6 +403,14 @@ import {
  * Add new RPCs by importing them here and including them in the group.
  */
 export const MemoizeRpcs = RpcGroup.make(
+	AcpDuplicateRpc,
+	AcpListRpc,
+	AcpCatalogRpc,
+	AcpSaveRpc,
+	AcpRemoveRpc,
+	AcpTestRpc,
+	AcpInstallRpc,
+	AcpAuthenticateRpc,
 	OrganizationsListRpc,
 	OrganizationsCreateRpc,
 	OrganizationsGetRpc,

@@ -77,7 +77,7 @@ export function CliUpgradeBanner({
 	};
 
 	const onOpenDocs = () => {
-		void openExternal(docsUrl);
+		void openExternal(docsUrl ?? "https://agentclientprotocol.com/registry");
 	};
 
 	return (

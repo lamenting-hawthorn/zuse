@@ -164,7 +164,7 @@ export default function NewCloudChatScreen() {
 						label={
 							provider === undefined
 								? "Connect a provider"
-								: PROVIDER_LABEL[provider]
+								: (PROVIDER_LABEL[provider] ?? "ACP agent")
 						}
 						disabled={busy}
 						options={providers.map((id) => ({

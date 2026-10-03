@@ -1,11 +1,11 @@
 import "@zuse/i18n/english/settings";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-	catalogProviderIds,
 	EnvironmentId,
 	type FolderId,
 	findModelDescriptor,
 	type ProviderId,
+	selectableCatalogProviderIds,
 	visibleModelsForProvider,
 } from "@zuse/contracts";
 import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
@@ -13,6 +13,7 @@ import { Delete02Icon, GitBranchIcon } from "@zuse/icons/solid-rounded";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { displayPath } from "~/lib/display-path";
+import { providerDisplayName } from "~/lib/provider-labels";
 import { cn } from "~/lib/utils";
 import { useModelCatalogStore } from "~/store/model-catalog";
 import { useSettingsStore } from "../lib/settings-client-bus.ts";
@@ -26,12 +27,7 @@ import { EMPTY_WORKTREES, useWorktreesStore } from "../store/worktrees.ts";
 import { PermissionsInspector } from "./permissions-inspector.tsx";
 import { ProviderIcon } from "./provider-icons.tsx";
 import { MODE_META, MODES_ORDER } from "./runtime-mode-meta.ts";
-import {
-	PROVIDER_LABEL,
-	RadioCheck,
-	SettingsGroup,
-	SettingsRow,
-} from "./settings-page.tsx";
+import { RadioCheck, SettingsGroup, SettingsRow } from "./settings-page.tsx";
 import { Button } from "./ui/button.tsx";
 import { Switch } from "./ui/switch.tsx";
 import { Textarea } from "./ui/textarea.tsx";
@@ -192,21 +188,24 @@ function ProviderOverrideSection({
 	const globalModel = globalModelByProvider[globalProviderId];
 	const catalog = useModelCatalogStore((s) => s.catalog);
 	const globalModelLabel =
-		findModelDescriptor(catalog, globalProviderId, globalModel)?.label ??
+		findModelDescriptor(catalog, globalProviderId, globalModel ?? "default")
+			?.label ??
 		globalModel ??
 		"—";
 	const isOverridden = defaultProviderId !== null || defaultModel !== null;
 
 	// Mirror the global "Default agent" filter: skip providers the user
 	// toggled off.
-	const availableProviders = catalogProviderIds(catalog).filter((pid) => {
-		if (providerEnabled[pid] === false) return false;
-		return true;
-	});
+	const availableProviders = selectableCatalogProviderIds(catalog).filter(
+		(pid) => {
+			if (providerEnabled[pid] === false) return false;
+			return true;
+		},
+	);
 
 	const firstModelFor = (pid: ProviderId): string | null =>
 		visibleModelsForProvider(catalog, pid, modelEnabledByProvider)[0]?.id ??
-		catalog.providers[pid].models[0]?.id ??
+		catalog.providers[pid]?.models[0]?.id ??
 		null;
 
 	const onToggle = (next: boolean) => {
@@ -279,7 +278,7 @@ function ProviderOverrideSection({
 								>
 									<ProviderIcon providerId={pid} className="size-4 shrink-0" />
 									<span className="flex-1 truncate text-xs font-medium text-foreground">
-										{PROVIDER_LABEL[pid]}
+										{providerDisplayName(pid)}
 									</span>
 									<RadioCheck active={selected} />
 								</button>
@@ -292,7 +291,7 @@ function ProviderOverrideSection({
 											role="radiogroup"
 											aria-label={uiMessage(
 												"settings:settings_repository_model_for",
-												{ value1: String(PROVIDER_LABEL[pid]) },
+												{ value1: String(providerDisplayName(pid)) },
 											)}
 											className="flex flex-col"
 										>
@@ -326,7 +325,7 @@ function ProviderOverrideSection({
 					<RichMessage
 						id="settings:settings_repository_inheriting_sentence"
 						values={{
-							value: PROVIDER_LABEL[globalProviderId],
+							value: providerDisplayName(globalProviderId),
 							globalModelLabel: globalModelLabel,
 						}}
 						components={{ part0: <span className="text-foreground" /> }}

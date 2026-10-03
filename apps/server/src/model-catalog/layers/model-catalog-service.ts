@@ -20,9 +20,9 @@ import {
 	ModelLiveMeta,
 	normalizeModelCatalog,
 	OpencodeInventory,
-	PROVIDER_CAPABILITIES,
 	type ProviderId,
 	pickNewerModelCatalog,
+	providerCapabilities,
 	type ResolvedCatalogSource,
 	type ResolvedModelCatalog,
 	resolveModelCatalog,
@@ -43,6 +43,7 @@ import { AppPaths } from "../../app-paths.ts";
 import { makeKeyedSwrCache, makeSwrCache } from "../../cache/swr-cache.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
 import { HarnessProvider } from "../../harness/provider.ts";
+import { AcpAgentService } from "../../provider/acp/service.ts";
 import { resolveCliPath } from "../../provider/availability.ts";
 import { CredentialsService } from "../../provider/services/credentials-service.ts";
 import { ModelCatalogService } from "../services/model-catalog-service.ts";
@@ -139,7 +140,7 @@ const pendingListing = (authoritative: boolean): LiveListingDocument => ({
 });
 
 const isAuthoritative = (providerId: ProviderId): boolean =>
-	PROVIDER_CAPABILITIES[providerId].authoritativeModels;
+	providerCapabilities(providerId).authoritativeModels;
 
 export const ModelCatalogServiceLive = Layer.effect(
 	ModelCatalogService,
@@ -632,11 +633,63 @@ export const ModelCatalogServiceLive = Layer.effect(
 				});
 			});
 
+		const acpAgents = yield* Effect.serviceOption(AcpAgentService);
+		const withAcp = (
+			catalog: ResolvedModelCatalog,
+		): Effect.Effect<ResolvedModelCatalog> =>
+			Effect.gen(function* () {
+				if (acpAgents._tag === "None") return catalog;
+				const definitions = yield* Effect.promise(() => acpAgents.value.list());
+				const providers = { ...catalog.providers };
+				for (const id of Object.keys(providers))
+					if (id.startsWith("acp-")) delete providers[id as `acp-${string}`];
+				for (const entry of definitions) {
+					const models = entry.probe?.models.length
+						? entry.probe.models
+						: [{ id: "default", name: "Agent default" }];
+					providers[entry.id] = {
+						displayName: entry.name,
+						...(entry.icon ? { icon: entry.icon } : {}),
+						commands: entry.probe?.commands ?? [],
+						models: models.map((model) => ({
+							id: model.id,
+							label: model.name,
+							origin: "live" as const,
+							available: entry.enabled,
+							supportsPlanMode: false,
+							optionDescriptors: entry.probe?.modes.length
+								? [
+										{
+											kind: "select" as const,
+											id: "acpMode",
+											label: "Mode",
+											defaultId: entry.probe.currentModeId,
+											options: entry.probe.modes.map((mode) => ({
+												id: mode.id,
+												label: mode.name,
+											})),
+										},
+									]
+								: [],
+						})),
+						aliases: {},
+						defaultModelId:
+							entry.probe?.currentModelId ?? models[0]?.id ?? "default",
+						live: {
+							status: entry.probe?.status === "ready" ? "ok" : "pending",
+							authoritative: true,
+							fetchedAt: null,
+							error: null,
+						},
+					};
+				}
+				return { ...catalog, providers };
+			});
 		const currentRef = yield* Ref.make<ResolvedModelCatalog>(yield* compute());
 		const hub = yield* PubSub.unbounded<ResolvedModelCatalog>();
 		const publish = (): Effect.Effect<ResolvedModelCatalog> =>
 			Effect.gen(function* () {
-				const next = yield* compute();
+				const next = yield* withAcp(yield* compute());
 				yield* Ref.set(currentRef, next);
 				yield* PubSub.publish(hub, next);
 				return next;
@@ -693,7 +746,7 @@ export const ModelCatalogServiceLive = Layer.effect(
 			});
 
 		return ModelCatalogService.of({
-			current: () => Ref.get(currentRef),
+			current: () => Effect.flatMap(Ref.get(currentRef), withAcp),
 			refresh,
 			changes: () =>
 				Stream.unwrap(
@@ -707,11 +760,11 @@ export const ModelCatalogServiceLive = Layer.effect(
 					}),
 				),
 			findModel: (providerId, modelId) =>
-				Effect.map(Ref.get(currentRef), (catalog) =>
+				Effect.map(Effect.flatMap(Ref.get(currentRef), withAcp), (catalog) =>
 					findModelDescriptor(catalog, providerId, modelId),
 				),
 			resolveSlug: (providerId, slug) =>
-				Effect.map(Ref.get(currentRef), (catalog) =>
+				Effect.map(Effect.flatMap(Ref.get(currentRef), withAcp), (catalog) =>
 					resolveModelSlug(catalog, providerId, slug),
 				),
 			invalidateLive: (providerId) =>

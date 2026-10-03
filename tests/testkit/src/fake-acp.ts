@@ -11,6 +11,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, URL as NodeUrl } from "node:url";
 
 export type FakeAcpScenario =
+	| "discovery"
+	| "authentication"
+	| "no-resume"
+	| "tool-calls"
 	| "complete"
 	| "hold"
 	| "permission"

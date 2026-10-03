@@ -71,6 +71,7 @@ import {
 	observeUsageAccounts,
 	withUsageCredentialChange,
 } from "../usage/limits/service.ts";
+import { AcpHandlers } from "./acp/handlers.ts";
 import { resolveCliPath, resolveUpdateCommand } from "./availability.ts";
 import { BrowserBridgeService } from "./services/browser-bridge-service.ts";
 import { CredentialsService } from "./services/credentials-service.ts";
@@ -2180,6 +2181,7 @@ const BrowserRemoveCredential = MemoizeRpcs.toLayerHandler(
 );
 
 export const ProviderHandlersLayer = Layer.mergeAll(
+	AcpHandlers,
 	Availability,
 	SetCredential,
 	RemoveCredential,

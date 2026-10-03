@@ -11,7 +11,7 @@ import {
 	latestProviderAuthFailureAt,
 	resumeAfterProviderLogin,
 } from "../../lib/provider-auth-recovery.ts";
-import { PROVIDER_LABEL } from "../../lib/provider-labels.ts";
+import { providerDisplayName } from "../../lib/provider-labels.ts";
 import {
 	clearSessionCommandError,
 	pendingSessionCommandError,
@@ -85,7 +85,7 @@ export function ProviderSignInTray({
 	if (!signedOut && state.kind !== "waiting" && state.kind !== "success")
 		return null;
 
-	const label = String(PROVIDER_LABEL[providerId]);
+	const label = providerDisplayName(providerId);
 	const busy = state.kind === "waiting" || state.kind === "success";
 	const subtitle =
 		state.kind === "waiting"

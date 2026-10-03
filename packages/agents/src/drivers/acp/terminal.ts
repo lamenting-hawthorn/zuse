@@ -312,3 +312,103 @@ export async function handleTerminalRequest(
 		throw new Error(message);
 	}
 }
+
+/** Owns terminal IDs and retained output for one ACP connection. */
+export const createAcpTerminalSession = (
+	context: () => TerminalHandleContext,
+) => {
+	const owned = new Set<string>();
+	const retained = new Map<string, { command: string; output?: unknown }>();
+	let closed = false;
+	const handle = async (method: string, params: unknown): Promise<unknown> => {
+		const input = params as
+			| { terminalId?: string; command?: string; args?: string[] }
+			| undefined;
+		if (closed) throw new Error("ACP terminal session closed");
+		const creating = method === "terminal/create";
+		if (!creating && (!input?.terminalId || !owned.has(input.terminalId)))
+			throw new Error("Unknown terminal for this session");
+		if (method === "terminal/release" && input?.terminalId) {
+			const entry = retained.get(input.terminalId);
+			if (entry)
+				entry.output = await handleTerminalRequest(
+					"terminal/output",
+					params,
+					context(),
+				);
+		}
+		const result = await handleTerminalRequest(method, params, context());
+		if (
+			creating &&
+			result &&
+			typeof result === "object" &&
+			"terminalId" in result &&
+			typeof result.terminalId === "string"
+		) {
+			owned.add(result.terminalId);
+			retained.set(result.terminalId, {
+				command: [input?.command ?? "", ...(input?.args ?? [])].join(" "),
+			});
+			if (closed) {
+				await handleTerminalRequest(
+					"terminal/release",
+					{ terminalId: result.terminalId },
+					context(),
+				);
+				owned.delete(result.terminalId);
+			}
+		}
+		if (method === "terminal/release" && input?.terminalId)
+			owned.delete(input.terminalId);
+		return result;
+	};
+	return {
+		handle,
+		resolveUpdate: async (raw: unknown): Promise<unknown> => {
+			if (!raw || typeof raw !== "object") return raw;
+			const update = raw as Record<string, unknown>;
+			if (!Array.isArray(update.content)) return raw;
+			let command: string | undefined;
+			const content = await Promise.all(
+				update.content.map(async (block) => {
+					if (
+						!block ||
+						block.type !== "terminal" ||
+						typeof block.terminalId !== "string"
+					)
+						return block;
+					const entry = retained.get(block.terminalId);
+					if (!entry) return block;
+					command = entry.command;
+					const result = owned.has(block.terminalId)
+						? await handleTerminalRequest(
+								"terminal/output",
+								{ terminalId: block.terminalId },
+								context(),
+							)
+						: entry.output;
+					const output = result as { output?: string } | undefined;
+					return {
+						type: "content",
+						content: { type: "text", text: output?.output ?? "" },
+					};
+				}),
+			);
+			return {
+				...update,
+				content,
+				...(command && !update.rawInput ? { rawInput: { command } } : {}),
+			};
+		},
+		close: async () => {
+			closed = true;
+			await Promise.all(
+				[...owned].map((terminalId) =>
+					handleTerminalRequest("terminal/release", { terminalId }, context()),
+				),
+			);
+			owned.clear();
+			retained.clear();
+		},
+	};
+};
