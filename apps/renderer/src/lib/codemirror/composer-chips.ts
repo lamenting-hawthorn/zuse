@@ -14,6 +14,7 @@ import {
 } from "@codemirror/view";
 
 import { buildFileIconDom } from "../../components/file-icon.tsx";
+import { pluginIconUrl } from "../connected-plugins.ts";
 import { SKILL_ICON_SVG } from "../skill-icon.ts";
 
 /**
@@ -41,6 +42,12 @@ export type ChipMeta =
 			readonly mimeType: string;
 			readonly originalName: string;
 			readonly previewUrl: string;
+	  }
+	| {
+			readonly kind: "plugin";
+			readonly pluginId: string;
+			readonly name: string;
+			readonly domain: string;
 	  };
 
 export interface ChipRange {
@@ -160,6 +167,8 @@ class ChipWidget extends WidgetType {
 			span.dataset.mimeType = this.meta.mimeType;
 			span.dataset.originalName = this.meta.originalName;
 			span.dataset.previewUrl = this.meta.previewUrl;
+		} else if (this.meta.kind === "plugin") {
+			span.dataset.pluginId = this.meta.pluginId;
 		}
 
 		const label = document.createElement("span");
@@ -193,6 +202,8 @@ const chipKey = (meta: ChipMeta): string => {
 			return `skill:${meta.scope}:${meta.name}`;
 		case "image":
 			return `image:${meta.id}`;
+		case "plugin":
+			return `plugin:${meta.pluginId}`;
 	}
 };
 
@@ -204,6 +215,8 @@ const chipLabel = (meta: ChipMeta): string => {
 			return meta.name;
 		case "image":
 			return meta.originalName;
+		case "plugin":
+			return meta.name;
 	}
 };
 
@@ -236,6 +249,16 @@ const buildIconNode = (meta: ChipMeta): Node => {
 			return img;
 		}
 		return buildFileIconDom(meta.originalName, "file", "fz-chip-iconimg");
+	}
+	if (meta.kind === "plugin") {
+		const img = document.createElement("img");
+		img.src = pluginIconUrl(meta.domain);
+		img.alt = "";
+		img.className = "fz-chip-thumb";
+		img.draggable = false;
+		img.referrerPolicy = "no-referrer";
+		img.onerror = () => img.remove();
+		return img;
 	}
 	// Fallback — should be unreachable.
 	return document.createElement("span");

@@ -60,6 +60,15 @@ export interface PairingBridge {
 	readonly subscribePairingLinks?: () => void;
 }
 
+/** Managed-plugin OAuth returns caught by the desktop sign-in loopback. */
+export interface PluginsBridge {
+	/** Loopback port the API should return to, or null if none is bound. */
+	readonly callbackPort: () => Promise<number | null>;
+	readonly onReturn: (handler: (value: unknown) => void) => () => void;
+	/** Flush returns buffered by main; call after `onReturn`. */
+	readonly subscribeReturns: () => void;
+}
+
 export interface AppBridge {
 	readonly onCloudSyncReadFile?: (
 		handler: (request: {
@@ -504,6 +513,7 @@ export interface ZuseBridge {
 	readonly rpc: RpcBridge;
 	readonly window?: WindowBridge;
 	readonly pairing?: PairingBridge;
+	readonly plugins?: PluginsBridge;
 	readonly menu?: MenuBridge;
 	readonly app?: AppBridge;
 	readonly network?: NetworkBridge;

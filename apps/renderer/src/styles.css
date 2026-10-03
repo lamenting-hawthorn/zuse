@@ -1233,6 +1233,24 @@ html[data-sidebar-dragging] * {
 	.fz-chip[data-kind="file"] {
 		cursor: pointer;
 	}
+	/* Plugin mentions read as an inline link: logo plus tinted name, no pill. */
+	.fz-chip[data-kind="plugin"],
+	.dark .fz-chip[data-kind="plugin"] {
+		gap: 0.3rem;
+		padding-inline: 0.1rem;
+		border-color: transparent;
+		background-color: transparent;
+		box-shadow: none;
+		color: color-mix(in oklch, var(--info) 78%, var(--foreground));
+		font-weight: 500;
+	}
+	.fz-chip[data-kind="plugin"] .fz-chip-label {
+		color: inherit;
+	}
+	.fz-chip[data-kind="plugin"] .fz-chip-icon {
+		width: 1.15em;
+		height: 1.15em;
+	}
 	.fz-chip[data-kind="skill"] {
 		gap: 0.3rem;
 		padding-inline: 0.1rem;
@@ -1279,8 +1297,9 @@ html[data-sidebar-dragging] * {
 			0 1px 0 color-mix(in oklch, white 6%, transparent) inset,
 			0 2px 5px color-mix(in oklch, black 24%, transparent);
 	}
-	/* Image-thumb chips: thumbnail fills the icon slot with no inner bg. */
-	.fz-chip[data-kind="image"] .fz-chip-icon:has(.fz-chip-thumb) {
+	/* Image-thumb and plugin-logo chips: the picture fills the icon slot. */
+	.fz-chip[data-kind="image"] .fz-chip-icon:has(.fz-chip-thumb),
+	.fz-chip[data-kind="plugin"] .fz-chip-icon:has(.fz-chip-thumb) {
 		background-color: transparent;
 	}
 }

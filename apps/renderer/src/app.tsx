@@ -1,5 +1,5 @@
 import { CloudBuildMonitor } from "./components/cloud-build-monitor.tsx";
-import { PluginConfirmationBoundary as PluginConfirmation } from "./components/plugin-confirmation-boundary.tsx";
+import { PluginReturnHandler } from "./components/plugin-return-handler.tsx";
 import { Spinner } from "./components/ui/spinner.tsx";
 import { useCloudOnboarding } from "./hooks/use-cloud-onboarding.ts";
 import { SurfaceFallback } from "./shell/surface-fallback.tsx";
@@ -332,7 +332,7 @@ function ReadyApp({
 			<TooltipProvider>
 				{!isHostedProduct() && <AmbientSurfaces />}
 				<AppearanceController />
-				<PluginConfirmation />
+				<PluginReturnHandler />
 				<div className="relative flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-background text-foreground">
 					<Suspense fallback={<SurfaceFallback />}>
 						<OnboardingWizard />
@@ -347,7 +347,7 @@ function ReadyApp({
 		return (
 			<TooltipProvider>
 				<AppearanceController />
-				<PluginConfirmation />
+				<PluginReturnHandler />
 				<div className="relative z-50 flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-background text-foreground">
 					<Suspense
 						fallback={
@@ -380,7 +380,7 @@ function ReadyApp({
 			<TooltipProvider>
 				{!isHostedProduct() && <AmbientSurfaces />}
 				<AppearanceController />
-				<PluginConfirmation />
+				<PluginReturnHandler />
 				<div className="flex h-dvh max-h-dvh min-h-0 w-screen overflow-hidden bg-background text-foreground">
 					<Suspense fallback={<SurfaceFallback />}>
 						<SettingsPage />
@@ -395,7 +395,7 @@ function ReadyApp({
 		<TooltipProvider>
 			{!isHostedProduct() && <AmbientSurfaces />}
 			<AppearanceController />
-			<PluginConfirmation />
+			<PluginReturnHandler />
 			<Suspense fallback={<SurfaceFallback />}>
 				<MainShell />
 				<StartupReadySignal

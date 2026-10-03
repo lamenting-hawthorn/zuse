@@ -2,6 +2,7 @@ import type { EditorState } from "@codemirror/state";
 
 import {
 	type AttachmentRef,
+	type ComposerAnnotation,
 	ComposerInput,
 	type FileRef,
 	type ProviderId,
@@ -9,6 +10,7 @@ import {
 } from "@zuse/contracts";
 
 import { allChips } from "../lib/codemirror/composer-chips.ts";
+import { pluginMentionContext } from "../lib/connected-plugins.ts";
 
 /**
  * Walk the editor state and assemble a wire-shaped `ComposerInput`. The
@@ -32,6 +34,8 @@ export const parseComposerInput = (
 	const fileRefs: FileRef[] = [];
 	const skillRefs: SkillRef[] = [];
 	const attachments: AttachmentRef[] = [];
+	const annotations: ComposerAnnotation[] = [];
+	const plugins = new Set<string>();
 
 	for (const c of chips) {
 		switch (c.meta.kind) {
@@ -60,6 +64,16 @@ export const parseComposerInput = (
 					originalName: c.meta.originalName,
 				});
 				break;
+			case "plugin":
+				// Every driver forwards context annotations, so a mention needs no
+				// provider-specific wiring: it tells the agent which plugin to use.
+				if (!plugins.has(c.meta.pluginId)) {
+					plugins.add(c.meta.pluginId);
+					annotations.push(
+						pluginMentionContext({ id: c.meta.pluginId, name: c.meta.name }),
+					);
+				}
+				break;
 		}
 	}
 
@@ -68,6 +82,7 @@ export const parseComposerInput = (
 		attachments,
 		fileRefs,
 		skillRefs,
+		annotations,
 	});
 };
 

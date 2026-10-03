@@ -1,6 +1,7 @@
 import "@zuse/i18n/english/common";
 import "@zuse/i18n/english/chat";
 import "@zuse/i18n/english/tools";
+import "@zuse/i18n/english/plugins";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
 	type ChatId,
@@ -23,6 +24,7 @@ import {
 	GlobeIcon,
 	PencilEdit01Icon,
 	PlayIcon,
+	PuzzleIcon,
 	Robot01Icon,
 	SearchIcon,
 	TerminalIcon,
@@ -32,6 +34,10 @@ import {
 import { ChevronDown, ChevronRight, Laptop } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useId, useState } from "react";
+import {
+	pluginToolAddress,
+	useConnectedPlugin,
+} from "~/lib/connected-plugins.ts";
 import { displayPath } from "~/lib/display-path";
 import { useActiveEnvironmentEntities } from "~/lib/environment-entity-hooks.ts";
 import { parseOrchestrationResult } from "~/lib/orchestration-tools";
@@ -63,6 +69,7 @@ import {
 	UnifiedPatchDiff,
 } from "./inline-diff.tsx";
 import { MarkdownBody } from "./markdown-body.tsx";
+import { PluginIcon } from "./plugins/plugin-icon.tsx";
 import { ToolFileBlock } from "./tool-file-block.tsx";
 import { Button } from "./ui/button.tsx";
 import { ShimmerText } from "./ui/shimmer-text.tsx";
@@ -77,6 +84,19 @@ const normalizeToolName = (tool: string): string => {
 		: normalized;
 };
 
+/** Managed-plugin gateway tools, whatever MCP prefix the provider adds. */
+const pluginToolKind = (tool: string): "search" | "schema" | "call" | null => {
+	const match = /(?:^|__|[.:/-])plugins_(search|schema|call)$/.exec(tool);
+	return (match?.[1] as "search" | "schema" | "call" | undefined) ?? null;
+};
+
+const humanizeToolName = (tool: string): string =>
+	tool
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.replace(/[_\-.]+/g, " ")
+		.trim()
+		.replace(/^./, (first) => first.toUpperCase());
+
 /**
  * Map a tool name to the same Hugeicon used in its expanded ToolRow. Other
  * surfaces (e.g. the turn-summary icon preview) reuse this so the icons
@@ -84,6 +104,7 @@ const normalizeToolName = (tool: string): string => {
  */
 export const iconForTool = (tool: string): IconHandle => {
 	const normalizedTool = normalizeToolName(tool);
+	if (pluginToolKind(normalizedTool) !== null) return PuzzleIcon;
 	switch (normalizedTool) {
 		case "local_command_execute":
 		case "Bash":
@@ -643,8 +664,11 @@ function ExpandableIconRow({
 	hasContent,
 	pending = false,
 	localDevice = false,
+	iconNode,
 }: {
 	icon: IconHandle;
+	/** Replaces the glyph, e.g. a plugin's logo. */
+	iconNode?: React.ReactNode;
 	localDevice?: boolean;
 	label: string;
 	detail?: React.ReactNode;
@@ -678,16 +702,29 @@ function ExpandableIconRow({
 					/>
 				)}
 				<div className="relative grid size-4 shrink-0 place-items-center">
-					<HugeiconsIcon
-						icon={icon}
-						strokeWidth={2}
-						aria-hidden="true"
-						className={cn(
-							"col-start-1 row-start-1 size-3.5 text-muted-foreground transition-opacity duration-150 ease-out",
-							hasContent ? "group-hover:opacity-0" : "",
-							"motion-reduce:transition-none",
-						)}
-					/>
+					{iconNode !== undefined ? (
+						<span
+							aria-hidden="true"
+							className={cn(
+								"col-start-1 row-start-1 grid place-items-center transition-opacity duration-150 ease-out",
+								hasContent ? "group-hover:opacity-0" : "",
+								"motion-reduce:transition-none",
+							)}
+						>
+							{iconNode}
+						</span>
+					) : (
+						<HugeiconsIcon
+							icon={icon}
+							strokeWidth={2}
+							aria-hidden="true"
+							className={cn(
+								"col-start-1 row-start-1 size-3.5 text-muted-foreground transition-opacity duration-150 ease-out",
+								hasContent ? "group-hover:opacity-0" : "",
+								"motion-reduce:transition-none",
+							)}
+						/>
+					)}
 					{hasContent ? (
 						<Chevron
 							aria-hidden="true"
@@ -742,6 +779,8 @@ function ExpandableIconRow({
 
 interface ToolView {
 	readonly icon: IconHandle;
+	/** Managed plugin behind this call; the row shows its logo and name. */
+	readonly pluginId?: string;
 	readonly label: string;
 	readonly detail?: React.ReactNode;
 	readonly inputPanel?: React.ReactNode;
@@ -782,6 +821,35 @@ const buildToolView = (
 						isError={result?.isError}
 					/>
 				),
+		};
+	}
+
+	const pluginKind = pluginToolKind(normalizedTool);
+	if (pluginKind !== null) {
+		const target =
+			pluginKind === "search"
+				? null
+				: pluginToolAddress(asString(obj.address) ?? "");
+		const query = asString(obj.query);
+		const detail =
+			target !== null ? humanizeToolName(target.tool) : (query ?? null);
+		return {
+			icon: PuzzleIcon,
+			...(target !== null ? { pluginId: target.pluginId } : {}),
+			label:
+				target !== null
+					? humanizeToolName(target.pluginId)
+					: uiMessage("plugins:plugins_title"),
+			detail: detail ? <ToolInputPreview value={detail} /> : undefined,
+			fallbackBody: (
+				<CombinedPreBlock
+					input={stringifyJson(input)}
+					output={
+						result === undefined ? undefined : toResultText(result.output)
+					}
+					isError={result?.isError}
+				/>
+			),
 		};
 	}
 
@@ -1915,6 +1983,7 @@ export function ToolRow({
 
 	const view = buildToolView(tool, input, result, presentation);
 	const pending = result === undefined;
+	const plugin = useConnectedPlugin(view.pluginId ?? null);
 
 	const sections: React.ReactNode[] = [];
 	if (view.inputPanel !== undefined) {
@@ -1962,8 +2031,17 @@ export function ToolRow({
 	return (
 		<ExpandableIconRow
 			icon={view.icon}
+			iconNode={
+				plugin !== null ? (
+					<PluginIcon
+						name={plugin.name}
+						domain={plugin.domain}
+						className="size-3.5 rounded-[3px] text-[8px] ring-0"
+					/>
+				) : undefined
+			}
 			localDevice={normalizeToolName(tool) === "local_command_execute"}
-			label={view.label}
+			label={plugin?.name ?? view.label}
 			detail={detail}
 			pending={pending}
 			hasContent={sections.length > 0}
