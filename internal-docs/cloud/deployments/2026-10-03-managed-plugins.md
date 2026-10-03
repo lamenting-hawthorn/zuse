@@ -35,3 +35,20 @@ Local desktop testing requires this branch's desktop build.
 Rollback must preserve the plugin namespace and encryption key. Do not delete
 Durable Object data or reverse migrations destructively. Coordinate API, web,
 and runtime versions if rolling back; production was not part of this rollout.
+
+## Startup compatibility follow-up
+
+A signed-in staging session exposed a settings API 500: saved
+`defaultModelByProvider` lacked the newly introduced `zuse` key. Commit
+`23c7e595` makes persisted provider maps sparse and fills missing UI entries
+from current product defaults, preserving saved choices. This does not mutate
+stored settings or plugin credentials.
+
+Redeployed API version: `5c13c7bd-4ddb-4caa-9d99-ddad18dc467e`.
+Redeployed web: `https://zuse-cuq34s0rb-swarajbachus-projects.vercel.app`,
+activated at `https://code-staging.zuse.sh`. The signed cloud runtime remains
+the original plugin deployment. Contracts/API/server/renderer type checks,
+62 targeted tests, Biome, and the plugin browser regression passed. Verified
+the staging alias serves the new bundle. The original signed-in session needs
+a reload to load the new frontend; an authenticated post-fix settings request
+was not captured during this deployment.
