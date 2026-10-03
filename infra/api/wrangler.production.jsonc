@@ -39,6 +39,7 @@
 		]
 	},
 	"vars": {
+		"PLUGIN_APP_ORIGIN": "https://code.zuse.sh",
 		"SLACK_ENABLED": "true",
 		"SLACK_APP_ID": "A0C4UAJHRMX",
 		"SLACK_CLIENT_ID": "12048365003570.12164358603745",
@@ -116,6 +117,7 @@
 	],
 	"durable_objects": {
 		"bindings": [
+			{ "name": "PLUGIN_VAULT", "class_name": "PluginVault" },
 			{ "name": "WORKSPACE_STARTUP", "class_name": "WorkspaceStartup" },
 			{
 				"name": "WORKSPACE_GATEWAY",
@@ -139,6 +141,7 @@
 		{
 			"tag": "v3-workspace-startup",
 			"new_sqlite_classes": ["WorkspaceStartup"]
-		}
+		},
+		{ "tag": "plugins-v1", "new_sqlite_classes": ["PluginVault"] }
 	]
 }

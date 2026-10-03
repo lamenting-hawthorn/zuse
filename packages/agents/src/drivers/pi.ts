@@ -16,6 +16,7 @@ import type { ProviderSessionHandle } from "../kernel/driver.ts";
 import { normalizeNativeToolName } from "../kernel/native-tool-name.ts";
 import { ProviderCheckpointBatcher } from "../kernel/provider-checkpoint-batcher.ts";
 import { prefixFirstPromptWithWorkspaceInstructions } from "../kernel/workspace-instructions.ts";
+import { createPiPluginExtension } from "./pi-plugin-extension.ts";
 import { type PiFrame, PiRpcClient, piObject } from "./pi-rpc.ts";
 
 const attempt = <A>(run: () => Promise<A>) =>
@@ -41,6 +42,7 @@ export const startPiSession = (
 	binary: string,
 	sessionId: AgentSessionId,
 	resumeCursor: string | null = null,
+	managedMcp?: import("../user-mcp/types.ts").ResolvedMcpServer,
 ): Effect.Effect<
 	ProviderSessionHandle,
 	AgentSessionStartError,
@@ -369,15 +371,33 @@ export const startPiSession = (
 						}),
 				),
 			));
+		const extension = managedMcp
+			? yield* attempt(() => createPiPluginExtension(managedMcp)).pipe(
+					Effect.mapError(
+						(error) =>
+							new AgentSessionStartError({
+								providerId: "pi",
+								reason: error.message,
+							}),
+					),
+				)
+			: undefined;
 		const rpc = new PiRpcClient(
 			binary,
-			["--mode", "rpc", "--session", nativeFile],
+			[
+				"--mode",
+				"rpc",
+				"--session",
+				nativeFile,
+				...(extension ? ["--extension", extension.file] : []),
+			],
 			cwd,
 			onEvent,
 			(error) => {
 				if (!closed) {
 					cancelDialogs();
 					fail(error);
+					void extension?.close();
 					void Effect.runPromise(Queue.end(events));
 				}
 			},
@@ -417,8 +437,18 @@ export const startPiSession = (
 				strategy: "pi-session-file",
 			});
 		}).pipe(
-			Effect.tapError(() => Effect.promise(() => rpc.close())),
-			Effect.onInterrupt(() => Effect.promise(() => rpc.close())),
+			Effect.tapError(() =>
+				Effect.promise(async () => {
+					await rpc.close();
+					await extension?.close();
+				}),
+			),
+			Effect.onInterrupt(() =>
+				Effect.promise(async () => {
+					await rpc.close();
+					await extension?.close();
+				}),
+			),
 			Effect.mapError(
 				(error) =>
 					new AgentSessionStartError({
@@ -523,6 +553,7 @@ export const startPiSession = (
 						Effect.promise(async () => {
 							fail(error);
 							await rpc.close();
+							await extension?.close();
 						}),
 					),
 				),
@@ -541,6 +572,7 @@ export const startPiSession = (
 						/* A crashed process still needs bounded teardown. */
 					}
 					await rpc.close();
+					await extension?.close();
 					if (active) {
 						active = false;
 						emit({ _tag: "Interrupted" });

@@ -1,4 +1,8 @@
 import {
+	createHttpPluginClient,
+	setDefaultPluginClientFactory,
+} from "@zuse/agents/drivers/plugin-tools";
+import {
 	streamCloudCatalogChanges,
 	streamCloudWorkspaceLifecycle,
 } from "@zuse/client-runtime/cloud-control-client";
@@ -71,6 +75,8 @@ import {
 	type OrganizationMemberInput,
 	type OrganizationRevokeInviteInput,
 	type OrganizationRoleInput,
+	type PluginRequest,
+	PluginResponse,
 	PRODUCTION_API_URL,
 	WIRE_PROTOCOL_VERSION,
 	WORKSPACE_API_PREFIX,
@@ -79,7 +85,7 @@ import {
 	type WorkspaceSettingsUpdate,
 } from "@zuse/contracts";
 import { Context, Effect, Layer, Schema, type Stream } from "effect";
-import { exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
+import { decodeJwt, exportJWK, generateKeyPair, type JWK, SignJWT } from "jose";
 
 import { AuthService } from "../auth/services/auth-service.ts";
 import { MachineRuntimeRole } from "./machine-runtime-role.ts";
@@ -161,6 +167,9 @@ export interface MachineControlServiceShape {
 		idempotencyKey: string,
 	) => Effect.Effect<CloudBillingSummary, MachineControlError>;
 	readonly offers: () => Effect.Effect<MachineOfferList, MachineControlError>;
+	readonly plugins: (
+		input: PluginRequest,
+	) => Effect.Effect<PluginResponse, MachineControlError>;
 	readonly cloudProviders: () => Effect.Effect<
 		CloudProviderList,
 		MachineControlError
@@ -353,6 +362,28 @@ export const MachineControlServiceLive: Layer.Layer<
 		const auth = yield* AuthService;
 		const runtimeRole = yield* MachineRuntimeRole;
 		const apiUrl = resolveMachineApiUrl();
+		if (runtimeRole === "control-plane") {
+			setDefaultPluginClientFactory(async () => {
+				const session = await Effect.runPromise(auth.getSession());
+				if (session._tag !== "SignedIn") return undefined;
+				const subject = session.session.user.id;
+				return createHttpPluginClient(
+					`${apiUrl}/v1/plugins/tools`,
+					async () => {
+						const token = await Effect.runPromise(auth.getAccessToken());
+						if (decodeJwt(token).sub !== subject)
+							throw new Error(
+								"Plugin session belongs to another account. Start a new chat.",
+							);
+						return token;
+					},
+				);
+			});
+			yield* Effect.addFinalizer(() =>
+				Effect.sync(() => setDefaultPluginClientFactory(undefined)),
+			);
+		}
+
 		const dpopKeys = generateKeyPair("ES256", { extractable: true });
 		const dpopProof = async (method: string, url: string): Promise<string> => {
 			const keys = await dpopKeys;
@@ -541,6 +572,7 @@ export const MachineControlServiceLive: Layer.Layer<
 					overageCapMicros,
 					idempotencyKey,
 				}),
+			plugins: (input) => request("/v1/plugins", PluginResponse, "POST", input),
 			cloudProviders: () => request(ApiPaths.cloudProviders, CloudProviderList),
 			cloudProjects: () => request(ApiPaths.cloudProjects, CloudProjectList),
 			connectCloudProject: (input) =>

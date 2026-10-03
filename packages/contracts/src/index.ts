@@ -43,6 +43,7 @@ export * from "./organizations.ts";
 export * from "./pairing.ts";
 export * from "./permission.ts";
 export * from "./ping.ts";
+export * from "./plugins.ts";
 export * from "./pokemon.ts";
 export * from "./power.ts";
 export * from "./previews.ts";

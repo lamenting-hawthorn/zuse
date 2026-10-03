@@ -456,3 +456,42 @@ describe("MCP gateway", () => {
 		});
 	});
 });
+
+test("native plugin bridge enforces permissions and revokes its session token", async () => {
+	const request = vi.fn(async () => ({ ok: true }));
+	const lease = await issueMcpGatewaySession({
+		sessionId: "plugin-bridge-test",
+		scopes: { browser: false, orchestration: false, plugins: true },
+		ctx: {
+			plugins: {
+				client: { request },
+				getRuntimeMode: () => "approval-required",
+				getPermissionMode: () => "default",
+				requestPermission: async () => ({ _tag: "Deny" }),
+			},
+		},
+	});
+	const endpoint = new URL("/plugins", lease.endpoint);
+	const invoke = (token: string) =>
+		fetch(endpoint, {
+			method: "POST",
+			headers: {
+				authorization: `Bearer ${token}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify({
+				name: "plugins_call",
+				args: { address: "tools.linear.user.work.update", arguments: {} },
+			}),
+		});
+	try {
+		expect((await invoke("wrong")).status).toBe(401);
+		expect((await invoke(lease.token)).status).toBe(500);
+		expect(request).not.toHaveBeenCalled();
+		const discovery = await listTools(lease.endpoint, lease.token);
+		expect(discovery.raw).toContain("plugins_search");
+	} finally {
+		await lease.close();
+	}
+	expect((await invoke(lease.token)).status).toBe(401);
+});

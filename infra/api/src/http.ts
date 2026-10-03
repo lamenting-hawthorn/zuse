@@ -55,3 +55,32 @@ export const decodePathSegment = (
 		try: () => decodeURIComponent(segment),
 		catch: () => badRequest("invalid_path_encoding"),
 	});
+
+/** Bound memory before parsing untrusted JSON, including chunked requests. */
+export const readLimitedJsonBody = async (
+	request: Request,
+	maxBytes: number,
+): Promise<unknown> => {
+	if (Number(request.headers.get("content-length")) > maxBytes)
+		throw badRequest("request_too_large");
+	const reader = request.body?.getReader();
+	if (!reader) throw badRequest("invalid_json");
+	const decoder = new TextDecoder();
+	let bytes = 0;
+	let text = "";
+	try {
+		while (true) {
+			const next = await reader.read();
+			if (next.done) break;
+			bytes += next.value.byteLength;
+			if (bytes > maxBytes) {
+				await reader.cancel();
+				throw badRequest("request_too_large");
+			}
+			text += decoder.decode(next.value, { stream: true });
+		}
+		return JSON.parse(text + decoder.decode());
+	} finally {
+		reader.releaseLock();
+	}
+};

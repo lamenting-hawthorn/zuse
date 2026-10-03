@@ -3,6 +3,7 @@ import { isHostedProduct } from "../lib/hosted-connect.ts";
 import { refreshHostedProjects } from "../lib/hosted-workspace.ts";
 import { isInputComposing } from "../lib/input-composition.ts";
 import { ModelConnectionsPane } from "./settings/model-connections-pane.tsx";
+import { PluginsPane } from "./settings/plugins-pane.tsx";
 import { WallpaperSettings } from "./settings/wallpaper-settings";
 import "@zuse/i18n/english/settings";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -531,7 +532,20 @@ function Pane({ section }: { section: SettingsSection }) {
 	if (section.kind === "defaults") return <DefaultModelsPane />;
 	if (section.kind === "providers")
 		return isHostedProduct() ? <CloudWorkspacePool /> : <ProvidersPane />;
-	if (section.kind === "integrations") return <LinearIntegrationsPane />;
+	if (section.kind === "integrations")
+		return (
+			<div className="flex flex-col gap-8">
+				<PluginsPane />
+				<details className="text-xs text-muted-foreground">
+					<summary className="cursor-pointer">
+						Workspace ticket integration
+					</summary>
+					<div className="mt-4">
+						<LinearIntegrationsPane />
+					</div>
+				</details>
+			</div>
+		);
 	if (section.kind === "mcp") return <McpServersPane />;
 	if (section.kind === "devices")
 		return isHostedProduct() ? <HostedDevicesPane /> : <DevicesPane />;

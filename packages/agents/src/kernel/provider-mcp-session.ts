@@ -12,6 +12,7 @@ import { Effect } from "effect";
 import type { BrowserSend } from "../drivers/browser-tools.ts";
 import { getDefaultDeviceCommandClient } from "../drivers/device-command-tools.ts";
 import type { OrchestrationSessionTools } from "../drivers/orchestration-tools.ts";
+import { getDefaultPluginClient } from "../drivers/plugin-tools.ts";
 import {
 	type AppMcpInteractionOptions,
 	issueMcpGatewaySession,
@@ -37,11 +38,13 @@ export const issueProviderMcpSession = Effect.fn("ProviderMcpSession.issue")(
 	function* (
 		options: ProviderMcpSessionOptions,
 	): Effect.fn.Return<McpGatewaySession, AgentSessionStartError> {
+		const plugins = yield* Effect.promise(getDefaultPluginClient);
 		return yield* Effect.tryPromise({
 			try: () =>
 				issueMcpGatewaySession({
 					sessionId: options.sessionId,
 					scopes: {
+						plugins: plugins !== undefined,
 						browser: true,
 						orchestration: options.orchestrationTools !== null,
 						linear: options.orchestrationTools?.linearTools !== undefined,
@@ -50,6 +53,14 @@ export const issueProviderMcpSession = Effect.fn("ProviderMcpSession.issue")(
 						interaction: options.interaction !== undefined,
 					},
 					ctx: {
+						plugins: plugins
+							? {
+									client: plugins,
+									requestPermission: options.requestPermission,
+									getRuntimeMode: options.getRuntimeMode,
+									getPermissionMode: options.getPermissionMode,
+								}
+							: undefined,
 						images: { cwd: options.cwd },
 						deviceCommands: getDefaultDeviceCommandClient(),
 						getPermissionMode: options.getPermissionMode,

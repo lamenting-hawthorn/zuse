@@ -266,6 +266,7 @@ import {
 	PermissionRevokeDecisionRpc,
 } from "./permission.ts";
 import { PingRpc } from "./ping.ts";
+import { PluginsRequestRpc } from "./plugins.ts";
 import { PokemonEnsureSpriteCachedRpc, PokemonPokedexRpc } from "./pokemon.ts";
 import { PreviewsListServersRpc } from "./previews.ts";
 import {
@@ -410,6 +411,7 @@ export const MemoizeRpcs = RpcGroup.make(
 	ModelConnectionPreferredRpc,
 	ModelConnectionDisconnectRpc,
 	ModelConnectionAcknowledgePlanRpc,
+	PluginsRequestRpc,
 	DeviceBridgeControlRpc,
 	CloudDeviceBridgeRpc,
 	PingRpc,

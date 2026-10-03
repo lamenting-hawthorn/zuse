@@ -47,6 +47,8 @@ import {
 	type DeviceBridgeAction,
 	DeviceBridgeResult,
 	EntitlementList,
+	type PluginRequest,
+	PluginResponse,
 	type SessionId,
 	type SessionStreamCursor,
 	WorkspaceSettings,
@@ -63,6 +65,8 @@ export type CloudControlRequest = <A>(
 ) => Effect.Effect<A, CloudWorkspaceOpError>;
 
 export const makeCloudControlClient = (request: CloudControlRequest) => ({
+	"plugins.request": (input: PluginRequest) =>
+		request("/v1/plugins", PluginResponse, "POST", input),
 	"cloud.providers": () => request(ApiPaths.cloudProviders, CloudProviderList),
 	"cloud.projects.connect": (input: CloudProjectConnectRequest) =>
 		request(ApiPaths.cloudProjects, CloudProject, "POST", input),

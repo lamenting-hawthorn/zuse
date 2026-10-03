@@ -42,6 +42,11 @@ import {
 	type OrchestrationPermissionOptions,
 	type OrchestrationToolDeps,
 } from "../drivers/orchestration-tools.ts";
+import {
+	handlePluginTool,
+	PLUGIN_TOOLS,
+	type PluginClient,
+} from "../drivers/plugin-tools.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -67,6 +72,9 @@ export interface AppMcpInteractionOptions {
 }
 
 export interface McpGatewaySessionContext {
+	readonly plugins?: LinearPermissionOptions & {
+		readonly client: PluginClient;
+	};
 	readonly deviceCommands?: DeviceCommandClient;
 	readonly getPermissionMode?: () => string;
 	readonly browser?: BrowserMcpToolOptions;
@@ -82,6 +90,7 @@ export interface McpGatewayIssueInput {
 	readonly sessionId: string;
 	readonly scopes: {
 		readonly browser: boolean;
+		readonly plugins?: boolean;
 		readonly orchestration: boolean;
 		readonly linear?: boolean;
 		readonly images?: boolean;
@@ -120,6 +129,7 @@ interface RegistryRecord {
 	readonly tokenHash: string;
 	readonly scopes: {
 		readonly browser: boolean;
+		readonly plugins?: boolean;
 		readonly orchestration: boolean;
 		readonly linear?: boolean;
 		readonly images?: boolean;
@@ -300,6 +310,7 @@ type AppToolDefinition = {
 
 const buildAppServer = (record: RegistryRecord): Server => {
 	const definitions: AppToolDefinition[] = [
+		...(record.scopes.plugins && record.ctx.plugins ? PLUGIN_TOOLS : []),
 		...(record.scopes.deviceCommands && record.ctx.deviceCommands
 			? DEVICE_COMMAND_TOOLS
 			: []),
@@ -348,6 +359,13 @@ const buildAppServer = (record: RegistryRecord): Server => {
 			};
 		}
 		try {
+			if (PLUGIN_TOOLS.some((tool) => tool.name === name) && record.ctx.plugins)
+				return handlePluginTool(
+					name,
+					args,
+					record.ctx.plugins.client,
+					record.ctx.plugins,
+				);
 			if (BROWSER_MCP_TOOLS.some((tool) => tool.name === name)) {
 				if (record.ctx.browser === undefined)
 					throw new Error("Browser unavailable");
@@ -428,7 +446,7 @@ const handleMcpRequest = async (
 const requestHandler = (req: IncomingMessage, res: ServerResponse): void => {
 	void (async () => {
 		const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-		if (path !== APP_MCP_PATH) {
+		if (path !== APP_MCP_PATH && path !== "/plugins") {
 			writeText(res, 404, "not found");
 			return;
 		}
@@ -443,6 +461,34 @@ const requestHandler = (req: IncomingMessage, res: ServerResponse): void => {
 			return;
 		}
 		try {
+			if (path === "/plugins") {
+				if (
+					req.method !== "POST" ||
+					!record.scopes.plugins ||
+					!record.ctx.plugins
+				) {
+					writeText(res, 403, "unavailable");
+					return;
+				}
+				let body = "";
+				for await (const chunk of req) {
+					body += chunk;
+					if (body.length > 128_000) {
+						writeText(res, 413, "too large");
+						return;
+					}
+				}
+				const { name, args } = JSON.parse(body);
+				const result = await handlePluginTool(
+					name,
+					args,
+					record.ctx.plugins.client,
+					record.ctx.plugins,
+				);
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(JSON.stringify(result));
+				return;
+			}
 			await handleMcpRequest(req, res, record);
 		} catch (cause) {
 			if (!res.headersSent) {

@@ -8,6 +8,7 @@ import { startKiroSession } from "@zuse/agents/drivers/kiro";
 import { startOpencodeSession } from "@zuse/agents/drivers/opencode";
 import { startOpencode2Session } from "@zuse/agents/drivers/opencode2";
 import { startPiSession } from "@zuse/agents/drivers/pi";
+import { getDefaultPluginClient } from "@zuse/agents/drivers/plugin-tools";
 import { AttachmentService } from "@zuse/agents/kernel/attachment-service";
 import type {
 	GoalCapableSessionHandle,
@@ -19,6 +20,10 @@ import {
 	type TurnScopedProviderSessionHandle,
 } from "@zuse/agents/kernel/turn-protocol";
 import { zuseWorkspaceInstructions } from "@zuse/agents/kernel/workspace-instructions";
+import {
+	issueMcpGatewaySession,
+	type McpGatewaySession,
+} from "@zuse/agents/mcp-gateway";
 import {
 	classifyTool,
 	inputLengthBucket,
@@ -347,6 +352,8 @@ export const ProviderServiceLive = Layer.effect(
 				orchestrationTools = null,
 				providerEventCursor = null,
 			) => {
+				let managedPlugins: McpGatewaySession | undefined;
+				let managedPermissionMode = input.permissionMode ?? "default";
 				const startupStartedAt = Date.now();
 				const sessionId = input.sessionId ?? nextSessionId();
 				const requestedModel = input.model
@@ -460,6 +467,53 @@ export const ProviderServiceLive = Layer.effect(
 						managedCredential?.kind === "api-key"
 							? managedCredential.secret
 							: null;
+					let managedMcp:
+						| import("@zuse/agents/user-mcp/types").ResolvedMcpServer
+						| undefined;
+					if (
+						["cursor", "opencode", "opencode2", "pi"].includes(input.providerId)
+					) {
+						managedPlugins = yield* Effect.tryPromise({
+							try: async () => {
+								const client = await getDefaultPluginClient();
+								if (!client) return undefined;
+								return issueMcpGatewaySession({
+									sessionId,
+									scopes: {
+										browser: false,
+										orchestration: false,
+										plugins: true,
+									},
+									ctx: {
+										plugins: {
+											client,
+											requestPermission: (kind, options) =>
+												buildRequestPermission(input.folderId)(
+													sessionId,
+													kind,
+													options,
+												),
+											getRuntimeMode: () =>
+												getRuntimeMode?.() ?? "approval-required",
+											getPermissionMode: () => managedPermissionMode,
+										},
+									},
+								});
+							},
+							catch: () =>
+								new AgentSessionStartError({
+									providerId: input.providerId,
+									reason: "Could not prepare connected plugins",
+								}),
+						});
+						if (managedPlugins)
+							managedMcp = {
+								name: "zuse-plugins",
+								transport: "http",
+								url: managedPlugins.endpoint,
+								headers: { Authorization: `Bearer ${managedPlugins.token}` },
+							};
+					}
 					let providerHandle: ProviderSessionHandle;
 					if (input.providerId === "zuse") {
 						if (Option.isNone(harness))
@@ -550,6 +604,7 @@ export const ProviderServiceLive = Layer.effect(
 							binary,
 							sessionId,
 							resumeCursor,
+							managedMcp,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "kiro") {
 						// Kiro CLI exposes ACP via `kiro-cli acp`. Auth is out-of-band
@@ -686,6 +741,7 @@ export const ProviderServiceLive = Layer.effect(
 							opencodePath,
 							sessionId,
 							resumeCursor,
+							managedMcp,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "opencode2") {
 						const opencode2Path = yield* resolveCliPath(
@@ -715,6 +771,7 @@ export const ProviderServiceLive = Layer.effect(
 							sessionId,
 							resumeCursor,
 							buildRequestPermission(input.folderId),
+							managedMcp,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "cursor") {
 						const userMcpServers = yield* mcp.resolveForCursorSession(cwd);
@@ -725,6 +782,7 @@ export const ProviderServiceLive = Layer.effect(
 							sessionId,
 							resumeCursor,
 							userMcpServers,
+							managedMcp,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else if (input.providerId === "claude") {
 						// Point the SDK at the user's installed `claude` binary. We
@@ -847,6 +905,25 @@ export const ProviderServiceLive = Layer.effect(
 							},
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					}
+					if (managedPlugins) {
+						const underlying = providerHandle;
+						const lease = managedPlugins;
+						providerHandle = {
+							...underlying,
+							close: () =>
+								underlying
+									.close()
+									.pipe(Effect.ensuring(Effect.promise(() => lease.close()))),
+							setPermissionMode: (mode) =>
+								underlying.setPermissionMode(mode).pipe(
+									Effect.tap(() =>
+										Effect.sync(() => {
+											managedPermissionMode = mode;
+										}),
+									),
+								),
+						};
+					}
 					const handle = yield* makeTurnScopedSessionHandle(
 						providerHandle,
 						input.initialTurnId,
@@ -877,7 +954,18 @@ export const ProviderServiceLive = Layer.effect(
 					return { sessionId, generation };
 				});
 				return startupWorker
-					.run(startupKey, startupPermits.withPermits(1)(start))
+					.run(
+						startupKey,
+						startupPermits.withPermits(1)(
+							start.pipe(
+								Effect.onError(() =>
+									Effect.promise(async () => {
+										await managedPlugins?.close();
+									}),
+								),
+							),
+						),
+					)
 					.pipe(
 						Effect.tapError(() =>
 							analytics.capture("provider startup failed", {
