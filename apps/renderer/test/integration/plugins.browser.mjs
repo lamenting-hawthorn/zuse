@@ -33,7 +33,8 @@ const server = await createServer({
 				if (id === "\0plugins-probe") return id;
 				if (
 					importer?.includes("plugins-page.tsx") ||
-					importer?.includes("plugin-return-handler.tsx")
+					importer?.includes("plugin-return-handler.tsx") ||
+					importer?.includes("connected-plugins.ts")
 				) {
 					if (id.endsWith("plugins-client.ts")) return "\0plugins-fixture";
 					if (id.endsWith("use-auth.ts")) return "\0plugins-auth";

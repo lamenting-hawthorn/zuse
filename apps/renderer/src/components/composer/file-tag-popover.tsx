@@ -17,7 +17,7 @@ import { overlaySurface } from "~/components/ui/overlay-surface";
 import { type ActiveTrigger, replaceWithChip } from "~/lib/codemirror/composer";
 import {
 	type ConnectedPlugin,
-	loadConnectedPlugins,
+	useConnectedPlugins,
 } from "~/lib/connected-plugins.ts";
 import { dispatchEnvironmentShellCommand } from "~/lib/environment-shell-client-bus.ts";
 import { cn } from "~/lib/utils";
@@ -73,7 +73,7 @@ export function FileTagPopover({
 	const { message: uiMessage } = useUiMessages(["projects", "plugins"]);
 
 	const [hits, setHits] = useState<readonly SearchHit[]>([]);
-	const [plugins, setPlugins] = useState<readonly ConnectedPlugin[]>([]);
+	const plugins = useConnectedPlugins();
 	const [highlight, setHighlight] = useState(0);
 	const query = trigger.query;
 
@@ -125,16 +125,6 @@ export function FileTagPopover({
 			window.clearTimeout(id);
 		};
 	}, [environmentId, projectId, worktreeId, workspaceRoot, query]);
-
-	useEffect(() => {
-		let cancelled = false;
-		void loadConnectedPlugins().then((value) => {
-			if (!cancelled) setPlugins(value);
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, []);
 
 	// Connected plugins lead: there are few, and naming one is a strong intent.
 	const items = useMemo<readonly Item[]>(() => {

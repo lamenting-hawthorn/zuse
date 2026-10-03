@@ -656,6 +656,52 @@ const countTreeFiles = (tree: string): number =>
 // Expandable row primitive (icon ↔ chevron hover swap, click to toggle)
 // ---------------------------------------------------------------------------
 
+/**
+ * Logo and name for a plugin tool call. Separate components so only plugin
+ * rows look up connected plugins (and the signed-in account).
+ */
+function PluginToolGlyph({
+	pluginId,
+	icon,
+}: {
+	readonly pluginId: string;
+	readonly icon: IconHandle;
+}) {
+	const plugin = useConnectedPlugin(pluginId);
+	return plugin !== null ? (
+		<PluginIcon
+			name={plugin.name}
+			domain={plugin.domain}
+			className="size-3.5 rounded-[3px] text-[8px] ring-0"
+		/>
+	) : (
+		<HugeiconsIcon
+			icon={icon}
+			strokeWidth={2}
+			className="size-3.5 text-muted-foreground"
+		/>
+	);
+}
+
+function PluginToolName({
+	pluginId,
+	fallback,
+	pending,
+}: {
+	readonly pluginId: string;
+	readonly fallback: string;
+	readonly pending: boolean;
+}) {
+	const name = useConnectedPlugin(pluginId)?.name ?? fallback;
+	return pending ? (
+		<ShimmerText tone="lime" className="text-muted-foreground">
+			{name}
+		</ShimmerText>
+	) : (
+		<>{name}</>
+	);
+}
+
 function ExpandableIconRow({
 	icon,
 	label,
@@ -664,11 +710,11 @@ function ExpandableIconRow({
 	hasContent,
 	pending = false,
 	localDevice = false,
-	iconNode,
+	plugin,
 }: {
 	icon: IconHandle;
-	/** Replaces the glyph, e.g. a plugin's logo. */
-	iconNode?: React.ReactNode;
+	/** Managed plugin behind the row: its logo and name replace the glyph. */
+	plugin?: string | undefined;
 	localDevice?: boolean;
 	label: string;
 	detail?: React.ReactNode;
@@ -702,7 +748,7 @@ function ExpandableIconRow({
 					/>
 				)}
 				<div className="relative grid size-4 shrink-0 place-items-center">
-					{iconNode !== undefined ? (
+					{plugin !== undefined ? (
 						<span
 							aria-hidden="true"
 							className={cn(
@@ -711,7 +757,7 @@ function ExpandableIconRow({
 								"motion-reduce:transition-none",
 							)}
 						>
-							{iconNode}
+							<PluginToolGlyph pluginId={plugin} icon={icon} />
 						</span>
 					) : (
 						<HugeiconsIcon
@@ -739,7 +785,13 @@ function ExpandableIconRow({
 					className="max-w-[16rem] shrink-0 truncate text-muted-foreground"
 					title={label}
 				>
-					{pending ? (
+					{plugin !== undefined ? (
+						<PluginToolName
+							pluginId={plugin}
+							fallback={label}
+							pending={pending}
+						/>
+					) : pending ? (
 						<ShimmerText tone="lime" className="text-muted-foreground">
 							{label}
 						</ShimmerText>
@@ -1983,7 +2035,6 @@ export function ToolRow({
 
 	const view = buildToolView(tool, input, result, presentation);
 	const pending = result === undefined;
-	const plugin = useConnectedPlugin(view.pluginId ?? null);
 
 	const sections: React.ReactNode[] = [];
 	if (view.inputPanel !== undefined) {
@@ -2031,17 +2082,9 @@ export function ToolRow({
 	return (
 		<ExpandableIconRow
 			icon={view.icon}
-			iconNode={
-				plugin !== null ? (
-					<PluginIcon
-						name={plugin.name}
-						domain={plugin.domain}
-						className="size-3.5 rounded-[3px] text-[8px] ring-0"
-					/>
-				) : undefined
-			}
+			plugin={view.pluginId}
 			localDevice={normalizeToolName(tool) === "local_command_execute"}
-			label={plugin?.name ?? view.label}
+			label={view.label}
 			detail={detail}
 			pending={pending}
 			hasContent={sections.length > 0}

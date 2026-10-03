@@ -1,13 +1,22 @@
 import type { PluginDefinition, PluginSnapshot } from "@zuse/contracts";
 import { useEffect, useState } from "react";
+import { useAuth } from "../hooks/use-auth.ts";
 import { onPluginsChanged, pluginRequest } from "./plugins-client.ts";
 
 /** Plugins the signed-in account can use right now, for `@` mentions. */
 export type ConnectedPlugin = Pick<PluginDefinition, "id" | "name" | "domain">;
 
 const FRESH_MS = 30_000;
-let cached: { at: number; plugins: readonly ConnectedPlugin[] } | null = null;
-let inflight: Promise<readonly ConnectedPlugin[]> | null = null;
+/** Cached per signed-in account so a switch never shows another account's plugins. */
+let cached: {
+	account: string;
+	at: number;
+	plugins: readonly ConnectedPlugin[];
+} | null = null;
+let inflight: {
+	account: string;
+	promise: Promise<readonly ConnectedPlugin[]>;
+} | null = null;
 
 const connectedOf = (snapshot: PluginSnapshot): readonly ConnectedPlugin[] => {
 	const ids = new Set(
@@ -24,9 +33,12 @@ const connectedOf = (snapshot: PluginSnapshot): readonly ConnectedPlugin[] => {
  * The Plugins page shares its fresh snapshot so mentions never lag it. Agent
  * sessions use personal connections only, so other tenants are ignored.
  */
-export const rememberPluginSnapshot = (snapshot: PluginSnapshot) => {
+export const rememberPluginSnapshot = (
+	account: string,
+	snapshot: PluginSnapshot,
+) => {
 	if (!snapshot.tenantId.startsWith("personal:")) return;
-	cached = { at: Date.now(), plugins: connectedOf(snapshot) };
+	cached = { account, at: Date.now(), plugins: connectedOf(snapshot) };
 };
 
 onPluginsChanged(() => {
@@ -34,23 +46,57 @@ onPluginsChanged(() => {
 });
 
 /**
- * Connected plugins, cached briefly: the catalog snapshot is large and the
- * `@` menu opens often. Failures (signed out, offline) mean "none".
+ * Connected plugins for the signed-in account, cached briefly: the catalog
+ * snapshot is large and the `@` menu opens often. Signed out means none, with
+ * no request; failures (offline) also mean none.
  */
-export function loadConnectedPlugins(): Promise<readonly ConnectedPlugin[]> {
-	if (cached !== null && Date.now() - cached.at < FRESH_MS)
+export function loadConnectedPlugins(
+	account: string | null,
+): Promise<readonly ConnectedPlugin[]> {
+	if (account === null) return Promise.resolve([]);
+	if (
+		cached !== null &&
+		cached.account === account &&
+		Date.now() - cached.at < FRESH_MS
+	)
 		return Promise.resolve(cached.plugins);
-	inflight ??= pluginRequest({ action: "list" })
+	if (inflight?.account === account) return inflight.promise;
+	const promise = pluginRequest({ action: "list" })
 		.then((result) => {
 			if (result.kind !== "snapshot") return [];
-			rememberPluginSnapshot(result);
+			rememberPluginSnapshot(account, result);
 			return connectedOf(result);
 		})
 		.catch(() => [])
 		.finally(() => {
-			inflight = null;
+			if (inflight?.promise === promise) inflight = null;
 		});
-	return inflight;
+	inflight = { account, promise };
+	return promise;
+}
+
+/** The account whose plugins apply, or null when signed out. */
+export function usePluginAccount(): string | null {
+	const { isSignedIn, user } = useAuth();
+	return isSignedIn ? (user?.id ?? null) : null;
+}
+
+/** Connected plugins for `@` menus; empty while signed out. */
+export function useConnectedPlugins(): readonly ConnectedPlugin[] {
+	const account = usePluginAccount();
+	const [plugins, setPlugins] = useState<readonly ConnectedPlugin[]>(() =>
+		cached !== null && cached.account === account ? cached.plugins : [],
+	);
+	useEffect(() => {
+		let cancelled = false;
+		void loadConnectedPlugins(account).then((value) => {
+			if (!cancelled) setPlugins(value);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [account]);
+	return plugins;
 }
 
 /** Context the agent receives for an `@plugin` mention. */
@@ -82,19 +128,22 @@ export const pluginToolAddress = (
 export function useConnectedPlugin(
 	pluginId: string | null,
 ): ConnectedPlugin | null {
-	const [plugin, setPlugin] = useState<ConnectedPlugin | null>(
-		() => cached?.plugins.find((item) => item.id === pluginId) ?? null,
+	const account = usePluginAccount();
+	const [plugin, setPlugin] = useState<ConnectedPlugin | null>(() =>
+		cached !== null && cached.account === account
+			? (cached.plugins.find((item) => item.id === pluginId) ?? null)
+			: null,
 	);
 	useEffect(() => {
 		if (pluginId === null) return;
 		let cancelled = false;
-		void loadConnectedPlugins().then((plugins) => {
+		void loadConnectedPlugins(account).then((plugins) => {
 			if (!cancelled)
 				setPlugin(plugins.find((item) => item.id === pluginId) ?? null);
 		});
 		return () => {
 			cancelled = true;
 		};
-	}, [pluginId]);
+	}, [account, pluginId]);
 	return plugin;
 }

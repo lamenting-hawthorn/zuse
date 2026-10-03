@@ -1205,6 +1205,8 @@ function SidebarActions() {
 	const pluginsOpen = useUiStore(
 		(state) => state.view === "chat" && state.activeMainTab === "plugins",
 	);
+	// Plugins belong to a Zuse account; the app itself works signed out.
+	const { isSignedIn } = useAuth();
 
 	return (
 		<div className="flex flex-col gap-0.5 px-1.5 py-1">
@@ -1219,16 +1221,18 @@ function SidebarActions() {
 				label={uiMessage("projects:projects_sidebar_new_project")}
 				onClick={() => dispatchCommand("open-project")}
 			/>
-			<SidebarActionRow
-				icon={PuzzleIcon}
-				label={uiMessage("projects:projects_sidebar_plugins")}
-				active={pluginsOpen}
-				onClick={() => {
-					const ui = useUiStore.getState();
-					ui.setView("chat");
-					ui.setActiveMainTab("plugins");
-				}}
-			/>
+			{isSignedIn && (
+				<SidebarActionRow
+					icon={PuzzleIcon}
+					label={uiMessage("projects:projects_sidebar_plugins")}
+					active={pluginsOpen}
+					onClick={() => {
+						const ui = useUiStore.getState();
+						ui.setView("chat");
+						ui.setActiveMainTab("plugins");
+					}}
+				/>
+			)}
 		</div>
 	);
 }

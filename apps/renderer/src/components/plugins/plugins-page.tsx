@@ -37,6 +37,7 @@ import {
 	pluginRequest,
 	pluginReturnTo,
 } from "~/lib/plugins-client.ts";
+import { useUiStore } from "~/store/ui.ts";
 import { Button } from "../ui/button.tsx";
 import { SegmentedTabs } from "../ui/segmented-tabs.tsx";
 import { Spinner } from "../ui/spinner.tsx";
@@ -55,6 +56,7 @@ async function openAuthorization(url: string) {
 
 function usePlugins() {
 	const { user, isSignedIn } = useAuth();
+	const account = isSignedIn ? (user?.id ?? null) : null;
 	const [snapshot, setSnapshot] = useState<PluginSnapshot | null>(null);
 	const [tenant, setTenant] = useState<string>();
 	const [attempt, setAttempt] = useState<
@@ -70,7 +72,7 @@ function usePlugins() {
 			const result = await pluginRequest({ action: "list", tenantId: tenant });
 			if (current !== generation.current || result.kind !== "snapshot") return;
 			setSnapshot(result);
-			rememberPluginSnapshot(result);
+			if (account !== null) rememberPluginSnapshot(account, result);
 			setFailed(false);
 			// Resume an attempt started before the page was closed.
 			const pending = result.connections.find(
@@ -91,7 +93,7 @@ function usePlugins() {
 		} catch {
 			if (current === generation.current) setFailed(true);
 		}
-	}, [tenant]);
+	}, [tenant, account]);
 
 	useEffect(() => {
 		generation.current++;
@@ -151,6 +153,12 @@ function usePlugins() {
 
 export function PluginsPage() {
 	const { message: m } = useUiMessages(["plugins"]);
+	const { isSignedIn, isLoading } = useAuth();
+	// Plugins belong to an account: leave the page on sign-out.
+	useEffect(() => {
+		if (!isLoading && !isSignedIn)
+			useUiStore.getState().setActiveMainTab("chat");
+	}, [isLoading, isSignedIn]);
 	const state = usePlugins();
 	const { snapshot, attempt, busy } = state;
 	const [tab, setTab] = useState<Tab>("browse");
