@@ -1,11 +1,25 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import type { SkillsConfigWriteResponse } from "@zuse/agents/codex-generated/v2/SkillsConfigWriteResponse";
 import { withCodexControlClient } from "@zuse/agents/drivers/codex-control-client";
-import { PROVIDER_CAPABILITIES, type ProviderId, Skill } from "@zuse/contracts";
+import {
+	PROVIDER_CAPABILITIES,
+	type ProviderId,
+	Skill,
+	SkillConfigError,
+} from "@zuse/contracts";
 import { Effect, FileSystem, Layer } from "effect";
+import { toggleDisabledKey } from "../../config-store/disabled-keys.ts";
+import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
+import { withCodexApp } from "../../mcp/codex-status.ts";
 import { ensureBundledZuseSkillInstalled } from "../bundled-zuse-skill.ts";
 import { createCodexSkillBatcher } from "../codex-skill-batcher.ts";
 import { SkillDiscoveryService } from "../services/skill-discovery.ts";
+import {
+	applySkillEnablement,
+	isZuseSkillOverrideProvider,
+	skillEnablementKey,
+} from "../skill-enablement.ts";
 
 interface RawSkill {
 	readonly name: string;
@@ -112,6 +126,9 @@ const toSkill = (
 		providerId,
 	});
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
 const dedupeProjectFirst = (skills: ReadonlyArray<Skill>): Skill[] => {
 	const seen = new Set<string>();
 	const out: Skill[] = [];
@@ -127,21 +144,37 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 	SkillDiscoveryService,
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const configStore = yield* ConfigStoreService;
 		const home = os.homedir();
-		const codexSkills = createCodexSkillBatcher<CodexSkillMetadata>(
-			(cwds) =>
-				withCodexControlClient(null, (client) =>
-					client
-						.request<{
-							data: ReadonlyArray<{
-								cwd: string;
-								skills: ReadonlyArray<CodexSkillMetadata>;
-							}>;
-						}>("skills/list", { cwds, forceReload: false })
-						.then((response) => response.data),
-				),
-			25,
-		);
+		// Set after a native Codex skill toggle so the next `skills/list`
+		// bypasses the app-server's cached skill set.
+		let codexForceReload = false;
+		const codexSkills = createCodexSkillBatcher<CodexSkillMetadata>((cwds) => {
+			const forceReload = codexForceReload;
+			codexForceReload = false;
+			return withCodexControlClient(null, (client) =>
+				client
+					.request<{
+						data: ReadonlyArray<{
+							cwd: string;
+							skills: ReadonlyArray<CodexSkillMetadata>;
+						}>;
+					}>("skills/list", { cwds, forceReload })
+					.then((response) => response.data),
+			);
+		}, 25);
+
+		const readJsonSafe = (abs: string): Effect.Effect<unknown> =>
+			readSafe(fs, abs).pipe(
+				Effect.map((content) => {
+					if (content === null) return null;
+					try {
+						return JSON.parse(content) as unknown;
+					} catch {
+						return null;
+					}
+				}),
+			);
 
 		/**
 		 * Walk a Claude skills root. Skills can be either:
@@ -217,6 +250,60 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 			});
 
 		/**
+		 * Marketplace plugins installed through Claude Code live wherever
+		 * `~/.claude/plugins/installed_plugins.json` points (`installPath`),
+		 * with skills under `<installPath>/skills/<skill>/SKILL.md`. Plugins
+		 * the user switched off (`enabledPlugins[id] === false` in
+		 * `~/.claude/settings.json`) and project installs for other checkouts
+		 * are skipped. Without these, a Claude skills allowlist would silently
+		 * hide every marketplace plugin skill.
+		 */
+		const readClaudeInstalledPlugins = (
+			projectCwd: string | null,
+		): Effect.Effect<
+			ReadonlyArray<{ raw: RawSkill; scope: "global" | "project" }>
+		> =>
+			Effect.gen(function* () {
+				const claudeDir = path.join(home, ".claude");
+				const installed = yield* readJsonSafe(
+					path.join(claudeDir, "plugins", "installed_plugins.json"),
+				);
+				if (!isRecord(installed) || !isRecord(installed.plugins)) return [];
+				const userSettings = yield* readJsonSafe(
+					path.join(claudeDir, "settings.json"),
+				);
+				const enabledPlugins =
+					isRecord(userSettings) && isRecord(userSettings.enabledPlugins)
+						? userSettings.enabledPlugins
+						: {};
+				const out: Array<{ raw: RawSkill; scope: "global" | "project" }> = [];
+				for (const [pluginId, installs] of Object.entries(installed.plugins)) {
+					if (enabledPlugins[pluginId] === false || !Array.isArray(installs))
+						continue;
+					const pluginName = pluginId.split("@")[0] || pluginId;
+					for (const install of installs) {
+						if (!isRecord(install) || typeof install.installPath !== "string")
+							continue;
+						const projectPath =
+							typeof install.projectPath === "string"
+								? install.projectPath
+								: null;
+						if (projectPath !== null && projectPath !== projectCwd) continue;
+						const inner = yield* readClaudeSkillsRoot(
+							path.join(install.installPath, "skills"),
+						);
+						for (const raw of inner) {
+							out.push({
+								raw: { ...raw, name: `${pluginName}:${raw.name}` },
+								scope: projectPath === null ? "global" : "project",
+							});
+						}
+					}
+				}
+				return out;
+			});
+
+		/**
 		 * Codex prompts: `<root>/<name>.md`. First-line `# Title` is allowed
 		 * but the canonical name comes from the filename. Description is the
 		 * first non-blank, non-heading line.
@@ -253,36 +340,49 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 			});
 
 		const discoverClaude = (
-			projectCwd: string,
+			projectCwd: string | null,
 		): Effect.Effect<ReadonlyArray<Skill>> =>
 			Effect.gen(function* () {
 				ensureBundledZuseSkillInstalled("claude", home);
-				const projectRoot = path.join(projectCwd, ".claude", "skills");
 				const globalRoot = path.join(home, ".claude", "skills");
 				const pluginsRoot = path.join(home, ".claude", "plugins");
 
-				const projectRaw = yield* readClaudeSkillsRoot(projectRoot);
+				const projectRaw =
+					projectCwd === null
+						? []
+						: yield* readClaudeSkillsRoot(
+								path.join(projectCwd, ".claude", "skills"),
+							);
 				const globalRaw = yield* readClaudeSkillsRoot(globalRoot);
 				const pluginsRaw = yield* readClaudePluginsRoot(pluginsRoot);
+				const installedPlugins = yield* readClaudeInstalledPlugins(projectCwd);
 
 				const merged: Skill[] = [
 					...projectRaw.map((r) => toSkill(r, "project", "claude")),
+					...installedPlugins
+						.filter((p) => p.scope === "project")
+						.map((p) => toSkill(p.raw, "project", "claude")),
 					...globalRaw.map((r) => toSkill(r, "global", "claude")),
 					...pluginsRaw.map((r) => toSkill(r, "global", "claude")),
+					...installedPlugins
+						.filter((p) => p.scope === "global")
+						.map((p) => toSkill(p.raw, "global", "claude")),
 				];
 				return dedupeProjectFirst(merged);
 			});
 
 		const discoverCodex = (
-			projectCwd: string,
+			projectCwd: string | null,
 		): Effect.Effect<ReadonlyArray<Skill>> =>
 			Effect.gen(function* () {
 				ensureBundledZuseSkillInstalled("codex", home);
 				const viaAppServer = yield* Effect.tryPromise({
 					try: async (): Promise<ReadonlyArray<Skill>> => {
-						const skills = await codexSkills.load(projectCwd);
+						// Global-only listing asks Codex about the home directory and
+						// keeps user/system/admin skills; repo skills need a project.
+						const skills = await codexSkills.load(projectCwd ?? home);
 						return skills
-							.filter((skill) => skill.enabled)
+							.filter((skill) => projectCwd !== null || skill.scope !== "repo")
 							.map((skill) =>
 								Skill.make({
 									name: skill.name,
@@ -292,6 +392,9 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 									arguments: [],
 									filePath: skill.path,
 									providerId: "codex",
+									// Codex's native config is the source of truth.
+									enabled: skill.enabled,
+									toggleSupported: true,
 								}),
 							);
 					},
@@ -299,13 +402,24 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 				}).pipe(Effect.catch(() => Effect.succeed(null)));
 				if (viaAppServer !== null) return dedupeProjectFirst(viaAppServer);
 
-				const projectRoot = path.join(projectCwd, ".codex", "prompts");
+				// Disk fallback (app-server unavailable): native enablement is
+				// unknown and toggles cannot be written, so these stay enabled with
+				// `toggleSupported: false`.
 				const globalRoot = path.join(home, ".codex", "prompts");
-				const projectSkillsRoot = path.join(projectCwd, ".codex", "skills");
 				const globalSkillsRoot = path.join(home, ".codex", "skills");
-				const projectRaw = yield* readCodexPromptsRoot(projectRoot);
+				const projectRaw =
+					projectCwd === null
+						? []
+						: yield* readCodexPromptsRoot(
+								path.join(projectCwd, ".codex", "prompts"),
+							);
 				const globalRaw = yield* readCodexPromptsRoot(globalRoot);
-				const projectSkillsRaw = yield* readClaudeSkillsRoot(projectSkillsRoot);
+				const projectSkillsRaw =
+					projectCwd === null
+						? []
+						: yield* readClaudeSkillsRoot(
+								path.join(projectCwd, ".codex", "skills"),
+							);
 				const globalSkillsRaw = yield* readClaudeSkillsRoot(globalSkillsRoot);
 				const merged: Skill[] = [
 					...projectSkillsRaw.map((r) => toSkill(r, "project", "codex")),
@@ -316,13 +430,17 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 				return dedupeProjectFirst(merged);
 			});
 
-		const discoverZuse = (projectCwd: string) =>
+		const discoverZuse = (projectCwd: string | null) =>
 			Effect.gen(function* () {
 				const found: Skill[] = [];
-				for (const [root, scope] of [
-					[projectCwd, "project"],
-					[home, "global"],
-				] as const) {
+				const roots: ReadonlyArray<readonly [string, "project" | "global"]> =
+					projectCwd === null
+						? [[home, "global"]]
+						: [
+								[projectCwd, "project"],
+								[home, "global"],
+							];
+				for (const [root, scope] of roots) {
 					for (const config of PROVIDER_CAPABILITIES.zuse.skillFolders) {
 						const raw = yield* readClaudeSkillsRoot(
 							path.join(root, config, "skills"),
@@ -333,10 +451,10 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 				return dedupeProjectFirst(found);
 			});
 
-		const discover: SkillDiscoveryService["Service"]["discover"] = (
-			providerId,
-			projectCwd,
-		) =>
+		const discoverRaw = (
+			providerId: ProviderId,
+			projectCwd: string | null,
+		): Effect.Effect<ReadonlyArray<Skill>> =>
 			providerId === "zuse"
 				? discoverZuse(projectCwd)
 				: providerId === "claude"
@@ -345,6 +463,63 @@ export const SkillDiscoveryServiceLive = Layer.effect(
 						? discoverCodex(projectCwd)
 						: Effect.succeed([]);
 
-		return { discover };
+		const discover: SkillDiscoveryService["Service"]["discover"] = (
+			providerId,
+			projectCwd,
+		) =>
+			Effect.gen(function* () {
+				const skills = yield* discoverRaw(providerId, projectCwd);
+				if (!isZuseSkillOverrideProvider(providerId)) return skills;
+				const settings = yield* configStore.getSettings();
+				return applySkillEnablement(skills, settings.disabledSkills);
+			});
+
+		const setEnabled: SkillDiscoveryService["Service"]["setEnabled"] = (
+			providerId,
+			name,
+			enabled,
+		) =>
+			Effect.gen(function* () {
+				if (isZuseSkillOverrideProvider(providerId)) {
+					const settings = yield* configStore.getSettings();
+					yield* configStore.updateSettings({
+						disabledSkills: toggleDisabledKey(
+							settings.disabledSkills,
+							skillEnablementKey(providerId, name),
+							enabled,
+						),
+					});
+					return enabled;
+				}
+				if (providerId === "codex") {
+					// Codex owns its skill config — write the native flag, like
+					// Codex MCP toggles. This affects Codex everywhere, including
+					// outside Zuse.
+					const response = yield* withCodexApp(null, (app) =>
+						app.request<SkillsConfigWriteResponse>("skills/config/write", {
+							name,
+							enabled,
+						}),
+					).pipe(
+						Effect.mapError(
+							(cause) =>
+								new SkillConfigError({
+									providerId,
+									name,
+									reason: cause.message,
+								}),
+						),
+					);
+					codexForceReload = true;
+					return response.effectiveEnabled;
+				}
+				return yield* new SkillConfigError({
+					providerId,
+					name,
+					reason: "this provider has no skill toggle",
+				});
+			});
+
+		return { discover, setEnabled };
 	}),
 );

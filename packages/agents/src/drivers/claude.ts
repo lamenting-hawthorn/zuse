@@ -1592,6 +1592,11 @@ export const startClaudeSession = (
 	// Authorization headers. Spread into `Options.mcpServers` after the
 	// builtins, whose names win any collision.
 	userMcpServers: ReadonlyArray<ResolvedMcpServer> = [],
+	// SDK `skills` allowlist, resolved server-side from the user's disabled
+	// skills. `undefined` keeps the SDK default (every discovered skill);
+	// a list hides unlisted skills from the model and makes the Skill tool
+	// reject them.
+	skillAllowlist: ReadonlyArray<string> | undefined = undefined,
 ): Effect.Effect<
 	ClaudeSessionHandle,
 	AgentSessionStartError,
@@ -1827,6 +1832,7 @@ export const startClaudeSession = (
 				? { pathToClaudeCodeExecutable: claudeExecutablePath }
 				: {}),
 			...(input.model !== undefined ? { model: input.model } : {}),
+			...(skillAllowlist !== undefined ? { skills: [...skillAllowlist] } : {}),
 			...subagentOptions,
 			disallowedTools: [
 				...(subagentOptions.allowedTools === undefined

@@ -354,7 +354,9 @@ import {
 } from "./settings.ts";
 import {
 	SkillListForProjectRpc,
+	SkillListGlobalRpc,
 	SkillListRpc,
+	SkillSetEnabledRpc,
 	SkillStreamRpc,
 } from "./skill.ts";
 import { UsageOverviewRpc, UsageReportRpc, UsageSessionsRpc } from "./usage.ts";
@@ -681,6 +683,8 @@ export const MemoizeRpcs = RpcGroup.make(
 	SkillListRpc,
 	SkillListForProjectRpc,
 	SkillStreamRpc,
+	SkillListGlobalRpc,
+	SkillSetEnabledRpc,
 	PermissionRequestsRpc,
 	PermissionDecideRpc,
 	PermissionListPendingRpc,

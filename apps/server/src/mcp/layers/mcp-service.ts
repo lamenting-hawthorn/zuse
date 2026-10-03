@@ -22,6 +22,7 @@ import { type Cause, Effect, Layer, Queue, Stream } from "effect";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { SqlClient } from "effect/unstable/sql";
 
+import { toggleDisabledKey } from "../../config-store/disabled-keys.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
 import { resolveCliPath } from "../../provider/availability.ts";
 import { BrowserBridgeService } from "../../provider/services/browser-bridge-service.ts";
@@ -662,11 +663,7 @@ export const McpServiceLive = Layer.effect(
 					return;
 				}
 				const toggle = (current: ReadonlyArray<string>): string[] =>
-					enabled
-						? current.filter((k) => k !== key)
-						: current.includes(key)
-							? [...current]
-							: [...current, key];
+					toggleDisabledKey(current, key, enabled);
 				if (projectId === undefined) {
 					const settings = yield* configStore.getSettings().pipe(Effect.orDie);
 					yield* configStore

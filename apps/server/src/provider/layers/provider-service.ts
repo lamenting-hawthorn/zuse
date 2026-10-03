@@ -70,6 +70,11 @@ import {
 	ModelCatalogService,
 	toDriverModelDescriptor,
 } from "../../model-catalog/services/model-catalog-service.ts";
+import { SkillDiscoveryService } from "../../skill/services/skill-discovery.ts";
+import {
+	claudeSkillAllowlist,
+	hasDisabledSkillsFor,
+} from "../../skill/skill-enablement.ts";
 import { WorkspaceService } from "../../workspace/services/workspace-service.ts";
 import { validateApiKey } from "../api-key-validation.ts";
 import { probeProvidersWithPaths, resolveCliPath } from "../availability.ts";
@@ -127,6 +132,7 @@ export const ProviderServiceLive = Layer.effect(
 		const browserBridge = yield* BrowserBridgeService;
 		const configStore = yield* ConfigStoreService;
 		const mcp = yield* McpService;
+		const skillDiscovery = yield* SkillDiscoveryService;
 		const analytics = yield* AnalyticsService;
 		const runtime = yield* Effect.context<never>();
 		const registry = makeProviderSessionRegistry<
@@ -810,6 +816,16 @@ export const ProviderServiceLive = Layer.effect(
 							);
 						}
 						const userMcpServers = yield* mcp.resolveForClaudeSession(cwd);
+						// Disabled Claude skills are enforced through the SDK `skills`
+						// allowlist; skip discovery entirely when nothing is disabled.
+						const skillAllowlist = hasDisabledSkillsFor(
+							(yield* configStore.getSettings()).disabledSkills,
+							"claude",
+						)
+							? claudeSkillAllowlist(
+									yield* skillDiscovery.discover("claude", cwd),
+								)
+							: undefined;
 
 						providerHandle = yield* startClaudeSession(
 							driverInput,
@@ -826,6 +842,7 @@ export const ProviderServiceLive = Layer.effect(
 								),
 							orchestrationTools,
 							userMcpServers,
+							skillAllowlist,
 						).pipe(Effect.provideService(AttachmentService, attachmentService));
 					} else {
 						// Same story as Claude: we don't ship the SDK's bundled native

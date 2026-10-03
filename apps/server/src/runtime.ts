@@ -479,7 +479,10 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(RuntimeModelConnectionsLayer),
 	);
 
+	// Discovery stamps effective enablement from the global `disabledSkills`
+	// setting, so it reads ConfigStore.
 	const SkillDiscoveryLayer = SkillDiscoveryServiceLive.pipe(
+		Layer.provide(ConfigStoreLayer),
 		Layer.provide(NodeServices.layer),
 	);
 	const HarnessProviderLayer = HarnessProviderLive.pipe(
@@ -513,6 +516,8 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		// start resolves the user's native MCP servers through McpService.
 		Layer.provide(ConfigStoreLayer),
 		Layer.provide(McpLayer),
+		// Claude session start resolves the skills allowlist for disabled skills.
+		Layer.provide(SkillDiscoveryLayer),
 		Layer.provide(AnalyticsLayer),
 		Layer.provide(NodeServices.layer),
 	);
@@ -647,6 +652,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 
 	const SkillBridgeLayer = SkillBridgeLive.pipe(
 		Layer.provide(SkillDiscoveryLayer),
+		Layer.provide(ConfigStoreLayer),
 		Layer.provide(ConversationServicesLayer),
 		Layer.provide(WorkspaceLayer),
 	);
