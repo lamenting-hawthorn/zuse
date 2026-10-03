@@ -57,6 +57,7 @@ export const probeAcp = async (
 	methodId?: string,
 	onStderr?: (text: string) => void,
 	startupTimeoutMs = 30_000,
+	signal?: AbortSignal,
 ): Promise<AcpProbe> => {
 	const commands: Array<{ name: string; description: string }> = [];
 	let commandsArrived: (() => void) | undefined;
@@ -105,7 +106,11 @@ export const probeAcp = async (
 	);
 	let authMethods: AcpProbe["authMethods"] = [];
 	let loadSession = false;
+	// A cancelled sign-in must release the agent and its OAuth callback port.
+	const abort = () => process.close();
+	signal?.addEventListener("abort", abort, { once: true });
 	try {
+		if (signal?.aborted) throw new Error("Cancelled");
 		const request = (method: string, params: unknown) =>
 			process.rpc.request(method, params, {
 				timeoutMs: method === "authenticate" ? 180_000 : startupTimeoutMs,
@@ -166,6 +171,7 @@ export const probeAcp = async (
 			commands: [],
 		};
 	} finally {
+		signal?.removeEventListener("abort", abort);
 		process.close();
 	}
 };
@@ -302,9 +308,18 @@ export const makeAcpAgentStore = (
 		id: AcpProviderId,
 		methodId?: string,
 		onStderr?: (text: string) => void,
+		signal?: AbortSignal,
 	) => {
 		const snapshot = await get(id);
-		const result = await probe(await launch(id), directory, methodId, onStderr);
+		const result = await probe(
+			await launch(id),
+			directory,
+			methodId,
+			onStderr,
+			undefined,
+			signal,
+		);
+		if (signal?.aborted) throw new Error("Sign in cancelled");
 		await exclusive(async () => {
 			const entries = await read();
 			await write(
@@ -476,11 +491,14 @@ export const AcpAgentServiceLive = Layer.effect(
 	}),
 );
 export const acpOperation = <A>(
-	operation: (service: ReturnType<typeof makeAcpAgentStore>) => Promise<A>,
+	operation: (
+		service: ReturnType<typeof makeAcpAgentStore>,
+		signal: AbortSignal,
+	) => Promise<A>,
 ) =>
 	Effect.flatMap(AcpAgentService, (service) =>
 		Effect.tryPromise({
-			try: () => operation(service),
+			try: (signal) => operation(service, signal),
 			catch: (error) =>
 				new AcpOperationError({
 					message: error instanceof Error ? error.message : String(error),

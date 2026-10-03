@@ -8,7 +8,13 @@ export interface AcpLaunch {
 	readonly env?: Readonly<Record<string, string>>;
 }
 
-/** One process/connection per session; also used for short-lived discovery probes. */
+/** Bounds a stderr line when an agent never writes a newline. */
+const MAX_STDERR_LINE = 16_384;
+
+/**
+ * One process/connection per session; also used for short-lived discovery probes.
+ * `onStderr` receives complete lines so URLs split across chunks stay intact.
+ */
 export const launchAcpProcess = (
 	launch: AcpLaunch,
 	cwd: string,
@@ -89,9 +95,20 @@ export const launchAcpProcess = (
 		}
 	});
 	child.stderr.setEncoding("utf8");
+	let pendingLine = "";
 	child.stderr.on("data", (chunk: string) => {
 		stderr = (stderr + chunk).slice(-4096);
-		onStderr(chunk);
+		const lines = (pendingLine + chunk).split(/\r\n|\n|\r/);
+		pendingLine = lines.pop() ?? "";
+		if (pendingLine.length > MAX_STDERR_LINE) {
+			lines.push(pendingLine);
+			pendingLine = "";
+		}
+		for (const line of lines) onStderr(line);
+	});
+	child.stderr.on("end", () => {
+		if (pendingLine) onStderr(pendingLine);
+		pendingLine = "";
 	});
 	child.stdin.on("error", (error) => {
 		finish(error);

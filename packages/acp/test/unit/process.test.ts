@@ -48,4 +48,26 @@ describe("ACP process lifecycle", () => {
 		child.close();
 		expect(child.rpc.pendingCount).toBe(0);
 	});
+	it("delivers stderr as whole lines when a URL spans chunks", async () => {
+		const url = `https://accounts.google.com/o/oauth2/v2/auth?state=${"x".repeat(300)}`;
+		const lines: string[] = [];
+		const closed = new Promise<void>((resolve) => {
+			const child = launchAcpProcess(
+				{
+					command: process.execPath,
+					args: [
+						"-e",
+						`const u=${JSON.stringify(url)};process.stderr.write("Open "+u.slice(0,40));setTimeout(()=>process.stderr.write(u.slice(40)+"\\nlast"),20);`,
+					],
+				},
+				process.cwd(),
+				() => {},
+				() => resolve(),
+				(line) => lines.push(line),
+			);
+			setTimeout(() => child.close(), 2_000);
+		});
+		await closed;
+		expect(lines).toEqual([`Open ${url}`, "last"]);
+	});
 });

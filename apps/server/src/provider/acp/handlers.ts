@@ -120,11 +120,19 @@ export const AcpHandlers = Layer.mergeAll(
 					typeof AcpAuthenticationEvent.Type,
 					Cause.Done
 				>();
-				yield* acpOperation((service) =>
-					service.test(id, methodId, (text) => {
-						const url = extractProviderLoginUrl(text);
-						if (url) Queue.offerUnsafe(events, { _tag: "url", url });
-					}),
+				let lastUrl: string | undefined;
+				yield* acpOperation((service, signal) =>
+					service.test(
+						id,
+						methodId,
+						(line) => {
+							const url = extractProviderLoginUrl(line);
+							if (!url || url === lastUrl) return;
+							lastUrl = url;
+							Queue.offerUnsafe(events, { _tag: "url", url });
+						},
+						signal,
+					),
 				).pipe(
 					Effect.tap((result) =>
 						Effect.sync(() =>

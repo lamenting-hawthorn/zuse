@@ -13,7 +13,9 @@ import {
 } from "../lib/provider-status.ts";
 import { cn } from "../lib/utils.ts";
 import {
+	ACP_SIGN_IN_LABEL,
 	authenticateAcpAgent,
+	cancelAcpSignIn,
 	EMPTY_ACP_HOST,
 	loadAcpAgents,
 	loadAcpCatalog,
@@ -59,7 +61,10 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 		setDialog(null);
 	}, [environmentId]);
 	const busy = state.busy !== null;
-	const signingIn = state.terminal !== undefined || Boolean(state.authUrl);
+	const signingIn =
+		state.terminal !== undefined ||
+		Boolean(state.authUrl) ||
+		state.busy === ACP_SIGN_IN_LABEL;
 
 	return (
 		<>
@@ -107,8 +112,9 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 				)}
 				{signingIn && (
 					<div className="flex flex-col gap-2 px-3 py-2.5">
-						<div className="flex h-7 items-center justify-between gap-2">
-							<p className="text-[11px] text-muted-foreground">
+						<div className="flex h-7 items-center gap-2">
+							<Spinner className="size-3" />
+							<p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
 								Finish signing in on this host.
 							</p>
 							{state.authUrl && (
@@ -122,6 +128,14 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 									Open sign-in page
 								</Button>
 							)}
+							<Button
+								className="h-7"
+								size="sm"
+								variant="ghost"
+								onClick={() => cancelAcpSignIn(environmentId)}
+							>
+								Cancel
+							</Button>
 						</div>
 						{state.terminal && (
 							<div className="h-64 overflow-hidden rounded-md bg-muted/30">

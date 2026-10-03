@@ -81,14 +81,25 @@ export const loadAcpCatalog = async (host: string) => {
 	}
 };
 
+export const ACP_SIGN_IN_LABEL = "Waiting for sign in…";
+const signInOwners = new Map<string, StreamOperationOwner>();
+
+/** Stops a pending sign-in; the server closes the agent process with the stream. */
+export const cancelAcpSignIn = (host: string) => {
+	signInOwners.get(host)?.cancel();
+	signInOwners.delete(host);
+	update(host, { terminal: undefined, authUrl: null, busy: null });
+};
+
 export const authenticateAcpAgent = async (
 	host: string,
 	id: import("@zuse/contracts").AcpProviderId,
 	methodId: string,
 ) => {
 	if (useAcpAgentsStore.getState().hosts[host]?.busy) return;
-	update(host, { busy: "Waiting for sign in…", error: null, authUrl: null });
+	update(host, { busy: ACP_SIGN_IN_LABEL, error: null, authUrl: null });
 	const owner = new StreamOperationOwner();
+	signInOwners.set(host, owner);
 	await owner.run(
 		async () =>
 			(await runtimeOperationClient(host))["provider.acp.authenticate"]({
@@ -108,5 +119,8 @@ export const authenticateAcpAgent = async (
 		},
 		(error) => update(host, { error: formatError(error) }),
 	);
-	update(host, { busy: null });
+	// A cancelled attempt already reset state; a newer attempt owns it now.
+	if (signInOwners.get(host) !== owner) return;
+	signInOwners.delete(host);
+	update(host, { busy: null, terminal: undefined, authUrl: null });
 };
