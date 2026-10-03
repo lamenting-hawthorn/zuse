@@ -40,6 +40,11 @@ export const PluginConnection = Schema.Struct({
 	owner: Schema.Literals(["user", "organization"]),
 	state: Schema.Literals(["connecting", "connected", "needs-auth", "error"]),
 	createdAt: Schema.Number,
+	/** Off keeps the credentials but hides the plugin's tools from agents. */
+	enabled: Schema.Boolean.pipe(
+		Schema.withConstructorDefault(Effect.succeed(true)),
+		Schema.withDecodingDefaultType(Effect.succeed(true)),
+	),
 });
 export type PluginConnection = typeof PluginConnection.Type;
 
@@ -107,6 +112,12 @@ export const PluginRequest = Schema.Union([
 		action: Schema.Literal("disconnect"),
 		tenantId: Schema.String,
 		connectionId: Schema.String,
+	}),
+	Schema.Struct({
+		action: Schema.Literal("setEnabled"),
+		tenantId: Schema.String,
+		connectionId: Schema.String,
+		enabled: Schema.Boolean,
 	}),
 ]);
 export type PluginRequest = typeof PluginRequest.Type;

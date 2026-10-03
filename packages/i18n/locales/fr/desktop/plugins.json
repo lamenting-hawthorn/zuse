@@ -43,5 +43,21 @@
 	"plugins_access_value": "Lecture et écriture, selon les autorisations de chaque discussion",
 	"plugins_connections": "Connexions",
 	"plugins_connected_on": "Connecté le {{date}}",
-	"plugins_privacy": "Les connexions sont privées à votre compte Zuse. Les jetons restent chiffrés sur les serveurs Zuse et n'atteignent jamais les machines des agents. La déconnexion arrête immédiatement les nouveaux appels."
+	"plugins_privacy": "Les connexions sont privées à votre compte Zuse. Les jetons restent chiffrés sur les serveurs Zuse et n'atteignent jamais les machines des agents. La déconnexion arrête immédiatement les nouveaux appels.",
+	"plugins_settings_subtitle": "Activez ou désactivez les plugins, serveurs MCP et compétences de vos agents.",
+	"plugins_settings_tab_plugins": "Plugins",
+	"plugins_settings_tab_mcps": "MCP",
+	"plugins_settings_tab_skills": "Compétences",
+	"plugins_settings_search": "Rechercher",
+	"plugins_settings_browse": "Parcourir les plugins",
+	"plugins_settings_add": "Ajouter",
+	"plugins_settings_add_plugin": "Connecter un plugin",
+	"plugins_settings_add_mcp": "Ajouter un serveur MCP",
+	"plugins_settings_toggle_failed": "Impossible de mettre à jour {{name}}. Réessayez.",
+	"plugins_skills_none": "Aucune compétence trouvée.",
+	"plugins_skills_load_failed": "Impossible de charger les compétences.",
+	"plugins_skills_always_on": "Toujours actif",
+	"plugins_skills_personal": "Personnel",
+	"plugins_skills_project": "Projet",
+	"plugins_skills_codex_note": "Les réglages Codex sont enregistrés dans la configuration de Codex et s'appliquent aussi en dehors de Zuse."
 }

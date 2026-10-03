@@ -43,5 +43,21 @@
 	"plugins_access_value": "読み取りと書き込み（各チャットの権限の範囲内）",
 	"plugins_connections": "接続",
 	"plugins_connected_on": "{{date}} に接続",
-	"plugins_privacy": "接続はあなたの Zuse アカウント専用です。トークンは Zuse のサーバーで暗号化されたまま保存され、エージェントのマシンには渡りません。接続を解除すると新しい呼び出しはすぐに停止します。"
+	"plugins_privacy": "接続はあなたの Zuse アカウント専用です。トークンは Zuse のサーバーで暗号化されたまま保存され、エージェントのマシンには渡りません。接続を解除すると新しい呼び出しはすぐに停止します。",
+	"plugins_settings_subtitle": "エージェントのプラグイン、MCP サーバー、スキルのオン・オフを切り替えます。",
+	"plugins_settings_tab_plugins": "プラグイン",
+	"plugins_settings_tab_mcps": "MCP",
+	"plugins_settings_tab_skills": "スキル",
+	"plugins_settings_search": "検索",
+	"plugins_settings_browse": "プラグインを探す",
+	"plugins_settings_add": "追加",
+	"plugins_settings_add_plugin": "プラグインを接続",
+	"plugins_settings_add_mcp": "MCP サーバーを追加",
+	"plugins_settings_toggle_failed": "{{name}} を更新できませんでした。もう一度お試しください。",
+	"plugins_skills_none": "スキルが見つかりません。",
+	"plugins_skills_load_failed": "スキルを読み込めませんでした。",
+	"plugins_skills_always_on": "常にオン",
+	"plugins_skills_personal": "個人",
+	"plugins_skills_project": "プロジェクト",
+	"plugins_skills_codex_note": "Codex の切り替えは Codex 自体の設定に保存されるため、Zuse の外でも適用されます。"
 }

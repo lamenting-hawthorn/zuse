@@ -43,5 +43,21 @@
 	"plugins_access_value": "读取和写入，受每个聊天的权限限制",
 	"plugins_connections": "连接",
 	"plugins_connected_on": "连接于 {{date}}",
-	"plugins_privacy": "连接仅属于你的 Zuse 账户。令牌在 Zuse 服务器上加密保存，绝不会传到智能体所在的机器。断开连接会立即停止新的调用。"
+	"plugins_privacy": "连接仅属于你的 Zuse 账户。令牌在 Zuse 服务器上加密保存，绝不会传到智能体所在的机器。断开连接会立即停止新的调用。",
+	"plugins_settings_subtitle": "为你的智能体开启或关闭插件、MCP 服务器和技能。",
+	"plugins_settings_tab_plugins": "插件",
+	"plugins_settings_tab_mcps": "MCP",
+	"plugins_settings_tab_skills": "技能",
+	"plugins_settings_search": "搜索",
+	"plugins_settings_browse": "浏览插件",
+	"plugins_settings_add": "添加",
+	"plugins_settings_add_plugin": "连接插件",
+	"plugins_settings_add_mcp": "添加 MCP 服务器",
+	"plugins_settings_toggle_failed": "无法更新 {{name}}。请重试。",
+	"plugins_skills_none": "未找到技能。",
+	"plugins_skills_load_failed": "无法加载技能。",
+	"plugins_skills_always_on": "始终开启",
+	"plugins_skills_personal": "个人",
+	"plugins_skills_project": "项目",
+	"plugins_skills_codex_note": "Codex 的开关保存在 Codex 自身的配置中，因此在 Zuse 之外也会生效。"
 }

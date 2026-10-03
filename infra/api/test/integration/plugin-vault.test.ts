@@ -222,6 +222,21 @@ test("persists across Worker restarts and isolates subjects and tenants", async 
 		expect((await a.request(command)).body.id).toBe(connected.body.id);
 		const search = await a.request(undefined, { action: "search", query: "" });
 		expect(search.body).toHaveLength(1);
+		// Turning a connection off hides its tools without dropping credentials.
+		const connectionId = connected.body.connectionId;
+		expect(
+			(
+				await a.request({
+					action: "setEnabled",
+					connectionId,
+					enabled: false,
+				})
+			).status,
+		).toBe(200);
+		expect(
+			(await a.request(undefined, { action: "search", query: "" })).body,
+		).toEqual([]);
+		await a.request({ action: "setEnabled", connectionId, enabled: true });
 		// The plugin id matches every tool, whatever the tool is called.
 		expect(
 			(await a.request(undefined, { action: "search", query: "cloudflare" }))

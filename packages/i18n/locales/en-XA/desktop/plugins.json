@@ -43,5 +43,21 @@
 	"plugins_access_value": "⟦Rëëààd àànd wrïïtëë, wïïthïïn ëëààch chààt's pëërmïïssïïôôns⟧",
 	"plugins_connections": "⟦Côônnëëctïïôôns⟧",
 	"plugins_connected_on": "⟦Côônnëëctëëd {{date}}⟧",
-	"plugins_privacy": "⟦Côônnëëctïïôôns ààrëë prïïvààtëë tôô yôôüür Züüsëë ààccôôüünt. Tôôkëëns stàày ëëncryptëëd ôôn Züüsëë sëërvëërs àànd nëëvëër rëëààch ààgëënt mààchïïnëës. Dïïscôônnëëctïïng stôôps nëëw cààlls ïïmmëëdïïààtëëly.⟧"
+	"plugins_privacy": "⟦Côônnëëctïïôôns ààrëë prïïvààtëë tôô yôôüür Züüsëë ààccôôüünt. Tôôkëëns stàày ëëncryptëëd ôôn Züüsëë sëërvëërs àànd nëëvëër rëëààch ààgëënt mààchïïnëës. Dïïscôônnëëctïïng stôôps nëëw cààlls ïïmmëëdïïààtëëly.⟧",
+	"plugins_settings_subtitle": "⟦Tüürn plüügïïns, MCP sëërvëërs, àànd skïïlls ôôn ôôr ôôff fôôr yôôüür ààgëënts.⟧",
+	"plugins_settings_tab_plugins": "⟦Plüügïïns⟧",
+	"plugins_settings_tab_mcps": "⟦MCPs⟧",
+	"plugins_settings_tab_skills": "⟦Skïïlls⟧",
+	"plugins_settings_search": "⟦Sëëààrch⟧",
+	"plugins_settings_browse": "⟦Brôôwsëë plüügïïns⟧",
+	"plugins_settings_add": "⟦ÀÀdd⟧",
+	"plugins_settings_add_plugin": "⟦Côônnëëct àà plüügïïn⟧",
+	"plugins_settings_add_mcp": "⟦ÀÀdd MCP sëërvëër⟧",
+	"plugins_settings_toggle_failed": "⟦Côôüüldn't üüpdààtëë {{name}}. Try ààgààïïn.⟧",
+	"plugins_skills_none": "⟦Nôô skïïlls fôôüünd.⟧",
+	"plugins_skills_load_failed": "⟦Côôüüldn't lôôààd skïïlls.⟧",
+	"plugins_skills_always_on": "⟦ÀÀlwààys ôôn⟧",
+	"plugins_skills_personal": "⟦Pëërsôônààl⟧",
+	"plugins_skills_project": "⟦Prôôjëëct⟧",
+	"plugins_skills_codex_note": "⟦Côôdëëx tôôgglëës ààrëë sààvëëd ïïn Côôdëëx's ôôwn côônfïïg, sôô thëëy ààlsôô ààpply ôôüütsïïdëë Züüsëë.⟧"
 }

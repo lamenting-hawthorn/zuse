@@ -645,6 +645,16 @@ const executeSessionCommand: ClientCommandExecutor<MemoizeClient> = {
 					client["mcp.setEnabled"](payload as never),
 				);
 				break;
+			case "skill.listGlobal":
+				result = await Effect.runPromise(
+					client["skill.listGlobal"](payload as never),
+				);
+				break;
+			case "skill.setEnabled":
+				result = await Effect.runPromise(
+					client["skill.setEnabled"](payload as never),
+				);
+				break;
 			case "session.goal.set":
 				result = await Effect.runPromise(
 					client["session.goal.set"](payload as never),

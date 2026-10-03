@@ -21,7 +21,9 @@ let inflight: {
 const connectedOf = (snapshot: PluginSnapshot): readonly ConnectedPlugin[] => {
 	const ids = new Set(
 		snapshot.connections
-			.filter((connection) => connection.state === "connected")
+			.filter(
+				(connection) => connection.state === "connected" && connection.enabled,
+			)
 			.map((connection) => connection.pluginId),
 	);
 	return snapshot.catalog

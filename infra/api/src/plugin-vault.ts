@@ -226,6 +226,17 @@ export class PluginVault {
 			await this.ctx.storage.delete(prefix + row.id);
 			return { kind: "ok" };
 		}
+		if (input.action === "setEnabled") {
+			const row = await this.ctx.storage.get<PluginConnection>(
+				prefix + input.connectionId,
+			);
+			if (!row) throw new Error("Connection not found");
+			await this.ctx.storage.put(prefix + row.id, {
+				...row,
+				enabled: input.enabled,
+			});
+			return { kind: "ok" };
+		}
 		if (input.action === "connect") {
 			const id = `c${input.requestId.replaceAll("-", "")}`;
 			if (
@@ -262,6 +273,7 @@ export class PluginVault {
 				label: a.label,
 				owner: "user",
 				state: "connecting",
+				enabled: true,
 				createdAt: Date.now(),
 			});
 			try {
@@ -488,7 +500,10 @@ export class PluginVault {
 		const rows = await this.ctx.storage.list<PluginConnection>({
 			prefix: `connection:${identity.subject}:`,
 		});
-		const connected = [...rows.values()].filter((r) => r.state === "connected");
+		// Rows from before the flag existed have no `enabled` and stay on.
+		const connected = [...rows.values()].filter(
+			(r) => r.state === "connected" && r.enabled !== false,
+		);
 		const prefix = (row: PluginConnection) =>
 			`tools.${row.pluginId}.user.${row.id}.`;
 		if (input.action === "search") {

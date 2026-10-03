@@ -43,5 +43,21 @@
 	"plugins_access_value": "讀取和寫入，受每個聊天的權限限制",
 	"plugins_connections": "連接",
 	"plugins_connected_on": "連接於 {{date}}",
-	"plugins_privacy": "連接僅屬於你的 Zuse 帳號。權杖在 Zuse 伺服器上加密保存，絕不會傳到代理程式所在的機器。中斷連接會立即停止新的呼叫。"
+	"plugins_privacy": "連接僅屬於你的 Zuse 帳號。權杖在 Zuse 伺服器上加密保存，絕不會傳到代理程式所在的機器。中斷連接會立即停止新的呼叫。",
+	"plugins_settings_subtitle": "為你的代理程式開啟或關閉外掛程式、MCP 伺服器和技能。",
+	"plugins_settings_tab_plugins": "外掛程式",
+	"plugins_settings_tab_mcps": "MCP",
+	"plugins_settings_tab_skills": "技能",
+	"plugins_settings_search": "搜尋",
+	"plugins_settings_browse": "瀏覽外掛程式",
+	"plugins_settings_add": "新增",
+	"plugins_settings_add_plugin": "連接外掛程式",
+	"plugins_settings_add_mcp": "新增 MCP 伺服器",
+	"plugins_settings_toggle_failed": "無法更新 {{name}}。請再試一次。",
+	"plugins_skills_none": "找不到技能。",
+	"plugins_skills_load_failed": "無法載入技能。",
+	"plugins_skills_always_on": "永遠開啟",
+	"plugins_skills_personal": "個人",
+	"plugins_skills_project": "專案",
+	"plugins_skills_codex_note": "Codex 的開關儲存在 Codex 本身的設定中，因此在 Zuse 之外也會生效。"
 }

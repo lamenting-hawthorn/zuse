@@ -43,5 +43,21 @@
 	"plugins_access_value": "Read and write, within each chat's permissions",
 	"plugins_connections": "Connections",
 	"plugins_connected_on": "Connected {{date}}",
-	"plugins_privacy": "Connections are private to your Zuse account. Tokens stay encrypted on Zuse servers and never reach agent machines. Disconnecting stops new calls immediately."
+	"plugins_privacy": "Connections are private to your Zuse account. Tokens stay encrypted on Zuse servers and never reach agent machines. Disconnecting stops new calls immediately.",
+	"plugins_settings_subtitle": "Turn plugins, MCP servers, and skills on or off for your agents.",
+	"plugins_settings_tab_plugins": "Plugins",
+	"plugins_settings_tab_mcps": "MCPs",
+	"plugins_settings_tab_skills": "Skills",
+	"plugins_settings_search": "Search",
+	"plugins_settings_browse": "Browse plugins",
+	"plugins_settings_add": "Add",
+	"plugins_settings_add_plugin": "Connect a plugin",
+	"plugins_settings_add_mcp": "Add MCP server",
+	"plugins_settings_toggle_failed": "Couldn't update {{name}}. Try again.",
+	"plugins_skills_none": "No skills found.",
+	"plugins_skills_load_failed": "Couldn't load skills.",
+	"plugins_skills_always_on": "Always on",
+	"plugins_skills_personal": "Personal",
+	"plugins_skills_project": "Project",
+	"plugins_skills_codex_note": "Codex toggles are saved in Codex's own config, so they also apply outside Zuse."
 }

@@ -43,5 +43,21 @@
 	"plugins_access_value": "Lesen und Schreiben, im Rahmen der Berechtigungen jedes Chats",
 	"plugins_connections": "Verbindungen",
 	"plugins_connected_on": "Verbunden am {{date}}",
-	"plugins_privacy": "Verbindungen sind privat für dein Zuse-Konto. Tokens bleiben verschlüsselt auf Zuse-Servern und erreichen nie Agent-Rechner. Trennen stoppt neue Aufrufe sofort."
+	"plugins_privacy": "Verbindungen sind privat für dein Zuse-Konto. Tokens bleiben verschlüsselt auf Zuse-Servern und erreichen nie Agent-Rechner. Trennen stoppt neue Aufrufe sofort.",
+	"plugins_settings_subtitle": "Schalte Plugins, MCP-Server und Skills für deine Agenten ein oder aus.",
+	"plugins_settings_tab_plugins": "Plugins",
+	"plugins_settings_tab_mcps": "MCPs",
+	"plugins_settings_tab_skills": "Skills",
+	"plugins_settings_search": "Suchen",
+	"plugins_settings_browse": "Plugins durchsuchen",
+	"plugins_settings_add": "Hinzufügen",
+	"plugins_settings_add_plugin": "Plugin verbinden",
+	"plugins_settings_add_mcp": "MCP-Server hinzufügen",
+	"plugins_settings_toggle_failed": "{{name}} konnte nicht aktualisiert werden. Versuche es erneut.",
+	"plugins_skills_none": "Keine Skills gefunden.",
+	"plugins_skills_load_failed": "Skills konnten nicht geladen werden.",
+	"plugins_skills_always_on": "Immer an",
+	"plugins_skills_personal": "Persönlich",
+	"plugins_skills_project": "Projekt",
+	"plugins_skills_codex_note": "Codex-Schalter werden in der Codex-Konfiguration gespeichert und gelten auch außerhalb von Zuse."
 }
