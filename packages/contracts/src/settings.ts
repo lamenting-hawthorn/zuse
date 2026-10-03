@@ -285,7 +285,25 @@ export const WorkspaceSettingsValues = SettingsPatch.mapFields(
 		"branchNamingPrefix",
 		"mergePrefs",
 	]),
-);
+).mapFields((fields) => ({
+	...fields,
+	// Persisted account preferences must survive additions to the provider catalog.
+	defaultModelByProvider: Schema.optional(
+		Schema.Record(ProviderId, Schema.optionalKey(Schema.String)),
+	),
+	providerEnabled: Schema.optional(
+		Schema.Record(ProviderId, Schema.optionalKey(Schema.Boolean)),
+	),
+	modelEnabledByProvider: Schema.optional(
+		Schema.Record(
+			ProviderId,
+			Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
+		),
+	),
+	customModelIdsByProvider: Schema.optional(
+		Schema.Record(ProviderId, Schema.optionalKey(Schema.Array(Schema.String))),
+	),
+}));
 export type WorkspaceSettingsValues = typeof WorkspaceSettingsValues.Type;
 
 export const WorkspaceSettings = Schema.Struct({
