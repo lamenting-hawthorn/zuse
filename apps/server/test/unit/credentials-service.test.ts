@@ -43,7 +43,7 @@ describe("CredentialsService", () => {
 					secret: "provider-secret",
 				});
 				yield* credentials.setIntegration(
-					"linear",
+					"example",
 					"workspace-1",
 					"integration-secret",
 				);
@@ -51,7 +51,7 @@ describe("CredentialsService", () => {
 					configured: yield* credentials.listConfigured(),
 					provider: yield* credentials.getProviderCredential("claude"),
 					integration: yield* credentials.getIntegration(
-						"linear",
+						"example",
 						"workspace-1",
 					),
 				};

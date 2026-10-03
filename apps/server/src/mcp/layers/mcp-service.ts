@@ -4,7 +4,6 @@ import {
 	getDefaultDeviceCommandClient,
 } from "@zuse/agents/drivers/device-command-tools";
 import { IMAGE_MCP_TOOLS } from "@zuse/agents/drivers/image-mcp-tools";
-import { LINEAR_MCP_TOOLS } from "@zuse/agents/drivers/linear-tools";
 import { ORCHESTRATION_MCP_TOOLS } from "@zuse/agents/drivers/orchestration-tools";
 import { mcpGatewayDiagnostics } from "@zuse/agents/mcp-gateway";
 import { probeMcpServer } from "@zuse/agents/user-mcp/probe";
@@ -142,7 +141,6 @@ const BUILTIN_TOOL_NAMES = [
 	...BROWSER_MCP_TOOLS.map((tool) => tool.name),
 	...IMAGE_MCP_TOOLS.map((tool) => tool.name),
 	...ORCHESTRATION_MCP_TOOLS.map((tool) => tool.name),
-	...LINEAR_MCP_TOOLS.map((tool) => tool.name),
 ];
 
 const placeholderStatus = (

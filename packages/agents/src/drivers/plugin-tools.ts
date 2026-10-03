@@ -1,7 +1,7 @@
 import { PluginToolRequest } from "@zuse/contracts";
 import { Schema } from "effect";
 import { getToolPolicy } from "../kernel/policy.ts";
-import type { LinearPermissionOptions } from "./linear-tools.ts";
+import type { OrchestrationPermissionOptions } from "./orchestration-tools.ts";
 
 export interface PluginClient {
 	request(input: PluginToolRequest): Promise<unknown>;
@@ -16,12 +16,13 @@ export const setDefaultPluginClientFactory = (
 export const getDefaultPluginClient = () =>
 	factory?.() ?? Promise.resolve(undefined);
 export { PLUGIN_MCP_TOOLS as PLUGIN_TOOLS } from "@zuse/contracts";
+export type PluginPermissionOptions = OrchestrationPermissionOptions;
 
 export const handlePluginTool = async (
 	name: string,
 	args: Record<string, unknown>,
 	client: PluginClient,
-	permissions: LinearPermissionOptions,
+	permissions: PluginPermissionOptions,
 ) => {
 	const action =
 		name === "plugins_search"

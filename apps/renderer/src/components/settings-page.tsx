@@ -92,7 +92,6 @@ import { DevicesPane } from "./settings/devices-pane.tsx";
 import { DiagnosticsPane as FullDiagnosticsPane } from "./settings/diagnostics-pane.tsx";
 import { HostedDevicesPane } from "./settings/hosted-devices-pane.tsx";
 import { KeybindingsPane } from "./settings/keybindings-editor.tsx";
-import { LinearIntegrationsPane } from "./settings/linear-integrations-pane.tsx";
 import { OrganizationSharingPane } from "./settings/organization-sharing-pane.tsx";
 import { OrganizationsPane } from "./settings/organizations-pane.tsx";
 import { PokedexPane } from "./settings/pokedex-pane.tsx";
@@ -399,13 +398,6 @@ function SectionTitle({
 				subtitle: "Choose how new chats start.",
 			};
 		}
-		if (section.kind === "integrations") {
-			return {
-				title: uiMessage("settings:settings_page_integrations"),
-				subtitle:
-					"Connect issue workspaces and bring tickets into new sessions.",
-			};
-		}
 		if (section.kind === "plugins") {
 			return {
 				title: uiMessage("plugins:plugins_title"),
@@ -531,7 +523,6 @@ function Pane({ section }: { section: SettingsSection }) {
 	if (section.kind === "defaults") return <DefaultModelsPane />;
 	if (section.kind === "providers")
 		return isHostedProduct() ? <CloudWorkspacePool /> : <ProvidersPane />;
-	if (section.kind === "integrations") return <LinearIntegrationsPane />;
 	if (section.kind === "plugins")
 		return <PluginsSettingsPane initialTab={section.tab} />;
 	if (section.kind === "devices")

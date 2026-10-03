@@ -117,7 +117,7 @@ export const uploadAttachment = async (
 };
 
 /** Read an attachment's bytes back from the environment that stores it. */
-export const readAttachment = async (
+const readAttachment = async (
 	ref: SessionRef,
 	id: string,
 ): Promise<

@@ -1,4 +1,3 @@
-import type { LinearToolDeps } from "@zuse/agents/drivers/linear-tools";
 import {
 	type AgentTurnId,
 	type AttachmentRef,
@@ -74,7 +73,6 @@ export interface ProviderSessionRuntimeOptions {
 		status: Session["status"],
 	) => Effect.Effect<void>;
 	readonly startSubscription: (sessionId: SessionId) => Effect.Effect<void>;
-	readonly linearTools?: LinearToolDeps;
 }
 
 export const makeProviderSessionRuntime = (
@@ -100,7 +98,6 @@ export const makeProviderSessionRuntime = (
 		attachProvider,
 		setStatus,
 		startSubscription,
-		linearTools,
 	} = options;
 	const openProviderSession = (
 		session: Session,
@@ -148,7 +145,6 @@ export const makeProviderSessionRuntime = (
 					listMessages,
 					listChats,
 					listSessions,
-					linearTools,
 				},
 				{
 					sessionId: session.id,

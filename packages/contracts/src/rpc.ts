@@ -194,13 +194,6 @@ import {
 	KeybindingsStreamRpc,
 } from "./keybindings.ts";
 import {
-	LinearConnectRpc,
-	LinearDisconnectRpc,
-	LinearListConnectionsRpc,
-	LinearListIssuesRpc,
-	LinearPrepareContextRpc,
-} from "./linear.ts";
-import {
 	AccountAccessConfigureCustomRpc,
 	AccountAccessDisconnectRpc,
 	AccountAccessSetCredentialRpc,
@@ -424,11 +417,6 @@ export const MemoizeRpcs = RpcGroup.make(
 	AuthSignInRpc,
 	AuthSignOutRpc,
 	AuthSessionChangesRpc,
-	LinearListConnectionsRpc,
-	LinearConnectRpc,
-	LinearDisconnectRpc,
-	LinearListIssuesRpc,
-	LinearPrepareContextRpc,
 	PairingStartRpc,
 	PairingListTokensRpc,
 	PairingRevokeTokenRpc,

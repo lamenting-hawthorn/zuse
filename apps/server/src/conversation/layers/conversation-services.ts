@@ -1,4 +1,3 @@
-import type { LinearToolDeps } from "@zuse/agents/drivers/linear-tools";
 import {
 	type ChatId,
 	type FolderId,
@@ -14,11 +13,10 @@ import { SessionDomain } from "@zuse/domain/engine/session-domain";
 import { SqlSessionQueries } from "@zuse/domain/queries/sql-session-queries";
 import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
-import { DateTime, Effect, FileSystem, Layer, Option } from "effect";
+import { DateTime, Effect, FileSystem, Layer } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { ApiActivityPublisher } from "../../api/activity-publisher.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
-import { LinearService } from "../../linear/services/linear-service.ts";
 import { ModelCatalogService } from "../../model-catalog/services/model-catalog-service.ts";
 import { NdjsonLogger } from "../../persistence/ndjson-logger.ts";
 import { makeReactorEffectJournal } from "../../provider/reactor-effect-journal.ts";
@@ -142,41 +140,6 @@ const ConversationRuntimeLive = Layer.effect(
 		// browser-bridge tool binding in ProviderService.
 		const runtime = yield* Effect.context<never>();
 		const apiActivity = yield* ApiActivityPublisher;
-		const linear = yield* Effect.serviceOption(LinearService);
-		const settleLinear = <A>(
-			effect: Effect.Effect<A, { readonly reason: string }>,
-		) =>
-			Effect.runPromiseWith(runtime)(
-				effect.pipe(
-					Effect.map((data) => ({ ok: true as const, data })),
-					Effect.catch((error) =>
-						Effect.succeed({ ok: false as const, error: error.reason }),
-					),
-				),
-			);
-		const linearTools: LinearToolDeps | undefined = Option.match(linear, {
-			onNone: () => undefined,
-			onSome: (service) => ({
-				searchIssues: (input) =>
-					settleLinear(
-						service.listIssues({
-							query: input.query,
-							workspaceIds:
-								input.workspaceId === undefined
-									? undefined
-									: [input.workspaceId],
-						}),
-					),
-				getIssue: (input) =>
-					settleLinear(service.getIssueForTool(input.workspaceId, input.issue)),
-				addComment: (input) =>
-					settleLinear(
-						service.addComment(input.workspaceId, input.issue, input.body),
-					),
-				updateIssue: (input) => settleLinear(service.updateIssue(input)),
-			}),
-		});
-
 		const chatColumns = yield* sql<{ readonly name: string }>`
       PRAGMA table_info(chats)
     `.pipe(Effect.orDie);
@@ -283,7 +246,6 @@ const ConversationRuntimeLive = Layer.effect(
 			closeProvider,
 			interruptProviderFiber,
 			teardownSubscription,
-			linearTools,
 		});
 		const {
 			listSessions,

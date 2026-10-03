@@ -140,9 +140,10 @@ through its session gateway, so users do not copy URLs or tokens.
 Plugins is a main page reached from the sidebar, below New chat and New
 project. It contains the searchable catalog and connection management. OAuth
 returns are redeemed automatically (no confirmation click) and reported with a
-toast. The workspace-specific Linear ticket integration stays in Settings →
-Integrations. Account data is loaded through the control-plane RPC, not
-through the currently selected workspace.
+toast. Linear is provided only as a managed plugin; the former per-computer
+Linear integration (Settings → Integrations) has been removed. Account data is
+loaded through the control-plane RPC, not through the currently selected
+workspace.
 
 The shared session gateway exposes `plugins_search`, `plugins_schema`, and
 `plugins_call`. Invocation follows Zuse's permission policy; plan mode blocks

@@ -38,9 +38,10 @@ describe("auth callback page", () => {
 		expect(page).not.toContain("Admitted");
 	});
 
-	it("stamps the Linear flow instead of ticketing it", () => {
+	it("stamps the plugin flow instead of ticketing it", () => {
 		const page = renderAuthCallbackPage({
-			flow: "linear",
+			flow: "plugin",
+			integration: "Linear",
 			nowMs,
 			outcome: "success",
 		});
@@ -66,7 +67,8 @@ describe("auth callback page", () => {
 	it("clamps runaway provider messages", () => {
 		const page = renderAuthCallbackPage({
 			detail: "x".repeat(400),
-			flow: "linear",
+			flow: "plugin",
+			integration: "Linear",
 			nowMs,
 			outcome: "error",
 		});
@@ -78,7 +80,12 @@ describe("auth callback page", () => {
 	it("stays self-contained and theme aware", () => {
 		for (const page of [
 			renderAuthCallbackPage({ flow: "account", nowMs, outcome: "success" }),
-			renderAuthCallbackPage({ flow: "linear", nowMs, outcome: "success" }),
+			renderAuthCallbackPage({
+				flow: "plugin",
+				integration: "Linear",
+				nowMs,
+				outcome: "success",
+			}),
 			renderNotFoundPage(),
 		]) {
 			expect(page).not.toMatch(/(?:src|href)="https?:/u);
@@ -89,7 +96,7 @@ describe("auth callback page", () => {
 
 	it("runs only the hashed, offline dither script", () => {
 		const csp = AUTH_CALLBACK_PAGE_HEADERS["content-security-policy"] ?? "";
-		for (const flow of ["account", "linear", "plugin"] as const) {
+		for (const flow of ["account", "plugin"] as const) {
 			const scripts = [
 				...renderAuthCallbackPage({ flow, nowMs, outcome: "success" }).matchAll(
 					/<script>([\s\S]*?)<\/script>/gu,

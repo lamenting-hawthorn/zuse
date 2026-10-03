@@ -56,7 +56,6 @@ import {
 	LanAuthConfig,
 	LanAuthService,
 } from "./lan-auth/services/lan-auth-service.ts";
-import { LinearServiceLive } from "./linear/layers/linear-service.ts";
 import { MachineControlServiceLive } from "./machine/machine-control-service.ts";
 import {
 	MachineHostServiceLive,
@@ -560,13 +559,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(EnrolledLanAuthLayer),
 	);
 
-	const LinearLayer = LinearServiceLive.pipe(
-		Layer.provide(CredentialsLayer),
-		Layer.provide(AuthShellLayer),
-		Layer.provide(AttachmentLayer),
-		Layer.provide(MigratedSqlite),
-		Layer.provide(NodeServices.layer),
-	);
 	const MachineControlLayer = MachineControlServiceLive.pipe(
 		Layer.provide(AuthLayer),
 		Layer.provide(MachineRuntimeRoleLayer),
@@ -605,7 +597,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(ConfigStoreLayer),
 		Layer.provide(TitleGeneratorLayer),
 		Layer.provide(ApiActivityPublisherLayer),
-		Layer.provide(LinearLayer),
 		Layer.provide(ProjectorCatchup),
 		Layer.provide(SessionDomainLayer),
 		Layer.provide(ChatDomainLayer),
@@ -740,7 +731,6 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		EnrolledLanAuthLayer,
 		ApiLinkLayer,
 		ExternalThreadLayer,
-		LinearLayer,
 		ModelConnectionsLayer,
 		MachineControlLayer,
 		MachineHostLayer,

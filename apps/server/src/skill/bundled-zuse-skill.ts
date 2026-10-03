@@ -75,9 +75,9 @@ a fresh isolated worktree by default. Retrieve handoff context with
 
 Prefer \`--input-json\` or \`--input-json @request.json\` for automation and
 \`--idempotency-key\` for retryable creation. Context options are repeatable
-\`--attach\` images, project-relative \`--file\` references, and \`--linear\`
-issue context. \`--transcript <session-id>\` and \`--plan <session-id>\` save
-and attach Markdown handoff context to create, send, and queue commands. Modes use
+\`--attach\` images and project-relative \`--file\` references.
+\`--transcript <session-id>\` and \`--plan <session-id>\` save and attach
+Markdown handoff context to create, send, and queue commands. Modes use
 \`--permission default|plan|accept-edits\` and
 \`--runtime approval-required|auto-accept-edits|auto-accept-edits-and-bash|full-access\`.
 

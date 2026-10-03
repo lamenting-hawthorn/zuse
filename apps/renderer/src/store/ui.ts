@@ -35,7 +35,6 @@ export type SettingsSection =
 	| { readonly kind: "general" }
 	| { readonly kind: "defaults" }
 	| { readonly kind: "providers" }
-	| { readonly kind: "integrations" }
 	| { readonly kind: "plugins"; readonly tab?: PluginsSettingsTab }
 	| { readonly kind: "devices" }
 	| { readonly kind: "organizations" }

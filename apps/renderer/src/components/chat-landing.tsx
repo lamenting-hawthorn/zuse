@@ -20,7 +20,6 @@ import {
 	type SessionRef,
 } from "@zuse/client-runtime/resource-ref";
 import {
-	type AttachmentRef,
 	type ChatId,
 	type ChatWorkspacePolicy,
 	type CloudAccountImage,
@@ -33,9 +32,6 @@ import {
 	EnvironmentId,
 	type ExternalThread,
 	type FolderId,
-	type LinearContextFile,
-	type LinearContextWarning,
-	type LinearIssueSummary,
 	type MessageId,
 	type ProviderId,
 	type SessionId,
@@ -74,14 +70,12 @@ import type {
 	PendingDraftAttachment,
 	PendingDraftContextFile,
 } from "~/composer/draft-attachments";
-import { applyPreparedLinearContext } from "~/composer/linear-context-input";
 import {
 	finalizeStartupInputWhenReady,
 	releaseDraftAttachmentPreviews,
 	StartupInputError,
 	type StartupInputOptions,
 	startupInputNeedsPreparation,
-	startupTargetNotReady,
 } from "~/composer/startup-input";
 import {
 	cacheAttachmentPreview,
@@ -108,17 +102,9 @@ import {
 } from "~/lib/cloud-workspaces.ts";
 import { runCloudControl } from "~/lib/control-plane-client.ts";
 import { useActiveEnvironmentEntities } from "~/lib/environment-entity-hooks.ts";
-import {
-	dispatchEnvironmentShellCommand,
-	useEnvironmentShellCatalog,
-} from "~/lib/environment-shell-client-bus";
+import { useEnvironmentShellCatalog } from "~/lib/environment-shell-client-bus";
 import { formatError } from "~/lib/format-error";
 import { dispatchGitWorkspaceCommand } from "~/lib/git-workspace-client-bus";
-import {
-	linearContextTransferIo,
-	type PreparedLinearContext,
-	transferLinearContext,
-} from "~/lib/linear-cloud-context";
 import { newChatPreferences } from "~/lib/new-chat-preferences";
 import {
 	captureNewChatLanding,
@@ -393,10 +379,6 @@ function WorkspaceChatLanding({
 		readonly issue: {
 			readonly markdown: string;
 			readonly title: string;
-		} | null;
-		readonly linear: {
-			readonly issues: ReadonlyArray<LinearIssueSummary>;
-			readonly mode: "combined" | "separate";
 		} | null;
 	} | null>(null);
 	const [creatingSource, setCreatingSource] = useState(false);
@@ -918,25 +900,6 @@ function WorkspaceChatLanding({
 	): Promise<void> => {
 		if (selectedFolderId === null || creatingSource) return;
 		setSubmitError(null);
-		if (sel.kind === "linear") {
-			const identifiers = sel.issues
-				.map((issue) => issue.identifier)
-				.join(", ");
-			setCreateSource({
-				kind: "linear",
-				selection: sel,
-				worktreeId: null,
-				label: identifiers,
-				issue: null,
-				linear: { issues: sel.issues, mode: sel.mode },
-			});
-			const generated =
-				sel.mode === "combined"
-					? `Implement ${identifiers} together in one pull request. Work through every selected ticket and verify the combined result.`
-					: `Implement each selected Linear ticket in its own session and pull request. Verify each ticket before completing it.`;
-			useComposerBridge.getState().insertText?.(generated);
-			return;
-		}
 		if (sel.kind === "issue") {
 			try {
 				const { result: res } = await dispatchGitWorkspaceCommand<
@@ -962,7 +925,6 @@ function WorkspaceChatLanding({
 					worktreeId: null,
 					label: `#${sel.number}`,
 					issue: { markdown: res.markdown, title: res.title || sel.title },
-					linear: null,
 				});
 				// Prefill the composer with an editable default the user can rewrite.
 				const insert = useComposerBridge.getState().insertText;
@@ -986,7 +948,6 @@ function WorkspaceChatLanding({
 				worktreeId: null,
 				label,
 				issue: null,
-				linear: null,
 			});
 			return;
 		}
@@ -997,7 +958,6 @@ function WorkspaceChatLanding({
 				worktreeId: sel.existingWorktreeId,
 				label,
 				issue: null,
-				linear: null,
 			});
 			return;
 		}
@@ -1022,130 +982,8 @@ function WorkspaceChatLanding({
 			worktreeId: wt.id,
 			label,
 			issue: null,
-			linear: null,
 		});
 	};
-
-	// Linear credentials live on this computer, so context is always rendered
-	// here — into the session's own workspace for a local chat, into the local
-	// checkout for a cloud one (from where it is copied to the sandbox).
-	const fetchLinearContext = async (
-		sessionId: SessionId,
-		issues: ReadonlyArray<LinearIssueSummary>,
-		rootPath?: string,
-	): Promise<PreparedLinearContext> =>
-		(
-			await dispatchEnvironmentShellCommand<
-				{
-					readonly sessionId: SessionId;
-					readonly issues: ReadonlyArray<{
-						readonly workspaceId: string;
-						readonly issueId: string;
-						readonly identifier: string;
-					}>;
-					readonly rootPath?: string;
-				},
-				{
-					readonly files: ReadonlyArray<LinearContextFile>;
-					readonly attachments: ReadonlyArray<AttachmentRef>;
-					readonly warnings: ReadonlyArray<LinearContextWarning>;
-				}
-			>({
-				environmentId: EnvironmentId.make(activeEnvironmentId),
-				kind: "linear.prepareContext",
-				commandId: CommandId.make(`linear-context:${crypto.randomUUID()}`),
-				payload: {
-					sessionId,
-					issues: issues.map((issue) => ({
-						workspaceId: issue.workspaceId,
-						issueId: issue.issueId,
-						identifier: issue.identifier,
-					})),
-					...(rootPath === undefined ? {} : { rootPath }),
-				},
-			})
-		).result;
-
-	const warnAboutLinearContext = (
-		warnings: ReadonlyArray<LinearContextWarning>,
-	): void => {
-		if (warnings.length === 0) return;
-		toastManager.add({
-			type: "error",
-			get title() {
-				return uiMessage(
-					"chat:chat_landing_some_linear_context_was_incomplete",
-				);
-			},
-			description: warnings.map((warning) => warning.message).join(" · "),
-		});
-	};
-
-	const prepareLinearInput = async (
-		sessionId: SessionId,
-		issues: ReadonlyArray<LinearIssueSummary>,
-		input: ComposerInput,
-	): Promise<ComposerInput> => {
-		const prepared = await fetchLinearContext(sessionId, issues);
-		warnAboutLinearContext(prepared.warnings);
-		return applyPreparedLinearContext(input, prepared);
-	};
-
-	// Cloud variant: render against the local checkout under the draft session,
-	// then copy the Markdown and images into the sandbox's own workspace.
-	const prepareLinearInputForCloud = async (
-		target: SessionRef,
-		issues: ReadonlyArray<LinearIssueSummary>,
-		input: ComposerInput,
-	): Promise<ComposerInput> => {
-		if (selectedFolderId === null || selectedFolder === null) return input;
-		const local = {
-			environmentId: EnvironmentId.make(activeEnvironmentId),
-			sessionId: DRAFT_SESSION_ID,
-		};
-		const prepared = await fetchLinearContext(
-			DRAFT_SESSION_ID,
-			issues,
-			selectedFolder.path,
-		);
-		const transferred = await transferLinearContext(
-			prepared,
-			linearContextTransferIo({
-				source: {
-					environmentId: local.environmentId,
-					folderId: selectedFolderId,
-					worktreeId: null,
-					rootPath: selectedFolder.path,
-				},
-				sourceSession: local,
-				target,
-			}),
-		);
-		warnAboutLinearContext(transferred.warnings);
-		return applyPreparedLinearContext(input, transferred);
-	};
-
-	// Linear context is supporting material: a ticket that fails to render must
-	// not lose the message the user already sent.
-	const tolerantLinearPreparation =
-		(prepare: (input: ComposerInput) => Promise<ComposerInput>) =>
-		async (input: ComposerInput): Promise<ComposerInput> => {
-			try {
-				return await prepare(input);
-			} catch (error) {
-				if (startupTargetNotReady(error)) throw error;
-				toastManager.add({
-					type: "error",
-					get title() {
-						return uiMessage(
-							"chat:chat_landing_linear_context_could_not_be_fully_prepared",
-						);
-					},
-					description: error instanceof Error ? error.message : String(error),
-				});
-				return input;
-			}
-		};
 
 	// Driven by the real ChatComposer (draft mode): it hands back the parsed
 	// input (file refs / attachments / skills / annotations intact) and whether
@@ -1222,12 +1060,6 @@ function WorkspaceChatLanding({
 				);
 				return;
 			}
-			if (createSource?.linear?.mode === "separate") {
-				setSubmitError(
-					"A cloud workspace per Linear ticket isn't supported yet. Turn off “Separate threads” to run the selected tickets in one cloud workspace.",
-				);
-				return;
-			}
 			// "Create from…" in the cloud picks the ref the sandbox checks out.
 			const launchSource = cloudLaunchRequestForSource(
 				createSource?.selection ?? null,
@@ -1296,22 +1128,8 @@ function WorkspaceChatLanding({
 					environmentId: EnvironmentId.make(summary.workspaceId),
 					sessionId: summary.initialSessionId,
 				};
-				const linearIssues =
-					createSource?.linear?.mode === "combined"
-						? createSource.linear.issues
-						: null;
 				const startupOptions: StartupInputOptions = {
 					issueMarkdown: createSource?.issue?.markdown ?? null,
-					prepareLinear:
-						linearIssues === null
-							? null
-							: tolerantLinearPreparation((current) =>
-									prepareLinearInputForCloud(
-										sandboxSession,
-										linearIssues,
-										current,
-									),
-								),
 					pendingContextFiles: opts.pendingContextFiles,
 					pendingAttachments: opts.pendingAttachments,
 				};
@@ -1533,145 +1351,19 @@ function WorkspaceChatLanding({
 		}
 		if (selectedFolderId === null) return;
 		const startupInput = ComposerInput.make({ ...input, asGoal: opts.asGoal });
-		const combinedLinearIssues =
-			createSource?.linear?.mode === "combined"
-				? createSource.linear.issues
-				: null;
-		const startupOptionsFor = (sessionId: SessionId): StartupInputOptions => ({
+		const startupOptions: StartupInputOptions = {
 			issueMarkdown: createSource?.issue?.markdown ?? null,
-			prepareLinear:
-				combinedLinearIssues === null
-					? null
-					: tolerantLinearPreparation((current) =>
-							prepareLinearInput(sessionId, combinedLinearIssues, current),
-						),
 			pendingContextFiles: opts.pendingContextFiles,
 			pendingAttachments: opts.pendingAttachments,
-		});
-		// The draft session stands in for the not-yet-created one: what matters
-		// here is only whether the first message references bytes at all.
-		const startupNeedsPreparation = startupInputNeedsPreparation(
-			startupOptionsFor(DRAFT_SESSION_ID),
-		);
+		};
+		const startupNeedsPreparation =
+			startupInputNeedsPreparation(startupOptions);
 		setSubmitError(null);
 		opts.accept();
 		setSubmitting(true);
 		setPendingPrompt(
 			input.text.trim().length > 0 ? input.text.trim() : "New chat",
 		);
-		if (
-			createSource?.linear?.mode === "separate" &&
-			createSource.linear.issues.length > 0
-		) {
-			const issues = createSource.linear.issues;
-			const successes: Array<{
-				chatId: ChatId;
-				sessionId: SessionId;
-			}> = [];
-			const failures: string[] = [];
-			let cursor = 0;
-			const launchOne = async (issue: LinearIssueSummary) => {
-				const result = await create(
-					selectedFolderId,
-					draft.providerId,
-					draft.model,
-					{
-						title: `${issue.identifier} ${issue.title}`,
-						preserveFocus: true,
-						runtimeMode: draft.runtimeMode,
-						permissionMode: draft.permissionMode,
-						workspacePolicy: workspacePolicyForMode(workspaceMode),
-						workspaceRequested: workspaceMode === "worktree",
-						startupInput,
-						startupReady: false,
-					},
-				);
-				if (result === null) {
-					failures.push(`${issue.identifier}: couldn't create session`);
-					return;
-				}
-				migrateModelOptions(
-					EnvironmentId.make(activeEnvironmentId),
-					DRAFT_SESSION_ID,
-					result.initialSessionId,
-				);
-				const startupQueueId = result.startupQueueId;
-				successes.push({
-					chatId: result.chatId,
-					sessionId: result.initialSessionId,
-				});
-				try {
-					const ticketInput = await finalizeStartupInputWhenReady(
-						startupInput,
-						{
-							ref: {
-								environmentId: EnvironmentId.make(activeEnvironmentId),
-								sessionId: result.initialSessionId,
-							},
-							uploadRoot: null,
-						},
-						{
-							issueMarkdown: null,
-							prepareLinear: (current) =>
-								prepareLinearInput(result.initialSessionId, [issue], current),
-							pendingContextFiles: opts.pendingContextFiles,
-							pendingAttachments: opts.pendingAttachments,
-						},
-					);
-					if (startupQueueId !== null) {
-						await updateQueuedMessage(
-							{
-								environmentId: EnvironmentId.make(activeEnvironmentId),
-								sessionId: result.initialSessionId,
-							},
-							startupQueueId,
-							ticketInput,
-						);
-					}
-				} catch (error) {
-					failures.push(
-						`${issue.identifier}: ${error instanceof Error ? error.message : String(error)}`,
-					);
-				}
-			};
-			const workers = Array.from(
-				{ length: Math.min(3, issues.length) },
-				async () => {
-					while (cursor < issues.length) {
-						const issue = issues[cursor++];
-						if (issue !== undefined) await launchOne(issue);
-					}
-				},
-			);
-			await Promise.all(workers);
-			releaseDraftAttachmentPreviews(opts.pendingAttachments);
-			if (failures.length > 0) {
-				toastManager.add({
-					type: "error",
-					title: uiMessage("chat:chat_landing_linear_session_failed", {
-						length: String(failures.length),
-						count: failures.length,
-					}),
-					description: failures.join(" · "),
-				});
-			}
-			const first = successes[0];
-			if (first === undefined) {
-				setSubmitError("Couldn't start any of the selected Linear tickets.");
-				setSubmitting(false);
-				return;
-			}
-			if (ownsLanding()) {
-				useChatsStore.getState().select(first.chatId);
-				useSessionsStore.getState().select(first.sessionId);
-			} else {
-				resetStaleCompletion();
-				return;
-			}
-			setCreateSource(null);
-			useSessionsStore.getState().clearDraft(draftRevision);
-			return;
-		}
 		// A "Create from…" PR/branch already checked out (or reused) a worktree —
 		// pin the chat to it. Otherwise honor the explicit composer workspace.
 		const workspacePolicy: ChatWorkspacePolicy =
@@ -1713,7 +1405,7 @@ function WorkspaceChatLanding({
 			sessionId,
 		);
 		// Everything the first message referenced — the "Create from…" issue body,
-		// Linear context, pasted text, dropped files — is written into the chat's
+		// pasted text, dropped files — is written into the chat's
 		// real cwd once it exists, so the agent reads it from its own workspace.
 		let finalInput = startupInput;
 		try {
@@ -1726,7 +1418,7 @@ function WorkspaceChatLanding({
 					},
 					uploadRoot: null,
 				},
-				startupOptionsFor(sessionId),
+				startupOptions,
 			);
 		} catch (err) {
 			console.error("[chat-landing] startup input preparation failed", err);
@@ -1888,55 +1580,7 @@ function WorkspaceChatLanding({
 								<div className="flex min-w-0 items-center gap-1.5">
 									{createSource !== null && (
 										<span className="flex min-w-0 items-center gap-1 overflow-x-auto">
-											{createSource.linear !== null ? (
-												createSource.linear.issues.map((issue) => (
-													<span
-														key={`${issue.workspaceId}:${issue.issueId}`}
-														className="flex shrink-0 items-center gap-1 rounded-md bg-muted/60 py-1 pl-2 pr-1 text-[11px] text-muted-foreground"
-													>
-														<span>{issue.identifier}</span>
-														<button
-															type="button"
-															aria-label={uiMessage(
-																"chat:chat_landing_remove",
-																{ value1: String(issue.identifier) },
-															)}
-															onClick={() =>
-																setCreateSource((current) => {
-																	if (
-																		current?.linear === null ||
-																		current === null
-																	)
-																		return current;
-																	const issues = current.linear.issues.filter(
-																		(candidate) =>
-																			candidate.workspaceId !==
-																				issue.workspaceId ||
-																			candidate.issueId !== issue.issueId,
-																	);
-																	return issues.length === 0
-																		? null
-																		: {
-																				...current,
-																				label: issues
-																					.map(
-																						(candidate) => candidate.identifier,
-																					)
-																					.join(", "),
-																				linear: {
-																					...current.linear,
-																					issues,
-																				},
-																			};
-																})
-															}
-															className="rounded p-0.5 hover:bg-muted hover:text-foreground"
-														>
-															<X className="size-3" strokeWidth={2} />
-														</button>
-													</span>
-												))
-											) : createSource.kind === "issue" ? (
+											{createSource.kind === "issue" ? (
 												<span>
 													{uiMessage(
 														"chat:chat_landing_issueattached_sentence",
@@ -1948,18 +1592,16 @@ function WorkspaceChatLanding({
 													{createSource.label}
 												</span>
 											)}
-											{createSource.linear === null && (
-												<button
-													type="button"
-													onClick={() => setCreateSource(null)}
-													aria-label={uiMessage(
-														"chat:chat_landing_clear_create_from_source",
-													)}
-													className="shrink-0 rounded p-0.5 hover:bg-muted hover:text-foreground"
-												>
-													<X className="size-3" strokeWidth={2} />
-												</button>
-											)}
+											<button
+												type="button"
+												onClick={() => setCreateSource(null)}
+												aria-label={uiMessage(
+													"chat:chat_landing_clear_create_from_source",
+												)}
+												className="shrink-0 rounded p-0.5 hover:bg-muted hover:text-foreground"
+											>
+												<X className="size-3" strokeWidth={2} />
+											</button>
 										</span>
 									)}
 									{creatingSource && (

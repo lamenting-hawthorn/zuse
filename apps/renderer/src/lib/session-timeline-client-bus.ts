@@ -815,31 +815,6 @@ const executeSessionCommand: ClientCommandExecutor<MemoizeClient> = {
 					client["git.listIssues"](payload as never),
 				);
 				break;
-			case "linear.listConnections":
-				result = await Effect.runPromise(
-					client["linear.listConnections"](payload as never),
-				);
-				break;
-			case "linear.listIssues":
-				result = await Effect.runPromise(
-					client["linear.listIssues"](payload as never),
-				);
-				break;
-			case "linear.connect":
-				result = await Effect.runPromise(
-					client["linear.connect"](payload as never),
-				);
-				break;
-			case "linear.disconnect":
-				result = await Effect.runPromise(
-					client["linear.disconnect"](payload as never),
-				);
-				break;
-			case "linear.prepareContext":
-				result = await Effect.runPromise(
-					client["linear.prepareContext"](payload as never),
-				);
-				break;
 			case "workspace.searchFiles":
 				result = await Effect.runPromise(
 					client["workspace.searchFiles"](payload as never),

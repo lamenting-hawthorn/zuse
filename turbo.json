@@ -13,7 +13,6 @@
 			// changing either id busts stale build output.
 			"env": [
 				"WORKOS_CLIENT_ID",
-				"LINEAR_CLIENT_ID",
 				"NODE_ENV",
 				"NEXT_PUBLIC_POSTHOG_KEY",
 				"NEXT_PUBLIC_POSTHOG_HOST",

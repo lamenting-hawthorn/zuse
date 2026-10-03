@@ -26,7 +26,6 @@ export * from "./host.ts";
 export * from "./ids.ts";
 export * from "./keybindings.ts";
 export * from "./keybindings-parse.ts";
-export * from "./linear.ts";
 export type {
 	DesktopLocale,
 	LocaleBridge,

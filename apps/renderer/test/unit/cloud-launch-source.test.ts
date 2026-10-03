@@ -10,12 +10,8 @@ describe("cloud launch source", () => {
 		});
 	});
 
-	it("keeps issue and Linear sources on the default branch", () => {
+	it("keeps issue sources on the default branch", () => {
 		expect(cloudLaunchRequestForSource({ kind: "issue" }, "trunk")).toEqual({
-			ok: true,
-			ref: { baseRef: "origin/trunk" },
-		});
-		expect(cloudLaunchRequestForSource({ kind: "linear" }, "trunk")).toEqual({
 			ok: true,
 			ref: { baseRef: "origin/trunk" },
 		});

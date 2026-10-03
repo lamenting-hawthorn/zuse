@@ -13,8 +13,7 @@ export type CloudLaunchSourceSelection =
 			isCrossRepository: boolean;
 	  }>
 	| Readonly<{ kind: "branch"; branch: string; remote: string | null }>
-	| Readonly<{ kind: "issue" }>
-	| Readonly<{ kind: "linear" }>;
+	| Readonly<{ kind: "issue" }>;
 
 export type CloudLaunchRef = Readonly<{
 	baseRef: string;
@@ -37,11 +36,7 @@ export const cloudLaunchRequestForSource = (
 	selection: CloudLaunchSourceSelection | null,
 	defaultBranch: string,
 ): CloudLaunchRequestResult => {
-	if (
-		selection === null ||
-		selection.kind === "issue" ||
-		selection.kind === "linear"
-	)
+	if (selection === null || selection.kind === "issue")
 		return { ok: true, ref: { baseRef: `origin/${defaultBranch}` } };
 	if (selection.kind === "pr") {
 		if (selection.isCrossRepository) {

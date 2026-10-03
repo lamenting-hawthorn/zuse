@@ -70,7 +70,7 @@ not promised capabilities of every driver.
 | Other drivers | `packages/agents/src/drivers/{opencode,opencode2,pi}.ts` | No use of the shared gateway found in this inspection; explicit adapter work and live verification required. |
 | Account and runtime authentication | `infra/api/src/auth.ts`, `infra/api/src/workos.ts`, `infra/api/src/cloud-workspace-runtime-fence.ts` | Derive identity from authenticated principals; reuse runtime ownership/revocation fences. |
 | Hosted persistence and secret encryption | `infra/api/drizzle/schema.ts`, `infra/api/src/api-sealing.ts`, `infra/api/src/slack/persistence.ts` | Reuse hosted SQL and encryption conventions, without coupling plugin connections to Slack installation records. |
-| Existing Linear integration | `apps/server/src/linear/layers/linear-service.ts`, `apps/renderer/src/components/settings/linear-integrations-pane.tsx` | Preserve ticket workflows; eventually route managed Linear credentials through one shared connection source. |
+| Former Linear integration | Removed. | The per-computer Linear OAuth integration, its "Create from → Linear" picker and its `linear_*` agent tools were removed; Linear is available only as a managed plugin. |
 | GitHub installation grants | `infra/api/src/cloud-github-app.ts` | Evaluate reuse for approved tools; do not silently broaden repository installation permissions or change the Git credential broker. |
 
 There is a documentation tension to resolve during implementation: the current MCP
@@ -421,10 +421,10 @@ with a managed API connector platform.
 
 ### 4. Existing integrations, rollout and operations
 
-Offer an explicit move/reconnect path for existing local Linear users. Route ticket
-features and tools through the shared managed connection once migrated, and avoid
-duplicate connection rows/tools. Do not upload existing Keychain credentials without
-an explicit migration action. Distinguish a Slack bot installation used to talk to
+The per-computer Linear integration has been removed; existing local Linear users
+reconnect through the managed Linear plugin. Their old local tokens are left
+untouched in the credential store and are never uploaded. Do not upload existing
+Keychain credentials without an explicit migration action. Distinguish a Slack bot installation used to talk to
 Zuse from a user's Slack data-access connection. Reuse GitHub installation grants
 only where identity/scopes match the requested plugin behavior.
 

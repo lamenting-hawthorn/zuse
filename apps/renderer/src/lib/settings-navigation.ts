@@ -61,14 +61,6 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 		section: { kind: "plugins" },
 	},
 	{
-		id: "integrations",
-		get label() {
-			return uiMessage("settings:settings_navigation_integrations");
-		},
-		Icon: PuzzleIcon,
-		section: { kind: "integrations" },
-	},
-	{
 		id: "devices",
 		get label() {
 			return uiMessage("settings:settings_navigation_remote_access");

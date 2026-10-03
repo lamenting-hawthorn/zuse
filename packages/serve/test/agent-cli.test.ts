@@ -48,7 +48,6 @@ describe("agent CLI", () => {
 		expect(manifest.contextOptions).toEqual([
 			"--attach",
 			"--file",
-			"--linear",
 			"--transcript",
 			"--plan",
 		]);

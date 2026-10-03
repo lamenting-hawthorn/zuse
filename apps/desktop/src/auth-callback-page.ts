@@ -23,7 +23,7 @@ export const AUTH_CALLBACK_PAGE_HEADERS = browserPageHeaders([
 	DITHER_BACKGROUND_SCRIPT_SOURCE,
 ]);
 
-export type AuthCallbackFlow = "account" | "linear" | "plugin";
+export type AuthCallbackFlow = "account" | "plugin";
 export type AuthCallbackOutcome = "success" | "error";
 
 export interface AuthCallbackPageInput {
@@ -31,7 +31,7 @@ export interface AuthCallbackPageInput {
 	readonly outcome: AuthCallbackOutcome;
 	/** Provider `error_description`; rendered escaped and truncated. */
 	readonly detail?: string | undefined;
-	/** Integration display name for the stamp; defaults to Linear. */
+	/** Integration display name for the stamp; defaults to Plugin. */
 	readonly integration?: string | undefined;
 	/** Injectable clock so the rendered reference is testable. */
 	readonly nowMs?: number;
@@ -405,7 +405,7 @@ export const renderAuthCallbackPage = (
 	const success = input.outcome === "success";
 	const isIntegration = input.flow !== "account";
 	const name =
-		input.integration?.trim().slice(0, INTEGRATION_NAME_MAX_LENGTH) || "Linear";
+		input.integration?.trim().slice(0, INTEGRATION_NAME_MAX_LENGTH) || "Plugin";
 	const artwork = isIntegration
 		? stamp({ date, detail, name, outcome: input.outcome, reference })
 		: ticket({ detail, issued, outcome: input.outcome, reference });

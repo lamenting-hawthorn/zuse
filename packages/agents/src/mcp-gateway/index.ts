@@ -27,14 +27,6 @@ import {
 	type ImageMcpToolOptions,
 } from "../drivers/image-mcp-tools.ts";
 import {
-	callLinearTool,
-	ensureLinearToolPermission,
-	isLinearToolName,
-	LINEAR_MCP_TOOLS,
-	type LinearPermissionOptions,
-	type LinearToolDeps,
-} from "../drivers/linear-tools.ts";
-import {
 	callOrchestrationTool,
 	ensureOrchestrationPermission,
 	isOrchestrationToolName,
@@ -46,6 +38,7 @@ import {
 	handlePluginTool,
 	PLUGIN_TOOLS,
 	type PluginClient,
+	type PluginPermissionOptions,
 } from "../drivers/plugin-tools.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -72,7 +65,7 @@ export interface AppMcpInteractionOptions {
 }
 
 export interface McpGatewaySessionContext {
-	readonly plugins?: LinearPermissionOptions & {
+	readonly plugins?: PluginPermissionOptions & {
 		readonly client: PluginClient;
 	};
 	readonly deviceCommands?: DeviceCommandClient;
@@ -81,7 +74,6 @@ export interface McpGatewaySessionContext {
 	readonly orchestration?: OrchestrationPermissionOptions & {
 		readonly deps: OrchestrationToolDeps;
 	};
-	readonly linear?: LinearPermissionOptions & { readonly deps: LinearToolDeps };
 	readonly images?: ImageMcpToolOptions;
 	readonly interaction?: AppMcpInteractionOptions;
 }
@@ -92,7 +84,6 @@ export interface McpGatewayIssueInput {
 		readonly browser: boolean;
 		readonly plugins?: boolean;
 		readonly orchestration: boolean;
-		readonly linear?: boolean;
 		readonly images?: boolean;
 		readonly deviceCommands?: boolean;
 		readonly interaction?: boolean;
@@ -131,7 +122,6 @@ interface RegistryRecord {
 		readonly browser: boolean;
 		readonly plugins?: boolean;
 		readonly orchestration: boolean;
-		readonly linear?: boolean;
 		readonly images?: boolean;
 		readonly deviceCommands?: boolean;
 		readonly interaction?: boolean;
@@ -320,9 +310,6 @@ const buildAppServer = (record: RegistryRecord): Server => {
 		...(record.scopes.orchestration && record.ctx.orchestration !== undefined
 			? ORCHESTRATION_MCP_TOOLS
 			: []),
-		...(record.scopes.linear && record.ctx.linear !== undefined
-			? LINEAR_MCP_TOOLS
-			: []),
 		...(record.scopes.images && record.ctx.images !== undefined
 			? IMAGE_MCP_TOOLS
 			: []),
@@ -385,12 +372,6 @@ const buildAppServer = (record: RegistryRecord): Server => {
 					name,
 					args,
 				);
-			}
-			if (isLinearToolName(name)) {
-				if (record.ctx.linear === undefined)
-					throw new Error("Connector unavailable");
-				await ensureLinearToolPermission(name, args, record.ctx.linear);
-				return await callLinearTool(record.ctx.linear.deps, name, args);
 			}
 			if (DEVICE_COMMAND_TOOLS.some((tool) => tool.name === name)) {
 				if (!record.scopes.deviceCommands || !record.ctx.deviceCommands)
