@@ -48,6 +48,8 @@ const violations = grep.stdout
 		const path = separator === -1 ? line : line.slice(0, separator);
 		return (
 			!isHistorical(path) &&
+			// Reproducible third-party bundle: upstream network terminology is not our API name.
+			path !== "packages/executor-v2/vendor/runtime.mjs" &&
 			forbiddenTerm.test(
 				removeInfrastructureExceptions(line.slice(separator + 1)),
 			)
