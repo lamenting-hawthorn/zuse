@@ -1,6 +1,6 @@
 import {
 	AgentItemId,
-	type AgentTurnId,
+	AgentTurnId,
 	type ProviderEventEnvelope,
 	SessionId,
 } from "@zuse/contracts";
@@ -23,6 +23,8 @@ describe("ConversationEventRuntime", () => {
 		providerId: () => Effect.succeed("claude" as const),
 		setStatus: () => Effect.void,
 		settleTurn,
+		beginProviderTurn: (_sessionId: SessionId, turnId: AgentTurnId) =>
+			Effect.succeed(turnId),
 		setResume: () => Effect.void,
 		setPermissionMode: () => Effect.void,
 		publishGoal: () => Effect.void,
@@ -139,5 +141,90 @@ describe("ConversationEventRuntime", () => {
 		);
 
 		expect(outcome).toEqual({ persisted: 0, activities: 0 });
+	});
+
+	const runProviderTurn = (
+		resolveStart: (turnId: AgentTurnId) => AgentTurnId,
+	) =>
+		Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const scope = yield* Effect.scope;
+					const providerTurn = AgentTurnId.make("turn_provider");
+					const itemId = AgentItemId.make("message-1");
+					const started = yield* Ref.make<ReadonlyArray<AgentTurnId>>([]);
+					const persisted = yield* Ref.make<ReadonlyArray<AgentTurnId>>([]);
+					const settled = yield* Ref.make<ReadonlyArray<AgentTurnId>>([]);
+					const done = yield* Deferred.make<void>();
+					const runtime = yield* makeConversationEventRuntime({
+						...options(
+							scope,
+							() =>
+								Stream.make<ReadonlyArray<ProviderEventEnvelope>>(
+									{
+										scope: "turn",
+										turnId: providerTurn,
+										event: { _tag: "ProviderTurnStarted" },
+									},
+									{
+										scope: "turn",
+										turnId: providerTurn,
+										event: { _tag: "AssistantMessage", itemId, text: "done" },
+									},
+									{
+										scope: "turn",
+										turnId: providerTurn,
+										event: { _tag: "Completed", reason: "ended" },
+									},
+								).pipe(
+									Stream.concat(
+										Stream.fromEffect(Deferred.succeed(done, undefined)).pipe(
+											Stream.drain,
+										),
+									),
+								),
+							(_sessionId, turnId) =>
+								Ref.update(settled, (turns) => [...turns, turnId]),
+						),
+						beginProviderTurn: (_sessionId, turnId) =>
+							Ref.update(started, (turns) => [...turns, turnId]).pipe(
+								Effect.as(resolveStart(turnId)),
+							),
+						persist: (_sessionId, turnId) =>
+							Ref.update(persisted, (turns) => [...turns, turnId]),
+					});
+					yield* runtime.start(SessionId.make("session-1"));
+					yield* Deferred.await(done);
+					yield* Effect.sleep(1);
+					return {
+						started: yield* Ref.get(started),
+						persisted: yield* Ref.get(persisted),
+						settled: yield* Ref.get(settled),
+					};
+				}),
+			),
+		);
+
+	test("durably starts and settles a turn the provider opened itself", async () => {
+		const outcome = await runProviderTurn((turnId) => turnId);
+
+		expect(outcome).toEqual({
+			started: ["turn_provider"],
+			persisted: ["turn_provider"],
+			settled: ["turn_provider"],
+		});
+	});
+
+	test("folds a provider turn into an application turn that won the race", async () => {
+		const outcome = await runProviderTurn(() =>
+			AgentTurnId.make("turn_application"),
+		);
+
+		// The application turn settles on its own terminal, not the provider's.
+		expect(outcome).toEqual({
+			started: ["turn_provider"],
+			persisted: ["turn_application"],
+			settled: [],
+		});
 	});
 });

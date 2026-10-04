@@ -597,6 +597,7 @@ export const makeConversationStoreRuntime = Effect.fn(
 				Effect.map((session) => session.providerId),
 			),
 		settleTurn,
+		beginProviderTurn: beginTurn,
 		setResume: (sessionId, cursor, strategy, providerEventCursor) =>
 			Effect.gen(function* () {
 				yield* dispatchSessionCommand(sessionId, {

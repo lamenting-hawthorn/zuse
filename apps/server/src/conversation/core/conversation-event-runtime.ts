@@ -40,6 +40,15 @@ export interface ConversationEventRuntimeOptions {
 		turnId: AgentTurnId,
 		outcome: "completed" | "interrupted" | "error",
 	) => Effect.Effect<void>;
+	/**
+	 * Durably starts a turn the provider opened on its own. Resolves to the
+	 * proposed id, or to the application turn that is already running when the
+	 * two raced (the kernel then adopts the provider turn into it).
+	 */
+	readonly beginProviderTurn: (
+		sessionId: SessionId,
+		turnId: AgentTurnId,
+	) => Effect.Effect<AgentTurnId>;
 	readonly setResume: (
 		sessionId: SessionId,
 		cursor: string,
@@ -150,6 +159,9 @@ export const makeConversationEventRuntime = Effect.fn(
 				const providerId = yield* options.providerId(sessionId);
 				const token = {};
 				let pendingProviderEventCursor: string | undefined;
+				// Provider-opened turns that lost the race to an application turn,
+				// mapped onto the application turn that absorbed their events.
+				const absorbedProviderTurns = new Map<AgentTurnId, AgentTurnId>();
 				const ready = yield* Deferred.make<void>();
 				const fiber = yield* Effect.forkIn(
 					Deferred.await(ready).pipe(
@@ -157,6 +169,23 @@ export const makeConversationEventRuntime = Effect.fn(
 							Stream.runForEach(options.events(sessionId), (envelope) =>
 								Effect.gen(function* () {
 									const event = envelope.event;
+									if (event._tag === "ProviderTurnStarted") {
+										if (envelope.scope !== "turn") return;
+										const started = yield* options.beginProviderTurn(
+											sessionId,
+											envelope.turnId,
+										);
+										if (started !== envelope.turnId) {
+											absorbedProviderTurns.set(envelope.turnId, started);
+										}
+										yield* options.publishApiActivity(sessionId, "running");
+										return;
+									}
+									const turnId =
+										envelope.scope === "turn"
+											? (absorbedProviderTurns.get(envelope.turnId) ??
+												envelope.turnId)
+											: undefined;
 									if (event._tag === "ProviderNotificationMetadata") {
 										pendingProviderEventCursor = event.eventId;
 										return;
@@ -168,18 +197,19 @@ export const makeConversationEventRuntime = Effect.fn(
 										return;
 									}
 									if (event._tag === "Completed") {
-										if (envelope.scope !== "turn") return;
+										if (envelope.scope !== "turn" || turnId === undefined)
+											return;
+										// An absorbed provider turn's terminal belongs to work the
+										// application turn has not delivered yet; that turn settles
+										// on its own terminal.
+										if (absorbedProviderTurns.delete(envelope.turnId)) return;
 										const outcome =
 											event.reason === "interrupted"
 												? "interrupted"
 												: event.reason === "error"
 													? "error"
 													: "completed";
-										yield* options.settleTurn(
-											sessionId,
-											envelope.turnId,
-											outcome,
-										);
+										yield* options.settleTurn(sessionId, turnId, outcome);
 										yield* options.publishApiActivity(
 											sessionId,
 											event.reason === "error" ? "error" : "completed",
@@ -227,7 +257,7 @@ export const makeConversationEventRuntime = Effect.fn(
 									) {
 										return;
 									}
-									if (envelope.scope !== "turn") return;
+									if (envelope.scope !== "turn" || turnId === undefined) return;
 									if (event._tag === "PermissionRequest") {
 										yield* options.publishApiActivity(
 											sessionId,
@@ -250,7 +280,7 @@ export const makeConversationEventRuntime = Effect.fn(
 									}
 									yield* options.persist(
 										sessionId,
-										envelope.turnId,
+										turnId,
 										content,
 										"itemId" in event && typeof event.itemId === "string"
 											? `${event._tag}:${event.itemId}`
