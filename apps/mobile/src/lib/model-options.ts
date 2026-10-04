@@ -7,6 +7,7 @@ import {
 	type PermissionMode,
 	PROVIDER_LABELS,
 	type ProviderId,
+	providerLabel,
 	type RuntimeMode,
 	type SelectOptionDescriptor,
 	selectableCatalogProviderIds,
@@ -78,7 +79,10 @@ export const PERMISSION_OPTIONS: readonly {
 export const providerOptions = (catalog: ModelCatalogView) =>
 	selectableCatalogProviderIds(catalog).map((providerId) => ({
 		value: providerId,
-		label: PROVIDER_LABEL[providerId],
+		label: providerLabel(
+			providerId,
+			catalog.providers[providerId]?.displayName,
+		),
 	}));
 
 export const modelOptionsForProvider = (

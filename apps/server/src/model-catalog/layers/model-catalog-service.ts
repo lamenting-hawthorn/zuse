@@ -639,7 +639,19 @@ export const ModelCatalogServiceLive = Layer.effect(
 		): Effect.Effect<ResolvedModelCatalog> =>
 			Effect.gen(function* () {
 				if (acpAgents._tag === "None") return catalog;
-				const definitions = yield* Effect.promise(() => acpAgents.value.list());
+				// An unreadable ACP store must not take built-in providers down with it.
+				const definitions = yield* Effect.tryPromise(() =>
+					acpAgents.value.list(),
+				).pipe(
+					Effect.catch((error) =>
+						Effect.as(
+							Effect.logWarning(
+								`[model-catalog] ACP agents unavailable: ${error}`,
+							),
+							[],
+						),
+					),
+				);
 				const providers = { ...catalog.providers };
 				for (const id of Object.keys(providers))
 					if (id.startsWith("acp-")) delete providers[id as `acp-${string}`];
@@ -685,7 +697,9 @@ export const ModelCatalogServiceLive = Layer.effect(
 				}
 				return { ...catalog, providers };
 			});
-		const currentRef = yield* Ref.make<ResolvedModelCatalog>(yield* compute());
+		const currentRef = yield* Ref.make<ResolvedModelCatalog>(
+			yield* withAcp(yield* compute()),
+		);
 		const hub = yield* PubSub.unbounded<ResolvedModelCatalog>();
 		const publish = (): Effect.Effect<ResolvedModelCatalog> =>
 			Effect.gen(function* () {
@@ -752,7 +766,7 @@ export const ModelCatalogServiceLive = Layer.effect(
 				Stream.unwrap(
 					Effect.gen(function* () {
 						const sub = yield* PubSub.subscribe(hub);
-						const cur = yield* Ref.get(currentRef);
+						const cur = yield* Effect.flatMap(Ref.get(currentRef), withAcp);
 						return Stream.concat(
 							Stream.make(cur),
 							Stream.fromSubscription(sub),

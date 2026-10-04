@@ -62,7 +62,16 @@ export const distributionFor = (
 	target = platformTarget(),
 ) => {
 	const binary = agent.distribution.binary?.[target];
-	if (binary) return { kind: "binary" as const, value: binary };
+	const windows = target.startsWith("windows-");
+	// Node refuses to spawn batch files without a shell, and agents never get one.
+	if (binary && !(windows && /\.(cmd|bat)$/i.test(binary.cmd)))
+		return {
+			kind: "binary" as const,
+			// Windows registry entries may use `\` in `cmd`; archive entries may not.
+			value: windows
+				? { ...binary, cmd: binary.cmd.replaceAll("\\", "/") }
+				: binary,
+		};
 	if (agent.distribution.npx)
 		return { kind: "npx" as const, value: agent.distribution.npx };
 	if (agent.distribution.uvx)
@@ -121,6 +130,8 @@ const downloadArchive = async (
 	const hash = createHash("sha256");
 	const out = createWriteStream(file, { mode: 0o600 });
 	const finished = once(out, "finish");
+	// The stream can fail while a read is pending; settle it until awaited below.
+	finished.catch(() => {});
 	let downloaded = 0;
 	try {
 		const reader = response.body.getReader();
@@ -219,6 +230,7 @@ const extractZip = async (file: string, directory: string) => {
 	unzip.register(UnzipInflate);
 	const writes: Promise<unknown>[] = [];
 	let current: ReturnType<typeof createWriteStream> | undefined;
+	const outputs: ReturnType<typeof createWriteStream>[] = [];
 	let failure: Error | undefined;
 	let written = 0;
 	unzip.onfile = (entry) => {
@@ -227,34 +239,42 @@ const extractZip = async (file: string, directory: string) => {
 			mode: 0o600,
 		});
 		current = out;
+		outputs.push(out);
 		writes.push(
 			finished(out).catch((error: Error) => {
 				failure ??= error;
 			}),
 		);
 		entry.ondata = (error, chunk, final) => {
+			// fflate reports errors (e.g. unsupported compression) without a chunk.
 			if (error) failure ??= error;
-			if (!chunk) return;
-			written += chunk.byteLength;
+			if (chunk) written += chunk.byteLength;
 			if (written > MAX_EXPANDED_BYTES)
 				failure ??= new Error("Expanded archive exceeds 1 GiB");
 			if (failure) {
 				out.destroy();
 				return;
 			}
-			out.write(chunk);
+			if (chunk) out.write(chunk);
 			if (final) out.end();
 		};
 		entry.start();
 	};
-	for await (const chunk of createReadStream(file)) {
-		unzip.push(chunk as Uint8Array);
+	try {
+		for await (const chunk of createReadStream(file)) {
+			unzip.push(chunk as Uint8Array);
+			if (failure) throw failure;
+			if (current?.writableNeedDrain) await once(current, "drain");
+		}
+		unzip.push(new Uint8Array(0), true);
 		if (failure) throw failure;
-		if (current?.writableNeedDrain) await once(current, "drain");
+		await Promise.all(writes);
+		if (failure) throw failure;
+	} catch (error) {
+		// Never leave a stream open: install runs inside the store's write lock.
+		for (const output of outputs) output.destroy();
+		throw error;
 	}
-	unzip.push(new Uint8Array(0), true);
-	await Promise.all(writes);
-	if (failure) throw failure;
 	for (const entry of entries) {
 		if (entry.name.endsWith("/")) continue;
 		await chmod(

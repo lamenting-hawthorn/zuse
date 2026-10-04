@@ -5,13 +5,17 @@ import {
 	Button as NativeButton,
 	Section,
 } from "@expo/ui/swift-ui";
-import type { PermissionMode, ProviderId, RuntimeMode } from "@zuse/contracts";
+import {
+	type PermissionMode,
+	type ProviderId,
+	providerLabel,
+	type RuntimeMode,
+} from "@zuse/contracts";
 
 import {
 	defaultModelOptions,
 	modelOptionsForProvider,
 	PERMISSION_OPTIONS,
-	PROVIDER_LABEL,
 	providerOptions,
 	RUNTIME_OPTIONS,
 	reasoningValueForModel,
@@ -618,4 +622,4 @@ const providerSystemImage = (providerId: ProviderId): string => {
 const sf = (name: string) => name as never;
 
 export const providerDisplayName = (providerId: ProviderId): string =>
-	PROVIDER_LABEL[providerId] ?? "ACP agent";
+	providerLabel(providerId);

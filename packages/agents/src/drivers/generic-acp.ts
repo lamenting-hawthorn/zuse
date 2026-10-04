@@ -327,7 +327,16 @@ export const startGenericAcpSession = Effect.fn("ACP.start")(function* (
 				emit({ _tag: "Interrupted" });
 				const generation = turnGeneration;
 				const timer = setTimeout(() => {
-					if (active && turnGeneration === generation) void stop();
+					if (!active || turnGeneration !== generation || closed) return;
+					// Report the forced stop like an unexpected close, so consumers
+					// see a terminal status instead of a silently ended session.
+					emit({
+						_tag: "Error",
+						message:
+							"The agent did not stop after being interrupted, so its process was ended.",
+					});
+					emit({ _tag: "Status", status: "error" });
+					void stop();
 				}, 5000);
 				timer.unref();
 			}),

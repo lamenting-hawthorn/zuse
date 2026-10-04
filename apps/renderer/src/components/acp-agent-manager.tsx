@@ -193,9 +193,13 @@ export function AcpAgentManager({ environmentId }: { environmentId: string }) {
 						t("settings:acp_agents_busy_saving"),
 						(client) => client["provider.acp.save"](input),
 					);
-					if (!result) return;
+					if (!result)
+						return (
+							useAcpAgentsStore.getState().hosts[environmentId]?.error ?? null
+						);
 					setDialog(null);
-					await testAcpAgent(environmentId, result.id);
+					void testAcpAgent(environmentId, result.id);
+					return null;
 				}}
 			/>
 		</>
@@ -637,7 +641,8 @@ function AcpCommandDialog({
 	agent?: AcpDefinition;
 	busy: boolean;
 	onClose: () => void;
-	save: (input: AcpDefinitionInput) => Promise<void>;
+	/** Resolves to the failure message when the agent was not saved. */
+	save: (input: AcpDefinitionInput) => Promise<string | null>;
 }) {
 	const { message: t } = useMessages(["common", "settings"]);
 	const [name, setName] = useState(agent?.name ?? "");
@@ -673,7 +678,7 @@ function AcpCommandDialog({
 				...(pairs.length > 0 || clearEnv
 					? { env: Object.fromEntries(pairs) }
 					: {}),
-			});
+			}).then(setError);
 		} catch (cause) {
 			setError(
 				cause instanceof UnclosedQuoteError

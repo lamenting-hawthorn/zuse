@@ -351,9 +351,11 @@ const handleRequest = (message) => {
 		}
 		update(
 			sessionId,
-			scenario === "hold" ? "Hello" : "Hello from deterministic provider.",
+			scenario === "hold" || scenario === "ignore-cancel"
+				? "Hello"
+				: "Hello from deterministic provider.",
 		);
-		if (scenario === "hold") {
+		if (scenario === "hold" || scenario === "ignore-cancel") {
 			pendingPrompts.set(id, sessionId);
 			report("prompt.held", { sessionId });
 			return;
@@ -375,6 +377,8 @@ const input = readline.createInterface({
 input.on("line", (line) => {
 	if (line.trim().length === 0) return;
 	const message = JSON.parse(line);
+	if (message.method === "session/cancel" && scenario === "ignore-cancel")
+		return;
 	if (message.method === "session/cancel") {
 		const pending = [...pendingPrompts.entries()].find(
 			(entry) => entry[1] === message.params?.sessionId,

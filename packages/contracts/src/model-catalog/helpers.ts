@@ -19,6 +19,7 @@ export type CatalogModel = ModelOption & { readonly available?: boolean };
 export interface ModelCatalogProviderView<
 	M extends CatalogModel = CatalogModel,
 > {
+	readonly displayName?: string;
 	readonly models: ReadonlyArray<M>;
 	readonly aliases: Readonly<Record<string, string>>;
 }

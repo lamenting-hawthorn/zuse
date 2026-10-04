@@ -43,8 +43,8 @@ const start = (cwd: string, scenario: string, cursor: string | null = null) =>
 		null,
 		cursor,
 	);
-const waitFor = async (condition: () => boolean) => {
-	for (let i = 0; i < 200; i++) {
+const waitFor = async (condition: () => boolean, timeoutMs = 2_000) => {
+	for (let i = 0; i < timeoutMs / 10; i++) {
 		if (condition()) return;
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
@@ -159,6 +159,43 @@ it("cancels an active prompt and returns to idle", async () => {
 		await rm(root, { recursive: true, force: true });
 	}
 });
+it("reports an error when the agent ignores an interrupt", async () => {
+	const root = await mkdtemp(join(tmpdir(), "generic-acp-"));
+	const events: ProviderDriverEvent[] = [];
+	try {
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const handle = yield* start(root, "ignore-cancel");
+					yield* Effect.addFinalizer(() => handle.close());
+					yield* Stream.runForEach(handle.events, (event) =>
+						Effect.sync(() => {
+							events.push(event);
+						}),
+					).pipe(Effect.forkScoped);
+					yield* handle.send("hold");
+					yield* Effect.promise(() =>
+						waitFor(() => events.some((e) => e._tag === "AssistantMessage")),
+					);
+					yield* handle.interrupt();
+					yield* Effect.promise(() =>
+						waitFor(
+							() =>
+								events.some((e) => e._tag === "Status" && e.status === "error"),
+							10_000,
+						),
+					);
+				}),
+			).pipe(Effect.provide(attachments)),
+		);
+		expect(events).toContainEqual({ _tag: "Interrupted" });
+		expect(events.some((e) => e._tag === "Status" && e.status === "idle")).toBe(
+			false,
+		);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+}, 15_000);
 it("surfaces failed resume without creating a replacement session", async () => {
 	const root = await mkdtemp(join(tmpdir(), "generic-acp-"));
 	try {

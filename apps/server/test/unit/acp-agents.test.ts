@@ -1,6 +1,13 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
@@ -35,6 +42,7 @@ const fixture = fileURLToPath(
 const secretStore = () => {
 	const values = new Map<string, string>();
 	return {
+		values,
 		get: async (id: string) => values.get(id) ?? null,
 		set: async (id: string, value: string) => {
 			values.set(id, value);
@@ -257,6 +265,110 @@ it("saves new installs before testing and verifies updates first", async () => {
 	expect(probes).toHaveLength(1);
 	expect(new Set(caches)).toEqual(new Set([join(root, "cache")]));
 });
+const fileInstaller = async (_agent: unknown, destination: string) => {
+	await mkdir(destination, { recursive: true });
+	await writeFile(join(destination, "agent"), "");
+	return {
+		command: join(destination, "agent"),
+		args: [],
+		env: { TOKEN: "secret" },
+	};
+};
+const readyProbe = async () => ({
+	status: "ready" as const,
+	message: "Connected",
+	authMethods: [],
+	models: [],
+	modes: [],
+	commands: [],
+	loadSession: true,
+});
+const fixtureCatalog = async () => ({
+	version: "1",
+	agents: [
+		{
+			id: "fixture",
+			name: "Fixture",
+			description: "",
+			version: "1.0.0",
+			distribution: {},
+		},
+	],
+});
+it("releases replaced credentials and installations", async () => {
+	const root = await directory();
+	const secrets = secretStore();
+	const store = makeAcpAgentStore(root, secrets, {
+		catalog: fixtureCatalog,
+		install: fileInstaller,
+		probe: readyProbe,
+	});
+	const installed = await store.install("fixture");
+	const first = dirname((await store.launch(installed.id)).command);
+	await store.install("fixture", installed.id);
+	const second = dirname((await store.launch(installed.id)).command);
+	expect(second).not.toBe(first);
+	await expect(stat(first)).rejects.toThrow();
+	expect(secrets.values.size).toBe(1);
+	await store.remove(installed.id);
+	expect(secrets.values.size).toBe(0);
+	await expect(
+		stat(join(root, "installations", installed.id)),
+	).rejects.toThrow();
+});
+it("keeps an installation that a duplicate still runs from", async () => {
+	const root = await directory();
+	const store = makeAcpAgentStore(root, secretStore(), {
+		catalog: fixtureCatalog,
+		install: fileInstaller,
+		probe: readyProbe,
+	});
+	const original = await store.install("fixture");
+	const copy = await store.duplicate(original.id);
+	await store.remove(original.id);
+	await expect(
+		stat((await store.launch(copy.id)).command),
+	).resolves.toBeDefined();
+});
+it("fails instead of hanging on an unsupported zip compression method", async () => {
+	const root = await directory();
+	const archive = zipSync(
+		{
+			agent: [
+				new TextEncoder().encode("binary"),
+				{ os: 3, attrs: 0o755 << 16 },
+			],
+		},
+		{ level: 0 },
+	);
+	// Rewrite the compression method (stored → 99) in the local and central headers.
+	const view = new DataView(archive.buffer);
+	for (let offset = 0; offset < archive.length - 4; offset++) {
+		const signature = view.getUint32(offset, true);
+		if (signature === 0x04034b50) view.setUint16(offset + 8, 99, true);
+		if (signature === 0x02014b50) view.setUint16(offset + 10, 99, true);
+	}
+	await expect(
+		installCatalogAgent(
+			{
+				id: "zip",
+				name: "Zip",
+				description: "",
+				version: "1",
+				distribution: {
+					binary: {
+						[platformTarget()]: {
+							archive: "https://example.com/agent.zip",
+							cmd: "./agent",
+						},
+					},
+				},
+			},
+			root,
+			async () => new Response(archive),
+		),
+	).rejects.toThrow();
+});
 it("discovers models, modes and commands and handles advertised authentication", async () => {
 	const root = await directory();
 	const launch = {
@@ -350,8 +462,14 @@ it("keeps helper executables runnable when extracting zip agents", async () => {
 		async () => new Response(archive),
 	);
 	expect(installed.command).toBe(join(root, "bin/agent"));
-	expect((await stat(join(root, "bin/helper"))).mode & 0o100).toBe(0o100);
-	expect((await stat(join(root, "README.md"))).mode & 0o111).toBe(0);
+	// Windows has no POSIX execute bits; there, extraction itself is the check.
+	if (process.platform !== "win32") {
+		expect((await stat(join(root, "bin/helper"))).mode & 0o100).toBe(0o100);
+		expect((await stat(join(root, "README.md"))).mode & 0o111).toBe(0);
+	} else {
+		await expect(stat(join(root, "bin/helper"))).resolves.toBeDefined();
+		await expect(stat(join(root, "README.md"))).resolves.toBeDefined();
+	}
 	await expect(stat(join(root, "download"))).rejects.toThrow();
 });
 it("reports missing package runners with a setup instruction", async () => {

@@ -325,7 +325,16 @@ export const ProviderServiceLive = Layer.effect(
 				if (refresh) yield* Cache.invalidate(availabilityCache, key);
 				const list = [
 					...(yield* Cache.get(availabilityCache, key)),
-					...(yield* Effect.promise(() => acpAgents.availability())),
+					...(yield* Effect.tryPromise(() => acpAgents.availability()).pipe(
+						Effect.catch((error) =>
+							Effect.as(
+								Effect.logWarning(
+									`[provider] ACP agent availability unavailable: ${error}`,
+								),
+								[],
+							),
+						),
+					)),
 				];
 				return Option.isSome(harness)
 					? [...list, yield* harness.value.availability()]

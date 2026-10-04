@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { type AcpLaunch, launchAcpProcess } from "@zuse/acp/process";
 import { AcpResponseError } from "@zuse/acp/rpc-client";
 import {
@@ -309,8 +309,39 @@ export const makeAcpAgentStore = (
 			if (input.env && credentialId)
 				await secrets.set(credentialId, JSON.stringify(input.env));
 			await write([...entries.filter((item) => item.id !== id), definition]);
+			await releaseReplaced(old, definition);
 			return publicDefinition(definition);
 		});
+	const installations = (id: AcpProviderId) =>
+		join(directory, "installations", id);
+	/** Best effort: a leftover file must never fail the user's operation. */
+	const discard = async (operation: Promise<unknown>) => {
+		try {
+			await operation;
+		} catch {
+			/* Already gone, or still in use by a running session. */
+		}
+	};
+	/** Deletes an installation unless a remaining agent (e.g. a duplicate) runs from it. */
+	const removeUnusedInstallation = async (path: string) => {
+		const inUse = (await read()).some(
+			(entry) => !relative(path, entry.command).startsWith(".."),
+		);
+		if (!inUse) await discard(rm(path, { recursive: true, force: true }));
+	};
+	/** Drops the secrets and files a replaced definition owned. */
+	const releaseReplaced = async (
+		old: StoredDefinition | undefined,
+		next: StoredDefinition,
+	) => {
+		if (!old) return;
+		const oldCredential = old.credentialId ?? old.id;
+		if (oldCredential !== (next.credentialId ?? next.id))
+			await discard(secrets.remove(oldCredential));
+		const previous = relative(installations(old.id), old.command).split(sep)[0];
+		if (previous && !previous.startsWith(".."))
+			await removeUnusedInstallation(join(installations(old.id), previous));
+	};
 	const test = async (
 		id: AcpProviderId,
 		methodId?: string,
@@ -365,6 +396,7 @@ export const makeAcpAgentStore = (
 				const entry = await get(id);
 				await write((await read()).filter((item) => item.id !== id));
 				await secrets.remove(entry.credentialId ?? id);
+				await removeUnusedInstallation(installations(id));
 			}),
 		catalog: async () =>
 			(await catalog(directory)).agents.map((agent) => ({
@@ -390,53 +422,60 @@ export const makeAcpAgentStore = (
 						"Update must use this agent's original catalog entry",
 					);
 				const id: AcpProviderId = existingId ?? `acp-${randomUUID()}`;
-				const destination = join(directory, "installations", id, randomUUID());
-				const prepared = await install(
-					agent,
-					destination,
-					fetch,
-					dependencies.resolveExecutable,
-					join(directory, "cache"),
-				);
-				if (old) {
-					const saved = await secrets.get(old.credentialId ?? old.id);
-					if (saved) {
-						const env = {
-							...Schema.decodeUnknownSync(Secrets)(JSON.parse(saved)),
-						};
-						delete env.npm_config_cache;
-						delete env.UV_CACHE_DIR;
-						prepared.env = { ...prepared.env, ...env };
+				const destination = join(installations(id), randomUUID());
+				try {
+					const prepared = await install(
+						agent,
+						destination,
+						fetch,
+						dependencies.resolveExecutable,
+						join(directory, "cache"),
+					);
+					if (old) {
+						const saved = await secrets.get(old.credentialId ?? old.id);
+						if (saved) {
+							const env = {
+								...Schema.decodeUnknownSync(Secrets)(JSON.parse(saved)),
+							};
+							delete env.npm_config_cache;
+							delete env.UV_CACHE_DIR;
+							prepared.env = { ...prepared.env, ...env };
+						}
 					}
+					// Updates must prove the new version works before replacing the old
+					// one. New agents are saved immediately and tested afterwards, so a
+					// slow first download does not hold the dialog or the store lock.
+					const result = old
+						? await probe(prepared, directory, undefined, undefined, 180_000)
+						: undefined;
+					if (result?.status === "error") throw new Error(result.message);
+					const credentialId = `${id}:${randomUUID()}`;
+					const entry: StoredDefinition = {
+						credentialId,
+						revision: randomUUID(),
+						id,
+						name: old?.name ?? agent.name,
+						command: prepared.command,
+						args: prepared.args,
+						enabled: old?.enabled ?? true,
+						envKeys: Object.keys(prepared.env),
+						catalogId,
+						version: agent.version,
+						...registryIcon(agent),
+						...(result ? { probe: result } : {}),
+					};
+					await secrets.set(credentialId, JSON.stringify(prepared.env));
+					await write([
+						...(await read()).filter((item) => item.id !== id),
+						entry,
+					]);
+					await releaseReplaced(old, entry);
+					return publicDefinition(entry);
+				} catch (error) {
+					// A failed install or update keeps nothing but the previous version.
+					await discard(rm(destination, { recursive: true, force: true }));
+					throw error;
 				}
-				// Updates must prove the new version works before replacing the old
-				// one. New agents are saved immediately and tested afterwards, so a
-				// slow first download does not hold the dialog or the store lock.
-				const result = old
-					? await probe(prepared, directory, undefined, undefined, 180_000)
-					: undefined;
-				if (result?.status === "error") throw new Error(result.message);
-				const credentialId = `${id}:${randomUUID()}`;
-				const entry: StoredDefinition = {
-					credentialId,
-					revision: randomUUID(),
-					id,
-					name: old?.name ?? agent.name,
-					command: prepared.command,
-					args: prepared.args,
-					enabled: old?.enabled ?? true,
-					envKeys: Object.keys(prepared.env),
-					catalogId,
-					version: agent.version,
-					...registryIcon(agent),
-					...(result ? { probe: result } : {}),
-				};
-				await secrets.set(credentialId, JSON.stringify(prepared.env));
-				await write([
-					...(await read()).filter((item) => item.id !== id),
-					entry,
-				]);
-				return publicDefinition(entry);
 			}),
 		availability: async (): Promise<AgentAvailability[]> =>
 			(await read()).map((entry) => ({
