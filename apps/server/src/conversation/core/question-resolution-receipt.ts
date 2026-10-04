@@ -72,7 +72,9 @@ export const lookupDurableQuestionResolution = (
 /**
  * Settle a durable receipt against any exact live callback before releasing
  * process-local actionability. With no live callback, the receipt itself is a
- * sufficient acknowledgement and stale outbox state can be removed.
+ * sufficient acknowledgement and stale outbox state can be removed. Do not
+ * acknowledge a callback that was absent: it may attach during cleanup and
+ * still need the durable resolution replayed to the provider.
  */
 export const settleDurableQuestionResolution = (
 	sql: SqlClient.SqlClient,
@@ -82,7 +84,11 @@ export const settleDurableQuestionResolution = (
 	resolution: DurableQuestionResolution,
 ): Effect.Effect<void, import("@zuse/contracts").AgentSessionNotFoundError> =>
 	Effect.gen(function* () {
-		if (yield* provider.hasQuestionAttachment(sessionId, itemId)) {
+		const hasAttachment = yield* provider.hasQuestionAttachment(
+			sessionId,
+			itemId,
+		);
+		if (hasAttachment) {
 			if (resolution._tag === "answer") {
 				yield* provider.answerQuestion(
 					sessionId,
@@ -97,5 +103,7 @@ export const settleDurableQuestionResolution = (
 			DELETE FROM question_answer_deliveries
 			WHERE session_id = ${sessionId} AND item_id = ${itemId}
 		`.pipe(Effect.orDie);
-		yield* provider.acknowledgeQuestionResolution(sessionId, itemId);
+		if (hasAttachment) {
+			yield* provider.acknowledgeQuestionResolution(sessionId, itemId);
+		}
 	});

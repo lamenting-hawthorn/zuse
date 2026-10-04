@@ -48,7 +48,7 @@ describe("interaction submission cards", () => {
 		expect(markup).toContain("disabled");
 	});
 
-	it("keeps a durable-only question quarantined in the card", () => {
+	it("keeps detached answers disabled but allows dismissing the question", () => {
 		const markup = renderToStaticMarkup(
 			<QuestionCard
 				environmentId={environmentId}
@@ -60,7 +60,12 @@ describe("interaction submission cards", () => {
 		);
 
 		expect(markup).toContain("Reconnecting to this question…");
-		expect(markup).toContain('aria-disabled="true"');
+		const dismissButton = markup.match(
+			/<button[^>]*aria-label="Dismiss"[^>]*>/,
+		)?.[0];
+		expect(dismissButton).toBeDefined();
+		expect(dismissButton).not.toContain("disabled");
+		expect(markup).toMatch(/<button[^>]*disabled=""[^>]*>/);
 	});
 
 	it("renders the attached question enabled when an earlier durable question is quarantined", () => {
