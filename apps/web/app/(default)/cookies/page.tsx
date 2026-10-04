@@ -113,10 +113,11 @@ export default function CookiesPage() {
 						<div>
 							<dt className="font-medium text-foreground">Analytics</dt>
 							<dd className="mt-1">
-								PostHog measures website page views and selected link clicks
-								using temporary memory. We disable persistent analytics cookies
-								and local storage, session replay, and automatic interaction
-								capture.
+								PostHog measures website and documentation page views, selected
+								link clicks, and active reading. A first-party analytics cookie,
+								renewed for 90 days, stores an anonymous browser identity shared
+								between zuse.sh and docs.zuse.sh. We disable session replay and
+								automatic interaction capture.
 							</dd>
 						</div>
 						<div>
