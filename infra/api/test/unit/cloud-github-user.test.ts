@@ -402,3 +402,92 @@ describe("cloud GitHub user identity", () => {
 		}
 	});
 });
+
+test("organization members retain separate user tokens while sharing installation access", async () => {
+	const runtime = runtimeForTest();
+	const fetch = vi.fn(async (_url: string, init: RequestInit) => {
+		const body = JSON.parse(String(init.body));
+		expect(body.repositories).toEqual(["repo"]);
+		return Response.json({
+			token: `scoped-${body.access_token}`,
+			expires_at: new Date(Date.now() + 3600000).toISOString(),
+		});
+	});
+	vi.stubGlobal("fetch", fetch);
+	try {
+		const store = await runtime.runPromise(CloudWorkspaceStore);
+		await runtime.runPromise(
+			store.saveGithubInstallation({
+				accountId: "organization:team",
+				installationId: 1,
+				githubAccountId: 1,
+				accountLogin: "acme",
+				accountType: "Organization",
+				repositorySelection: "selected",
+				suspended: false,
+				createdAtMs: 0,
+				updatedAtMs: 0,
+			}),
+		);
+		for (const accountId of ["alice", "bob", "charlie"]) {
+			await runtime.runPromise(
+				store.saveGithubUser({
+					accountId,
+					login: accountId,
+					name: accountId,
+					email: `${accountId}@example.test`,
+					sealedCredentials: await runtime.runPromise(
+						sealApiString(
+							`github-user\n${accountId}`,
+							JSON.stringify({
+								accessToken: accountId,
+								expiresAtMs: Date.now() + 3600000,
+							}),
+						),
+					),
+				}),
+			);
+		}
+		const results = await Promise.all(
+			["alice", "bob", "charlie"].map((actor) =>
+				runtime.runPromise(
+					githubUserCredential(
+						actor,
+						"github.com/acme/repo",
+						"organization:team",
+					),
+				),
+			),
+		);
+		expect(results.map((result) => result?.identity.name)).toEqual([
+			"alice",
+			"bob",
+			"charlie",
+		]);
+		expect(results.map((result) => result?.token)).toEqual([
+			"scoped-alice",
+			"scoped-bob",
+			"scoped-charlie",
+		]);
+		expect(
+			await runtime.runPromise(
+				githubUserCredential(
+					"unconnected",
+					"github.com/acme/repo",
+					"organization:team",
+				),
+			),
+		).toBeNull();
+		await expect(
+			runtime.runPromise(
+				githubUserCredential(
+					"alice",
+					"github.com/other/repo",
+					"organization:team",
+				),
+			),
+		).rejects.toBeDefined();
+	} finally {
+		await runtime.dispose();
+	}
+});

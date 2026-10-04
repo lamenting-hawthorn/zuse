@@ -1,19 +1,21 @@
 import { BillingProvidersManual } from "@zuse/billing-providers";
 import {
 	ApiPaths,
+	CLOUD_RUNTIME_GITHUB_EXECUTION_CAPABILITY,
 	CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
 } from "@zuse/contracts";
 import { MachineProvidersFake } from "@zuse/machine-providers/testing";
 import { SandboxProviders } from "@zuse/sandbox-providers";
 import { SandboxProvidersFake } from "@zuse/sandbox-providers/testing";
 import { Effect, Layer, ManagedRuntime, Redacted } from "effect";
-import { exportJWK, generateKeyPair } from "jose";
+import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
 import { describe, expect, test, vi } from "vitest";
 import {
 	AccountIdentity,
 	type AccountIdentityApi,
 } from "../../src/account-identity.ts";
-import { sealApiString } from "../../src/api-sealing.ts";
+import { encodeApiMessageContent } from "../../src/api-message-content.ts";
+import { apiMessageSealContext, sealApiString } from "../../src/api-sealing.ts";
 import { CloudBillingStore } from "../../src/cloud-billing-store.ts";
 import { CloudBillingStoreMemory } from "../../src/cloud-billing-store-memory.ts";
 import { takeCloudMailboxDirective } from "../../src/cloud-mailbox-directive.ts";
@@ -53,7 +55,11 @@ const makeRuntime = async (organizationWorkspacesEnabled = false) => {
 			slug: "zuse",
 			clientId: "client",
 			clientSecret: Redacted.make("secret"),
-			privateKey: Redacted.make("unused"),
+			privateKey: Redacted.make(
+				await exportPKCS8(
+					(await generateKeyPair("RS256", { extractable: true })).privateKey,
+				),
+			),
 		},
 		apiIssuer: ISSUER,
 		workosJwksUrl: "https://unused.test/jwks",
@@ -555,7 +561,10 @@ describe("cloud workspace runtime bootstrap", () => {
 						gatewayEpoch: 8,
 						sealedTranscriptKey: "sealed",
 						enrolledAtMs: now,
-						capabilities: [CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY],
+						capabilities: [
+							CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
+							CLOUD_RUNTIME_GITHUB_EXECUTION_CAPABILITY,
+						],
 					},
 				},
 			};
@@ -1022,6 +1031,48 @@ describe("cloud workspace runtime bootstrap", () => {
 				),
 			),
 		);
+		const forContext = (context: unknown) =>
+			runtime.runPromise(
+				handleRequest(
+					new Request(
+						`${ISSUER}${ApiPaths.cloudWorkspaceRuntimeGithubCredential(workspaceId)}`,
+						{
+							method: "POST",
+							headers: {
+								authorization: `Bearer ${credential}`,
+								"content-type": "application/json",
+							},
+							body: JSON.stringify(context),
+						},
+					),
+				),
+			);
+		for (const context of [
+			{ actor: { subject: "someone-else", membershipId: "fake" } },
+			{ slackMessageId: "missing" },
+		])
+			expect((await forContext(context)).status).toBe(403);
+		const slackMessageId = "slack-message";
+		await runtime.runPromise(
+			store.appendApiMessage({
+				messageId: slackMessageId,
+				workspaceId,
+				accountId: "account-1",
+				role: "user",
+				sealedContent: await runtime.runPromise(
+					sealApiString(
+						apiMessageSealContext("account-1", workspaceId, slackMessageId),
+						encodeApiMessageContent({
+							text: "commit",
+							attachments: [],
+							githubBot: true,
+						}),
+					),
+				),
+				status: "delivered",
+				createdAtMs: now,
+			}),
+		);
 		expect(githubCredential.status).toBe(403);
 		expect(await githubCredential.json()).toEqual({
 			error: "github_user_connection_required",
@@ -1059,6 +1110,31 @@ describe("cloud workspace runtime bootstrap", () => {
 				updatedAtMs: now,
 			}),
 		);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string, init?: RequestInit) => {
+				if (url.includes("/users/"))
+					return Response.json({ id: 42, login: "zuse[bot]" });
+				expect(JSON.parse(String(init?.body))).toEqual({
+					repositories: ["example"],
+					permissions: { contents: "write", pull_requests: "write" },
+				});
+				return Response.json({
+					token: "bot-token",
+					expires_at: new Date(now + 3600000).toISOString(),
+				});
+			}),
+		);
+		const botResponse = await forContext({ slackMessageId });
+		expect(botResponse.status).toBe(200);
+		expect(await botResponse.json()).toMatchObject({
+			token: "bot-token",
+			identity: {
+				name: "zuse[bot]",
+				email: "42+zuse[bot]@users.noreply.github.com",
+			},
+		});
+		vi.unstubAllGlobals();
 		const withIdentity = await bootstrap();
 		expect((await withIdentity.json()).gitIdentity).toMatchObject(personal);
 		vi.stubGlobal(

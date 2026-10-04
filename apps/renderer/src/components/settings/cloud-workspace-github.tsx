@@ -116,31 +116,36 @@ export function CloudWorkspaceGithub({
 										{uiMessage("settings:cloud_workspace_github_connected")}
 									</Badge>
 								)}
-								<Button
-									size="xs"
-									variant="ghost"
-									className={COMPACT_CLOUD_ACTION}
-									onClick={() => onManage(installation.installationId)}
-								>
-									{uiMessage(
-										"settings:cloud_workspace_github_repository_access",
-									)}
-								</Button>
-								<Button
-									size="icon"
-									variant="ghost"
-									className={`size-7 ${COMPACT_CLOUD_ACTION}`}
-									aria-label={uiMessage(
-										"settings:cloud_workspace_github_disconnect",
-										{ value1: String(installation.accountLogin) },
-									)}
-									loading={
-										busy === `github-disconnect:${installation.installationId}`
-									}
-									onClick={() => onDisconnect(installation.installationId)}
-								>
-									<X aria-hidden />
-								</Button>
+								{status?.canManageInstallations !== false && (
+									<>
+										<Button
+											size="xs"
+											variant="ghost"
+											className={COMPACT_CLOUD_ACTION}
+											onClick={() => onManage(installation.installationId)}
+										>
+											{uiMessage(
+												"settings:cloud_workspace_github_repository_access",
+											)}
+										</Button>
+										<Button
+											size="icon"
+											variant="ghost"
+											className={`size-7 ${COMPACT_CLOUD_ACTION}`}
+											aria-label={uiMessage(
+												"settings:cloud_workspace_github_disconnect",
+												{ value1: String(installation.accountLogin) },
+											)}
+											loading={
+												busy ===
+												`github-disconnect:${installation.installationId}`
+											}
+											onClick={() => onDisconnect(installation.installationId)}
+										>
+											<X aria-hidden />
+										</Button>
+									</>
+								)}
 							</>
 						}
 					>

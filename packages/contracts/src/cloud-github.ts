@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import { Rpc } from "effect/unstable/rpc";
 import { CloudWorkspaceOpError } from "./cloud-workspaces.ts";
+import { WorkspaceActor } from "./collaboration.ts";
 import { GithubRepoSummary } from "./workspace.ts";
 
 export class CloudGithubInstallation extends Schema.Class<CloudGithubInstallation>(
@@ -23,6 +24,7 @@ export class CloudGithubStatus extends Schema.Class<CloudGithubStatus>(
 	"CloudGithubStatus",
 )({
 	configured: Schema.Boolean,
+	canManageInstallations: Schema.optional(Schema.Boolean),
 	user: Schema.optional(
 		Schema.Struct({
 			login: Schema.String,
@@ -55,3 +57,12 @@ export const CloudGithubDisconnectRpc = Rpc.make("cloud.github.disconnect", {
 	success: Schema.Struct({ ok: Schema.Boolean }),
 	error: CloudWorkspaceOpError,
 });
+
+/** Trusted runtime context; the API rechecks membership or the sealed Slack command. */
+export const CloudGithubCredentialRequest = Schema.Struct({
+	actor: Schema.optional(WorkspaceActor),
+	slackMessageId: Schema.optional(Schema.String),
+});
+
+export const CLOUD_RUNTIME_GITHUB_EXECUTION_CAPABILITY =
+	"github-execution-v1" as const;

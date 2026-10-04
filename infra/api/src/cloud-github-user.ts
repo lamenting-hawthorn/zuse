@@ -202,7 +202,11 @@ const refreshGithubUserCredentials = Effect.fn("refreshGithubUserCredentials")(
 
 /** A connected user never falls back to installation permissions after auth failure. */
 export const githubUserCredential = Effect.fn("githubUserCredential")(
-	function* (accountId: string, repositoryIdentity: string) {
+	function* (
+		accountId: string,
+		repositoryIdentity: string,
+		installationOwnerId = accountId,
+	) {
 		const store = yield* CloudWorkspaceStore;
 		// Commit rotated tokens before doing repository I/O: a later API error must not
 		// roll back a successfully consumed refresh token.
@@ -229,7 +233,8 @@ export const githubUserCredential = Effect.fn("githubUserCredential")(
 		if (!/^[\w.-]+\/[\w.-]+$/u.test(repository))
 			return yield* Effect.fail(badRequest("invalid_github_repository"));
 		const [owner, name] = repository.split("/");
-		const installations = yield* store.listGithubInstallations(accountId);
+		const installations =
+			yield* store.listGithubInstallations(installationOwnerId);
 		if (
 			!installations.some(
 				(installation) =>

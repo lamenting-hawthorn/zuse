@@ -6,6 +6,7 @@ import {
 	ChatSharingUpdate,
 	CLOUD_COMMAND_PROTOCOL_VERSION,
 	CLOUD_RUNTIME_API_ASSETS_CAPABILITY,
+	CLOUD_RUNTIME_GITHUB_EXECUTION_CAPABILITY,
 	CLOUD_RUNTIME_MACHINE_FORK_CAPABILITY,
 	CLOUD_RUNTIME_TURN_REPLY_MAX_LENGTH,
 	CLOUD_RUNTIME_WORKSPACE_AUTHORIZATION_CAPABILITY,
@@ -14,6 +15,7 @@ import {
 	CloudAuthLoginStartRequest,
 	CloudAuthProvider,
 	CloudCommandEnvelope,
+	CloudGithubCredentialRequest,
 	CloudProjectConnectRequest,
 	CloudProjectPrepareRequest,
 	CloudRuntimeAccessRequest,
@@ -44,7 +46,7 @@ import {
 	bytesToBase64Url,
 	sha256Base64Url,
 } from "@zuse/utils/cloud-transcript-crypto";
-import { Clock, Effect, Redacted, Schema } from "effect";
+import { Clock, Effect, Option, Redacted, Schema } from "effect";
 import { CompactEncrypt, importJWK, type JWK } from "jose";
 import { getApiAsset } from "./api-assets.ts";
 import { decodeApiMessageContent } from "./api-message-content.ts";
@@ -77,6 +79,7 @@ import { hasUsableCloudWorkspaceEntitlement } from "./cloud-entitlement.ts";
 import {
 	githubAuthorizationCallback,
 	githubAuthorizationUrl,
+	githubBotCredential,
 	githubInstallationGrants,
 	githubWebhook,
 	makeGithubInstallUrl,
@@ -1302,6 +1305,7 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		readonly providerId?: string;
 		/** Canonical public-API request fingerprint, absent for first-party calls. */
 		readonly publicApiRequestDigest?: string;
+		readonly githubBot?: boolean;
 	},
 	nowMs: number,
 	creator?: { readonly subject: string; readonly membershipId: string },
@@ -1482,6 +1486,12 @@ export const createCloudWorkspaceForAccount = Effect.fn(
 		requestConfig: {
 			...(machineFork === undefined ? {} : { machineFork }),
 			...(sharingPolicy === undefined ? {} : { sharingPolicy }),
+			initialGithubContext:
+				body.githubBot === true
+					? { slackMessageId: `msg_launch_${workspaceId}` }
+					: creator === undefined
+						? {}
+						: { actor: creator },
 			localDeviceId:
 				body.localDeviceId ?? forkSource?.requestConfig.localDeviceId,
 			title,
@@ -1757,6 +1767,16 @@ export const routeCloudWorkspaceRequest = (
 				workspace.providerSandboxId === undefined
 			)
 				return yield* Effect.fail(unauthorized("workspace_bootstrap_rejected"));
+			const initialGithub = Schema.decodeUnknownOption(
+				CloudGithubCredentialRequest,
+			)(workspace.requestConfig.initialGithubContext);
+			if (
+				(workspace.accountId.startsWith("organization:") ||
+					(Option.isSome(initialGithub) &&
+						initialGithub.value.slackMessageId !== undefined)) &&
+				!body.capabilities?.includes(CLOUD_RUNTIME_GITHUB_EXECUTION_CAPABILITY)
+			)
+				return yield* conflict("github_runtime_update_required");
 			const generation = cloudWorkspaceRuntimeGeneration(workspace);
 			const epoch = cloudWorkspaceGatewayEpoch(workspace);
 			const prior = runtimeBootstrapReceiptFromConfig(workspace.requestConfig);
@@ -1871,7 +1891,10 @@ export const routeCloudWorkspaceRequest = (
 			return json({
 				workspaceId,
 				zuseAccountId: workspace.accountId,
-				gitIdentity: yield* githubUserIdentity(workspace.accountId),
+				initialGithubContext: workspace.requestConfig.initialGithubContext,
+				gitIdentity: workspace.accountId.startsWith("organization:")
+					? undefined
+					: yield* githubUserIdentity(workspace.accountId),
 				workspaceScope: workspaceScopeForOwner(workspace.accountId),
 				providerSandboxId,
 				runtimeCredential,
@@ -2082,10 +2105,53 @@ export const routeCloudWorkspaceRequest = (
 			const project = yield* store.getProject(workspace.projectId);
 			if (project === null || project.accountId !== workspace.accountId)
 				return yield* Effect.fail(notFound("cloud_project_not_found"));
-			const credential = yield* githubUserCredential(
-				workspace.accountId,
-				project.repositoryIdentity,
-			);
+			const context =
+				request.body === null
+					? {}
+					: yield* decodeBody(CloudGithubCredentialRequest, request);
+			let useBot = false;
+			if (context.slackMessageId !== undefined) {
+				const message = yield* store.getApiMessage(context.slackMessageId);
+				if (
+					message === null ||
+					message.accountId !== workspace.accountId ||
+					message.workspaceId !== workspaceId
+				)
+					return yield* forbidden("github_execution_identity_invalid");
+				const content = decodeApiMessageContent(
+					yield* openApiMessageString(
+						workspace.accountId,
+						workspaceId,
+						message.messageId,
+						message.sealedContent,
+					),
+				);
+				if (content.githubBot !== true)
+					return yield* forbidden("github_execution_identity_invalid");
+				useBot = true;
+			}
+			const actorId = context.actor?.subject ?? workspace.accountId;
+			if (!useBot) {
+				if (actorId.startsWith("organization:"))
+					return yield* forbidden("github_user_connection_required");
+				const permission = yield* cloudWorkspaceActorPermission(
+					workspace,
+					actorId,
+					context.actor?.membershipId,
+				);
+				if (permission.permission !== "edit")
+					return yield* forbidden("workspace_access_denied");
+			}
+			const credential = useBot
+				? yield* githubBotCredential(
+						workspace.accountId,
+						project.repositoryIdentity,
+					)
+				: yield* githubUserCredential(
+						actorId,
+						project.repositoryIdentity,
+						workspace.accountId,
+					);
 			if (credential === null)
 				return yield* Effect.fail(forbidden("github_user_connection_required"));
 			const response = json(credential);
@@ -2237,6 +2303,15 @@ export const routeCloudWorkspaceRequest = (
 						// Keep attachment commands pending until an upgraded runtime is active.
 						// Older runtimes ignore the optional wire field and would otherwise ACK
 						// the command after silently dropping its files.
+						if (
+							content.githubBot === true &&
+							!runtimeBootstrapReceiptFromConfig(
+								workspace.requestConfig,
+							)?.capabilities?.includes(
+								CLOUD_RUNTIME_GITHUB_EXECUTION_CAPABILITY,
+							)
+						)
+							return null;
 						if (content.attachments.length > 0 && !supportsApiAssets)
 							return null;
 						return {
@@ -2246,6 +2321,7 @@ export const routeCloudWorkspaceRequest = (
 								message.turnId ?? cloudRuntimeCommandTurnId(message.messageId),
 							sessionId: workspace.initialSessionId,
 							text: content.text,
+							githubBot: content.githubBot,
 							...(content.attachments.length === 0
 								? {}
 								: { attachments: content.attachments }),
@@ -3094,7 +3170,9 @@ export const routeCloudWorkspaceRequest = (
 				configured:
 					apiConfiguration.githubApp?.clientId !== undefined &&
 					apiConfiguration.githubApp.clientSecret !== undefined,
-				user: yield* githubUserIdentity(ownerId),
+				user: yield* githubUserIdentity(access.actor.accountId),
+				canManageInstallations:
+					access.membership === null || access.membership.role.slug === "admin",
 				installations: installations.map((installation) => ({
 					installationId: installation.installationId,
 					accountLogin: installation.accountLogin,

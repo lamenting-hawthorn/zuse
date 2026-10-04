@@ -1,7 +1,7 @@
 import { ApiPaths, PRODUCTION_API_URL, STAGING_API_URL } from "@zuse/contracts";
-import { BROWSER_PAGE_HEADERS } from "@zuse/utils/browser-page";
 import { githubInstallationSettingsUrl } from "@zuse/utils/github-installation";
 import {
+	INTEGRATION_PAGE_HEADERS,
 	type IntegrationPageInput,
 	renderIntegrationPage,
 } from "@zuse/utils/integration-page";
@@ -22,7 +22,10 @@ import {
 	serviceUnavailable,
 	unauthorized,
 } from "./errors.ts";
-import { renderGithubConnectedPage } from "./github-callback-page.ts";
+import {
+	githubCallbackPageHeaders,
+	renderGithubConnectedPage,
+} from "./github-callback-page.ts";
 import { json } from "./http.ts";
 import { getOrganizationName } from "./organizations.ts";
 import { resolveWorkspaceActorAccess } from "./workspace-authorization.ts";
@@ -390,7 +393,7 @@ const verifyGithubState = Effect.fn("verifyGithubState")(function* (
 	const access = yield* resolveWorkspaceActorAccess(
 		{ accountId: verified.payload.actorId, orgId: undefined },
 		workspaceScopeForOwner(verified.payload.sub),
-		"administration",
+		"content",
 	);
 	if (access.ownerId !== verified.payload.sub)
 		return yield* badRequest("invalid_github_install_state");
@@ -406,6 +409,8 @@ const verifyGithubState = Effect.fn("verifyGithubState")(function* (
 		userAuthorization,
 		accountId: verified.payload.sub,
 		actorId: verified.payload.actorId,
+		canManageInstallation:
+			access.membership === null || access.membership.role.slug === "admin",
 		nonce: verified.payload.jti,
 		installationId: verified.payload.installationId,
 	};
@@ -425,23 +430,35 @@ export const completeGithubInstallation = Effect.fn(
 	const nowMs = yield* Clock.currentTimeMillis;
 	const store = yield* CloudWorkspaceStore;
 	const authorization = verified.userAuthorization;
+	if (!verified.canManageInstallation) {
+		const installations = yield* store.listGithubInstallations(
+			verified.accountId,
+		);
+		if (
+			!installations.some(
+				(item) => item.installationId === installationId && !item.suspended,
+			)
+		)
+			return yield* badRequest("github_organization_installation_required");
+	}
 	yield* store.withGithubUserLock(
-		verified.accountId,
+		verified.actorId,
 		Effect.gen(function* () {
-			yield* store.saveGithubInstallation({
-				accountId: verified.accountId,
-				installationId,
-				githubAccountId: installation.account.id,
-				accountLogin: installation.account.login,
-				accountType: installation.account.type,
-				avatarUrl: installation.account.avatar_url,
-				repositorySelection: installation.repository_selection,
-				suspended: installation.suspended_at !== null,
-				createdAtMs: nowMs,
-				updatedAtMs: nowMs,
-			});
+			if (verified.canManageInstallation)
+				yield* store.saveGithubInstallation({
+					accountId: verified.accountId,
+					installationId,
+					githubAccountId: installation.account.id,
+					accountLogin: installation.account.login,
+					accountType: installation.account.type,
+					avatarUrl: installation.account.avatar_url,
+					repositorySelection: installation.repository_selection,
+					suspended: installation.suspended_at !== null,
+					createdAtMs: nowMs,
+					updatedAtMs: nowMs,
+				});
 			yield* store.saveGithubUser({
-				accountId: verified.accountId,
+				accountId: verified.actorId,
 				...authorization,
 			});
 		}),
@@ -550,7 +567,10 @@ export const githubAuthorizationCallback = Effect.fn(
 			verified.installationId,
 		);
 		return new Response(renderGithubConnectedPage(login), {
-			headers: { ...BROWSER_PAGE_HEADERS, "set-cookie": stateCookie("", 0) },
+			headers: {
+				...githubCallbackPageHeaders,
+				"set-cookie": stateCookie("", 0),
+			},
 		});
 	}
 	const credentials = yield* exchangeGithubUserToken({
@@ -558,11 +578,15 @@ export const githubAuthorizationCallback = Effect.fn(
 		redirect_uri: callback,
 	});
 	const user = yield* prepareGithubUserAuthorization(
-		verified.accountId,
+		verified.actorId,
 		credentials,
 	);
 	const choices: Array<IntegrationPageInput["actions"][number]> = [];
 	let hasInstallations = false;
+	const linkedInstallations =
+		yield* (yield* CloudWorkspaceStore).listGithubInstallations(
+			verified.accountId,
+		);
 	for (let page = 1; page <= 10; page++) {
 		const result = yield* githubRequest<{
 			installations: Array<{
@@ -585,7 +609,10 @@ export const githubAuthorizationCallback = Effect.fn(
 			let canAdminister =
 				installation.account.type === "User" &&
 				installation.account.id === user.id;
-			if (installation.account.type === "Organization") {
+			if (
+				installation.account.type === "Organization" &&
+				verified.canManageInstallation
+			) {
 				const membership = yield* githubRequest<{
 					role: string;
 					state: string;
@@ -602,18 +629,25 @@ export const githubAuthorizationCallback = Effect.fn(
 				canAdminister =
 					membership?.role === "admin" && membership.state === "active";
 			}
-			if (canAdminister)
+			if (
+				(verified.canManageInstallation && canAdminister) ||
+				linkedInstallations.some(
+					(item) => item.installationId === installation.id && !item.suspended,
+				)
+			)
 				choices.push({
 					label: "Use this account",
 					accountName: installation.account.login,
 					description:
 						installation.account.type === "Organization"
-							? "GitHub organization"
-							: "Personal GitHub account",
-					manageUrl: githubInstallationSettingsUrl(installation.id, {
-						accountType: installation.account.type,
-						accountLogin: installation.account.login,
-					}),
+							? "Organization"
+							: "Personal account",
+					manageUrl: verified.canManageInstallation
+						? githubInstallationSettingsUrl(installation.id, {
+								accountType: installation.account.type,
+								accountLogin: installation.account.login,
+							})
+						: undefined,
 					action: callback,
 					csrf: yield* signGithubState(
 						verified.accountId,
@@ -626,7 +660,7 @@ export const githubAuthorizationCallback = Effect.fn(
 		}
 		if (result.installations.length < 100) break;
 	}
-	if (!hasInstallations)
+	if (!hasInstallations && verified.canManageInstallation)
 		return new Response(null, {
 			status: 302,
 			headers: {
@@ -649,29 +683,34 @@ export const githubAuthorizationCallback = Effect.fn(
 			title: "Choose a GitHub account",
 			description: `For your ${workspaceName} workspace.`,
 			status: "Connect",
-			hint:
-				choices.length === 0
+			hint: !verified.canManageInstallation
+				? "Connect your own GitHub identity to repositories already linked to this workspace. If none appear, ask an organization administrator to link the GitHub installation and confirm your repository access."
+				: choices.length === 0
 					? "No installations you administer are available. Install the app, or ask your GitHub organization owner to connect it. Organization verification requires the app's Members read permission."
 					: `Choose repositories on GitHub, then return to connect. ${scope.kind === "organization" ? "Selected repositories are shared with workspace members." : "Add them as projects in Zuse after connecting."}`,
 			actions: [
 				...choices,
-				{
-					label: "Add another GitHub account",
-					href: yield* makeGithubInstallUrl(
-						verified.accountId,
-						verified.actorId,
-					),
-				},
+				...(verified.canManageInstallation
+					? [
+							{
+								label: "Add another GitHub account",
+								href: yield* makeGithubInstallUrl(
+									verified.accountId,
+									verified.actorId,
+								),
+							},
+						]
+					: []),
 			],
 		}),
 		{
 			headers: {
-				...BROWSER_PAGE_HEADERS,
+				...INTEGRATION_PAGE_HEADERS,
 				// no-referrer makes browser form POSTs send Origin: null, which
 				// our CSRF check correctly rejects. Keep the origin, never the
 				// callback path/query containing the OAuth code and signed state.
 				"referrer-policy": "strict-origin",
-				"content-security-policy": `${BROWSER_PAGE_HEADERS["content-security-policy"]}; form-action 'self'`,
+				"content-security-policy": `${INTEGRATION_PAGE_HEADERS["content-security-policy"]}; form-action 'self'`,
 			},
 		},
 	);
@@ -778,19 +817,80 @@ export const githubInstallationGrants = Effect.fn("githubInstallationGrants")(
 	},
 );
 
+/** Bot credentials are used only for work authenticated as a first-party integration. */
 export const githubInstallationCredentialForRepository = Effect.fn(
 	"githubInstallationCredentialForRepository",
-)(function* (accountId: string, repositoryIdentity: string) {
-	const grants = yield* githubInstallationGrants(accountId);
-	const grant = githubInstallationGrantForRepository(
-		grants,
+)(function* (ownerId: string, repositoryIdentity: string) {
+	const repository = repositoryIdentity.replace(/^github\.com\//u, "");
+	if (!/^[\w.-]+\/[\w.-]+$/u.test(repository))
+		return yield* badRequest("invalid_github_repository");
+	const [owner, name] = repository.split("/");
+	const installations =
+		yield* (yield* CloudWorkspaceStore).listGithubInstallations(ownerId);
+	const candidates = installations.filter(
+		(item) =>
+			!item.suspended &&
+			item.accountLogin.toLowerCase() === owner?.toLowerCase(),
+	);
+	for (const installation of candidates) {
+		const access = yield* githubAppRequest<{
+			token: string;
+			expires_at: string;
+		}>(
+			`https://api.github.com/app/installations/${installation.installationId}/access_tokens`,
+			{
+				method: "POST",
+				body: JSON.stringify({
+					repositories: [name],
+					permissions: { contents: "write", pull_requests: "write" },
+				}),
+			},
+		).pipe(
+			Effect.catch((error) =>
+				error.detail === "github_404"
+					? Effect.succeed(null)
+					: Effect.fail(error),
+			),
+		);
+		if (access === null) continue;
+		const expiresAtMs = Date.parse(access.expires_at);
+		if (
+			!access.token ||
+			!Number.isFinite(expiresAtMs) ||
+			expiresAtMs <= Date.now()
+		)
+			return yield* serviceUnavailable("github_token_expiry_invalid");
+		return { token: access.token, expiresAtMs };
+	}
+	return null;
+});
+
+export const githubBotCredential = Effect.fn("githubBotCredential")(function* (
+	ownerId: string,
+	repositoryIdentity: string,
+) {
+	const config = yield* ApiConfiguration;
+	if (config.githubApp === undefined)
+		return yield* serviceUnavailable("github_app_not_configured");
+	const credential = yield* githubInstallationCredentialForRepository(
+		ownerId,
 		repositoryIdentity,
 	);
-	if (grant === null) return null;
-	const expiresAtMs = Date.parse(grant.expiresAt);
-	if (!Number.isFinite(expiresAtMs))
-		return yield* Effect.fail(
-			serviceUnavailable("github_token_expiry_invalid"),
-		);
-	return { token: grant.token, expiresAtMs } as const;
+	if (credential === null)
+		return yield* serviceUnavailable("github_installation_required");
+	const login = `${config.githubApp.slug}[bot]`;
+	const bot = yield* githubRequest<{ id: number; login: string }>(
+		`https://api.github.com/users/${encodeURIComponent(login)}`,
+		credential.token,
+	);
+	if (!Number.isSafeInteger(bot.id) || bot.id <= 0 || bot.login !== login)
+		return yield* serviceUnavailable("github_bot_identity_invalid");
+
+	return {
+		...credential,
+		identity: {
+			name: login,
+			email: `${bot.id}+${login}@users.noreply.github.com`,
+		},
+	};
 });

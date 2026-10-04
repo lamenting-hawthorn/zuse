@@ -4,12 +4,13 @@
 which repositories the Zuse GitHub App can access and authorizes Zuse to act as
 them. There is no separate personal identity connection or manual token entry.
 The callback keeps the shared GitHub authorization flow: browser nonce and
-origin checks, current workspace-administrator authorization, and an explicit
-chooser listing only installations the GitHub user can administer. Credentials
+origin checks, current workspace membership, and an explicit installation chooser. Administrators
+can link installations they administer; members can choose installations already
+linked to the organization. Credentials
 are encrypted into the short-lived signed chooser state and persisted with the
 selected installation only when the user confirms. No plaintext parent token
-is sent to the browser or sandbox. For organization workspaces, the connection
-belongs to that workspace and uses the connecting GitHub user's identity.
+is sent to the browser or sandbox. User credentials belong to the connecting Zuse account. Organization installation
+links remain shared, but credentials are never borrowed from another member.
 
 For each workspace, the API calls GitHub's
 `POST /applications/{client_id}/token/scoped` with the parent user access token,
@@ -21,8 +22,7 @@ The parent access token and refresh token stay encrypted on the API server.
 Neither credential is baked into sandbox images.
 
 Commits use the authenticated user's display name and GitHub private commit
-email (`ID+LOGIN@users.noreply.github.com`). Explicit repository configuration
-still takes precedence. This supplies authorship, not cryptographic signing.
+email (`ID+LOGIN@users.noreply.github.com`). Cloud agent processes receive explicit author and committer environment variables. This supplies authorship, not cryptographic signing.
 Pushes and PRs use the repository-scoped user token. Image builds continue to
 use installation credentials independently of agent activity.
 
@@ -60,7 +60,7 @@ expiry or the parent token's expiry.
 
 Missing authorization, revoked access, and failures to mint a scoped token stop
 credential delivery. The broker never falls back to the parent token or a bot.
-Users reconnect through the same **Connect GitHub** action. Removing the last
+Users reconnect through the same **Connect GitHub** action. For personal workspaces, removing the last
 linked installation revokes the user's app authorization (including associated
 scoped tokens) before deleting the encrypted connection; revocation failures are
 reported for retry, with any rotated refresh credential retained. An expired
@@ -73,7 +73,7 @@ until GitHub expires/revokes them or the app's repository access is removed.
 ## Connection-link trust boundary
 
 The existing desktop connection flow uses a signed, short-lived install link.
-It validates the issuing API, destination workspace, current administrator
+It validates the issuing API, destination workspace, current workspace
 access, browser nonce, and same-origin account selection. The browser nonce
 does not independently authenticate the browser user to Zuse. Users must start connection
 from their own Zuse app, rather than complete another person's connection link.
@@ -97,3 +97,30 @@ GitHub enforcement need this deployment smoke test.
 References: [Scoped user tokens](https://docs.github.com/en/rest/apps/apps#create-a-scoped-access-token),
 [user authorization during installation](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app),
 [user access tokens](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app).
+
+## Organization members and Slack
+
+Each organization member chooses **Connect GitHub** in Cloud settings. The member
+who submits a turn supplies the GitHub identity for that turn, including commits,
+pushes, and PRs. Changing the initiating member closes and resumes the provider
+session with the new identity. Durable turn metadata preserves the choice across
+recovery and nested agent sessions. Provider processes receive separate credential
+cache directories and environment variables; Cursor uses an isolated worker because
+its SDK does not expose per-agent environment configuration.
+
+Slack turns instead use the Zuse GitHub App bot and a repository-scoped installation
+token. The API seals Slack provenance into the stored message; a client cannot obtain
+bot credentials by submitting a bot flag. Organization membership is checked again
+before issuing a member token. Missing personal authorization fails without borrowing
+another member's credentials or falling back to the bot.
+
+This extension requires no additional database migration after `0034`. Old connections
+stored under an organization ID are not assigned to a member: each member connects
+their own GitHub account. Deploy API, runtime, credential helper, and UI together;
+restart existing sandboxes to install the new helper and runtime. Organization and
+Slack bootstrap requires runtime capability `github-execution-v1`.
+
+Tests exercise separate real Git commits, credential-helper and `gh` invocations for
+multiple members and the bot, durable actor recovery, and Cursor worker isolation.
+Before rollout, also verify real pushes and draft PRs from two members and a Slack
+thread in a designated test repository, including switching authors in one chat.
