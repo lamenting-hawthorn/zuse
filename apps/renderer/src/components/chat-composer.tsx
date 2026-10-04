@@ -175,6 +175,7 @@ import {
 	PlanApprovalTray,
 } from "./composer/plan-approval-tray.tsx";
 import { ProjectPlanTray } from "./composer/project-plan-tray.tsx";
+import { ProviderErrorTray } from "./composer/provider-error-tray.tsx";
 import { ProviderSignInTray } from "./composer/provider-sign-in-tray.tsx";
 import { QueueTray } from "./composer/queue-tray.tsx";
 import { SlashCommandPopover } from "./composer/slash-command-popover.tsx";
@@ -1431,6 +1432,11 @@ export function ChatComposer({
 			) : null}
 			{!isDraft ? (
 				<>
+					<ProviderErrorTray
+						environmentId={qualifiedEnvironmentId}
+						sessionId={sessionId}
+						providerId={session.providerId}
+					/>
 					<PlanApprovalTray
 						environmentId={qualifiedEnvironmentId}
 						sessionId={sessionId}
