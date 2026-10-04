@@ -1,3 +1,6 @@
+const EMPTY_MODELS: readonly import("@zuse/contracts").ResolvedModelOption[] =
+	[];
+
 import type { ProviderId, ResolvedModelCatalog } from "@zuse/contracts";
 import {
 	bundledResolvedModelCatalog,
@@ -251,7 +254,9 @@ export const currentModelCatalog = (): ResolvedModelCatalog =>
 
 /** Live models for one provider, in picker order. */
 export const useProviderModels = (providerId: ProviderId) =>
-	useModelCatalogStore((s) => s.catalog.providers[providerId].models);
+	useModelCatalogStore(
+		(s) => s.catalog.providers[providerId]?.models ?? EMPTY_MODELS,
+	);
 
 /** Drop the renderer copy (environment switch / sign-out). */
 export const resetModelCatalogForEnvironment = (): void => {

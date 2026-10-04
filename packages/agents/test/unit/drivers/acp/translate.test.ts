@@ -853,3 +853,106 @@ describe("createAcpTranslator — per-provider quirks & errors", () => {
 		expect(translateAcpSessionUpdate({ noKindHere: true }, "grok")).toEqual([]);
 	});
 });
+
+describe("generic ACP agents", () => {
+	it("prefers structured kinds over vendor names and preserves late diffs", () => {
+		const translator = createAcpTranslator("generic");
+		const first = translator.translate({
+			sessionUpdate: "tool_call",
+			toolCallId: "edit-1",
+			kind: "edit",
+			name: "mystery_vendor_tool",
+			status: "in_progress",
+			locations: [{ path: "/repo/file.ts" }],
+		});
+		expect(first.find((event) => event._tag === "ToolUse")).toMatchObject({
+			tool: "Edit",
+		});
+		const completion = {
+			sessionUpdate: "tool_call_update",
+			toolCallId: "edit-1",
+			status: "completed",
+			content: [
+				{
+					type: "diff",
+					path: "/repo/file.ts",
+					oldText: "before",
+					newText: "after",
+				},
+			],
+		};
+		const result = translator.translate(completion);
+		expect(result.find((event) => event._tag === "ToolUse")).toMatchObject({
+			tool: "Edit",
+			input: {
+				file_path: "/repo/file.ts",
+				old_string: "before",
+				new_string: "after",
+			},
+		});
+		expect(result.filter((event) => event._tag === "ToolResult")).toHaveLength(
+			1,
+		);
+		expect(translator.translate(completion)).toEqual([]);
+	});
+	it("keeps unknown tools readable", () => {
+		const translator = createAcpTranslator("generic");
+		const result = translator.translate({
+			sessionUpdate: "tool_call",
+			toolCallId: "x",
+			kind: "other",
+			title: "vendor_lookup",
+			rawInput: { query: "test" },
+		});
+		expect(result.find((event) => event._tag === "ToolUse")).toMatchObject({
+			tool: "Vendor Lookup",
+		});
+	});
+});
+
+it("keeps generic tool calls running while partial output arrives", () => {
+	const translator = createAcpTranslator("generic");
+	translator.translate({
+		sessionUpdate: "tool_call",
+		toolCallId: "stream",
+		kind: "execute",
+		rawInput: { command: "build" },
+		status: "in_progress",
+	});
+	const partial = translator.translate({
+		sessionUpdate: "tool_call_update",
+		toolCallId: "stream",
+		status: "in_progress",
+		content: [
+			{ type: "content", content: { type: "text", text: "Building…" } },
+		],
+	});
+	expect(partial.some((event) => event._tag === "ToolResult")).toBe(false);
+	expect(
+		translator.translate({
+			sessionUpdate: "tool_call_update",
+			toolCallId: "stream",
+			status: "failed",
+		}),
+	).toContainEqual(
+		expect.objectContaining({
+			_tag: "ToolResult",
+			output: "Building…",
+			isError: true,
+		}),
+	);
+});
+it("handles a tool already complete in its initial generic ACP frame", () => {
+	const translator = createAcpTranslator("generic");
+	expect(
+		translator
+			.translate({
+				sessionUpdate: "tool_call",
+				toolCallId: "done",
+				kind: "read",
+				status: "completed",
+				content: [{ type: "content", content: { type: "text", text: "file" } }],
+			})
+			.map((event) => event._tag),
+	).toEqual(["ToolUse", "ToolResult"]);
+});

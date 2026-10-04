@@ -1,3 +1,4 @@
+import { isAcpProviderId } from "@zuse/contracts";
 import "@zuse/i18n/english/common";
 import type { ResourceDriver } from "@zuse/client-runtime/client-bus";
 import {
@@ -24,9 +25,9 @@ import {
 	GitMergeMethod,
 	type ModelEnabledByProvider,
 	OpencodeCustomProvider,
-	PROVIDER_CAPABILITIES,
 	PROVIDER_IDS,
 	ProviderId,
+	providerCapabilities,
 	RuntimeMode,
 	resolveModelSlug,
 	type SettingsFile,
@@ -186,7 +187,7 @@ const seedProviderEnabled = (): Record<ProviderId, boolean> =>
 	Object.fromEntries(
 		PROVIDERS.map((provider) => [
 			provider,
-			PROVIDER_CAPABILITIES[provider].enabledByDefault,
+			providerCapabilities(provider).enabledByDefault,
 		]),
 	) as Record<ProviderId, boolean>;
 
@@ -194,7 +195,10 @@ const copyCustomModelIds = (
 	input?: Partial<Record<ProviderId, ReadonlyArray<string>>>,
 ): Record<ProviderId, ReadonlyArray<string>> => {
 	const result = {} as Record<ProviderId, ReadonlyArray<string>>;
-	for (const provider of PROVIDERS) {
+	for (const provider of [
+		...PROVIDERS,
+		...Object.keys(input ?? {}).filter(isAcpProviderId),
+	]) {
 		result[provider] = [...(input?.[provider] ?? [])];
 	}
 	return result;
@@ -204,7 +208,11 @@ const mergeModelEnabled = (
 	input: Partial<Record<ProviderId, Partial<Record<string, boolean>>>>,
 ): ModelEnabledByProvider => {
 	const result = defaultModelEnabledByProvider();
-	for (const provider of PROVIDERS) {
+	for (const provider of [
+		...PROVIDERS,
+		...Object.keys(input ?? {}).filter(isAcpProviderId),
+	]) {
+		result[provider] ??= {};
 		for (const [model, enabled] of Object.entries(input[provider] ?? {})) {
 			if (typeof enabled === "boolean") result[provider][model] = enabled;
 		}
@@ -325,11 +333,14 @@ registerRendererResourcePersistence(
 
 const fromFile = (file: SettingsFile): SettingsSlice => {
 	const models = { ...seedModels(), ...file.defaultModelByProvider };
-	for (const provider of PROVIDERS) {
+	for (const provider of [
+		...PROVIDERS,
+		...Object.keys(models).filter(isAcpProviderId),
+	]) {
 		models[provider] = resolveModelSlug(
 			BUNDLED_MODEL_CATALOG,
 			provider,
-			models[provider],
+			models[provider] ?? "default",
 		);
 	}
 	return {
@@ -562,6 +573,16 @@ const financeOnlyWorkspace = () => {
 	);
 };
 
+/** Sparse overrides may carry `undefined` for open-ended ACP provider keys. */
+const definedEntries = <A>(
+	record: Partial<Record<string, A>> | undefined,
+): Record<string, A> =>
+	Object.fromEntries(
+		Object.entries(record ?? {}).filter(
+			(entry): entry is [string, A] => entry[1] !== undefined,
+		),
+	);
+
 // Account settings are sparse persisted overrides. Fill newly added providers
 // from product defaults without discarding existing per-provider preferences.
 const withWorkspaceValues = (
@@ -576,8 +597,14 @@ const withWorkspaceValues = (
 ): SettingsSlice => ({
 	...base,
 	...values,
-	defaultModelByProvider: { ...seedModels(), ...values.defaultModelByProvider },
-	providerEnabled: { ...seedProviderEnabled(), ...values.providerEnabled },
+	defaultModelByProvider: {
+		...seedModels(),
+		...definedEntries(values.defaultModelByProvider),
+	},
+	providerEnabled: {
+		...seedProviderEnabled(),
+		...definedEntries(values.providerEnabled),
+	},
 	modelEnabledByProvider: mergeModelEnabled(
 		values.modelEnabledByProvider ?? {},
 	),
@@ -851,7 +878,10 @@ const ACTIONS = {
 			customModelIdsByProvider: {
 				...state.customModelIdsByProvider,
 				[providerId]: [
-					...new Set([...state.customModelIdsByProvider[providerId], modelId]),
+					...new Set([
+						...(state.customModelIdsByProvider[providerId] ?? []),
+						modelId,
+					]),
 				],
 			},
 		})),
@@ -859,7 +889,7 @@ const ACTIONS = {
 		update((state) => ({
 			customModelIdsByProvider: {
 				...state.customModelIdsByProvider,
-				[providerId]: state.customModelIdsByProvider[providerId].filter(
+				[providerId]: (state.customModelIdsByProvider[providerId] ?? []).filter(
 					(id) => id !== modelId,
 				),
 			},

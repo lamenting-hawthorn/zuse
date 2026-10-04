@@ -24,6 +24,7 @@ vi.mock("../../src/lib/rpc-client.ts", () => ({
 	LOCAL_ENVIRONMENT_KEY: "local",
 	environmentRequiresNetwork: () => false,
 	getActiveEnvironment: () => "local",
+	getLocalEnvironmentId: () => "local",
 }));
 
 vi.mock("../../src/lib/environment-shell-client-bus.ts", () => ({

@@ -1,4 +1,4 @@
-import { PROVIDER_LABEL as MCP_PROVIDER_LABEL } from "~/lib/provider-labels";
+import { providerDisplayName } from "~/lib/provider-labels";
 import "@zuse/i18n/english/shell";
 import type { McpServerDescriptor, ProviderId } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
@@ -53,7 +53,4 @@ export const mcpChildrenForParent = (
 
 export const mcpProviderAvailabilityLabel = (
 	server: McpServerDescriptor,
-): string =>
-	server.availableProviders
-		.map((provider) => MCP_PROVIDER_LABEL[provider])
-		.join(", ");
+): string => server.availableProviders.map(providerDisplayName).join(", ");

@@ -59,6 +59,13 @@ export const LiveListingStatus = Schema.Struct({
 export type LiveListingStatus = typeof LiveListingStatus.Type;
 
 export const ResolvedModelCatalogProvider = Schema.Struct({
+	displayName: Schema.optional(Schema.String),
+	icon: Schema.optional(Schema.String),
+	commands: Schema.optional(
+		Schema.Array(
+			Schema.Struct({ name: Schema.String, description: Schema.String }),
+		),
+	),
 	models: Schema.Array(ResolvedModelOption),
 	aliases: Schema.Record(Schema.String, Schema.String),
 	defaultModelId: Schema.String,

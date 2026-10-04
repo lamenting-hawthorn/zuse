@@ -75,6 +75,7 @@ import { MigrationsLive } from "./persistence/migrations.ts";
 import { NdjsonLoggerLive } from "./persistence/ndjson-logger.ts";
 import { SqliteLive } from "./persistence/sqlite.ts";
 import { PokemonServiceLive } from "./pokemon/layers/pokemon-service.ts";
+import { AcpAgentServiceLive } from "./provider/acp/service.ts";
 import { BrowserBridgeServiceLive } from "./provider/layers/browser-bridge-service.ts";
 import { PermissionServiceLive } from "./provider/layers/permission-service.ts";
 import { ProviderServiceLive } from "./provider/layers/provider-service.ts";
@@ -493,7 +494,13 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 		Layer.provide(PermissionLayer),
 		Layer.provide(AttachmentLayer),
 	);
+	const AcpAgentLayer = AcpAgentServiceLive.pipe(
+		Layer.provide(NodeServices.layer),
+		Layer.provide(AppPathsLayer),
+		Layer.provide(CredentialsLayer),
+	);
 	const ModelCatalogLayer = ModelCatalogServiceLive.pipe(
+		Layer.provide(AcpAgentLayer),
 		Layer.provide(HarnessProviderLayer),
 		Layer.provide(AppPathsLayer),
 		Layer.provide(CredentialsLayer),
@@ -502,6 +509,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	);
 
 	const ProviderLayer = ProviderServiceLive.pipe(
+		Layer.provide(AcpAgentLayer),
 		Layer.provide(HarnessProviderLayer),
 		Layer.provide(ModelCatalogLayer),
 		Layer.provide(CredentialsLayer),
@@ -702,6 +710,7 @@ export const makeMainLayer = (deps: MainLayerDeps) => {
 	);
 
 	const HandlerDomainLayer = Layer.mergeAll(
+		AcpAgentLayer,
 		DeviceBridgeLayer,
 		WorkspaceLayer,
 		PtyLayer,

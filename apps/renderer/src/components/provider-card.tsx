@@ -1,4 +1,4 @@
-import { PROVIDER_LABEL } from "~/lib/provider-labels";
+import { providerDisplayName } from "~/lib/provider-labels";
 import { CopyButton } from "./copy-button.tsx";
 import "@zuse/i18n/english/providers";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -135,7 +135,7 @@ export function ProviderSettingsRow({
 	// Subscription-gated rows still open so the Subscribe call to action is reachable.
 	const canExpand = enabled || unmetSubscriptionRequirement;
 	const open = expanded && canExpand;
-	const label = PROVIDER_LABEL[providerId];
+	const label = providerDisplayName(providerId);
 
 	return (
 		<div className="group flex flex-col">
@@ -363,7 +363,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 		(s) => s.modelEnabledByProvider,
 	);
 	const customModelIds = useSettingsStore(
-		(s) => s.customModelIdsByProvider[providerId],
+		(s) => s.customModelIdsByProvider[providerId] ?? [],
 	);
 	const setModelEnabled = useSettingsStore((s) => s.setModelEnabled);
 	const addCustomModelId = useSettingsStore((s) => s.addCustomModelId);
@@ -462,7 +462,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 					onChange={(event) => setCustomModelId(event.target.value)}
 					placeholder={uiMessage("providers:provider_card_enter_a_model_id")}
 					aria-label={uiMessage("providers:provider_card_custom_model_id", {
-						value1: String(PROVIDER_LABEL[providerId]),
+						value1: String(providerDisplayName(providerId)),
 					})}
 					aria-invalid={normalizedCustomModelId.length > 200 || undefined}
 				/>
@@ -480,7 +480,7 @@ function ModelVisibilitySettings({ providerId }: { providerId: ProviderId }) {
 			<p className="text-[10px] leading-snug text-muted-foreground/70">
 				{uiMessage(
 					"providers:provider_card_custom_ids_are_passed_directly_to_sentence",
-					{ value: PROVIDER_LABEL[providerId] },
+					{ value: providerDisplayName(providerId) },
 				)}
 			</p>
 		</div>
@@ -524,7 +524,10 @@ function SubscriptionRow({
 			<p className="text-[11px] leading-snug text-muted-foreground">
 				{uiMessage(
 					"providers:provider_card_sessions_will_fail_if_your_plan_doesn_apos_t_include_subscri_sentence",
-					{ value: info.plan, value2: PROVIDER_LABEL[providerId] },
+					{
+						value: info.plan,
+						value2: providerDisplayName(providerId),
+					},
 				)}
 			</p>
 			<div>
@@ -570,7 +573,7 @@ function ProviderSignInRow({
 	const { state, start, cancel } = useProviderLogin(providerId, {
 		environmentId,
 	});
-	const label = PROVIDER_LABEL[providerId];
+	const label = providerDisplayName(providerId);
 	const manualCommand = LOGIN_HINT[providerId] ?? "";
 
 	if (state.kind === "success") {

@@ -1,4 +1,4 @@
-import { PROVIDER_LABEL as PROVIDER_DISPLAY } from "~/lib/provider-labels";
+import { providerDisplayName } from "~/lib/provider-labels";
 import "@zuse/i18n/english/shell";
 import type { AgentAvailability } from "@zuse/contracts";
 import { message as uiMessage } from "@zuse/i18n";
@@ -109,7 +109,7 @@ export function getProviderSummary(
 					actionable: false,
 				};
 	}
-	const name = PROVIDER_DISPLAY[a.providerId];
+	const name = providerDisplayName(a.providerId);
 	if (!enabled) {
 		return {
 			statusKey: "disabled",

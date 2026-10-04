@@ -2,6 +2,7 @@ import { formatDate as formatUiDate } from "@zuse/i18n";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
 import { refreshHostedProjects } from "../lib/hosted-workspace.ts";
 import { isInputComposing } from "../lib/input-composition.ts";
+import { AcpAgentManager } from "./acp-agent-manager.tsx";
 import { ModelConnectionsPane } from "./settings/model-connections-pane.tsx";
 import { PluginsSettingsPane } from "./settings/plugins-settings-pane.tsx";
 import { WallpaperSettings } from "./settings/wallpaper-settings";
@@ -12,6 +13,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
 	type AppearanceMode,
 	type BranchNamingStyle,
+	BUILTIN_PROVIDER_CHOICES,
 	CommandId,
 	type CompletionSoundPreset,
 	type ComputerAwakeMode,
@@ -19,7 +21,6 @@ import {
 	EnvironmentId,
 	type Folder,
 	type FolderId,
-	PROVIDER_IDS,
 	type ProviderId,
 	type RuntimeMode,
 	visibleModelsForProvider,
@@ -70,7 +71,7 @@ import {
 } from "../lib/computer-awake.ts";
 import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client-bus.ts";
 import { useOrganizationWorkspaces } from "../lib/organization-workspaces.ts";
-import { PROVIDER_LABEL } from "../lib/provider-labels.ts";
+import { providerDisplayName } from "../lib/provider-labels.ts";
 import {
 	rendererWorkspaceSnapshot,
 	subscribeRendererWorkspace,
@@ -1650,7 +1651,7 @@ export function DefaultModelsPane() {
 			<SettingsRow
 				title={uiMessage("settings:settings_page_default_model")}
 				description={uiMessage("settings:settings_page_model_for_new_chats", {
-					value1: String(PROVIDER_LABEL[defaultProviderId]),
+					value1: String(providerDisplayName(defaultProviderId)),
 				})}
 				action={
 					<ModelPicker
@@ -1787,7 +1788,7 @@ function ProvidersPane() {
 					</div>
 				}
 			>
-				{PROVIDER_IDS.filter((pid) => pid !== "zuse").map((pid) => (
+				{BUILTIN_PROVIDER_CHOICES.filter((pid) => pid !== "zuse").map((pid) => (
 					<ProviderSettingsRow
 						key={pid}
 						environmentId={environmentId}
@@ -1799,6 +1800,7 @@ function ProvidersPane() {
 					/>
 				))}
 			</SettingsGroup>
+			<AcpAgentManager environmentId={environmentId} />
 			<ModelConnectionsPane environmentId={environmentId} />
 		</div>
 	);
@@ -2234,7 +2236,7 @@ export function ensureValidDefaultsForRuntime(
 	const provider = ready.includes(settings.defaultProviderId)
 		? settings.defaultProviderId
 		: fallbackProvider;
-	const model = settings.defaultModelByProvider[provider];
+	const model = settings.defaultModelByProvider[provider] ?? "default";
 	return {
 		providerId: provider,
 		model,

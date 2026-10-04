@@ -15,6 +15,7 @@ import {
 	type BuiltinCommand,
 	filterBuiltins,
 } from "../../composer/builtin-commands.ts";
+import { useModelCatalogStore } from "../../store/model-catalog.ts";
 
 export interface SlashCommandPopoverProps {
 	readonly trigger: ActiveTrigger;
@@ -80,10 +81,32 @@ export function SlashCommandPopover({
 	);
 	const allSkills = draftSkills ?? skillsView.data?.skills ?? EMPTY_SKILLS;
 
+	const agentCommands = useModelCatalogStore(
+		(state) => state.catalog.providers[providerId]?.commands,
+	);
 	const builtins = useMemo(
 		() =>
-			trigger.kind === "slash" ? filterBuiltins(trigger.query, providerId) : [],
-		[trigger.kind, trigger.query, providerId],
+			trigger.kind === "slash"
+				? [
+						...filterBuiltins(trigger.query, providerId),
+						...(agentCommands ?? [])
+							.filter(
+								(command) =>
+									!filterBuiltins("", providerId).some(
+										(builtin) => builtin.name === command.name,
+									) &&
+									`${command.name} ${command.description}`
+										.toLowerCase()
+										.includes(trigger.query.toLowerCase()),
+							)
+							.map((command) => ({
+								...command,
+								kind: "forward" as const,
+								appliesTo: providerId,
+							})),
+					]
+				: [],
+		[trigger.kind, trigger.query, providerId, agentCommands],
 	);
 	const skills = useMemo(
 		() =>

@@ -3,6 +3,7 @@ import { startClaudeSession } from "@zuse/agents/drivers/claude";
 import { startCodexSession } from "@zuse/agents/drivers/codex";
 import { startCursorSession } from "@zuse/agents/drivers/cursor";
 import { startGeminiSession } from "@zuse/agents/drivers/gemini";
+import { startGenericAcpSession } from "@zuse/agents/drivers/generic-acp";
 import { startGrokSession } from "@zuse/agents/drivers/grok";
 import { startKiroSession } from "@zuse/agents/drivers/kiro";
 import { startOpencodeSession } from "@zuse/agents/drivers/opencode";
@@ -39,11 +40,12 @@ import {
 	CredentialValidationError,
 	DEFAULT_RUNTIME_MODE,
 	type FolderId,
+	isAcpProviderId,
 	type PermissionDecision,
 	type PermissionKind,
-	PROVIDER_CAPABILITIES,
 	type ProviderEventEnvelope,
 	type ProviderId,
+	providerCapabilities,
 	type ThreadGoalSetInput,
 	type UserQuestion,
 } from "@zuse/contracts";
@@ -76,6 +78,7 @@ import {
 	hasDisabledSkillsFor,
 } from "../../skill/skill-enablement.ts";
 import { WorkspaceService } from "../../workspace/services/workspace-service.ts";
+import { AcpAgentService } from "../acp/service.ts";
 import { validateApiKey } from "../api-key-validation.ts";
 import { probeProvidersWithPaths, resolveCliPath } from "../availability.ts";
 import { makeProviderSessionRegistry } from "../provider-session-registry.ts";
@@ -120,6 +123,7 @@ const nextSessionId = (): AgentSessionId =>
 export const ProviderServiceLive = Layer.effect(
 	ProviderService,
 	Effect.gen(function* () {
+		const acpAgents = yield* AcpAgentService;
 		const executor = yield* CommandExecutor.ChildProcessSpawner;
 		const fs = yield* FileSystem.FileSystem;
 		const harness = yield* Effect.serviceOption(HarnessProvider);
@@ -319,7 +323,19 @@ export const ProviderServiceLive = Layer.effect(
 					(yield* configStore.getSettings()).providerBinaryPaths ?? {},
 				);
 				if (refresh) yield* Cache.invalidate(availabilityCache, key);
-				const list = yield* Cache.get(availabilityCache, key);
+				const list = [
+					...(yield* Cache.get(availabilityCache, key)),
+					...(yield* Effect.tryPromise(() => acpAgents.availability()).pipe(
+						Effect.catch((error) =>
+							Effect.as(
+								Effect.logWarning(
+									`[provider] ACP agent availability unavailable: ${error}`,
+								),
+								[],
+							),
+						),
+					)),
+				];
 				return Option.isSome(harness)
 					? [...list, yield* harness.value.availability()]
 					: list;
@@ -440,13 +456,13 @@ export const ProviderServiceLive = Layer.effect(
 						...(modelDescriptor !== undefined ? { modelDescriptor } : {}),
 						workspaceInstructions: zuseWorkspaceInstructions({
 							projectPath: folder.path,
-							includeAppTools: PROVIDER_CAPABILITIES[input.providerId].appTools,
+							includeAppTools: providerCapabilities(input.providerId).appTools,
 							cwd,
 						}),
 					};
 					const brokeredCredential = yield* Effect.tryPromise({
 						try: () =>
-							PROVIDER_CAPABILITIES[input.providerId].credentialSource ===
+							providerCapabilities(input.providerId).credentialSource ===
 							"connections"
 								? Promise.resolve(null)
 								: runtimeCredentials.resolve(input.providerId),
@@ -521,7 +537,37 @@ export const ProviderServiceLive = Layer.effect(
 							};
 					}
 					let providerHandle: ProviderSessionHandle;
-					if (input.providerId === "zuse") {
+					if (isAcpProviderId(input.providerId)) {
+						const launch = yield* Effect.tryPromise({
+							try: () => acpAgents.launch(input.providerId as `acp-${string}`),
+							catch: (cause) =>
+								new AgentSessionStartError({
+									providerId: input.providerId,
+									reason: String(cause),
+								}),
+						});
+						const mcpCommand = yield* resolveCliPath("bun", binaryPaths).pipe(
+							Effect.provideService(
+								CommandExecutor.ChildProcessSpawner,
+								executor,
+							),
+						);
+						providerHandle = yield* startGenericAcpSession(
+							driverInput,
+							cwd,
+							launch,
+							sessionId,
+							buildRequestPermission(input.folderId),
+							runtimeModeGetter,
+							(command) =>
+								Effect.runPromiseWith(runtime)(
+									browserBridge.send(sessionId, command),
+								),
+							mcpCommand ?? process.execPath,
+							orchestrationTools,
+							resumeCursor,
+						).pipe(Effect.provideService(AttachmentService, attachmentService));
+					} else if (input.providerId === "zuse") {
 						if (Option.isNone(harness))
 							return yield* new AgentSessionStartError({
 								providerId: "zuse",

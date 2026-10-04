@@ -1,6 +1,5 @@
 import {
 	type AgentAvailability,
-	catalogProviderIds,
 	defaultModelFor,
 	findModelDescriptor,
 	type ModelCatalogView,
@@ -8,8 +7,10 @@ import {
 	type PermissionMode,
 	PROVIDER_LABELS,
 	type ProviderId,
+	providerLabel,
 	type RuntimeMode,
 	type SelectOptionDescriptor,
+	selectableCatalogProviderIds,
 } from "@zuse/contracts";
 
 export const PROVIDER_LABEL = PROVIDER_LABELS;
@@ -76,9 +77,12 @@ export const PERMISSION_OPTIONS: readonly {
 // Every helper takes the resolved catalog first (see `~/store/model-catalog`)
 // so pickers reflect the desktop's live inventory, not a compiled-in list.
 export const providerOptions = (catalog: ModelCatalogView) =>
-	catalogProviderIds(catalog).map((providerId) => ({
+	selectableCatalogProviderIds(catalog).map((providerId) => ({
 		value: providerId,
-		label: PROVIDER_LABEL[providerId],
+		label: providerLabel(
+			providerId,
+			catalog.providers[providerId]?.displayName,
+		),
 	}));
 
 export const modelOptionsForProvider = (

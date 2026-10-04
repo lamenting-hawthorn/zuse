@@ -14,13 +14,14 @@ export const StubModelCatalogLive = Layer.succeed(ModelCatalogService, {
 	changes: () => Stream.make(bundledResolvedModelCatalog()),
 	findModel: (providerId, modelId) =>
 		Effect.succeed(
-			bundledResolvedModelCatalog().providers[providerId].models.find(
+			bundledResolvedModelCatalog().providers[providerId]?.models.find(
 				(model) => model.id === modelId,
 			),
 		),
 	resolveSlug: (providerId, slug) =>
 		Effect.succeed(
-			bundledResolvedModelCatalog().providers[providerId].aliases[slug] ?? slug,
+			bundledResolvedModelCatalog().providers[providerId]?.aliases[slug] ??
+				slug,
 		),
 	invalidateLive: () => Effect.void,
 });

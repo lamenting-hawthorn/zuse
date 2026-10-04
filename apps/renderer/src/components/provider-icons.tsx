@@ -1,8 +1,10 @@
 import zuseMark from "@repo/ui/zuse-mark";
 import type { ProviderId } from "@zuse/contracts";
+import { Bot } from "lucide-react";
 import type { SVGProps } from "react";
 
 import { cn } from "~/lib/utils";
+import { useModelCatalogStore } from "../store/model-catalog.ts";
 import { ClaudeIcon } from "./icons/claude-icon";
 import { CodexIcon } from "./icons/codex-icon";
 import { GeminiIcon } from "./icons/gemini-icon";
@@ -104,5 +106,44 @@ export function ProviderIcon({
 			return <OpencodeBrandIcon className={className} {...props} />;
 		case "kiro":
 			return <KiroIcon className={sized} {...props} />;
+		default:
+			return <AcpProviderIcon providerId={providerId} className={className} />;
 	}
+}
+
+function AcpProviderIcon({
+	providerId,
+	className,
+}: {
+	providerId: ProviderId;
+	className?: string;
+}) {
+	const icon = useModelCatalogStore(
+		(state) => state.catalog.providers[providerId]?.icon,
+	);
+	return <AcpAgentLogo icon={icon} className={className} />;
+}
+
+/** ACP registry logos are monochrome SVGs; a CSS mask tints them like inline icons. */
+export function AcpAgentLogo({
+	icon,
+	className,
+}: {
+	icon?: string;
+	className?: string;
+}) {
+	const sized = cn("size-3.5 shrink-0", className);
+	if (!icon) return <Bot className={sized} aria-hidden="true" />;
+	return (
+		<span
+			aria-hidden="true"
+			className={cn(sized, "bg-current")}
+			style={{
+				maskImage: `url(${JSON.stringify(icon)})`,
+				maskSize: "contain",
+				maskRepeat: "no-repeat",
+				maskPosition: "center",
+			}}
+		/>
+	);
 }

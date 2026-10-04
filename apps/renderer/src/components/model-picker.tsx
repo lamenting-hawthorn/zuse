@@ -1,5 +1,8 @@
 import { canUseExperimentalHarness } from "@zuse/utils/feature-access";
-import { PROVIDER_SHORT_LABEL } from "~/lib/provider-labels";
+import {
+	PROVIDER_SHORT_LABEL,
+	providerDisplayName,
+} from "~/lib/provider-labels";
 import { useAuth } from "../hooks/use-auth.ts";
 import { loadCloudAuth } from "../lib/cloud-workspace-session-cache.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
@@ -14,12 +17,12 @@ import type {
 	SessionId,
 } from "@zuse/contracts";
 import {
-	catalogProviderIds,
 	findModelDescriptor,
 	isModelVisible,
 	type ModelOption,
 	PROVIDER_LABELS,
 	type SelectOptionDescriptor,
+	selectableCatalogProviderIds,
 } from "@zuse/contracts";
 import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import {
@@ -51,11 +54,12 @@ import { ProviderIcon } from "./provider-icons";
 import { Popover, PopoverPrimitive, PopoverTrigger } from "./ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
-const PROVIDER_LABEL = PROVIDER_LABELS;
+const _PROVIDER_LABEL = PROVIDER_LABELS;
 
 const PROVIDER_CHIP_LABEL = PROVIDER_SHORT_LABEL;
 
 interface ModelPickerEntry {
+	providerName?: string;
 	providerId: ProviderId;
 	modelId: string;
 	label: string;
@@ -143,7 +147,7 @@ export function ModelPicker(props: ModelPickerProps) {
 
 	const providerId = isDefault ? defaultProviderId : props.providerId;
 	const currentModel = isDefault
-		? defaultModelByProvider[providerId]
+		? (defaultModelByProvider[providerId] ?? "default")
 		: props.currentModel;
 
 	// Setters
@@ -247,7 +251,7 @@ export function ModelPicker(props: ModelPickerProps) {
 			// Authoritative live inventories (Codex, Cursor, Kiro, OpenCode) mark
 			// curated models the account can't use as unavailable; keep the
 			// current selection visible so the user can see what they're on.
-			const available = provider.models.filter(
+			const available = (provider?.models ?? []).filter(
 				(m) => m.available || m.id === selectedId,
 			);
 			// OpenCode ids are `<provider>/<model>`. The provider manager lets the
@@ -279,7 +283,7 @@ export function ModelPicker(props: ModelPickerProps) {
 					label: m.label,
 					...(m.badgeLabel !== undefined ? { badgeLabel: m.badgeLabel } : {}),
 				})),
-				...customModelIdsByProvider[pid]
+				...(customModelIdsByProvider[pid] ?? [])
 					.filter((modelId) => !existingIds.has(modelId))
 					.map((modelId) => ({ id: modelId, label: modelId })),
 			];
@@ -296,6 +300,9 @@ export function ModelPicker(props: ModelPickerProps) {
 		],
 	);
 
+	const providerName = (id: ProviderId) =>
+		availability.find((item) => item.providerId === id)?.displayName ??
+		providerDisplayName(id);
 	const availabilityById = useMemo(() => {
 		const m = new globalThis.Map<ProviderId, AgentAvailability>();
 		for (const a of availability) m.set(a.providerId, a);
@@ -303,7 +310,7 @@ export function ModelPicker(props: ModelPickerProps) {
 	}, [availability, uiMessage]);
 
 	const pickableProviders = useMemo<ReadonlyArray<ProviderId>>(() => {
-		return catalogProviderIds(catalog).filter((pid) => {
+		return selectableCatalogProviderIds(catalog).filter((pid) => {
 			if (pid === "zuse" && !experimentalHarnessAllowed) return false;
 			// Settings must keep the selected provider's catalog editable even when
 			// its local runtime is signed out. Session pickers remain restricted to
@@ -371,6 +378,7 @@ export function ModelPicker(props: ModelPickerProps) {
 				}
 				out.push({
 					providerId: pid,
+					providerName: availabilityById.get(pid)?.displayName,
 					modelId: m.id,
 					label: m.label,
 					...(m.badgeLabel !== undefined ? { badgeLabel: m.badgeLabel } : {}),
@@ -594,14 +602,14 @@ export function ModelPicker(props: ModelPickerProps) {
 								count={totalCount}
 							/>
 							{pickableProviders.map((pid) => {
-								const live = catalog.providers[pid].live.status === "ok";
+								const live = catalog.providers[pid]?.live.status === "ok";
 								return (
 									<ProviderSidebarItem
 										key={pid}
 										active={scope === pid}
 										onClick={() => setScope(pid)}
 										providerId={pid}
-										label={PROVIDER_CHIP_LABEL[pid]}
+										label={PROVIDER_CHIP_LABEL[pid] ?? providerName(pid)}
 										count={countByProvider.get(pid) ?? 0}
 										live={live}
 									/>
@@ -662,6 +670,7 @@ export function ModelPicker(props: ModelPickerProps) {
 											>
 												<ProviderSectionHeader
 													providerId={g.providerId}
+													name={providerName(g.providerId)}
 													count={g.models.length}
 													current={g.providerId === providerId}
 												/>
@@ -752,7 +761,7 @@ function SearchField({
 	const placeholder =
 		scope === "all"
 			? `Search ${totalCount} models`
-			: `in ${PROVIDER_CHIP_LABEL[scope]}…`;
+			: `in ${providerDisplayName(scope)}…`;
 	return (
 		<div className="flex h-8 items-center gap-2 rounded-md border bg-background px-2.5 focus-within:border-foreground/60 focus-within:ring-2 focus-within:ring-primary/30">
 			<HugeiconsIcon
@@ -820,11 +829,13 @@ function ProviderSidebarItem({
 }
 
 function ProviderSectionHeader({
+	name,
 	providerId,
 	count,
 	current,
 }: {
 	providerId: ProviderId;
+	name: string;
 	count: number;
 	current: boolean;
 }) {
@@ -833,9 +844,7 @@ function ProviderSectionHeader({
 	return (
 		<div className="flex items-center gap-2 px-2 pt-1.5 pb-1 text-xs">
 			<ProviderIcon providerId={providerId} className="size-3.5" />
-			<span className="font-medium text-foreground">
-				{PROVIDER_LABEL[providerId]}
-			</span>
+			<span className="font-medium text-foreground">{name}</span>
 			{current && (
 				<span className="rounded-[0.25rem] bg-primary/35 px-1.5 py-px text-[9px] font-semibold text-primary-foreground uppercase tracking-wide dark:bg-primary/15 dark:text-primary">
 					{uiMessage("providers:model_picker_current")}
@@ -939,7 +948,7 @@ function ModelRow({
 				</span>
 				{showProvider && (
 					<span className="truncate text-[11px] text-muted-foreground">
-						{PROVIDER_LABEL[entry.providerId]}
+						{entry.providerName ?? providerDisplayName(entry.providerId)}
 					</span>
 				)}
 			</span>

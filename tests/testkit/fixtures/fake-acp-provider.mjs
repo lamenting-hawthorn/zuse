@@ -126,6 +126,7 @@ if (controlPort > 0) {
 	});
 }
 
+let authenticated = false;
 const handleRequest = (message) => {
 	const { id, method, params = {} } = message;
 	if (method === "initialize") {
@@ -135,16 +136,30 @@ const handleRequest = (message) => {
 			result: {
 				protocolVersion: 1,
 				authMethods: [{ id: "cached_token", name: "Deterministic test auth" }],
-				agentCapabilities: { loadSession: true },
+				agentCapabilities: {
+					loadSession: scenario !== "no-resume",
+					...(process.env.ZUSE_FAKE_ACP_HTTP === "1"
+						? { mcpCapabilities: { http: true } }
+						: {}),
+				},
 			},
 		});
 		return;
 	}
 	if (method === "authenticate") {
+		authenticated = true;
 		write({ jsonrpc: "2.0", id, result: {} });
 		return;
 	}
 	if (method === "session/new") {
+		if (scenario === "authentication" && !authenticated) {
+			write({
+				jsonrpc: "2.0",
+				id,
+				error: { code: -32000, message: "Authentication required" },
+			});
+			return;
+		}
 		const sessionId = `fake-acp-${randomUUID()}`;
 		const state = {
 			cwd: params.cwd,
@@ -153,7 +168,41 @@ const handleRequest = (message) => {
 		};
 		sessions.set(sessionId, state);
 		writeSession(sessionId, state);
-		write({ jsonrpc: "2.0", id, result: { sessionId } });
+		write({
+			jsonrpc: "2.0",
+			id,
+			result: {
+				sessionId,
+				...(scenario === "discovery"
+					? {
+							models: {
+								currentModelId: "test-model",
+								availableModels: [
+									{ modelId: "test-model", name: "Test model" },
+								],
+							},
+							modes: {
+								currentModeId: "code",
+								availableModes: [{ id: "code", name: "Code" }],
+							},
+						}
+					: {}),
+			},
+		});
+		if (scenario === "discovery")
+			write({
+				jsonrpc: "2.0",
+				method: "session/update",
+				params: {
+					sessionId,
+					update: {
+						sessionUpdate: "available_commands_update",
+						availableCommands: [
+							{ name: "explain", description: "Explain the workspace" },
+						],
+					},
+				},
+			});
 		report("session.created", { sessionId, cwd: params.cwd });
 		return;
 	}
@@ -213,6 +262,10 @@ const handleRequest = (message) => {
 		report("session.loaded", { sessionId: params.sessionId });
 		return;
 	}
+	if (method === "session/set_model" || method === "session/set_mode") {
+		write({ jsonrpc: "2.0", id, result: {} });
+		return;
+	}
 	if (method === "session/prompt") {
 		const sessionId = params.sessionId;
 		const prompt = Array.isArray(params.prompt)
@@ -224,6 +277,37 @@ const handleRequest = (message) => {
 		if (scenario === "crash") process.exit(42);
 		if (scenario === "malformed") process.stdout.write("not-json\n");
 		if (scenario === "stall") return;
+		if (scenario === "tool-calls") {
+			const frames = [
+				{
+					sessionUpdate: "tool_call",
+					toolCallId: "edit-1",
+					kind: "edit",
+					status: "in_progress",
+					title: "Edit file",
+					locations: [{ path: `${process.cwd()}/demo.ts` }],
+				},
+				{
+					sessionUpdate: "tool_call_update",
+					toolCallId: "edit-1",
+					status: "completed",
+					content: [
+						{
+							type: "diff",
+							path: `${process.cwd()}/demo.ts`,
+							oldText: "before",
+							newText: "after",
+						},
+					],
+				},
+			];
+			for (const frame of frames)
+				write({
+					jsonrpc: "2.0",
+					method: "session/update",
+					params: { sessionId, update: frame },
+				});
+		}
 		if (scenario === "permission") {
 			const cwd = sessions.get(sessionId)?.cwd || process.cwd();
 			const permissionRequestId = 900000 + Number(id);
@@ -267,9 +351,11 @@ const handleRequest = (message) => {
 		}
 		update(
 			sessionId,
-			scenario === "hold" ? "Hello" : "Hello from deterministic provider.",
+			scenario === "hold" || scenario === "ignore-cancel"
+				? "Hello"
+				: "Hello from deterministic provider.",
 		);
-		if (scenario === "hold") {
+		if (scenario === "hold" || scenario === "ignore-cancel") {
 			pendingPrompts.set(id, sessionId);
 			report("prompt.held", { sessionId });
 			return;
@@ -291,11 +377,20 @@ const input = readline.createInterface({
 input.on("line", (line) => {
 	if (line.trim().length === 0) return;
 	const message = JSON.parse(line);
+	if (message.method === "session/cancel" && scenario === "ignore-cancel")
+		return;
 	if (message.method === "session/cancel") {
 		const pending = [...pendingPrompts.entries()].find(
 			(entry) => entry[1] === message.params?.sessionId,
 		);
-		if (pending) pendingPrompts.delete(pending[0]);
+		if (pending) {
+			pendingPrompts.delete(pending[0]);
+			write({
+				jsonrpc: "2.0",
+				id: pending[0],
+				result: { stopReason: "cancelled" },
+			});
+		}
 		report("prompt.cancelled", { sessionId: message.params?.sessionId });
 		return;
 	}

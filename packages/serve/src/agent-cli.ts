@@ -670,7 +670,7 @@ const execute = async (
 						models:
 							catalog === null
 								? modelsForProvider(BUNDLED_MODEL_CATALOG, providerId)
-								: catalog.providers[providerId].models.filter(
+								: (catalog.providers[providerId]?.models ?? []).filter(
 										(model) => model.available,
 									),
 					}),

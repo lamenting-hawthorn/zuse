@@ -1,5 +1,5 @@
 import { cloudProviderAuthenticationMode } from "@zuse/client-runtime/cloud-provider-availability";
-import { PROVIDER_LABEL as PROVIDER_LABEL_FOR_ERROR } from "~/lib/provider-labels";
+import { providerDisplayName } from "~/lib/provider-labels";
 import { useStreamingText } from "../hooks/use-streaming-text.ts";
 import { ContextPill, contextPillClass } from "./context-pill.tsx";
 import "@zuse/i18n/english/common";
@@ -304,7 +304,7 @@ function MessageRowImpl({
 				return (
 					<div className="px-4 py-2 text-xs text-muted-foreground">
 						{uiMessage("chat:message_row_signed_out_of", {
-							label: String(PROVIDER_LABEL_FOR_ERROR[providerId]),
+							label: providerDisplayName(providerId),
 						})}
 					</div>
 				);
@@ -672,7 +672,9 @@ export function UserBubble({
 								<span>
 									{uiMessage(
 										"chat:message_row_sent_by_from_another_chat_sentence",
-										{ value: PROVIDER_LABEL_FOR_ERROR[origin.providerId] },
+										{
+											value: providerDisplayName(origin.providerId),
+										},
 									)}
 								</span>
 							</button>
@@ -849,7 +851,7 @@ function CloudProviderAuthCard({
 }) {
 	const { message: uiMessage } = useUiMessages(["chat", "common"]);
 
-	const providerLabel = PROVIDER_LABEL_FOR_ERROR[providerId];
+	const providerLabel = providerDisplayName(providerId);
 	const replacementProjectId = localProjectForCloudEnvironment(environmentId);
 	const legacy = authMode === "legacy-image";
 	const broker = authMode === "broker-v1";
@@ -1145,7 +1147,7 @@ export function ErrorBubble({
 		error.kind === "auth"
 			? `Sign in to ${
 					error.providerId
-						? PROVIDER_LABEL_FOR_ERROR[error.providerId]
+						? providerDisplayName(error.providerId)
 						: "your provider"
 				}`
 			: error.kind === "network"

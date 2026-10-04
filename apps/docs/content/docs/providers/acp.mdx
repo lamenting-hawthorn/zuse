@@ -1,0 +1,40 @@
+---
+title: ACP agents
+description: Install agents from the ACP catalog or connect your own ACP command.
+---
+
+Zuse can run agents that speak the Agent Client Protocol (ACP) over standard input and output. Each connected host has its own agents, installations, and credentials.
+
+## Add an agent
+
+Open **Settings → Providers**, then click **Add** in the **ACP agents** section. Search the catalog and click **Add**; hover an entry to open its source. Zuse selects a distribution for the host and checks the agent's connection. Package-based agents require Node.js/npm or uv on that host; missing prerequisites appear as an installation error.
+
+Installed versions stay pinned until you choose **Update** from the agent's **…** menu. A failed update keeps the previous configuration. The catalog remains available from its cached or bundled snapshot when the registry cannot be reached.
+
+## Use your own command
+
+Choose **Use a custom command…** and enter a name, executable, and arguments. Arguments are separated by spaces and support shell-style quoting; for example, `--acp --model "my model"`.
+
+Environment variables are entered as `KEY=value` pairs separated by spaces, such as `API_KEY=your-key`. Zuse keeps their values in the host's credential storage and displays only the saved variable names. Leave the field blank when editing to keep existing values, or click **Clear** to remove them. Commands are launched directly, without shell expansion.
+
+Choose **Test connection** from the agent's **…** menu to check the protocol and discover available models, modes, and commands. If sign-in is required, click **Sign in** and choose an advertised authentication method. Some methods open an interactive terminal; others offer a sign-in link or open a browser on the agent's host. Remote agents whose authentication requires a local browser callback may need to be authenticated directly on that machine.
+
+## Multiple configurations
+
+Use **Duplicate** from the **…** menu to create an independent named configuration with the same command and environment. Select each configuration separately in the model picker. You can edit or remove configurations, or turn them off with the switch, without deleting their conversation history.
+
+Settings changes apply when an agent process next starts. Running conversations retain their launch configuration. If an agent cannot resume a saved session, Zuse reports that limitation instead of silently replacing its history.
+
+## Tools and capabilities
+
+Zuse uses ACP's structured tool information to display file reads, diffs, searches, terminal output, and permission requests. Unrecognized tools retain a generic card. Models and modes come from the agent; unsupported controls are hidden. Image attachments require the agent to advertise image support.
+
+This integration supports ACP over stdio. It does not load arbitrary JavaScript adapter plugins or connect directly to network ACP endpoints.
+
+## Amp and Oh My Pi
+
+Search **Amp** in the catalog to install its registry adapter. The Amp CLI must also be installed and authenticated on that host.
+
+Search **Oh My Pi** or **OMP** for the community `omp-acp` adapter. It requires Node.js 20+ and the `omp` CLI and reuses OMP's authentication. If `omp` is not on the host's PATH, set `OMP_ACP_RUNTIME_COMMAND` to its absolute path in the agent's environment. The catalog labels this entry **Community** and links to its [source and setup instructions](https://github.com/jiwangyihao/omp-acp).
+
+Gemini is available through the ACP agents catalog, rather than the built-in setup list. Existing Gemini conversations retain their provider identity.

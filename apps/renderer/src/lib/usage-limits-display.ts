@@ -1,14 +1,13 @@
 import "@zuse/i18n/english/usage";
 import type { ProviderId, ProviderUsageLimits } from "@zuse/contracts";
 import { message } from "@zuse/i18n";
-
-import { PROVIDER_DISPLAY } from "./provider-status";
+import { providerDisplayName } from "./provider-labels";
 
 export const usageLimitsUnavailableLabel = (
 	providerId: ProviderId,
 	reason: ProviderUsageLimits["unavailableReason"],
 ): string => {
-	const providerName = PROVIDER_DISPLAY[providerId];
+	const providerName = providerDisplayName(providerId);
 	if (reason === "cli-unavailable")
 		return message("usage:usage_limits_cli_unavailable", {
 			provider: providerName,

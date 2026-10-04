@@ -1,4 +1,4 @@
-import { PROVIDER_LABEL } from "~/lib/provider-labels";
+import { providerDisplayName } from "~/lib/provider-labels";
 import "@zuse/i18n/english/errors";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -240,7 +240,7 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 							session.model,
 						);
 						const tooltip = modelLabel
-							? `${session.title} — ${PROVIDER_LABEL[session.providerId]} · ${modelLabel}`
+							? `${session.title} — ${providerDisplayName(session.providerId)} · ${modelLabel}`
 							: session.title;
 						return (
 							<ChatTabButton

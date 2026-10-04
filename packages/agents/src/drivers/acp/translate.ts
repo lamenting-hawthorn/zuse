@@ -23,7 +23,7 @@ import { appendStreamText } from "../../kernel/stream-text.ts";
  * (GEMINI/GROK/CURSOR) for raw JSON-RPC frame logs in the drivers.
  */
 
-export type AcpProviderTag = "grok" | "gemini" | "cursor" | "kiro";
+export type AcpProviderTag = "grok" | "gemini" | "cursor" | "kiro" | "generic";
 
 const ACP_TRACE = process.env.MEMOIZE_DEBUG_ACP === "1";
 
@@ -963,6 +963,7 @@ const isThinkingChunk = (kind: string): boolean =>
 	kind === "reasoning";
 
 interface AcpTranslator {
+	finishTools(reason: string): ReadonlyArray<AgentEvent>;
 	/**
 	 * Translate one ACP `session/update` payload. May return zero events
 	 * (chunk got buffered for coalescing) or multiple (a flush of buffered
@@ -990,6 +991,7 @@ export interface AcpTranslatorCheckpointOptions {
  * in the renderer.
  */
 interface ToolCallState {
+	genericOutput?: unknown;
 	/** What we last emitted as `ToolUse.input` — used to skip identical re-emits. */
 	lastInputJson: string | null;
 	/** True once we've emitted a `ToolResult` for this call. */
@@ -1743,6 +1745,8 @@ export const createAcpTranslator = (
 					const isDiffOnly = hasContent && extractDiffBlock(content) !== null;
 					const status = typeof u["status"] === "string" ? u["status"] : null;
 					const completed = status === "completed" || status === "failed";
+					if (provider === "generic" && hasContent && !isDiffOnly)
+						state.genericOutput = extractOutput(u);
 
 					// Emit a ToolResult at most once per call. Triggers:
 					//   - Non-diff content arrived (the actual result payload)
@@ -1751,10 +1755,10 @@ export const createAcpTranslator = (
 					//     finished so spinners stop).
 					if (
 						!state.resultEmitted &&
-						((hasContent && !isDiffOnly) || completed)
+						((provider !== "generic" && hasContent && !isDiffOnly) || completed)
 					) {
 						state.resultEmitted = true;
-						const output = extractOutput(u);
+						const output = extractOutput(u) ?? state.genericOutput ?? null;
 						const isError =
 							u["isError"] === true ||
 							u["is_error"] === true ||
@@ -1830,7 +1834,9 @@ export const createAcpTranslator = (
 								? "Cursor"
 								: provider === "kiro"
 									? "Kiro"
-									: "Gemini";
+									: provider === "generic"
+										? "ACP"
+										: "Gemini";
 					const message =
 						detail !== null
 							? detail
@@ -2176,10 +2182,33 @@ export const createAcpTranslator = (
 	};
 
 	return {
+		finishTools: (reason: string): ReadonlyArray<AgentEvent> => {
+			const result: AgentEvent[] = [];
+			for (const [itemId, state] of toolStates) {
+				if (state.useEmitted && !state.resultEmitted) {
+					state.resultEmitted = true;
+					result.push({
+						_tag: "ToolResult",
+						itemId: itemId as AgentItemId,
+						output: state.genericOutput ?? reason,
+						isError: true,
+					});
+				}
+			}
+			return result;
+		},
 		translate: (update) => {
 			const events = translateOne(update);
+			const record = recordFrom(update);
+			const terminal =
+				provider === "generic" &&
+				record?.sessionUpdate === "tool_call" &&
+				(record.status === "completed" || record.status === "failed");
+			const completion = terminal
+				? translateOne({ ...record, sessionUpdate: "tool_call_update" })
+				: [];
 			scheduleCheckpoint();
-			return events;
+			return [...events, ...completion];
 		},
 		flush: () => {
 			checkpointScheduler?.cancel();

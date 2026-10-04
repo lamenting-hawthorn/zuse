@@ -1,0 +1,37 @@
+import { describe, expect, it } from "vitest";
+import { createAcpTerminalSession } from "../../../../src/drivers/acp/terminal.ts";
+
+describe("ACP terminal ownership", () => {
+	it("isolates connections and retains released output for late tool updates", async () => {
+		const first = createAcpTerminalSession(() => ({ cwd: process.cwd() }));
+		const other = createAcpTerminalSession(() => ({ cwd: process.cwd() }));
+		try {
+			const created = (await first.handle("terminal/create", {
+				command: process.execPath,
+				args: ["-e", "process.stdout.write('terminal result')"],
+			})) as { terminalId: string };
+			await expect(other.handle("terminal/output", created)).rejects.toThrow(
+				"Unknown terminal",
+			);
+			await first.handle("terminal/wait_for_exit", created);
+			await first.handle("terminal/release", created);
+			const update = await first.resolveUpdate({
+				sessionUpdate: "tool_call_update",
+				toolCallId: "command",
+				content: [{ type: "terminal", terminalId: created.terminalId }],
+			});
+			expect(update).toMatchObject({
+				content: [
+					{
+						type: "content",
+						content: { type: "text", text: "terminal result" },
+					},
+				],
+			});
+		} finally {
+			await first.close();
+			await other.close();
+		}
+		await expect(first.handle("terminal/create", {})).rejects.toThrow("closed");
+	});
+});

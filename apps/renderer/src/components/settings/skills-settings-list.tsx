@@ -5,7 +5,7 @@ import { useMessages as useUiMessages } from "@zuse/i18n/react";
 import { CubeIcon } from "@zuse/icons/solid-rounded";
 import { useCallback, useEffect, useState } from "react";
 import { dispatchEnvironmentShellCommand } from "~/lib/environment-shell-client-bus.ts";
-import { PROVIDER_LABEL } from "~/lib/provider-labels";
+import { providerDisplayName } from "~/lib/provider-labels";
 import { useEnvironmentCatalogStore } from "~/store/environment-catalog.ts";
 import { PluginsLoading } from "../plugins/plugins-loading.tsx";
 import { Button } from "../ui/button.tsx";
@@ -147,7 +147,7 @@ export function SkillsSettingsList({
 			{[...groups].map(([providerId, providerSkills]) => (
 				<SettingsGroup
 					key={providerId}
-					title={PROVIDER_LABEL[providerId]}
+					title={providerDisplayName(providerId)}
 					footer={
 						providerId === "codex"
 							? m("plugins:plugins_skills_codex_note")

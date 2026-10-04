@@ -300,20 +300,21 @@ export const WorkspaceSettingsValues = SettingsPatch.mapFields(
 ).mapFields((fields) => ({
 	...fields,
 	// Persisted account preferences must survive additions to the provider catalog.
+	// ACP provider ids are a pattern key, which only permits `Schema.optional` values.
 	defaultModelByProvider: Schema.optional(
-		Schema.Record(ProviderId, Schema.optionalKey(Schema.String)),
+		Schema.Record(ProviderId, Schema.optional(Schema.String)),
 	),
 	providerEnabled: Schema.optional(
-		Schema.Record(ProviderId, Schema.optionalKey(Schema.Boolean)),
+		Schema.Record(ProviderId, Schema.optional(Schema.Boolean)),
 	),
 	modelEnabledByProvider: Schema.optional(
 		Schema.Record(
 			ProviderId,
-			Schema.optionalKey(Schema.Record(Schema.String, Schema.Boolean)),
+			Schema.optional(Schema.Record(Schema.String, Schema.Boolean)),
 		),
 	),
 	customModelIdsByProvider: Schema.optional(
-		Schema.Record(ProviderId, Schema.optionalKey(Schema.Array(Schema.String))),
+		Schema.Record(ProviderId, Schema.optional(Schema.Array(Schema.String))),
 	),
 }));
 export type WorkspaceSettingsValues = typeof WorkspaceSettingsValues.Type;

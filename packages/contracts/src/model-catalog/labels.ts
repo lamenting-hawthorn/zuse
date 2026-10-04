@@ -17,5 +17,8 @@ export const PROVIDER_LABELS: Readonly<Record<ProviderId, string>> = {
 	zuse: "Zuse (Experimental)",
 };
 
-export const providerLabel = (providerId: ProviderId): string =>
-	PROVIDER_LABELS[providerId];
+/** Built-in label, else the catalog's name for a user-configured ACP agent. */
+export const providerLabel = (
+	providerId: ProviderId,
+	displayName?: string,
+): string => PROVIDER_LABELS[providerId] ?? displayName ?? "ACP agent";

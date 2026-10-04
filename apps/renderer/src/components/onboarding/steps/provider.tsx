@@ -3,14 +3,14 @@ import "@zuse/i18n/english/providers";
 import "@zuse/i18n/english/shell";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { AgentAvailability, ProviderId } from "@zuse/contracts";
-import { PROVIDER_IDS } from "@zuse/contracts";
+import { BUILTIN_PROVIDER_CHOICES } from "@zuse/contracts";
 import { RichMessage, useMessages as useUiMessages } from "@zuse/i18n/react";
 import { LinkSquare01Icon, Tick01Icon } from "@zuse/icons/bulk-rounded";
 
 import { ApiKeyRow } from "~/components/api-key-row";
 import { ProviderIcon } from "~/components/provider-icons";
-import { PROVIDER_LABEL } from "~/components/settings-page";
 import { Button } from "~/components/ui/button";
+import { providerDisplayName } from "~/lib/provider-labels";
 import { INSTALL_HINT } from "~/lib/provider-setup";
 import { isInitialProviderAvailabilityLoading } from "~/lib/provider-status";
 import { cn } from "~/lib/utils";
@@ -126,7 +126,7 @@ export function ProviderStep() {
 	const loading = useProvidersStore((s) => s.loading);
 	const availabilityLoaded = useProvidersStore((s) => s.availabilityLoaded);
 
-	const providers = PROVIDER_IDS;
+	const providers = BUILTIN_PROVIDER_CHOICES;
 
 	const initialLoading = isInitialProviderAvailabilityLoading(
 		loading,
@@ -199,7 +199,7 @@ function ProviderCard({
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="flex items-center gap-1.5">
 					<span className="truncate text-[13px] font-medium leading-none text-foreground">
-						{PROVIDER_LABEL[providerId]}
+						{providerDisplayName(providerId)}
 					</span>
 					{/* Only show the subscription chip when the probe actually detected
               an unmet plan requirement. Users with a valid tier see a clean
@@ -321,8 +321,8 @@ function ProviderStatus({
 	if (state.kind === "ready") {
 		const label =
 			state.via === "cli"
-				? `${PROVIDER_LABEL[providerId]} CLI is logged in. You're all set.`
-				: `${PROVIDER_LABEL[providerId]} API key saved. You're all set.`;
+				? `${providerDisplayName(providerId)} CLI is logged in. You're all set.`
+				: `${providerDisplayName(providerId)} API key saved. You're all set.`;
 		return (
 			<div className="flex items-center gap-2 rounded-md bg-alert-success-bg px-3 py-2 text-[12px] text-success">
 				<HugeiconsIcon icon={Tick01Icon} className="size-3.5" strokeWidth={3} />
@@ -337,7 +337,7 @@ function ProviderStatus({
 			<div className="flex items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-[12px] text-muted-foreground">
 				<RichMessage
 					id="onboarding:provider_checking_sentence"
-					values={{ value: PROVIDER_LABEL[providerId] }}
+					values={{ value: providerDisplayName(providerId) }}
 					components={{
 						part0: (
 							<span className="size-1.5 animate-pulse rounded-full bg-muted-foreground/60" />
@@ -376,8 +376,8 @@ function ProviderStatus({
 				: state.kind === "subscription"
 					? "Your CLI login was detected, but the required paid plan was not confirmed."
 					: state.kind === "outdated"
-						? `${PROVIDER_LABEL[providerId]} ${state.current} is too old; Zuse (Beta) needs ${state.required}.`
-						: `${PROVIDER_LABEL[providerId]}'s CLI isn't on your PATH yet.`;
+						? `${providerDisplayName(providerId)} ${state.current} is too old; Zuse (Beta) needs ${state.required}.`
+						: `${providerDisplayName(providerId)}'s CLI isn't on your PATH yet.`;
 
 	const command =
 		state.kind === "signed-out"
@@ -456,7 +456,7 @@ function SubscriptionNotice({
 			<p className="text-[11px] leading-snug text-muted-foreground">
 				{uiMessage(
 					"onboarding:provider_sessions_will_fail_if_your_plan_doesn_apos_t_include_subscri_sentence",
-					{ plan: plan, value: PROVIDER_LABEL[providerId] },
+					{ plan: plan, value: providerDisplayName(providerId) },
 				)}
 			</p>
 			<div>
