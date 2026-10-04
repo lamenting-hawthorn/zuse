@@ -8,6 +8,7 @@ import {
 	decodeAcpSession,
 	initializeAcp,
 } from "@zuse/agents/drivers/acp/discovery";
+import { isWithin } from "@zuse/agents/kernel/file-validation";
 import {
 	AcpDefinition,
 	type AcpDefinitionInput,
@@ -324,9 +325,7 @@ export const makeAcpAgentStore = (
 	};
 	/** Deletes an installation unless a remaining agent (e.g. a duplicate) runs from it. */
 	const removeUnusedInstallation = async (path: string) => {
-		const inUse = (await read()).some(
-			(entry) => !relative(path, entry.command).startsWith(".."),
-		);
+		const inUse = (await read()).some((entry) => isWithin(entry.command, path));
 		if (!inUse) await discard(rm(path, { recursive: true, force: true }));
 	};
 	/** Drops the secrets and files a replaced definition owned. */
@@ -338,8 +337,9 @@ export const makeAcpAgentStore = (
 		const oldCredential = old.credentialId ?? old.id;
 		if (oldCredential !== (next.credentialId ?? next.id))
 			await discard(secrets.remove(oldCredential));
+		if (!isWithin(old.command, installations(old.id))) return;
 		const previous = relative(installations(old.id), old.command).split(sep)[0];
-		if (previous && !previous.startsWith(".."))
+		if (previous)
 			await removeUnusedInstallation(join(installations(old.id), previous));
 	};
 	const test = async (
