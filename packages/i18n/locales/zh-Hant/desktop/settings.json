@@ -217,14 +217,14 @@
 	"cloud_workspace_auth_start_device_login": "開始裝置登入",
 	"cloud_workspace_auth_save_and_verify": "保存並驗證",
 	"cloud_workspace_github_github": "GitHub",
-	"cloud_workspace_github_configure_the_zuse_github_app_for_your_personal_account_or_organizatio": "為您的個人帳戶或組織設定 Zuse GitHub 應用程式。 Zuse 絕不會讀取或複製您 Mac 的 GitHub 登入資訊。",
-	"cloud_workspace_github_configure_app": " 配置應用程式",
-	"cloud_workspace_github_install_github_app": " 安裝GitHub應用程式",
+	"cloud_workspace_github_configure_the_zuse_github_app_for_your_personal_account_or_organizatio": "連接 GitHub，選擇儲存庫，讓雲端代理以你的身分提交、推送程式碼並建立提取要求。",
+	"cloud_workspace_github_configure_app": "管理連線",
+	"cloud_workspace_github_install_github_app": "連接 GitHub",
 	"cloud_workspace_github_github_app_is_not_configured": "GitHub App未配置",
 	"cloud_workspace_github_add_the_github_app_credentials_to_api_deploy_it_then_retry": "將 GitHub 應用程式憑證新增至 API，部署它，然後重試。",
 	"cloud_workspace_github_unavailable": "不可用",
 	"cloud_workspace_github_connect_repositories": "連接儲存庫",
-	"cloud_workspace_github_start_here_so_the_callback_is_signed_and_linked_to_this_zuse_account_o": "從這裡開始，以便對回調進行簽名並連結到此 Zuse 帳戶。在 GitHub 上，選擇選定的儲存庫。",
+	"cloud_workspace_github_start_here_so_the_callback_is_signed_and_linked_to_this_zuse_account_o": "在同一次連線中選擇 Zuse 可存取的儲存庫並授權你的 GitHub 帳號。",
 	"cloud_workspace_github_check_connection": " 檢查連接",
 	"cloud_workspace_github_suspended": "暫停",
 	"cloud_workspace_github_connected": " 已連接",
@@ -1099,5 +1099,6 @@
 	"acp_agents_busy_duplicating": "正在複製…",
 	"acp_agents_busy_updating": "正在更新智慧代理…",
 	"acp_agents_busy_removing": "正在移除智慧代理…",
-	"acp_agents_busy_installing": "正在安裝 {{name}}…"
+	"acp_agents_busy_installing": "正在安裝 {{name}}…",
+	"cloud_workspace_github_user_connected": "已連接為 {{login}}"
 }

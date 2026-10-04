@@ -125,11 +125,12 @@ describe("GitHub App installation callback routing", () => {
 
 describe("GitHub installation failure isolation", () => {
 	test.each([
-		["account", "User"],
-		["organization:team", "User"],
-		["account", "Organization"],
-		["organization:team", "Organization"],
-	])("links to %s from GitHub %s without an install callback, only after explicit selection", async (ownerId, accountType) => {
+		["account", "User", "admin"],
+		["organization:team", "User", "admin"],
+		["account", "Organization", "admin"],
+		["organization:team", "Organization", "admin"],
+		["organization:team", "Organization", "member"],
+	])("links to %s from GitHub %s without an install callback, only after explicit selection", async (ownerId, accountType, role) => {
 		const keys = generateKeyPairSync("ed25519");
 		const app = generateKeyPairSync("rsa", { modulusLength: 2048 });
 		const runtime = ManagedRuntime.make(
@@ -142,6 +143,9 @@ describe("GitHub installation failure isolation", () => {
 					workosIssuer: "unused",
 					workosApiKey: Redacted.make("workos-test"),
 					organizationWorkspacesEnabled: true,
+					cloudDataEncryptionKey: Redacted.make(
+						Buffer.alloc(32, 7).toString("base64url"),
+					),
 					mintPrivateKey: Redacted.make(
 						JSON.stringify(keys.privateKey.export({ format: "jwk" })),
 					),
@@ -184,7 +188,7 @@ describe("GitHub installation failure isolation", () => {
 										organization_id: "team",
 										user_id: "account",
 										status: "active",
-										role: { slug: "admin" },
+										role: { slug: role },
 									},
 								]
 							: [],
@@ -194,7 +198,8 @@ describe("GitHub installation failure isolation", () => {
 					return Response.json({ id: "team", name: "Example team" });
 				if (url.endsWith("/login/oauth/access_token"))
 					return Response.json({ access_token: "user-token" });
-				if (url.endsWith("/user")) return Response.json({ id: 7 });
+				if (url.endsWith("/user"))
+					return Response.json({ id: 7, login: "octocat", name: "Octo Cat" });
 				if (url.includes("/user/installations?"))
 					return Response.json(
 						!installed
@@ -262,11 +267,32 @@ describe("GitHub installation failure isolation", () => {
 					new Request(callback, { headers: { cookie } }),
 				),
 			);
-			expect(fresh.status).toBe(302);
-			expect(new URL(fresh.headers.get("location") ?? "").pathname).toBe(
-				"/apps/zuse/installations/new",
-			);
+			if (role === "admin") {
+				expect(fresh.status).toBe(302);
+				expect(new URL(fresh.headers.get("location") ?? "").pathname).toBe(
+					"/apps/zuse/installations/new",
+				);
+			} else {
+				expect(fresh.status).toBe(200);
+				expect(await fresh.text()).not.toContain("Add another GitHub account");
+			}
 			installed = true;
+			if (role === "member") {
+				const store = await runtime.runPromise(CloudWorkspaceStore);
+				await runtime.runPromise(
+					store.saveGithubInstallation({
+						accountId: ownerId,
+						installationId: 123,
+						githubAccountId: 7,
+						accountLogin: "octocat",
+						accountType: "Organization",
+						repositorySelection: "selected",
+						suspended: false,
+						createdAtMs: 0,
+						updatedAtMs: 0,
+					}),
+				);
+			}
 			callback.searchParams.set("code", "after-install-code");
 			const chooser = await runtime.runPromise(
 				githubAuthorizationCallback(
@@ -275,15 +301,20 @@ describe("GitHub installation failure isolation", () => {
 			);
 			const html = await chooser.text();
 			expect(html).toContain("Use this account: octocat");
-			expect(html).toContain("Manage repository access");
-			expect(html).toContain('target="_blank" rel="noopener noreferrer"');
+			if (role === "admin") {
+				expect(html).toContain("Manage access");
+				expect(html).toContain('target="_blank" rel="noopener noreferrer"');
+			} else {
+				expect(html).not.toContain("Manage access");
+			}
 			expect(html).not.toContain("other-person");
 			expect(html).not.toContain("unowned-org");
 			expect(html).not.toContain("user-token");
 			const store = await runtime.runPromise(CloudWorkspaceStore);
 			expect(
 				await runtime.runPromise(store.listGithubInstallations(ownerId)),
-			).toEqual([]);
+			).toHaveLength(role === "member" ? 1 : 0);
+			expect(await runtime.runPromise(store.getGithubUser(ownerId))).toBeNull();
 			const csrf = /name="csrf" value="([^"]+)"/.exec(html)?.[1] ?? "";
 			const select = () =>
 				new Request(callback.origin + callback.pathname, {
@@ -314,6 +345,20 @@ describe("GitHub installation failure isolation", () => {
 			);
 			expect(await connected.text()).toContain("octocat is connected");
 			expect(connected.headers.get("set-cookie")).toContain("Max-Age=0");
+			if (ownerId.startsWith("organization:"))
+				expect(
+					await runtime.runPromise(store.getGithubUser(ownerId)),
+				).toBeNull();
+			expect(
+				await runtime.runPromise(store.getGithubUser("account")),
+			).toMatchObject({
+				login: "octocat",
+				name: "Octo Cat",
+				email: "7+octocat@users.noreply.github.com",
+			});
+			expect(
+				await runtime.runPromise(store.getGithubUser("other-account")),
+			).toBeNull();
 			expect(
 				await runtime.runPromise(store.listGithubInstallations(ownerId)),
 			).toHaveLength(1);
