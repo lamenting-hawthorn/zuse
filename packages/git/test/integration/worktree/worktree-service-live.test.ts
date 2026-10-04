@@ -219,6 +219,31 @@ describe("WorktreeServiceLive", () => {
 		expect(git(second.path, "rev-parse", "HEAD")).toBe(remoteTip);
 	});
 
+	test("follows origin's advertised default over a stale local origin/HEAD", async () => {
+		const originRoot = join(temporaryRoot, "origin.git");
+		git(temporaryRoot, "clone", "--bare", repositoryRoot, originRoot);
+		git(repositoryRoot, "remote", "add", "origin", originRoot);
+		git(repositoryRoot, "fetch", "origin");
+		git(repositoryRoot, "remote", "set-head", "origin", "main");
+		const clone = join(temporaryRoot, "rename-default");
+		git(temporaryRoot, "clone", originRoot, clone);
+		git(clone, "config", "user.name", "Test User");
+		git(clone, "config", "user.email", "test@example.com");
+		git(clone, "switch", "-c", "trunk");
+		writeFileSync(join(clone, "trunk.txt"), "trunk\n");
+		git(clone, "add", "trunk.txt");
+		git(clone, "commit", "-m", "trunk");
+		git(clone, "push", "origin", "trunk");
+		git(originRoot, "symbolic-ref", "HEAD", "refs/heads/trunk");
+
+		const created = await run((service) => service.create(projectId));
+
+		expect(created.baseBranch).toBe("trunk");
+		expect(git(created.path, "rev-parse", "HEAD")).toBe(
+			git(clone, "rev-parse", "HEAD"),
+		);
+	});
+
 	test("renames a pending branch automatically exactly once", async () => {
 		const created = await run((service) => service.create(projectId));
 		expect(created.branchProvenance).toBe("pending");

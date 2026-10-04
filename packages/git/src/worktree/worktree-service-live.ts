@@ -1080,32 +1080,46 @@ export const WorktreeServiceLive = Layer.effect(
 						new WorktreeCreateError({ projectId, reason });
 					const refresh: Effect.Effect<RemoteBase, WorktreeCreateError> =
 						Effect.gen(function* () {
-							// The clone records origin's default branch locally; only ask
-							// the remote when that symref is missing.
+							const fetchBranch = (branch: string) =>
+								runGit(repoPath, ["fetch", "origin", branch]).pipe(
+									Effect.timeout(FETCH_TIMEOUT),
+									Effect.result,
+								);
+							// Origin's advertised HEAD stays authoritative, but asking for it
+							// first doubles the wait on a slow link. Fetch the default the
+							// clone already records while the remote answers; only a renamed
+							// default costs a second fetch.
 							const localHead = (yield* runGit(repoPath, [
 								"symbolic-ref",
 								"--quiet",
 								"--short",
 								"refs/remotes/origin/HEAD",
 							]).pipe(Effect.orElseSucceed(() => ""))).trim();
-							let defaultBranch: string | null =
+							const recordedDefault =
 								localHead.startsWith("origin/") &&
 								localHead.length > "origin/".length
 									? localHead.slice("origin/".length)
 									: null;
-							if (defaultBranch === null) {
-								const symrefRaw = yield* runGit(repoPath, [
-									"ls-remote",
-									"--symref",
-									"origin",
-									"HEAD",
-								]).pipe(Effect.result);
-								if (symrefRaw._tag === "Success") {
-									const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(
-										symrefRaw.success,
-									);
-									defaultBranch = match?.[1] ?? null;
-								}
+							const [symrefRaw, recordedFetch] = yield* Effect.all(
+								[
+									runGit(repoPath, [
+										"ls-remote",
+										"--symref",
+										"origin",
+										"HEAD",
+									]).pipe(Effect.result),
+									recordedDefault === null
+										? Effect.succeed(null)
+										: fetchBranch(recordedDefault),
+								],
+								{ concurrency: 2 },
+							);
+							let defaultBranch: string | null = recordedDefault;
+							if (symrefRaw._tag === "Success") {
+								const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(
+									symrefRaw.success,
+								);
+								defaultBranch = match?.[1] ?? defaultBranch;
 							}
 							if (defaultBranch === null) {
 								for (const candidate of ["main", "master"]) {
@@ -1129,11 +1143,10 @@ export const WorktreeServiceLive = Layer.effect(
 									fail("could not determine origin default branch"),
 								);
 							}
-							const fetched = yield* runGit(repoPath, [
-								"fetch",
-								"origin",
-								defaultBranch,
-							]).pipe(Effect.timeout(FETCH_TIMEOUT), Effect.result);
+							const fetched =
+								defaultBranch === recordedDefault && recordedFetch !== null
+									? recordedFetch
+									: yield* fetchBranch(defaultBranch);
 							if (fetched._tag === "Failure") {
 								const reason =
 									typeof fetched.failure === "string"
