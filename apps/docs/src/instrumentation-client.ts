@@ -15,10 +15,10 @@ if (process.env.NODE_ENV === "production" && key && !privacySignal) {
 				key,
 				publicSiteAnalyticsConfig(
 					process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
-					"website",
+					"docs",
 				),
 			);
-			installPublicSiteTracking(posthog, "website");
+			installPublicSiteTracking(posthog, "docs");
 		})
 		.catch(() => {
 			// Analytics must never prevent the site from loading.
