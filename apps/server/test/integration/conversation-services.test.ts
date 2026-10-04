@@ -178,6 +178,7 @@ let providerEventsBarrier: Promise<void> | null = null;
 let providerQuestionAttached = false;
 let providerQuestionHasCalls = 0;
 let detachProviderQuestionAfterHasCall: number | null = null;
+let attachProviderQuestionAfterHasCall: number | null = null;
 let providerAnswerAttempts = 0;
 let providerAnswerPayloads: ReadonlyArray<ReadonlyArray<UserQuestionAnswer>> =
 	[];
@@ -296,6 +297,9 @@ const StubProviderLive = Layer.succeed(ProviderService, {
 		Effect.sync(() => {
 			providerQuestionHasCalls += 1;
 			const attached = providerQuestionAttached;
+			if (providerQuestionHasCalls === attachProviderQuestionAfterHasCall) {
+				providerQuestionAttached = true;
+			}
 			if (providerQuestionHasCalls === detachProviderQuestionAfterHasCall) {
 				providerQuestionAttached = false;
 			}
@@ -832,6 +836,7 @@ beforeEach(() => {
 	providerQuestionAttached = false;
 	providerQuestionHasCalls = 0;
 	detachProviderQuestionAfterHasCall = null;
+	attachProviderQuestionAfterHasCall = null;
 	providerAnswerAttempts = 0;
 	providerAnswerPayloads = [];
 	failProviderAnswerAttempts = 0;
@@ -6540,9 +6545,13 @@ describe("ConversationServices — provider event persistence", () => {
 	});
 
 	it.each([
-		true,
-		false,
-	])("persists cancellation without a blank answer and rejects answer/cancel conflicts (attached: %s)", async (attached) => {
+		{ attached: true, reattach: false },
+		{ attached: false, reattach: false },
+		{ attached: false, reattach: true },
+	])("persists cancellation without a blank answer and rejects answer/cancel conflicts (attached: $attached, reattach: $reattach)", async ({
+		attached,
+		reattach,
+	}) => {
 		const itemId = "question-cancel" as never;
 		scriptedEvents = [
 			{
@@ -6589,11 +6598,21 @@ describe("ConversationServices — provider event persistence", () => {
 					).rejects.toThrow();
 				}
 
+				if (reattach) {
+					// Reconnect after settlement observes no callback, before cleanup.
+					attachProviderQuestionAfterHasCall = providerQuestionHasCalls + 2;
+				}
 				await run(
 					Effect.flatMap(store, (service) =>
 						service.cancelQuestion(sessionId, itemId),
 					),
 				);
+				if (reattach) {
+					expect(providerQuestionAttached).toBe(true);
+					expect(providerCancelAttempts).toBe(0);
+					expect(providerQuestionContinuations).toBe(0);
+				}
+
 				await run(
 					Effect.flatMap(store, (service) =>
 						service.cancelQuestion(sessionId, itemId),
@@ -6629,8 +6648,10 @@ describe("ConversationServices — provider event persistence", () => {
 						};
 					}),
 				);
-				expect(providerCancelAttempts).toBe(attached ? 2 : 1);
-				expect(providerQuestionContinuations).toBe(attached ? 2 : 1);
+				expect(providerCancelAttempts).toBe(attached || reattach ? 2 : 1);
+				expect(providerQuestionContinuations).toBe(
+					attached || reattach ? 2 : 1,
+				);
 				expect(
 					persisted.messages.filter(
 						(message) => message.content._tag === "user_question_answer",

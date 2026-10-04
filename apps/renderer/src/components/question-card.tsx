@@ -82,6 +82,7 @@ export function QuestionCard({
 	);
 }
 
+/** Keep disconnected answers disabled while allowing durable dismissal. */
 function InteractiveQuestionCard({
 	environmentId,
 	sessionId,

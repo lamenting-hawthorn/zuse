@@ -669,6 +669,7 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 					return yield* Effect.fail(new SessionNotFoundError({ sessionId }));
 				}
 
+				/** Record one cancellation receipt for both attached and detached callbacks. */
 				const persistCancellation = Effect.gen(function* () {
 					return yield* dispatchSessionCommandWithId(
 						sessionId,
