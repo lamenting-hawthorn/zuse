@@ -70,7 +70,10 @@ import {
 	computerAwakeStatusText,
 } from "../lib/computer-awake.ts";
 import { dispatchEnvironmentShellCommand } from "../lib/environment-shell-client-bus.ts";
-import { useOrganizationWorkspaces } from "../lib/organization-workspaces.ts";
+import {
+	organizationWorkspacesAvailable,
+	useOrganizationWorkspaces,
+} from "../lib/organization-workspaces.ts";
 import { providerDisplayName } from "../lib/provider-labels.ts";
 import {
 	rendererWorkspaceSnapshot,
@@ -168,7 +171,9 @@ export function SettingsPage() {
 							(item) => item.section.kind === section.kind,
 						)
 					? { kind: "organizations" }
-					: !CLOUD_MACHINES_AVAILABLE && section.kind === "machines"
+					: (!CLOUD_MACHINES_AVAILABLE && section.kind === "machines") ||
+							(!organizationWorkspacesAvailable() &&
+								section.kind === "organizations")
 						? { kind: "general" }
 						: section;
 

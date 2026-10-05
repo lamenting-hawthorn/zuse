@@ -3,6 +3,13 @@ import {
 	Organization,
 	type OrganizationCreateInput,
 	OrganizationDetails,
+	OrganizationGithubAuthorization,
+	OrganizationGithubDiscovery,
+	type OrganizationGithubInput,
+	type OrganizationGithubJoinInput,
+	type OrganizationGithubPolicyInput,
+	type OrganizationGithubRestoreInput,
+	OrganizationGithubSettings,
 	OrganizationInvitation,
 	type OrganizationInviteInput,
 	type OrganizationMemberInput,
@@ -23,6 +30,7 @@ const acknowledgement = Schema.Struct({ ok: Schema.Literal(true) });
 export const makeOrganizationControlClient = <E>(
 	request: OrganizationControlRequest<E>,
 ) => ({
+	...makeGithubOrganizationControlClient(request),
 	"organizations.list": (_input: Record<string, never>) =>
 		request(ApiPaths.organizations, Schema.Array(Organization)),
 	"organizations.get": (input: { organizationId: string }) =>
@@ -43,6 +51,49 @@ export const makeOrganizationControlClient = <E>(
 		),
 	"organizations.removeMember": (input: typeof OrganizationMemberInput.Type) =>
 		request(ApiPaths.organizationRemoveMember, acknowledgement, input).pipe(
+			Effect.asVoid,
+		),
+});
+
+export const makeGithubOrganizationControlClient = <E>(
+	request: OrganizationControlRequest<E>,
+) => ({
+	"organizations.githubAuthorize": (_input: Record<string, never>) =>
+		request(
+			ApiPaths.organizationGithubAuthorize,
+			OrganizationGithubAuthorization,
+			{},
+		),
+	"organizations.githubDiscover": (_input: Record<string, never>) =>
+		request(
+			ApiPaths.organizationGithubDiscover,
+			OrganizationGithubDiscovery,
+			{},
+		),
+	"organizations.githubSettings": (
+		input: typeof OrganizationGithubInput.Type,
+	) =>
+		request(
+			ApiPaths.organizationGithubSettings,
+			OrganizationGithubSettings,
+			input,
+		),
+	"organizations.githubPolicy": (
+		input: typeof OrganizationGithubPolicyInput.Type,
+	) =>
+		request(ApiPaths.organizationGithubPolicy, acknowledgement, input).pipe(
+			Effect.asVoid,
+		),
+	"organizations.githubJoin": (
+		input: typeof OrganizationGithubJoinInput.Type,
+	) =>
+		request(ApiPaths.organizationGithubJoin, acknowledgement, input).pipe(
+			Effect.asVoid,
+		),
+	"organizations.githubRestore": (
+		input: typeof OrganizationGithubRestoreInput.Type,
+	) =>
+		request(ApiPaths.organizationGithubRestore, acknowledgement, input).pipe(
 			Effect.asVoid,
 		),
 });

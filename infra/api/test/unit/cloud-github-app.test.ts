@@ -135,6 +135,7 @@ describe("GitHub installation failure isolation", () => {
 		const app = generateKeyPairSync("rsa", { modulusLength: 2048 });
 		const runtime = ManagedRuntime.make(
 			Layer.mergeAll(
+				ApiStoreMemory,
 				CloudWorkspaceStoreMemory,
 				ApiStoreMemory,
 				configurationLayer({
@@ -379,7 +380,8 @@ describe("GitHub installation failure isolation", () => {
 	test("an installation ID and install state alone cannot link an unverified GitHub account", async () => {
 		const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 		const runtime = ManagedRuntime.make(
-			Layer.merge(
+			Layer.mergeAll(
+				ApiStoreMemory,
 				CloudWorkspaceStoreMemory,
 				configurationLayer({
 					apiIssuer: "https://api-staging.zuse.sh",
@@ -419,7 +421,8 @@ describe("GitHub installation failure isolation", () => {
 	])("handles installation status %s without hiding outages", async (status) => {
 		const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 		const runtime = ManagedRuntime.make(
-			Layer.merge(
+			Layer.mergeAll(
+				ApiStoreMemory,
 				CloudWorkspaceStoreMemory,
 				configurationLayer({
 					apiIssuer: "https://api-staging.stuff.md",

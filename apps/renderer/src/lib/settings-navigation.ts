@@ -19,6 +19,7 @@ import {
 } from "@zuse/icons/solid-rounded";
 import type { SettingsSection } from "../store/ui.ts";
 import { cloudWorkspaceBetaAvailable } from "./cloud-machines-availability.ts";
+import { organizationWorkspacesAvailable } from "./organization-workspaces.ts";
 
 export type SettingsNavigationItem = {
 	readonly id: string;
@@ -130,18 +131,21 @@ const TOP_RAIL: ReadonlyArray<SettingsNavigationItem> = [
 
 const CLOUD_MACHINES_AVAILABLE = cloudWorkspaceBetaAvailable();
 
-/** Organization management has its own rail, separate from personal settings. */
+/**
+ * Organization workspaces have their own rail. Personal settings list the
+ * account's organizations; both exist only while organization workspaces do.
+ */
 export function settingsNavigationFor(
-	section: SettingsSection,
+	_section: SettingsSection,
 	desktop: boolean,
 	scope?: WorkspaceScope,
 ) {
 	if (scope?.kind === "organization") return ORGANIZATION_NAVIGATION;
+	const organizations = organizationWorkspacesAvailable();
 	return SETTINGS_NAVIGATION.filter(
 		(item) =>
-			(item.section.kind === "organizations") ===
-				(section.kind === "organizations") &&
-			(desktop || item.section.kind !== "machines"),
+			(desktop || item.section.kind !== "machines") &&
+			(organizations || item.section.kind !== "organizations"),
 	);
 }
 

@@ -65,3 +65,52 @@ Remaining review work includes mobile command/cache ownership, bounded organizat
 mutation locking, and consolidation of duplicated ownership code. Account HTTP
 decoding is shared across desktop/browser and mobile. Organization access remains
 opt-in.
+
+## GitHub joining
+
+Administrators can opt each connected GitHub organization into self-service
+joining from organization settings. Personal GitHub installations are ineligible.
+A person verifies GitHub separately from connecting an installation, discovers
+matching Zuse organizations, and explicitly joins as Member. GitHub owners do not
+receive Zuse administrator privileges. Refresh GitHub membership repeats OAuth
+when the person's GitHub organization list changes.
+
+Verified numeric GitHub identities are unique across Zuse accounts. GitHub tokens
+are used only during verification and are not stored. Discovery uses the verified
+organization IDs to restrict candidate policies, then checks current membership
+with the installation's Members permission. Outside collaborators and pending
+GitHub invitations cannot join.
+
+WorkOS remains the membership authority. The API stores GitHub identity, joining
+policy, and enrollment provenance in separate PostgreSQL tables. A join first
+commits an enrollment intent with a ten-minute seat reservation under the existing
+organization lock, then creates/reactivates the WorkOS membership under that lock.
+Seat checks count active users, pending invitations and unexpired enrollment
+reservations, without counting an active enrollment twice. This supports the
+production single-connection pool and preserves provenance if WorkOS accepts a
+request whose response is lost. Retrying finishes the same enrollment; abandoned
+reservations expire. No existing manually admitted membership is converted.
+
+Shared workspace authorization validates GitHub-managed memberships. Complete
+successful GitHub rosters are cached for at most 60 seconds, with concurrent reads
+coalesced and durable policy revisions invalidating caches across workers.
+Signed organization and installation webhooks invalidate checks and reconcile
+existing memberships against current GitHub state. A confirmed departure
+idempotently deactivates WorkOS membership. Outages fail closed after the cache
+expires; disconnection and suspension block access without deactivating members.
+Turning joining off only stops new joins. Existing gateway/command authorization
+uses the same membership checks.
+
+GitHub-managed members cannot be promoted. An administrator's removal first
+commits a self-service block, so a failed external removal cannot enable rejoining.
+The admin can use Allow joining again to restore eligibility; it does not enroll
+the person or bypass capacity checks. Manually managed administrators provide the
+recovery path when GitHub is unavailable.
+
+Deploy migration `0035_github_organization_joining` before the API. Add
+`/v1/organizations/github/callback` on each API origin to the GitHub App's allowed
+OAuth callback URLs, grant Members read access, and subscribe the existing signed
+webhook to organization membership events. Existing installations may need their
+owner to approve the permission. Retain the existing organization feature flags.
+Verify live OAuth, private membership, removal, reconnect and webhook delivery
+with separate staging accounts before production enablement.

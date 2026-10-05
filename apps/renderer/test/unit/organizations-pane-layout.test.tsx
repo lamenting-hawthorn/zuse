@@ -18,8 +18,18 @@ it("uses the settings width without a second organization selector in workspace 
 	expect(markup).toContain("Refresh");
 });
 
-it("retains the organization picker for the unscoped management entry", () => {
+it("keeps account-level joining out of an organization's own settings", () => {
+	const markup = renderToStaticMarkup(
+		<OrganizationsPane organizationId="org-a" />,
+	);
+	expect(markup).not.toContain("Join with GitHub");
+	expect(markup).not.toContain("Create an organization");
+});
+
+it("lists the account's organizations and ways to join one in personal settings", () => {
 	const markup = renderToStaticMarkup(<OrganizationsPane />);
 	expect(markup).toContain("Your organizations");
+	expect(markup).toContain("Join with GitHub");
 	expect(markup).toContain("Refresh");
+	expect(markup).not.toContain("Members");
 });

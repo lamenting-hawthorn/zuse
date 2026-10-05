@@ -1372,3 +1372,36 @@ export const apiModelConnectionLeases = pgTable(
 		),
 	],
 );
+
+export const apiGithubIdentities = pgTable("api_github_identities", {
+	accountId: text("account_id").primaryKey(),
+	githubUserId: bigint("github_user_id", { mode: "number" }).notNull().unique(),
+	data: jsonb("data").notNull(),
+});
+export const apiGithubJoinPolicies = pgTable(
+	"api_github_join_policies",
+	{
+		organizationId: text("organization_id").notNull(),
+		installationId: bigint("installation_id", { mode: "number" }).notNull(),
+		githubOrgId: bigint("github_org_id", { mode: "number" }).notNull(),
+		data: jsonb("data").notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.organizationId, t.installationId] }),
+		index("api_github_join_policies_org").on(t.githubOrgId),
+		index("api_github_join_policies_installation").on(t.installationId),
+	],
+);
+export const apiGithubEnrollments = pgTable(
+	"api_github_enrollments",
+	{
+		organizationId: text("organization_id").notNull(),
+		accountId: text("account_id").notNull(),
+		installationId: bigint("installation_id", { mode: "number" }).notNull(),
+		data: jsonb("data").notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.organizationId, t.accountId] }),
+		index("api_github_enrollments_installation").on(t.installationId),
+	],
+);

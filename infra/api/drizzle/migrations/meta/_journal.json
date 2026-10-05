@@ -253,6 +253,13 @@
 			"when": 1790940000003,
 			"tag": "0034_cloud_github_users",
 			"breakpoints": true
+		},
+		{
+			"idx": 36,
+			"version": "7",
+			"when": 1790940000004,
+			"tag": "0035_github_organization_joining",
+			"breakpoints": true
 		}
 	]
 }

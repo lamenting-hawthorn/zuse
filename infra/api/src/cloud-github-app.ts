@@ -1,3 +1,15 @@
+import {
+	invalidateGithubJoining,
+	reconcileGithubMemberships,
+} from "./github-membership.ts";
+import {
+	githubAppRequest,
+	githubRequest,
+	readGithubInstallation,
+} from "./github-transport.ts";
+
+export { normalizeGithubPrivateKey } from "./github-transport.ts";
+
 import { ApiPaths, PRODUCTION_API_URL, STAGING_API_URL } from "@zuse/contracts";
 import { githubInstallationSettingsUrl } from "@zuse/utils/github-installation";
 import {
@@ -6,13 +18,14 @@ import {
 	renderIntegrationPage,
 } from "@zuse/utils/integration-page";
 import { Clock, Effect, Redacted, Schema } from "effect";
-import { decodeJwt, importJWK, importPKCS8, jwtVerify, SignJWT } from "jose";
-import { githubRequest } from "./cloud-github-request.ts";
+
+import { decodeJwt, importJWK, jwtVerify, SignJWT } from "jose";
 import {
 	exchangeGithubUserToken,
 	GithubUserAuthorization,
 	prepareGithubUserAuthorization,
 } from "./cloud-github-user.ts";
+
 import { CloudWorkspaceStore } from "./cloud-workspace-store.ts";
 import { ApiConfiguration } from "./config.ts";
 import { parseJwk } from "./crypto.ts";
@@ -32,64 +45,6 @@ import { resolveWorkspaceActorAccess } from "./workspace-authorization.ts";
 import { workspaceScopeForOwner } from "./workspace-scope.ts";
 
 const INSTALL_STATE_TTL_MS = 10 * 60_000;
-const GithubInstallation = Schema.Struct({
-	id: Schema.Number,
-	account: Schema.Struct({
-		id: Schema.Number,
-		login: Schema.String,
-		type: Schema.Literals(["User", "Organization"]),
-		avatar_url: Schema.optionalKey(Schema.String),
-	}),
-	repository_selection: Schema.Literals(["all", "selected"]),
-	suspended_at: Schema.NullOr(Schema.String),
-});
-const RSA_ALGORITHM_IDENTIFIER = Uint8Array.from([
-	0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
-	0x05, 0x00,
-]);
-
-const derLength = (length: number): Uint8Array => {
-	if (length < 0x80) return Uint8Array.of(length);
-	const bytes: Array<number> = [];
-	for (let remaining = length; remaining > 0; remaining >>>= 8)
-		bytes.unshift(remaining & 0xff);
-	return Uint8Array.of(0x80 | bytes.length, ...bytes);
-};
-
-const derValue = (tag: number, value: Uint8Array): Uint8Array =>
-	Uint8Array.from([tag, ...derLength(value.length), ...value]);
-
-const pemBody = (pem: string): Uint8Array => {
-	const encoded = pem.replace(/-----[^-]+-----|\s/gu, "");
-	return Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
-};
-
-const encodePem = (label: string, der: Uint8Array): string => {
-	let binary = "";
-	for (const byte of der) binary += String.fromCharCode(byte);
-	const encoded =
-		btoa(binary)
-			.match(/.{1,64}/gu)
-			?.join("\n") ?? "";
-	return `-----BEGIN ${label}-----\n${encoded}\n-----END ${label}-----`;
-};
-
-/** GitHub currently downloads RSA keys as PKCS#1; jose imports PKCS#8. */
-export const normalizeGithubPrivateKey = (pem: string): string => {
-	if (pem.includes("-----BEGIN PRIVATE KEY-----")) return pem;
-	if (!pem.includes("-----BEGIN RSA PRIVATE KEY-----"))
-		throw new Error("unsupported_github_private_key");
-	const privateKey = derValue(0x04, pemBody(pem));
-	const body = Uint8Array.from([
-		0x02,
-		0x01,
-		0x00,
-		...RSA_ALGORITHM_IDENTIFIER,
-		...privateKey,
-	]);
-	return encodePem("PRIVATE KEY", derValue(0x30, body));
-};
-
 /**
  * The GitHub App has one Setup URL. Production owns it and forwards a state
  * that claims the exact staging issuer to staging, where the signature is
@@ -114,69 +69,6 @@ export const githubInstallCallbackForwardUrl = (
 	target.searchParams.set("installation_id", String(installationId));
 	return target.toString();
 };
-
-const appJwt = Effect.fn("githubAppJwt")(function* (forceAppId = false) {
-	const config = yield* ApiConfiguration;
-	const github = config.githubApp;
-	if (github === undefined)
-		return yield* Effect.fail(serviceUnavailable("github_app_not_configured"));
-	const now = Math.floor(Date.now() / 1_000);
-	const key = yield* Effect.tryPromise({
-		try: () =>
-			importPKCS8(
-				normalizeGithubPrivateKey(Redacted.value(github.privateKey)),
-				"RS256",
-			),
-		catch: () => serviceUnavailable("github_app_key_invalid"),
-	});
-	return yield* Effect.promise(() =>
-		new SignJWT({})
-			.setProtectedHeader({ alg: "RS256" })
-			// GitHub accepts either identifier, but recommends the client ID for
-			// the JWT issuer. Keep App ID as a compatibility fallback.
-			.setIssuer(forceAppId ? github.appId : (github.clientId ?? github.appId))
-			.setIssuedAt(now - 60)
-			.setExpirationTime(now + 9 * 60)
-			.sign(key),
-	);
-});
-
-const githubAppRequest = <A>(url: string, init?: RequestInit) =>
-	Effect.gen(function* () {
-		const github = (yield* ApiConfiguration).githubApp;
-		const primaryJwt = yield* appJwt();
-		const primary = githubRequest<A>(url, primaryJwt, init);
-		if (github?.clientId === undefined) return yield* primary;
-		return yield* primary.pipe(
-			Effect.catch((error) =>
-				error.detail !== "github_401"
-					? Effect.fail(error)
-					: Effect.gen(function* () {
-							const fallbackJwt = yield* appJwt(true);
-							return yield* githubRequest<A>(url, fallbackJwt, init);
-						}),
-			),
-		);
-	});
-
-const readGithubInstallation = Effect.fn("readGithubInstallation")(function* (
-	installationId: number,
-) {
-	const installation = yield* githubAppRequest<unknown>(
-		`https://api.github.com/app/installations/${installationId}`,
-		{ signal: AbortSignal.timeout(5_000) },
-	).pipe(
-		Effect.flatMap(Schema.decodeUnknownEffect(GithubInstallation)),
-		Effect.mapError((error) =>
-			error instanceof ApiError
-				? error
-				: serviceUnavailable("invalid_github_installation"),
-		),
-	);
-	if (installation.id !== installationId)
-		return yield* badRequest("github_installation_mismatch");
-	return installation;
-});
 
 /** Read current GitHub state, not historical webhook payloads. Replays and
  * out-of-order events cannot re-enroll a disconnected workspace. */
@@ -285,7 +177,11 @@ export const githubWebhook = Effect.fn("githubWebhook")(function* (
 	if (!valid) return yield* unauthorized("invalid_github_signature");
 	const event = request.headers.get("x-github-event");
 	if (event === "ping") return json({ accepted: true });
-	if (event !== "installation" && event !== "installation_repositories")
+	if (
+		event !== "installation" &&
+		event !== "installation_repositories" &&
+		event !== "organization"
+	)
 		return json({ ignored: true });
 	const payload = yield* Effect.try({
 		try: (): unknown => JSON.parse(new TextDecoder().decode(body)),
@@ -296,7 +192,7 @@ export const githubWebhook = Effect.fn("githubWebhook")(function* (
 				Schema.Struct({
 					installation: Schema.Struct({
 						id: Schema.Number,
-						app_id: Schema.Number,
+						app_id: Schema.optional(Schema.Number),
 					}),
 				}),
 			),
@@ -304,14 +200,18 @@ export const githubWebhook = Effect.fn("githubWebhook")(function* (
 		Effect.mapError(() => badRequest("invalid_github_event")),
 	);
 	if (
-		String(payload.installation.app_id) !== github.appId ||
+		(event !== "organization" && payload.installation.app_id === undefined) ||
+		(payload.installation.app_id !== undefined &&
+			String(payload.installation.app_id) !== github.appId) ||
 		!Number.isSafeInteger(payload.installation.id) ||
 		payload.installation.id <= 0
 	)
 		return yield* badRequest("invalid_github_installation");
 	// No insert, tokens, or jobs: duplicate deliveries simply reconcile the same
 	// existing links. Failed requests return non-2xx and are safe to redeliver.
+	yield* invalidateGithubJoining(payload.installation.id);
 	yield* refreshGithubInstallation(payload.installation.id);
+	yield* reconcileGithubMemberships(payload.installation.id);
 	return json({ accepted: true });
 });
 

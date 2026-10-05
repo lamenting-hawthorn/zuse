@@ -22,7 +22,13 @@ type OrganizationRpc = Extract<
 			| "organizations.invite"
 			| "organizations.revokeInvite"
 			| "organizations.setRole"
-			| "organizations.removeMember";
+			| "organizations.removeMember"
+			| "organizations.githubAuthorize"
+			| "organizations.githubDiscover"
+			| "organizations.githubSettings"
+			| "organizations.githubPolicy"
+			| "organizations.githubJoin"
+			| "organizations.githubRestore";
 	}
 >;
 type OrganizationClient = {

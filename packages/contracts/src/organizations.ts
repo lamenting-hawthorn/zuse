@@ -32,6 +32,7 @@ export class OrganizationMember extends Schema.Class<OrganizationMember>(
 	displayName: Schema.String,
 	role: Schema.String,
 	directoryManaged: Schema.Boolean,
+	githubManaged: Schema.optional(Schema.Boolean),
 }) {}
 
 export class OrganizationInvitation extends Schema.Class<OrganizationInvitation>(
@@ -131,6 +132,98 @@ export const OrganizationsRemoveMemberRpc = Rpc.make(
 	"organizations.removeMember",
 	{
 		payload: OrganizationMemberInput,
+		success: Schema.Void,
+		error: OrganizationError,
+	},
+);
+
+export const OrganizationGithubInput = Schema.Struct({
+	organizationId: Identifier,
+});
+export const OrganizationGithubPolicyInput = Schema.Struct({
+	organizationId: Identifier,
+	installationId: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+	enabled: Schema.Boolean,
+});
+export const OrganizationGithubJoinInput = Schema.Struct({
+	organizationId: Identifier,
+	installationId: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+});
+export const OrganizationGithubRestoreInput = Schema.Struct({
+	organizationId: Identifier,
+	accountId: Identifier,
+});
+export const OrganizationGithubSettings = Schema.Struct({
+	installations: Schema.Array(
+		Schema.Struct({
+			installationId: Schema.Number,
+			login: Schema.String,
+			enabled: Schema.Boolean,
+			suspended: Schema.Boolean,
+		}),
+	),
+	blockedMembers: Schema.Array(
+		Schema.Struct({ accountId: Identifier, displayName: Schema.String }),
+	),
+});
+export const OrganizationGithubDiscovery = Schema.Struct({
+	connected: Schema.Boolean,
+	verificationId: Schema.optional(Schema.String),
+	organizations: Schema.Array(
+		Schema.Struct({
+			organizationId: Identifier,
+			name: Schema.String,
+			installationId: Schema.Number,
+			githubLogin: Schema.String,
+			state: Schema.Literals(["available", "joined", "full"]),
+		}),
+	),
+});
+export const OrganizationGithubAuthorization = Schema.Struct({
+	url: Schema.String,
+	attemptId: Schema.String,
+});
+export const OrganizationsGithubAuthorizeRpc = Rpc.make(
+	"organizations.githubAuthorize",
+	{
+		payload: Schema.Struct({}),
+		success: OrganizationGithubAuthorization,
+		error: OrganizationError,
+	},
+);
+export const OrganizationsGithubDiscoverRpc = Rpc.make(
+	"organizations.githubDiscover",
+	{
+		payload: Schema.Struct({}),
+		success: OrganizationGithubDiscovery,
+		error: OrganizationError,
+	},
+);
+export const OrganizationsGithubSettingsRpc = Rpc.make(
+	"organizations.githubSettings",
+	{
+		payload: OrganizationGithubInput,
+		success: OrganizationGithubSettings,
+		error: OrganizationError,
+	},
+);
+export const OrganizationsGithubPolicyRpc = Rpc.make(
+	"organizations.githubPolicy",
+	{
+		payload: OrganizationGithubPolicyInput,
+		success: Schema.Void,
+		error: OrganizationError,
+	},
+);
+export const OrganizationsGithubJoinRpc = Rpc.make("organizations.githubJoin", {
+	payload: OrganizationGithubJoinInput,
+	success: Schema.Void,
+	error: OrganizationError,
+});
+export const OrganizationsGithubRestoreRpc = Rpc.make(
+	"organizations.githubRestore",
+	{
+		payload: OrganizationGithubRestoreInput,
 		success: Schema.Void,
 		error: OrganizationError,
 	},

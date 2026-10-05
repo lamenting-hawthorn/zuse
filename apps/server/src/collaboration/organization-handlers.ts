@@ -16,6 +16,37 @@ const withOrganizations = <A>(
 	);
 
 export const OrganizationHandlersLayer = Layer.mergeAll(
+	MemoizeRpcs.toLayerHandler("organizations.githubAuthorize", (input) =>
+		withOrganizations((service) =>
+			service.githubOrganizations["organizations.githubAuthorize"](input),
+		),
+	),
+	MemoizeRpcs.toLayerHandler("organizations.githubDiscover", (input) =>
+		withOrganizations((service) =>
+			service.githubOrganizations["organizations.githubDiscover"](input),
+		),
+	),
+	MemoizeRpcs.toLayerHandler("organizations.githubSettings", (input) =>
+		withOrganizations((service) =>
+			service.githubOrganizations["organizations.githubSettings"](input),
+		),
+	),
+	MemoizeRpcs.toLayerHandler("organizations.githubPolicy", (input) =>
+		withOrganizations((service) =>
+			service.githubOrganizations["organizations.githubPolicy"](input),
+		),
+	),
+	MemoizeRpcs.toLayerHandler("organizations.githubJoin", (input) =>
+		withOrganizations((service) =>
+			service.githubOrganizations["organizations.githubJoin"](input),
+		),
+	),
+	MemoizeRpcs.toLayerHandler("organizations.githubRestore", (input) =>
+		withOrganizations((service) =>
+			service.githubOrganizations["organizations.githubRestore"](input),
+		),
+	),
+
 	MemoizeRpcs.toLayerHandler("organizations.list", () =>
 		withOrganizations((service) => service.listOrganizations()),
 	),

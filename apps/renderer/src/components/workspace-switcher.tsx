@@ -2,6 +2,7 @@ import "@zuse/i18n/english/settings";
 import { useMessages } from "@zuse/i18n/react";
 import { useEffect, useSyncExternalStore } from "react";
 import { useAuth } from "../hooks/use-auth.ts";
+import { openOrganizationWorkspace } from "../lib/open-organization-workspace.ts";
 import {
 	loadOrganizationWorkspaces,
 	organizationWorkspacesAvailable,
@@ -72,17 +73,7 @@ export function WorkspaceSwitcher() {
 						const organization = organizations.find(
 							(entry) => `organization:${entry.id}` === value,
 						);
-						if (!organization) return;
-						selectRendererWorkspace({
-							kind: "organization",
-							organizationId: organization.id,
-						});
-						if (organization.role === "billing") {
-							useUiStore
-								.getState()
-								.setSettingsSection({ kind: "cloud", page: "billing" });
-							useUiStore.getState().setView("settings");
-						}
+						if (organization) openOrganizationWorkspace(organization);
 					}
 				});
 			}}

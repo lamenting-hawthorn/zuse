@@ -47,6 +47,7 @@ import {
 	notFound,
 	serviceUnavailable,
 } from "./errors.ts";
+import { routeGithubOrganizationRequest } from "./github-organizations.ts";
 import { json } from "./http.ts";
 import { requestMachineDestruction } from "./machine-lifecycle.ts";
 import {
@@ -350,6 +351,9 @@ const route = (
 		const accountIdentity = yield* AccountIdentity;
 		const workos = yield* WorkosVerifier;
 		const nowMs = yield* Clock.currentTimeMillis;
+		const githubOrganizationResponse =
+			yield* routeGithubOrganizationRequest(request);
+		if (githubOrganizationResponse !== null) return githubOrganizationResponse;
 		const organizationResponse = yield* routeOrganizationRequest(request);
 		if (organizationResponse !== null) return organizationResponse;
 		const modelConnectionResponse = yield* routeModelConnectionRequest(request);
