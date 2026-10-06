@@ -19,13 +19,14 @@
  * we fall back to auto-allow so existing sessions keep working.
  *
  * Security: the working directory is forced under the session cwd via
- * ensureUnderCwd (shared with acp/fs.ts).
+ * resolveInsideCwd (shared with acp/fs.ts), which follows symlinks so a
+ * symlinked cwd cannot spawn processes outside the workspace.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
 import type { AcpPermissionContext } from "../../kernel/acp-permission-context.ts";
 import { getBashPolicy } from "../../kernel/policy.ts";
-import { ensureUnderCwd } from "./fs.ts";
+import { resolveInsideCwd } from "./fs.ts";
 
 export type TerminalHandleContext = AcpPermissionContext;
 
@@ -157,7 +158,7 @@ async function createTerminal(
 			: DEFAULT_OUTPUT_BYTE_LIMIT;
 	const requestedCwd =
 		typeof p.cwd === "string" && p.cwd.length > 0 ? p.cwd : ctx.cwd;
-	const spawnCwd = ensureUnderCwd(requestedCwd, ctx.cwd);
+	const spawnCwd = (await resolveInsideCwd(requestedCwd, ctx.cwd)).resolved;
 
 	// Human-readable command for the permission prompt.
 	const displayCommand =

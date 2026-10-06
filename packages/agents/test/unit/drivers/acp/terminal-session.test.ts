@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createAcpTerminalSession } from "../../../../src/drivers/acp/terminal.ts";
 
@@ -33,5 +36,35 @@ describe("ACP terminal ownership", () => {
 			await other.close();
 		}
 		await expect(first.handle("terminal/create", {})).rejects.toThrow("closed");
+	});
+
+	it("rejects a working directory that escapes through a symlink", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "zuse-acp-term-"));
+		const workspace = path.join(root, "workspace");
+		const outside = path.join(root, "outside");
+		try {
+			await mkdir(workspace, { recursive: true });
+			await mkdir(outside, { recursive: true });
+			await symlink(outside, path.join(workspace, "link"));
+			const session = createAcpTerminalSession(() => ({ cwd: workspace }));
+			try {
+				await expect(
+					session.handle("terminal/create", {
+						command: "pwd",
+						cwd: path.join(workspace, "link"),
+					}),
+				).rejects.toThrow(/escapes workspace/);
+				await expect(
+					session.handle("terminal/create", {
+						command: "pwd",
+						cwd: "link",
+					}),
+				).rejects.toThrow(/escapes workspace/);
+			} finally {
+				await session.close();
+			}
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 });
