@@ -115,8 +115,11 @@ async function ensureBashPermission(
 	const requestPermission = ctx.requestPermission;
 	const getRuntimeMode = ctx.getRuntimeMode;
 
-	// Transitional: no permission service wired yet → auto-allow.
-	if (!requestPermission || !getRuntimeMode) return;
+	// Fail closed: a terminal command is an arbitrary effect, and with no
+	// permission service wired there is nobody to ask.
+	if (!requestPermission || !getRuntimeMode) {
+		throw new Error("Command blocked: no permission service is wired");
+	}
 
 	const policy = getBashPolicy(
 		command,

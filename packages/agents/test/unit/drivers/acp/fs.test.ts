@@ -238,7 +238,11 @@ describe("handleFsRequest symlink containment", () => {
 	it("still allows legitimate nested paths", async () => {
 		const { root, workspace } = await makeWorkspace();
 		try {
-			const ctx = { cwd: workspace };
+			const ctx = {
+				cwd: workspace,
+				getRuntimeMode: () => "approval-required" as const,
+				requestPermission: async () => ({ _tag: "AllowOnce" as const }),
+			};
 			await handleFsRequest("fs/create_directory", { path: "sub/dir" }, ctx);
 			await handleFsRequest(
 				"fs/write_text_file",

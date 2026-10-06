@@ -271,8 +271,15 @@ async function ensureFsPermission(
 	const getRuntimeMode = ctx.getRuntimeMode;
 	const getPermissionMode = ctx.getPermissionMode;
 
-	// Transitional: no permission service wired yet → auto-allow everything.
+	// Fail closed: with no permission service wired there is nobody to ask,
+	// so mutations must not silently pass. Reads may still proceed — they
+	// cannot escalate without a mutation anyway.
 	if (!requestPermission || !getRuntimeMode) {
+		if (op !== "read") {
+			throw new Error(
+				`Filesystem ${op} blocked: no permission service is wired`,
+			);
+		}
 		return;
 	}
 

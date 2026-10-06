@@ -6,8 +6,13 @@ import { createAcpTerminalSession } from "../../../../src/drivers/acp/terminal.t
 
 describe("ACP terminal ownership", () => {
 	it("isolates connections and retains released output for late tool updates", async () => {
-		const first = createAcpTerminalSession(() => ({ cwd: process.cwd() }));
-		const other = createAcpTerminalSession(() => ({ cwd: process.cwd() }));
+		const terminalContext = () => ({
+			cwd: process.cwd(),
+			getRuntimeMode: () => "approval-required" as const,
+			requestPermission: async () => ({ _tag: "AllowOnce" as const }),
+		});
+		const first = createAcpTerminalSession(terminalContext);
+		const other = createAcpTerminalSession(terminalContext);
 		try {
 			const created = (await first.handle("terminal/create", {
 				command: process.execPath,
