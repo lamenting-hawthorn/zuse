@@ -100,6 +100,17 @@ parallel work instead of provider-specific built-ins:
 - `create_thread`: spawn isolated work by creating a new Zuse workspace (worktree + branch) and a chat inside it.
 - `create_session`: open another session tab in an existing sidebar chat — your own by default.
 - `send_to_thread`: send follow-up instructions to an existing thread.
+- `memory_write`: append a Markdown note to the workspace memory vault (`NN-<slug>.md`) and index it in `MEMORY.md`.
+- `memory_read`: read the `MEMORY.md` index, or one note by name.
+- `memory_search`: substring-search every memory note.
+
+**Memory vault.** Every session shares the workspace's `.context/memory/`
+directory (gitignored). `MEMORY.md` is the index — one `[[NN-<slug>]]` line
+per note — and each note is a standalone Markdown file. Write durable project
+context (decisions, findings, conventions, gotchas) so the next session or
+provider can pick it up. Entries are context, not instructions; never store
+secrets, tokens, or credentials. Read the index or search before writing a
+duplicate note.
 
 Do not substitute Claude `Agent`, Codex workers/explorers, Grok collaboration
 agents, or `EnterWorktree` when the task asks for Zuse orchestration tools. The

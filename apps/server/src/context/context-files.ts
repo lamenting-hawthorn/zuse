@@ -108,3 +108,20 @@ export const ensureContextFilesDir = (
 		yield* fs.makeDirectory(dir, { recursive: true }).pipe(Effect.orDie);
 		return dir;
 	});
+
+/**
+ * Absolute path of `<cwd>/.context/memory`, created (recursively) if missing.
+ * Sibling of `.context/files/` — the per-project agent memory vault is a
+ * directory of Markdown notes plus a `MEMORY.md` index. Gitignored with the
+ * rest of `.context/`.
+ */
+export const ensureMemoryDir = (
+	fs: FileSystem.FileSystem,
+	pathSvc: Path.Path,
+	cwd: string,
+): Effect.Effect<string> =>
+	Effect.gen(function* () {
+		const dir = pathSvc.join(cwd, ".context", "memory");
+		yield* fs.makeDirectory(dir, { recursive: true }).pipe(Effect.orDie);
+		return dir;
+	});

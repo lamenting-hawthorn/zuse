@@ -25,6 +25,7 @@ import {
 	type WorktreeId,
 } from "@zuse/contracts";
 import { type Context, Effect } from "effect";
+import type { MemoryVault } from "../../context/memory-vault.ts";
 import {
 	messageContentToText,
 	orchestrationErrorText,
@@ -93,6 +94,8 @@ export interface ConversationOrchestrationDependencies {
 		projectId: FolderId,
 		includeArchived: boolean,
 	) => Effect.Effect<ReadonlyArray<Session>, unknown>;
+	/** Session-scoped memory vault over `<session cwd>/.context/memory/`. */
+	readonly memoryVault: MemoryVault;
 }
 
 export const makeConversationOrchestration = (
@@ -430,6 +433,52 @@ export const makeConversationOrchestration = (
 					model: context.model,
 					autonomyLevel,
 				}),
+			memoryWrite: (input) =>
+				run(
+					dependencies.memoryVault.write(input).pipe(
+						Effect.map((result) => ({
+							ok: true as const,
+							note: result.note,
+						})),
+						Effect.catch((error) =>
+							Effect.succeed({
+								ok: false as const,
+								error: orchestrationErrorText(error),
+							}),
+						),
+					),
+				),
+			memoryRead: (input) =>
+				run(
+					dependencies.memoryVault.read(input).pipe(
+						Effect.map((result) => ({
+							ok: true as const,
+							note: result.note,
+							content: result.content,
+						})),
+						Effect.catch((error) =>
+							Effect.succeed({
+								ok: false as const,
+								error: orchestrationErrorText(error),
+							}),
+						),
+					),
+				),
+			memorySearch: (input) =>
+				run(
+					dependencies.memoryVault.search(input).pipe(
+						Effect.map((result) => ({
+							ok: true as const,
+							hits: result.hits,
+						})),
+						Effect.catch((error) =>
+							Effect.succeed({
+								ok: false as const,
+								error: orchestrationErrorText(error),
+							}),
+						),
+					),
+				),
 		};
 		return {
 			deps: toolDependencies,

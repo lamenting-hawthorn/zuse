@@ -39,6 +39,9 @@ describe("orchestration MCP tools", () => {
 			"list_threads",
 			"list_models",
 			"whoami",
+			"memory_write",
+			"memory_read",
+			"memory_search",
 		]);
 	});
 
@@ -46,12 +49,15 @@ describe("orchestration MCP tools", () => {
 		expect([...READ_ONLY_ORCHESTRATION_TOOLS].sort()).toEqual([
 			"list_models",
 			"list_threads",
+			"memory_read",
+			"memory_search",
 			"read_thread",
 			"whoami",
 		]);
 		expect([...MUTATING_ORCHESTRATION_TOOLS].sort()).toEqual([
 			"create_session",
 			"create_thread",
+			"memory_write",
 			"send_to_thread",
 		]);
 	});
@@ -170,6 +176,13 @@ describe("orchestration MCP tools", () => {
 					model: "claude-sonnet-5",
 					autonomyLevel: "approval-gated",
 				}),
+				memoryWrite: async () => ({ ok: true, note: "01-note" }),
+				memoryRead: async () => ({
+					ok: true,
+					note: null,
+					content: "# Memory Index",
+				}),
+				memorySearch: async () => ({ ok: true, hits: [] }),
 			},
 			"whoami",
 			{},

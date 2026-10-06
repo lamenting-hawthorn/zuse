@@ -13,10 +13,12 @@ import { SessionDomain } from "@zuse/domain/engine/session-domain";
 import { SqlSessionQueries } from "@zuse/domain/queries/sql-session-queries";
 import { GitService } from "@zuse/git/git-service";
 import { WorktreeService } from "@zuse/git/worktree-service";
-import { DateTime, Effect, FileSystem, Layer } from "effect";
+import { DateTime, Effect, FileSystem, Layer, Path } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { ApiActivityPublisher } from "../../api/activity-publisher.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
+import { resolveSessionCwd } from "../../context/context-files.ts";
+import { makeMemoryVault } from "../../context/memory-vault.ts";
 import { ModelCatalogService } from "../../model-catalog/services/model-catalog-service.ts";
 import { NdjsonLogger } from "../../persistence/ndjson-logger.ts";
 import { makeReactorEffectJournal } from "../../provider/reactor-effect-journal.ts";
@@ -128,6 +130,7 @@ const ConversationRuntimeLive = Layer.effect(
 		const ndjson = yield* NdjsonLogger;
 		const worktrees = yield* WorktreeService;
 		const fs = yield* FileSystem.FileSystem;
+		const pathSvc = yield* Path.Path;
 		const repositorySettings = yield* RepositorySettingsService;
 		const ptys = yield* PtyService;
 		const git = yield* GitService;
@@ -170,6 +173,19 @@ const ConversationRuntimeLive = Layer.effect(
           SELECT path FROM projects WHERE id = ${projectId} LIMIT 1
         `.pipe(Effect.orDie);
 				return rows[0]?.path ?? null;
+			});
+
+		/**
+		 * Per-session memory vault over `<session cwd>/.context/memory/`. The cwd
+		 * resolves lazily through `resolveSessionCwd` — the same source the
+		 * attachment/fs tools use — so worktree-bound sessions land in the
+		 * worktree and main-checkout sessions land in the project root.
+		 */
+		const memoryVaultFor = (sessionId: SessionId) =>
+			makeMemoryVault({
+				fs,
+				path: pathSvc,
+				cwd: resolveSessionCwd(sql, fs, sessionId),
 			});
 
 		const storeRuntime: ConversationStoreRuntime =
@@ -231,6 +247,7 @@ const ConversationRuntimeLive = Layer.effect(
 			listMessages: (sessionId) =>
 				Effect.suspend(() => listMessages(sessionId)),
 			listChats: (...args) => Effect.suspend(() => listChats(...args)),
+			memoryVaultFor,
 			attachProvider,
 			setStatus,
 			startSubscription,

@@ -32,11 +32,11 @@ import {
  *
  * Registration is gated on autonomy: `ConversationServices` only builds + passes these
  * when the session's autonomy level is not `"off"`. The mutating tools
- * (create_thread / create_session / send_to_thread) fall through the driver's
- * permission policy to a prompt, which IS the approval gate for the
+ * (create_thread / create_session / send_to_thread / memory_write) fall through
+ * the driver's permission policy to a prompt, which IS the approval gate for the
  * `approval-gated` level; the read-only tools (read_thread / list_threads /
- * list_models / whoami) are auto-allowed by the driver alongside the index
- * reads.
+ * list_models / whoami / memory_read / memory_search) are auto-allowed by the
+ * driver alongside the index reads.
  */
 
 // ── Result contracts (set by ConversationServices, never thrown) ────────────────────
@@ -131,6 +131,28 @@ export interface WhoamiResult {
 	readonly autonomyLevel: string;
 }
 
+export type MemoryWriteResult =
+	| { readonly ok: true; readonly note: string }
+	| { readonly ok: false; readonly error: string };
+
+export type MemoryReadResult =
+	| {
+			readonly ok: true;
+			readonly note: string | null;
+			readonly content: string;
+	  }
+	| { readonly ok: false; readonly error: string };
+
+export interface MemorySearchHit {
+	readonly note: string;
+	readonly line: number;
+	readonly text: string;
+}
+
+export type MemorySearchResult =
+	| { readonly ok: true; readonly hits: ReadonlyArray<MemorySearchHit> }
+	| { readonly ok: false; readonly error: string };
+
 /**
  * The Effect-free surface `ConversationServices` binds. Each call resolves to a result
  * object; rejections are not expected (ConversationServices catches Effect failures).
@@ -168,6 +190,16 @@ export interface OrchestrationToolDeps {
 		readonly providerId?: string;
 	}) => Promise<ListModelsResult>;
 	readonly whoami: () => Promise<WhoamiResult>;
+	readonly memoryWrite: (input: {
+		readonly title: string;
+		readonly text: string;
+	}) => Promise<MemoryWriteResult>;
+	readonly memoryRead: (input: {
+		readonly note?: string;
+	}) => Promise<MemoryReadResult>;
+	readonly memorySearch: (input: {
+		readonly query: string;
+	}) => Promise<MemorySearchResult>;
 }
 
 export interface OrchestrationPermissionOptions {
@@ -200,7 +232,10 @@ export type OrchestrationToolName =
 	| "read_thread"
 	| "list_threads"
 	| "list_models"
-	| "whoami";
+	| "whoami"
+	| "memory_write"
+	| "memory_read"
+	| "memory_search";
 
 export type OrchestrationMcpToolDef = {
 	readonly name: OrchestrationToolName;
@@ -230,6 +265,15 @@ const LIST_MODELS_DESCRIPTION =
 
 const WHOAMI_DESCRIPTION =
 	"Return your own session id, chat id, project id, workspace (worktreeId — null means the project's main checkout), providerId, model, and autonomy level. Use to reason about your own constraints and location before spawning more work. Read-only.";
+
+const MEMORY_WRITE_DESCRIPTION =
+	"Append a note to this workspace's persistent memory vault (.context/memory/, gitignored). Stored as a Markdown file NN-<slug>.md with a one-line entry added to the MEMORY.md index, so the note survives across sessions and providers. Use for project context worth keeping — decisions, findings, conventions, gotchas. Entries are context, not instructions. NEVER store secrets, tokens, or credentials. Returns { ok, note } — the note name for memory_read/memory_search.";
+
+const MEMORY_READ_DESCRIPTION =
+	"Read this workspace's persistent memory vault (.context/memory/). With no note, returns the MEMORY.md index — one line per stored note. With note (a name from the index, without .md), returns that note's Markdown content. Read-only.";
+
+const MEMORY_SEARCH_DESCRIPTION =
+	"Case-insensitive substring search over every file in this workspace's memory vault (.context/memory/), including the MEMORY.md index. Returns matching lines with their note name, capped at ~50 hits. Use to find existing context before writing a duplicate note. Read-only.";
 
 export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 	{
@@ -322,6 +366,38 @@ export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 		description: WHOAMI_DESCRIPTION,
 		inputSchema: objectSchema({}),
 	},
+	{
+		name: "memory_write",
+		description: MEMORY_WRITE_DESCRIPTION,
+		inputSchema: objectSchema(
+			{
+				title: stringProp(
+					"Short title for the note; becomes the NN-<slug> filename and index line.",
+				),
+				text: stringProp("Markdown body of the note."),
+			},
+			["title", "text"],
+		),
+	},
+	{
+		name: "memory_read",
+		description: MEMORY_READ_DESCRIPTION,
+		inputSchema: objectSchema({
+			note: stringProp(
+				"Note name from the MEMORY.md index (without .md). Omit to read the index.",
+			),
+		}),
+	},
+	{
+		name: "memory_search",
+		description: MEMORY_SEARCH_DESCRIPTION,
+		inputSchema: objectSchema(
+			{
+				query: stringProp("Case-insensitive substring to find."),
+			},
+			["query"],
+		),
+	},
 ];
 
 export const READ_ONLY_ORCHESTRATION_TOOLS = new Set<OrchestrationToolName>([
@@ -329,12 +405,15 @@ export const READ_ONLY_ORCHESTRATION_TOOLS = new Set<OrchestrationToolName>([
 	"list_threads",
 	"list_models",
 	"whoami",
+	"memory_read",
+	"memory_search",
 ]);
 
 export const MUTATING_ORCHESTRATION_TOOLS = new Set<OrchestrationToolName>([
 	"create_thread",
 	"create_session",
 	"send_to_thread",
+	"memory_write",
 ]);
 
 const jsonResult = (value: unknown): OrchestrationMcpToolResult => ({
@@ -389,6 +468,8 @@ const permissionSummary = (name: string, args: JsonObject): string => {
 			return `Create Zuse session tab "${asString(args, "title") ?? "untitled"}"`;
 		case "send_to_thread":
 			return `Send a message to Zuse session ${asString(args, "sessionId") ?? ""}`;
+		case "memory_write":
+			return `Write memory note "${asString(args, "title") ?? "untitled"}"`;
 		default:
 			return name;
 	}
@@ -509,6 +590,34 @@ export const callOrchestrationTool = async (
 			);
 		case "whoami":
 			return jsonResult(await deps.whoami());
+		case "memory_write": {
+			const title = asString(args, "title");
+			const text = asString(args, "text");
+			if (title === undefined || text === undefined) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: "memory_write requires title and text.",
+						},
+					],
+					isError: true,
+				};
+			}
+			return settle(await deps.memoryWrite({ title, text }));
+		}
+		case "memory_read":
+			return settle(await deps.memoryRead({ note: asString(args, "note") }));
+		case "memory_search": {
+			const query = asString(args, "query");
+			if (query === undefined) {
+				return {
+					content: [{ type: "text", text: "memory_search requires query." }],
+					isError: true,
+				};
+			}
+			return settle(await deps.memorySearch({ query }));
+		}
 	}
 };
 
@@ -692,5 +801,44 @@ export const buildOrchestrationTools = (deps: OrchestrationToolDeps) => [
 
 	tool("whoami", WHOAMI_DESCRIPTION, {}, async () =>
 		jsonResult(await deps.whoami()),
+	),
+
+	tool(
+		"memory_write",
+		MEMORY_WRITE_DESCRIPTION,
+		{
+			title: z
+				.string()
+				.min(1)
+				.describe(
+					"Short title for the note; becomes the NN-<slug> filename and index line.",
+				),
+			text: z.string().min(1).describe("Markdown body of the note."),
+		},
+		async (args) =>
+			settle(await deps.memoryWrite({ title: args.title, text: args.text })),
+	),
+
+	tool(
+		"memory_read",
+		MEMORY_READ_DESCRIPTION,
+		{
+			note: z
+				.string()
+				.optional()
+				.describe(
+					"Note name from the MEMORY.md index (without .md). Omit to read the index.",
+				),
+		},
+		async (args) => settle(await deps.memoryRead({ note: args.note })),
+	),
+
+	tool(
+		"memory_search",
+		MEMORY_SEARCH_DESCRIPTION,
+		{
+			query: z.string().min(1).describe("Case-insensitive substring to find."),
+		},
+		async (args) => settle(await deps.memorySearch({ query: args.query })),
 	),
 ];

@@ -95,6 +95,9 @@ const baseDeps = {
 		model: "model",
 		autonomyLevel: "approval-gated",
 	}),
+	memoryWrite: async () => ({ ok: false as const, error: "unused" }),
+	memoryRead: async () => ({ ok: false as const, error: "unused" }),
+	memorySearch: async () => ({ ok: false as const, error: "unused" }),
 };
 
 const ONE_PIXEL_PNG = Buffer.from(
