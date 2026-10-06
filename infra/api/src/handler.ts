@@ -542,12 +542,13 @@ const route = (
 			const tunnel = yield* ManagedTunnelProvider;
 			let tunnelHostname: string | undefined;
 			let connectorToken: string | undefined;
-			if (
-				body.managedTunnel === true &&
-				tunnel.enabled &&
-				typeof body.origin?.localHttpHost === "string" &&
-				typeof body.origin.localHttpPort === "number"
-			) {
+			if (body.managedTunnel === true && tunnel.enabled) {
+				// The tunnel hostname is public; its origin must stay on the
+				// connector's loopback so a link request cannot aim cloudflared at
+				// an arbitrary host or port.
+				if (!isLoopbackOrigin(body.origin)) {
+					return yield* Effect.fail(badRequest("invalid_tunnel_origin"));
+				}
 				const provisioned = yield* tunnel
 					.provision({
 						accountId: principal.accountId,
