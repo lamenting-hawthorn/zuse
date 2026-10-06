@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
 	parseTailnetPairingLink,
+	supersededTailnetProfiles,
 	TailnetEnvironmentManager,
 } from "../../src/tailnet/environment-service.ts";
 import { TailnetEnvironmentProfileStore } from "../../src/tailnet/profile-store.ts";
@@ -230,6 +231,40 @@ describe("Tailnet environment pairing", () => {
 
 		expect(loaded.map((item) => item.profileId)).toEqual(["tailnet_new"]);
 		expect(removed).toEqual(["tailnet_old"]);
+	});
+
+	it("keeps the newest valid profile when timestamps are malformed or tied", () => {
+		const profile = (profileId: string, lastConnectedAt: string) =>
+			TailnetEnvironmentProfile.make({
+				profileId,
+				environmentId: EnvironmentId.make("env_mac"),
+				label: "Mac",
+				httpBaseUrl: `https://${profileId}.example.ts.net`,
+				wsBaseUrl: `wss://${profileId}.example.ts.net/rpc`,
+				lastConnectedAt,
+			});
+		const ids = (profiles: ReadonlyArray<{ profileId: string }>) =>
+			profiles.map((item) => item.profileId).sort();
+
+		// A malformed timestamp would win a string comparison ("z" > "2"); it
+		// must sort as oldest instead.
+		expect(
+			ids(
+				supersededTailnetProfiles([
+					profile("tailnet_valid", "2026-09-01T00:00:00.000Z"),
+					profile("tailnet_broken", "zzz"),
+				]),
+			),
+		).toEqual(["tailnet_broken"]);
+		// Equal timestamps keep the same profile regardless of input order.
+		const tied = [
+			profile("tailnet_a", "2026-09-01T00:00:00.000Z"),
+			profile("tailnet_b", "2026-09-01T00:00:00.000Z"),
+		];
+		expect(ids(supersededTailnetProfiles(tied))).toEqual(["tailnet_a"]);
+		expect(ids(supersededTailnetProfiles([...tied].reverse()))).toEqual([
+			"tailnet_a",
+		]);
 	});
 
 	it("rejects an environment identity mismatch before persistence", async () => {

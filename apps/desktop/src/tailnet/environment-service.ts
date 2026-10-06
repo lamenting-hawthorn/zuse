@@ -115,9 +115,16 @@ const wsUrlWithToken = (wsBaseUrl: string, token: string): string => {
 	return url.toString();
 };
 
+/** Unparseable timestamps sort as oldest so a valid profile always wins. */
+const connectedAtMs = (profile: TailnetEnvironmentProfile): number => {
+	const parsed = Date.parse(profile.lastConnectedAt);
+	return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+};
+
 /**
  * Profiles that another, more recently connected profile for the same
- * computer supersedes. One computer keeps exactly one saved Tailnet route.
+ * computer supersedes. One computer keeps exactly one saved Tailnet route;
+ * equal timestamps fall back to the profile id so the choice is stable.
  */
 export const supersededTailnetProfiles = (
 	profiles: ReadonlyArray<TailnetEnvironmentProfile>,
@@ -125,9 +132,14 @@ export const supersededTailnetProfiles = (
 	const newest = new Map<string, TailnetEnvironmentProfile>();
 	for (const profile of profiles) {
 		const current = newest.get(profile.environmentId);
+		if (current === undefined) {
+			newest.set(profile.environmentId, profile);
+			continue;
+		}
+		const difference = connectedAtMs(profile) - connectedAtMs(current);
 		if (
-			current === undefined ||
-			profile.lastConnectedAt > current.lastConnectedAt
+			difference > 0 ||
+			(!(difference < 0) && profile.profileId > current.profileId)
 		) {
 			newest.set(profile.environmentId, profile);
 		}

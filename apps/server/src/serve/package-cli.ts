@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir, hostname } from "node:os";
@@ -188,6 +188,32 @@ const TAILNET_RECOVERY_CHECK_MS = 30_000;
 const TAILNET_RECOVERY_RESTART_WINDOW_MS = 10 * 60_000;
 /** Non-zero exit (EX_TEMPFAIL) so launchd and systemd restart the service. */
 const TAILNET_RECOVERY_EXIT_CODE = 75;
+/**
+ * Written just before a recovery restart. If the restarted service still
+ * cannot share over Tailscale, it must not restart again: one restart per
+ * failure episode, so a share that keeps failing never becomes a restart loop.
+ */
+const TAILNET_RECOVERY_MARKER = "tailnet-recovery-restart";
+
+/** What to do once Tailscale looks ready after a failed boot-time share. */
+export const tailnetRecoveryAction = (input: {
+	readonly managedByService: boolean;
+	readonly restartedForRecovery: boolean;
+	readonly elapsedMs: number;
+}): "restart" | "notify" =>
+	input.managedByService &&
+	!input.restartedForRecovery &&
+	input.elapsedMs < TAILNET_RECOVERY_RESTART_WINDOW_MS
+		? "restart"
+		: "notify";
+
+/** Read and clear the recovery-restart marker left by the previous process. */
+const takeTailnetRecoveryMarker = async (dataDir: string): Promise<boolean> => {
+	const path = join(dataDir, TAILNET_RECOVERY_MARKER);
+	const present = existsSync(path);
+	await rm(path, { force: true }).catch(() => undefined);
+	return present;
+};
 
 /**
  * Poll until Tailscale is ready after a failed boot-time share. The route is
@@ -196,7 +222,9 @@ const TAILNET_RECOVERY_EXIT_CODE = 75;
  */
 const watchForTailnetRecovery = (input: {
 	readonly port: number;
+	readonly dataDir: string;
 	readonly managedByService: boolean;
+	readonly restartedForRecovery: boolean;
 }): void => {
 	const bootedAt = Date.now();
 	const timer = setInterval(() => {
@@ -204,13 +232,18 @@ const watchForTailnetRecovery = (input: {
 			(state) => {
 				if (state.availability !== "available") return;
 				clearInterval(timer);
-				if (
-					input.managedByService &&
-					Date.now() - bootedAt < TAILNET_RECOVERY_RESTART_WINDOW_MS
-				) {
+				const action = tailnetRecoveryAction({
+					managedByService: input.managedByService,
+					restartedForRecovery: input.restartedForRecovery,
+					elapsedMs: Date.now() - bootedAt,
+				});
+				if (action === "restart") {
 					console.log(
 						"Tailscale is ready. Restarting Zuse Serve to share this computer on your tailnet.",
 					);
+					writeFileSync(join(input.dataDir, TAILNET_RECOVERY_MARKER), "", {
+						mode: 0o600,
+					});
 					process.exit(TAILNET_RECOVERY_EXIT_CODE);
 				}
 				console.log(
@@ -728,13 +761,16 @@ export const runServePackageCli = async (
 		// Tailscale often starts after this service at login. Never let it take
 		// the account tunnel and local access down with it: start without the
 		// tailnet address and pick it up once Tailscale is ready.
+		const restartedForRecovery = await takeTailnetRecoveryMarker(dataDir);
 		const tailnetOrigin = await enableTailnet().catch((cause: unknown) => {
 			console.warn(
 				`Tailscale is unavailable (${cause instanceof Error ? cause.message : String(cause)}). Zuse Serve is running without its Tailnet address and will add it when Tailscale is ready.`,
 			);
 			watchForTailnetRecovery({
 				port: command.port ?? Number(env.ZUSE_PORT ?? DEFAULT_SERVE_PORT),
+				dataDir,
 				managedByService: isManagedServeService(env),
+				restartedForRecovery,
 			});
 			return null;
 		});
