@@ -115,6 +115,28 @@ const wsUrlWithToken = (wsBaseUrl: string, token: string): string => {
 	return url.toString();
 };
 
+/**
+ * Profiles that another, more recently connected profile for the same
+ * computer supersedes. One computer keeps exactly one saved Tailnet route.
+ */
+export const supersededTailnetProfiles = (
+	profiles: ReadonlyArray<TailnetEnvironmentProfile>,
+): ReadonlyArray<TailnetEnvironmentProfile> => {
+	const newest = new Map<string, TailnetEnvironmentProfile>();
+	for (const profile of profiles) {
+		const current = newest.get(profile.environmentId);
+		if (
+			current === undefined ||
+			profile.lastConnectedAt > current.lastConnectedAt
+		) {
+			newest.set(profile.environmentId, profile);
+		}
+	}
+	return profiles.filter(
+		(profile) => newest.get(profile.environmentId) !== profile,
+	);
+};
+
 export class TailnetEnvironmentManager {
 	private readonly profiles: TailnetEnvironmentProfileStore;
 	private readonly clientId: Promise<string>;
@@ -132,8 +154,17 @@ export class TailnetEnvironmentManager {
 		this.clientId = readOrCreateClientId(userData);
 	}
 
-	initialize(): Promise<ReadonlyArray<TailnetEnvironmentProfile>> {
-		return this.profiles.load();
+	/**
+	 * Load saved profiles and drop older duplicates of the same computer.
+	 * Earlier versions kept one profile per URL, so re-pairing a computer under
+	 * a new address left a stale profile whose token the host had revoked.
+	 */
+	async initialize(): Promise<ReadonlyArray<TailnetEnvironmentProfile>> {
+		const loaded = await this.profiles.load();
+		for (const stale of supersededTailnetProfiles(loaded)) {
+			await this.remove(stale.profileId).catch(() => undefined);
+		}
+		return this.profiles.list();
 	}
 
 	listProfiles(): ReadonlyArray<TailnetEnvironmentProfile> {
@@ -230,6 +261,16 @@ export class TailnetEnvironmentManager {
 				throw cause;
 			}
 			this.pending.delete(profileId);
+			// Pairing again revokes this device's earlier token on the host, so any
+			// other saved route to the same computer can no longer authenticate.
+			for (const stale of this.profiles.list()) {
+				if (
+					stale.environmentId === confirmed.environmentId &&
+					stale.profileId !== confirmed.profileId
+				) {
+					await this.remove(stale.profileId).catch(() => undefined);
+				}
+			}
 		} else {
 			await this.profiles.put(confirmed);
 		}

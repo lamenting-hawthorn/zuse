@@ -16,7 +16,11 @@ import {
 	type ServeStatusV1,
 	WORKOS_PUBLIC_CLIENT_ID,
 } from "@zuse/contracts";
-import { probeZuseLoopback, setTailnetShareEnabled } from "@zuse/tailnet";
+import {
+	inspectTailnetShare,
+	probeZuseLoopback,
+	setTailnetShareEnabled,
+} from "@zuse/tailnet";
 import { resolveZuseDesktopUserData } from "@zuse/utils/zuse-user-data";
 import { Effect } from "effect";
 
@@ -169,6 +173,55 @@ export const foregroundServeOptions = (
 	trustProxy: tailnetOrigin !== undefined,
 	apiEnabled: !command.sshManaged && command.noAccount !== true,
 });
+
+/** Whether this process was started by the installed launchd/systemd service. */
+export const isManagedServeService = (env: NodeJS.ProcessEnv): boolean =>
+	env.INVOCATION_ID !== undefined ||
+	env.XPC_SERVICE_NAME?.startsWith("sh.zuse.") === true;
+
+const TAILNET_RECOVERY_CHECK_MS = 30_000;
+/**
+ * Restarting picks up the tailnet route safely, but would interrupt running
+ * agents. Shortly after boot nothing is running yet, so restart automatically
+ * only within this window and otherwise ask for a restart.
+ */
+const TAILNET_RECOVERY_RESTART_WINDOW_MS = 10 * 60_000;
+/** Non-zero exit (EX_TEMPFAIL) so launchd and systemd restart the service. */
+const TAILNET_RECOVERY_EXIT_CODE = 75;
+
+/**
+ * Poll until Tailscale is ready after a failed boot-time share. The route is
+ * not claimed here: a Tailscale-fronted request must only reach a server that
+ * booted with proxy trust, so a managed service restarts into it instead.
+ */
+const watchForTailnetRecovery = (input: {
+	readonly port: number;
+	readonly managedByService: boolean;
+}): void => {
+	const bootedAt = Date.now();
+	const timer = setInterval(() => {
+		void inspectTailnetShare(input.port).then(
+			(state) => {
+				if (state.availability !== "available") return;
+				clearInterval(timer);
+				if (
+					input.managedByService &&
+					Date.now() - bootedAt < TAILNET_RECOVERY_RESTART_WINDOW_MS
+				) {
+					console.log(
+						"Tailscale is ready. Restarting Zuse Serve to share this computer on your tailnet.",
+					);
+					process.exit(TAILNET_RECOVERY_EXIT_CODE);
+				}
+				console.log(
+					"Tailscale is ready. Run `zuse serve start` to share this computer on your tailnet.",
+				);
+			},
+			() => undefined,
+		);
+	}, TAILNET_RECOVERY_CHECK_MS);
+	timer.unref();
+};
 
 const isZuseSourceCheckout = (
 	cwd: string,
@@ -351,6 +404,27 @@ const installedAgents = async (): Promise<ReadonlyArray<string>> => {
 	return results.filter((value) => value !== null);
 };
 
+/**
+ * Ask the running daemon for its version. The invoking CLI can be a different
+ * install than the service, so status must never report its own version.
+ */
+const runningDaemonVersion = async (
+	env: NodeJS.ProcessEnv,
+	portOverride?: number,
+): Promise<string | null> => {
+	try {
+		const port = portOverride ?? Number(env.ZUSE_PORT ?? DEFAULT_SERVE_PORT);
+		const response = await fetch(`http://127.0.0.1:${port}/healthz`, {
+			signal: AbortSignal.timeout(2_000),
+		});
+		if (!response.ok) return null;
+		const body = (await response.json()) as { readonly version?: unknown };
+		return typeof body.version === "string" ? body.version : null;
+	} catch {
+		return null;
+	}
+};
+
 const serverReachable = async (
 	env: NodeJS.ProcessEnv,
 	portOverride?: number,
@@ -376,9 +450,11 @@ const printStatus = async (
 	},
 ): Promise<void> => {
 	const api = readLocalApiConfig(options.dataDir);
-	const [agents, reachable] = await Promise.all([
+	const [agents, reachable, daemonVersion, activeRuntime] = await Promise.all([
 		installedAgents(),
 		serverReachable(options.env, options.port),
+		runningDaemonVersion(options.env, options.port),
+		readActiveServeRuntime(options.dataDir).catch(() => null),
 	]);
 	const value: ServeStatusV1 = {
 		schemaVersion: 1,
@@ -389,7 +465,8 @@ const printStatus = async (
 				? "stopped"
 				: "missing",
 		tunnel: api?.tunnelHostname === undefined ? "unavailable" : "configured",
-		runtimeVersion: options.env.ZUSE_RUNTIME_VERSION ?? "0.0.0",
+		// Older daemons don't report a version; fall back to the installed one.
+		runtimeVersion: daemonVersion ?? activeRuntime?.version ?? "0.0.0",
 		agents,
 		reachable,
 		environmentId: api?.environmentId ?? null,
@@ -566,7 +643,6 @@ export const runServePackageCli = async (
 	env.ZUSE_API_URL = env.ZUSE_API_URL ?? DEFAULT_API_URL;
 	const dataDir = resolveServeDataDir(env, command.dataDir);
 	env.ZUSE_USER_DATA = dataDir;
-	const servicePaths = resolveServeServicePaths({ dataDir });
 	// `start` installs from its own flags; every other action (notably
 	// `update`) reuses the persisted flags so a re-install cannot silently
 	// revert the binding or access choices the service was started with.
@@ -581,6 +657,10 @@ export const runServePackageCli = async (
 					port: command.port,
 				}
 			: await readServeSettings(dataDir);
+	const servicePaths = resolveServeServicePaths({
+		dataDir,
+		sshManaged: settings.sshManaged,
+	});
 	const installService = (executable: string) =>
 		installServeService({
 			executable,
@@ -645,7 +725,19 @@ export const runServePackageCli = async (
 			})
 		)
 			env.ZUSE_SERVE_AUTO_LINK = "1";
-		const tailnetOrigin = await enableTailnet();
+		// Tailscale often starts after this service at login. Never let it take
+		// the account tunnel and local access down with it: start without the
+		// tailnet address and pick it up once Tailscale is ready.
+		const tailnetOrigin = await enableTailnet().catch((cause: unknown) => {
+			console.warn(
+				`Tailscale is unavailable (${cause instanceof Error ? cause.message : String(cause)}). Zuse Serve is running without its Tailnet address and will add it when Tailscale is ready.`,
+			);
+			watchForTailnetRecovery({
+				port: command.port ?? Number(env.ZUSE_PORT ?? DEFAULT_SERVE_PORT),
+				managedByService: isManagedServeService(env),
+			});
+			return null;
+		});
 		runHeadlessServer(
 			foregroundServeOptions(env, command, tailnetOrigin ?? undefined),
 		);
