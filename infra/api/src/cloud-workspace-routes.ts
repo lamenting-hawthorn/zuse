@@ -1315,6 +1315,7 @@ export const cloudWorkspaceResumeTarget = (
 	nextActionAtMs: nowMs,
 	revision: workspace.revision + 1,
 	updatedAtMs: nowMs,
+	lastActivityAtMs: nowMs,
 });
 
 /**
@@ -4267,6 +4268,9 @@ export const routeCloudWorkspaceRequest = (
 				nextActionAtMs: nowMs,
 				revision: workspace.revision + 1,
 				updatedAtMs: nowMs,
+				...(action === "resume" || action === "restart"
+					? { lastActivityAtMs: nowMs }
+					: {}),
 				...(verifyCurrentRuntime
 					? workspaceRuntimeReconnectTarget(workspace, nowMs)
 					: {}),
