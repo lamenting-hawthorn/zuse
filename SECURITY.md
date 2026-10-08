@@ -41,7 +41,8 @@ reporting or reviewing a fix.
   the server's origin policy. The in-app browser bridge pins command replies
   to the subscribing renderer.
 - **Cloud.** Managed tunnels accept only loopback origins. OAuth flows use
-  per-flow `state` and PKCE. Access tokens are DPoP-bound.
+  per-flow `state` and PKCE. Zuse-issued API access tokens are DPoP-bound;
+  identity-provider access tokens (for example, WorkOS) are bearer tokens.
 
 ## Scope
 
