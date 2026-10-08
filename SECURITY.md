@@ -3,8 +3,10 @@
 ## Reporting a vulnerability
 
 Report vulnerabilities privately through GitHub: open the repository's
-**Security → Report a vulnerability** flow (private security advisory). Do not
-file a public issue for a security report.
+**Security → Report a vulnerability** flow (private security advisory). If the
+repository does not have private reporting enabled, contact the maintainer
+privately through the channels on their GitHub profile instead. Do not file a
+public issue for a security report.
 
 Include, where possible:
 
@@ -26,17 +28,18 @@ reporting or reviewing a fix.
 
 - **Permissions.** Tool calls go through a permission broker that classifies
   each request (`read`, `write`, `execute`, `network`, `other`) against the
-  session's runtime mode and permission mode. `full-access` auto-approves
-  everything; `approval-required` prompts; `plan` denies mutations without
-  prompting. Sensitive paths (credentials, `.ssh`, `.env`) force a prompt in
-  every mode.
+  session's runtime mode and permission mode. `full-access` auto-approves all
+  non-sensitive requests; `approval-required` prompts; `plan` denies mutations
+  without prompting. Sensitive paths (credentials, `.ssh`, `.env`) force a
+  prompt in every mode, including `full-access`.
 - **Repository-supplied configuration.** A cloned repository can carry
   `.zuse/` settings. Treat an untrusted repository the way you would treat an
   untrusted binary: review it before opening it in Zuse.
 - **Local and remote access.** Browser and LAN clients authenticate over a
-  pairing flow with rate-limited codes. The WebSocket upgrade checks the
-  request `Origin`. The in-app browser bridge pins command replies to the
-  subscribing renderer.
+  pairing flow with rate-limited codes. Browser-facing endpoints — pairing
+  and the WebSocket upgrade — reject handshakes whose `Origin` does not match
+  the server's origin policy. The in-app browser bridge pins command replies
+  to the subscribing renderer.
 - **Cloud.** Managed tunnels accept only loopback origins. OAuth flows use
   per-flow `state` and PKCE. Access tokens are DPoP-bound.
 
