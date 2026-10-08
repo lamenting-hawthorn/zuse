@@ -468,18 +468,37 @@ const asString = (args: JsonObject, key: string): string | undefined =>
 const asBoolean = (args: JsonObject, key: string): boolean | undefined =>
 	typeof args[key] === "boolean" ? (args[key] as boolean) : undefined;
 
-/** Unknown scope strings fall back to the default rather than erroring. */
+/**
+ * A scope that fails the enum is rejected, not coerced — silently defaulting
+ * an invalid `scope` to "project" could publish a note the caller meant to
+ * keep session-private.
+ */
 const asMemoryWriteScope = (
 	value: string | undefined,
-): "project" | "session" | undefined =>
-	value === "project" || value === "session" ? value : undefined;
+): "project" | "session" | undefined | "invalid" =>
+	value === undefined || value === "project" || value === "session"
+		? value
+		: "invalid";
 
 const asMemoryReadScope = (
 	value: string | undefined,
-): "project" | "session" | "all" | undefined =>
-	value === "project" || value === "session" || value === "all"
+): "project" | "session" | "all" | undefined | "invalid" =>
+	value === undefined ||
+	value === "project" ||
+	value === "session" ||
+	value === "all"
 		? value
-		: undefined;
+		: "invalid";
+
+const invalidScopeResult = (tool: string): OrchestrationMcpToolResult => ({
+	content: [
+		{
+			type: "text",
+			text: `${tool} got an invalid scope. Use "project" or "session" for memory_write; "project", "session", or "all" for memory_read/memory_search.`,
+		},
+	],
+	isError: true,
+});
 
 const asLimit = (args: JsonObject): number | undefined =>
 	typeof args["limit"] === "number" &&
@@ -637,21 +656,20 @@ export const callOrchestrationTool = async (
 					isError: true,
 				};
 			}
-			return settle(
-				await deps.memoryWrite({
-					title,
-					text,
-					scope: asMemoryWriteScope(asString(args, "scope")),
-				}),
-			);
+			const writeScope = asMemoryWriteScope(asString(args, "scope"));
+			if (writeScope === "invalid") return invalidScopeResult("memory_write");
+			return settle(await deps.memoryWrite({ title, text, scope: writeScope }));
 		}
-		case "memory_read":
+		case "memory_read": {
+			const readScope = asMemoryReadScope(asString(args, "scope"));
+			if (readScope === "invalid") return invalidScopeResult("memory_read");
 			return settle(
 				await deps.memoryRead({
 					note: asString(args, "note"),
-					scope: asMemoryReadScope(asString(args, "scope")),
+					scope: readScope,
 				}),
 			);
+		}
 		case "memory_search": {
 			const query = asString(args, "query");
 			if (query === undefined) {
@@ -660,12 +678,9 @@ export const callOrchestrationTool = async (
 					isError: true,
 				};
 			}
-			return settle(
-				await deps.memorySearch({
-					query,
-					scope: asMemoryReadScope(asString(args, "scope")),
-				}),
-			);
+			const searchScope = asMemoryReadScope(asString(args, "scope"));
+			if (searchScope === "invalid") return invalidScopeResult("memory_search");
+			return settle(await deps.memorySearch({ query, scope: searchScope }));
 		}
 	}
 };

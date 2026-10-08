@@ -196,6 +196,32 @@ describe("memory vault", () => {
 		expect(scopes).toEqual(new Set(["project", "session"]));
 	});
 
+	it("serializes concurrent writes across vault instances of one project", async () => {
+		const root = fixture();
+		await run(
+			Effect.gen(function* () {
+				// Two sessions, same project → two MemoryVault instances over one
+				// directory. Concurrent writes must get distinct note numbers.
+				const a = yield* vaultFor(root, "proj_a", "s1");
+				const b = yield* vaultFor(root, "proj_a", "s2");
+				const [w1, w2, w3] = yield* Effect.all(
+					[
+						a.write({ title: "first", text: "one" }),
+						b.write({ title: "second", text: "two" }),
+						a.write({ title: "third", text: "three" }),
+					],
+					{ concurrency: "unbounded" },
+				);
+				const names = [w1.note, w2.note, w3.note];
+				expect(new Set(names).size).toBe(3);
+				const index = yield* b.read();
+				for (const note of names) {
+					expect(index.content).toContain(note);
+				}
+			}),
+		);
+	});
+
 	it("reports an error when no project resolves", async () => {
 		const root = fixture();
 		const error = await run(

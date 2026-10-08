@@ -83,6 +83,29 @@ const safeNoteName = (raw: string): string | null => {
 	return NOTE_NAME_PATTERN.test(name) ? name : null;
 };
 
+/**
+ * Per-directory write queues shared by every vault instance in this process.
+ * Two sessions of the same project hold different `MemoryVault` objects over
+ * the same directory — without serialization they could pick the same note
+ * number and rewrite `MEMORY.md` from a stale copy. Each `write` chains onto
+ * the directory's queue so note selection and the index update are atomic.
+ * This is in-process only; two servers sharing one `userData` directory is
+ * not a supported deployment.
+ */
+const dirWriteQueues = new Map<string, Promise<unknown>>();
+
+const enqueueWrite = <A>(dir: string, run: () => Promise<A>): Promise<A> => {
+	const queued = (dirWriteQueues.get(dir) ?? Promise.resolve()).then(run);
+	dirWriteQueues.set(
+		dir,
+		queued.then(
+			() => undefined,
+			() => undefined,
+		),
+	);
+	return queued;
+};
+
 export const makeMemoryVault = (options: {
 	readonly fs: FileSystem.FileSystem;
 	readonly path: Path.Path;
@@ -92,6 +115,25 @@ export const makeMemoryVault = (options: {
 	readonly sourceSession?: string;
 }): MemoryVault => {
 	const { fs, path: pathSvc, scopeDir } = options;
+
+	/**
+	 * Run an effect inside the directory's write queue. Errors from prior
+	 * queued writes never poison the queue, and the effect's own error type
+	 * is preserved via `Effect.result`.
+	 */
+	const withWriteLock = <A>(
+		dir: string,
+		effect: Effect.Effect<A, MemoryVaultError>,
+	): Effect.Effect<A, MemoryVaultError> =>
+		Effect.flatMap(
+			Effect.promise(() =>
+				enqueueWrite(dir, () => Effect.runPromise(Effect.result(effect))),
+			),
+			(result) =>
+				result._tag === "Failure"
+					? Effect.fail(result.failure)
+					: Effect.succeed(result.success),
+		);
 
 	const dirFor = (
 		scope: MemoryScope,
@@ -166,44 +208,49 @@ export const makeMemoryVault = (options: {
 		Effect.gen(function* () {
 			const scope = input.scope ?? "project";
 			const dir = yield* dirFor(scope);
-			const existing = yield* listNoteFiles(dir);
-			const next =
-				existing.reduce((max, name) => {
-					const index = Number.parseInt(
-						NOTE_FILE_PATTERN.exec(name)?.[1] ?? "",
-						10,
+			return yield* withWriteLock(
+				dir,
+				Effect.gen(function* () {
+					const existing = yield* listNoteFiles(dir);
+					const next =
+						existing.reduce((max, name) => {
+							const index = Number.parseInt(
+								NOTE_FILE_PATTERN.exec(name)?.[1] ?? "",
+								10,
+							);
+							return Number.isNaN(index) ? max : Math.max(max, index);
+						}, 0) + 1;
+					const note = `${String(next).padStart(2, "0")}-${slugFor(input.title)}`;
+					yield* fs
+						.writeFileString(
+							pathSvc.join(dir, `${note}.md`),
+							`${frontmatter(scope)}# ${input.title}\n\n${input.text}\n`,
+						)
+						.pipe(
+							Effect.mapError(
+								(error) =>
+									new MemoryVaultError({
+										reason: `Could not write memory note: ${String(error.reason ?? error)}`,
+									}),
+							),
+						);
+					const indexPath = pathSvc.join(dir, MEMORY_INDEX);
+					const index = yield* readIndex(dir).pipe(
+						Effect.catch(() => Effect.succeed(INDEX_HEADER)),
 					);
-					return Number.isNaN(index) ? max : Math.max(max, index);
-				}, 0) + 1;
-			const note = `${String(next).padStart(2, "0")}-${slugFor(input.title)}`;
-			yield* fs
-				.writeFileString(
-					pathSvc.join(dir, `${note}.md`),
-					`${frontmatter(scope)}# ${input.title}\n\n${input.text}\n`,
-				)
-				.pipe(
-					Effect.mapError(
-						(error) =>
-							new MemoryVaultError({
-								reason: `Could not write memory note: ${String(error.reason ?? error)}`,
-							}),
-					),
-				);
-			const indexPath = pathSvc.join(dir, MEMORY_INDEX);
-			const index = yield* readIndex(dir).pipe(
-				Effect.catch(() => Effect.succeed(INDEX_HEADER)),
+					const entry = `- [[${note}]] — ${input.title}`;
+					const body = index.endsWith("\n") ? index : `${index}\n`;
+					yield* fs.writeFileString(indexPath, `${body}${entry}\n`).pipe(
+						Effect.mapError(
+							(error) =>
+								new MemoryVaultError({
+									reason: `Could not update ${MEMORY_INDEX}: ${String(error.reason ?? error)}`,
+								}),
+						),
+					);
+					return { note };
+				}),
 			);
-			const entry = `- [[${note}]] — ${input.title}`;
-			const body = index.endsWith("\n") ? index : `${index}\n`;
-			yield* fs.writeFileString(indexPath, `${body}${entry}\n`).pipe(
-				Effect.mapError(
-					(error) =>
-						new MemoryVaultError({
-							reason: `Could not update ${MEMORY_INDEX}: ${String(error.reason ?? error)}`,
-						}),
-				),
-			);
-			return { note };
 		});
 
 	const readFromDir = (
