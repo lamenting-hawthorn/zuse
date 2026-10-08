@@ -16,9 +16,12 @@ import { WorktreeService } from "@zuse/git/worktree-service";
 import { DateTime, Effect, FileSystem, Layer, Path } from "effect";
 import { SqlClient } from "effect/unstable/sql";
 import { ApiActivityPublisher } from "../../api/activity-publisher.ts";
+import { AppPaths } from "../../app-paths.ts";
 import { ConfigStoreService } from "../../config-store/services/config-store-service.ts";
-import { resolveSessionCwd } from "../../context/context-files.ts";
-import { makeMemoryVault } from "../../context/memory-vault.ts";
+import {
+	type MemoryScope,
+	makeMemoryVault,
+} from "../../context/memory-vault.ts";
 import { ModelCatalogService } from "../../model-catalog/services/model-catalog-service.ts";
 import { NdjsonLogger } from "../../persistence/ndjson-logger.ts";
 import { makeReactorEffectJournal } from "../../provider/reactor-effect-journal.ts";
@@ -175,17 +178,41 @@ const ConversationRuntimeLive = Layer.effect(
 				return rows[0]?.path ?? null;
 			});
 
+		const { userData } = yield* AppPaths;
+
 		/**
-		 * Per-session memory vault over `<session cwd>/.context/memory/`. The cwd
-		 * resolves lazily through `resolveSessionCwd` — the same source the
-		 * attachment/fs tools use — so worktree-bound sessions land in the
-		 * worktree and main-checkout sessions land in the project root.
+		 * Per-project memory vault under `<userData>/memory/<projectId>/`. The
+		 * `project` scope is shared by every session and worktree of the
+		 * project and survives worktree archive/removal; the `session` scope
+		 * is private to the calling session. The project id resolves lazily —
+		 * the same `sessions.project_id` row the cwd resolver reads — so a
+		 * session's memory follows its project, never its checkout.
 		 */
 		const memoryVaultFor = (sessionId: SessionId) =>
 			makeMemoryVault({
 				fs,
 				path: pathSvc,
-				cwd: resolveSessionCwd(sql, fs, sessionId),
+				sourceSession: sessionId,
+				scopeDir: (scope: MemoryScope) =>
+					Effect.gen(function* () {
+						const rows = yield* sql<{ readonly project_id: string }>`
+							SELECT project_id FROM sessions WHERE id = ${sessionId} LIMIT 1
+						`.pipe(
+							Effect.orElseSucceed(
+								() => [] as ReadonlyArray<{ readonly project_id: string }>,
+							),
+						);
+						const projectId = rows[0]?.project_id;
+						if (projectId === undefined) return null;
+						const base = pathSvc.join(
+							userData,
+							"memory",
+							encodeURIComponent(projectId),
+						);
+						return scope === "session"
+							? pathSvc.join(base, "sessions", encodeURIComponent(sessionId))
+							: pathSvc.join(base, "project");
+					}),
 			});
 
 		const storeRuntime: ConversationStoreRuntime =

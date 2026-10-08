@@ -94,7 +94,11 @@ export interface ConversationOrchestrationDependencies {
 		projectId: FolderId,
 		includeArchived: boolean,
 	) => Effect.Effect<ReadonlyArray<Session>, unknown>;
-	/** Session-scoped memory vault over `<session cwd>/.context/memory/`. */
+	/**
+	 * Project-keyed memory vault under `<userData>/memory/<projectId>/` —
+	 * `project` scope is shared across sessions and survives worktree
+	 * removal; `session` scope is private to the calling session.
+	 */
 	readonly memoryVault: MemoryVault;
 }
 

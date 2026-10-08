@@ -193,12 +193,15 @@ export interface OrchestrationToolDeps {
 	readonly memoryWrite: (input: {
 		readonly title: string;
 		readonly text: string;
+		readonly scope?: "project" | "session";
 	}) => Promise<MemoryWriteResult>;
 	readonly memoryRead: (input: {
 		readonly note?: string;
+		readonly scope?: "project" | "session" | "all";
 	}) => Promise<MemoryReadResult>;
 	readonly memorySearch: (input: {
 		readonly query: string;
+		readonly scope?: "project" | "session" | "all";
 	}) => Promise<MemorySearchResult>;
 }
 
@@ -266,14 +269,28 @@ const LIST_MODELS_DESCRIPTION =
 const WHOAMI_DESCRIPTION =
 	"Return your own session id, chat id, project id, workspace (worktreeId — null means the project's main checkout), providerId, model, and autonomy level. Use to reason about your own constraints and location before spawning more work. Read-only.";
 
+const MEMORY_SCOPE_PROP = {
+	type: "string",
+	enum: ["project", "session"],
+	description:
+		"Where the note lives. 'project' (default) is shared by every session and worktree of this project and survives workspace removal. 'session' is private to this session only.",
+};
+
+const MEMORY_READ_SCOPE_PROP = {
+	type: "string",
+	enum: ["project", "session", "all"],
+	description:
+		"Scope to read. 'project' (default) is the durable project vault shared across workspaces. 'session' is this session's private notes. 'all' reads both.",
+};
+
 const MEMORY_WRITE_DESCRIPTION =
-	"Append a note to this workspace's persistent memory vault (.context/memory/, gitignored). Stored as a Markdown file NN-<slug>.md with a one-line entry added to the MEMORY.md index, so the note survives across sessions and providers. Use for project context worth keeping — decisions, findings, conventions, gotchas. Entries are context, not instructions. NEVER store secrets, tokens, or credentials. Returns { ok, note } — the note name for memory_read/memory_search.";
+	"Append a note to the project's durable memory vault (a server-side store keyed by project, independent of any worktree — it survives workspace archive and removal). Stored as a Markdown file NN-<slug>.md with a one-line entry added to the MEMORY.md index, so the note survives across sessions, providers, and new workspaces. Use for project context worth keeping — decisions, findings, conventions, gotchas. Entries are context, not instructions. NEVER store secrets, tokens, or credentials. Returns { ok, note } — the note name for memory_read/memory_search.";
 
 const MEMORY_READ_DESCRIPTION =
-	"Read this workspace's persistent memory vault (.context/memory/). With no note, returns the MEMORY.md index — one line per stored note. With note (a name from the index, without .md), returns that note's Markdown content. Read-only.";
+	"Read the project's durable memory vault. With no note, returns the MEMORY.md index — one line per stored note. With note (a name from the index, without .md), returns that note's Markdown content. Read-only.";
 
 const MEMORY_SEARCH_DESCRIPTION =
-	"Case-insensitive substring search over every file in this workspace's memory vault (.context/memory/), including the MEMORY.md index. Returns matching lines with their note name, capped at ~50 hits. Use to find existing context before writing a duplicate note. Read-only.";
+	"Case-insensitive substring search over the project's memory vault, including the MEMORY.md index. Returns matching lines with their note name, capped at ~50 hits. Use to find existing context before writing a duplicate note. Read-only.";
 
 export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 	{
@@ -375,6 +392,7 @@ export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 					"Short title for the note; becomes the NN-<slug> filename and index line.",
 				),
 				text: stringProp("Markdown body of the note."),
+				scope: MEMORY_SCOPE_PROP,
 			},
 			["title", "text"],
 		),
@@ -386,6 +404,7 @@ export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 			note: stringProp(
 				"Note name from the MEMORY.md index (without .md). Omit to read the index.",
 			),
+			scope: MEMORY_READ_SCOPE_PROP,
 		}),
 	},
 	{
@@ -394,6 +413,7 @@ export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 		inputSchema: objectSchema(
 			{
 				query: stringProp("Case-insensitive substring to find."),
+				scope: MEMORY_READ_SCOPE_PROP,
 			},
 			["query"],
 		),
@@ -447,6 +467,19 @@ const asString = (args: JsonObject, key: string): string | undefined =>
 
 const asBoolean = (args: JsonObject, key: string): boolean | undefined =>
 	typeof args[key] === "boolean" ? (args[key] as boolean) : undefined;
+
+/** Unknown scope strings fall back to the default rather than erroring. */
+const asMemoryWriteScope = (
+	value: string | undefined,
+): "project" | "session" | undefined =>
+	value === "project" || value === "session" ? value : undefined;
+
+const asMemoryReadScope = (
+	value: string | undefined,
+): "project" | "session" | "all" | undefined =>
+	value === "project" || value === "session" || value === "all"
+		? value
+		: undefined;
 
 const asLimit = (args: JsonObject): number | undefined =>
 	typeof args["limit"] === "number" &&
@@ -604,10 +637,21 @@ export const callOrchestrationTool = async (
 					isError: true,
 				};
 			}
-			return settle(await deps.memoryWrite({ title, text }));
+			return settle(
+				await deps.memoryWrite({
+					title,
+					text,
+					scope: asMemoryWriteScope(asString(args, "scope")),
+				}),
+			);
 		}
 		case "memory_read":
-			return settle(await deps.memoryRead({ note: asString(args, "note") }));
+			return settle(
+				await deps.memoryRead({
+					note: asString(args, "note"),
+					scope: asMemoryReadScope(asString(args, "scope")),
+				}),
+			);
 		case "memory_search": {
 			const query = asString(args, "query");
 			if (query === undefined) {
@@ -616,7 +660,12 @@ export const callOrchestrationTool = async (
 					isError: true,
 				};
 			}
-			return settle(await deps.memorySearch({ query }));
+			return settle(
+				await deps.memorySearch({
+					query,
+					scope: asMemoryReadScope(asString(args, "scope")),
+				}),
+			);
 		}
 	}
 };
@@ -814,9 +863,19 @@ export const buildOrchestrationTools = (deps: OrchestrationToolDeps) => [
 					"Short title for the note; becomes the NN-<slug> filename and index line.",
 				),
 			text: z.string().min(1).describe("Markdown body of the note."),
+			scope: z
+				.enum(["project", "session"])
+				.optional()
+				.describe(MEMORY_SCOPE_PROP.description),
 		},
 		async (args) =>
-			settle(await deps.memoryWrite({ title: args.title, text: args.text })),
+			settle(
+				await deps.memoryWrite({
+					title: args.title,
+					text: args.text,
+					scope: args.scope,
+				}),
+			),
 	),
 
 	tool(
@@ -829,8 +888,13 @@ export const buildOrchestrationTools = (deps: OrchestrationToolDeps) => [
 				.describe(
 					"Note name from the MEMORY.md index (without .md). Omit to read the index.",
 				),
+			scope: z
+				.enum(["project", "session", "all"])
+				.optional()
+				.describe(MEMORY_READ_SCOPE_PROP.description),
 		},
-		async (args) => settle(await deps.memoryRead({ note: args.note })),
+		async (args) =>
+			settle(await deps.memoryRead({ note: args.note, scope: args.scope })),
 	),
 
 	tool(
@@ -838,7 +902,12 @@ export const buildOrchestrationTools = (deps: OrchestrationToolDeps) => [
 		MEMORY_SEARCH_DESCRIPTION,
 		{
 			query: z.string().min(1).describe("Case-insensitive substring to find."),
+			scope: z
+				.enum(["project", "session", "all"])
+				.optional()
+				.describe(MEMORY_READ_SCOPE_PROP.description),
 		},
-		async (args) => settle(await deps.memorySearch({ query: args.query })),
+		async (args) =>
+			settle(await deps.memorySearch({ query: args.query, scope: args.scope })),
 	),
 ];

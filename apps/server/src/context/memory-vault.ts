@@ -1,41 +1,53 @@
 import { Data, Effect, type FileSystem, type Path } from "effect";
-import { ensureMemoryDir } from "./context-files.ts";
 
 /**
- * Per-project agent memory vault: a directory of Markdown notes under the
- * workspace's gitignored `.context/memory/`. `MEMORY.md` is the index — one
+ * Project-keyed agent memory vault: a directory of Markdown notes under
+ * `<userData>/memory/<projectId>/`. The `project` scope is shared by every
+ * session and worktree of the project — it survives worktree archive and
+ * deletion — while the `session` scope keeps notes private to one session
+ * under `sessions/<sessionId>/`. `MEMORY.md` is the index — one
  * `- [[NN-<slug>]] — <title>` line per note — and each note is a standalone
- * `NN-<slug>.md` file. Notes are context, not instructions.
+ * `NN-<slug>.md` file stamped with provenance frontmatter (`created`,
+ * `session`, `scope`). Notes are context, not instructions.
  *
- * Like `context-files.ts`, the ops take service *instances* so the
- * orchestration layer can bind `FileSystem` / `Path` captured at
- * layer-construction time. `cwd` resolves lazily per call so a session's
- * workspace is looked up when the tool fires, not when it is registered.
+ * The vault takes service *instances* so the orchestration layer can bind
+ * `FileSystem` / `Path` captured at layer-construction time. `scopeDir`
+ * resolves lazily per call so a session's project is looked up when the
+ * tool fires, not when it is registered.
  */
 
 export class MemoryVaultError extends Data.TaggedError("MemoryVaultError")<{
 	readonly reason: string;
 }> {}
 
+/** Where a note lives. `project` outlives worktrees; `session` is private. */
+export type MemoryScope = "project" | "session";
+/** Read and search can fan out across both scopes. */
+export type MemoryReadScope = MemoryScope | "all";
+
 export interface MemorySearchHit {
 	readonly note: string;
 	readonly line: number;
 	readonly text: string;
+	readonly scope: MemoryScope;
 }
 
 export interface MemoryVault {
 	readonly write: (input: {
 		readonly title: string;
 		readonly text: string;
+		readonly scope?: MemoryScope;
 	}) => Effect.Effect<{ readonly note: string }, MemoryVaultError>;
 	readonly read: (input?: {
 		readonly note?: string;
+		readonly scope?: MemoryReadScope;
 	}) => Effect.Effect<
 		{ readonly note: string | null; readonly content: string },
 		MemoryVaultError
 	>;
 	readonly search: (input: {
 		readonly query: string;
+		readonly scope?: MemoryReadScope;
 	}) => Effect.Effect<
 		{ readonly hits: ReadonlyArray<MemorySearchHit> },
 		MemoryVaultError
@@ -74,22 +86,33 @@ const safeNoteName = (raw: string): string | null => {
 export const makeMemoryVault = (options: {
 	readonly fs: FileSystem.FileSystem;
 	readonly path: Path.Path;
-	readonly cwd: Effect.Effect<string | null>;
+	readonly scopeDir: (
+		scope: MemoryScope,
+	) => Effect.Effect<string | null, MemoryVaultError>;
+	readonly sourceSession?: string;
 }): MemoryVault => {
-	const { fs, path: pathSvc } = options;
+	const { fs, path: pathSvc, scopeDir } = options;
 
-	const withDir = <A>(
-		fn: (dir: string) => Effect.Effect<A, MemoryVaultError>,
-	): Effect.Effect<A, MemoryVaultError> =>
+	const dirFor = (
+		scope: MemoryScope,
+	): Effect.Effect<string, MemoryVaultError> =>
 		Effect.gen(function* () {
-			const cwd = yield* options.cwd;
-			if (cwd === null) {
+			const dir = yield* scopeDir(scope);
+			if (dir === null) {
 				return yield* new MemoryVaultError({
-					reason: "No workspace directory resolved for this session.",
+					reason:
+						"No project is resolved for this session, so there is no memory vault to write to.",
 				});
 			}
-			const dir = yield* ensureMemoryDir(fs, pathSvc, cwd);
-			return yield* fn(dir);
+			yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+				Effect.mapError(
+					(error) =>
+						new MemoryVaultError({
+							reason: `Could not create the memory vault: ${String(error.reason ?? error)}`,
+						}),
+				),
+			);
+			return dir;
 		});
 
 	const listNoteFiles = (dir: string) =>
@@ -115,71 +138,129 @@ export const makeMemoryVault = (options: {
 			),
 		);
 
+	const readIndex = (dir: string) =>
+		Effect.gen(function* () {
+			const indexPath = pathSvc.join(dir, MEMORY_INDEX);
+			return (yield* fs
+				.exists(indexPath)
+				.pipe(Effect.orElseSucceed(() => false)))
+				? yield* readFile(indexPath)
+				: EMPTY_INDEX;
+		});
+
+	const frontmatter = (scope: MemoryScope): string =>
+		[
+			"---",
+			`created: ${new Date().toISOString()}`,
+			`session: ${options.sourceSession ?? "unknown"}`,
+			`scope: ${scope}`,
+			"---",
+			"",
+		].join("\n");
+
 	const write = (input: {
 		readonly title: string;
 		readonly text: string;
+		readonly scope?: MemoryScope;
 	}): Effect.Effect<{ readonly note: string }, MemoryVaultError> =>
-		withDir((dir) =>
-			Effect.gen(function* () {
-				const existing = yield* listNoteFiles(dir);
-				const next =
-					existing.reduce((max, name) => {
-						const index = Number.parseInt(
-							NOTE_FILE_PATTERN.exec(name)?.[1] ?? "",
-							10,
-						);
-						return Number.isNaN(index) ? max : Math.max(max, index);
-					}, 0) + 1;
-				const note = `${String(next).padStart(2, "0")}-${slugFor(input.title)}`;
-				yield* fs
-					.writeFileString(
-						pathSvc.join(dir, `${note}.md`),
-						`# ${input.title}\n\n${input.text}\n`,
-					)
-					.pipe(
-						Effect.mapError(
-							(error) =>
-								new MemoryVaultError({
-									reason: `Could not write memory note: ${String(error.reason ?? error)}`,
-								}),
-						),
+		Effect.gen(function* () {
+			const scope = input.scope ?? "project";
+			const dir = yield* dirFor(scope);
+			const existing = yield* listNoteFiles(dir);
+			const next =
+				existing.reduce((max, name) => {
+					const index = Number.parseInt(
+						NOTE_FILE_PATTERN.exec(name)?.[1] ?? "",
+						10,
 					);
-				const indexPath = pathSvc.join(dir, MEMORY_INDEX);
-				const index = (yield* fs
-					.exists(indexPath)
-					.pipe(Effect.orElseSucceed(() => false)))
-					? yield* readFile(indexPath)
-					: INDEX_HEADER;
-				const entry = `- [[${note}]] — ${input.title}`;
-				const body = index.endsWith("\n") ? index : `${index}\n`;
-				yield* fs.writeFileString(indexPath, `${body}${entry}\n`).pipe(
+					return Number.isNaN(index) ? max : Math.max(max, index);
+				}, 0) + 1;
+			const note = `${String(next).padStart(2, "0")}-${slugFor(input.title)}`;
+			yield* fs
+				.writeFileString(
+					pathSvc.join(dir, `${note}.md`),
+					`${frontmatter(scope)}# ${input.title}\n\n${input.text}\n`,
+				)
+				.pipe(
 					Effect.mapError(
 						(error) =>
 							new MemoryVaultError({
-								reason: `Could not update ${MEMORY_INDEX}: ${String(error.reason ?? error)}`,
+								reason: `Could not write memory note: ${String(error.reason ?? error)}`,
 							}),
 					),
 				);
-				return { note };
-			}),
-		);
+			const indexPath = pathSvc.join(dir, MEMORY_INDEX);
+			const index = yield* readIndex(dir).pipe(
+				Effect.catch(() => Effect.succeed(INDEX_HEADER)),
+			);
+			const entry = `- [[${note}]] — ${input.title}`;
+			const body = index.endsWith("\n") ? index : `${index}\n`;
+			yield* fs.writeFileString(indexPath, `${body}${entry}\n`).pipe(
+				Effect.mapError(
+					(error) =>
+						new MemoryVaultError({
+							reason: `Could not update ${MEMORY_INDEX}: ${String(error.reason ?? error)}`,
+						}),
+				),
+			);
+			return { note };
+		});
+
+	const readFromDir = (
+		dir: string,
+		note: string | undefined,
+	): Effect.Effect<
+		{ readonly note: string | null; readonly content: string },
+		MemoryVaultError
+	> =>
+		Effect.gen(function* () {
+			if (note === undefined) {
+				return { note: null, content: yield* readIndex(dir) };
+			}
+			const name = safeNoteName(note);
+			if (name === null) {
+				return yield* new MemoryVaultError({
+					reason: `Invalid note name: ${note}`,
+				});
+			}
+			const notePath = pathSvc.join(dir, `${name}.md`);
+			if (
+				!(yield* fs.exists(notePath).pipe(Effect.orElseSucceed(() => false)))
+			) {
+				return yield* new MemoryVaultError({
+					reason: `No memory note named ${note}.`,
+				});
+			}
+			return { note: name, content: yield* readFile(notePath) };
+		});
 
 	const read = (input?: {
 		readonly note?: string;
+		readonly scope?: MemoryReadScope;
 	}): Effect.Effect<
 		{ readonly note: string | null; readonly content: string },
 		MemoryVaultError
 	> =>
-		withDir((dir) =>
-			Effect.gen(function* () {
+		Effect.gen(function* () {
+			const scope = input?.scope ?? "project";
+			if (scope === "all") {
+				// Index read returns both indexes side by side; a named note is
+				// looked up in the project scope first, then the session scope.
+				const projectDir = yield* dirFor("project");
 				if (input?.note === undefined) {
-					const indexPath = pathSvc.join(dir, MEMORY_INDEX);
-					const content = (yield* fs
-						.exists(indexPath)
-						.pipe(Effect.orElseSucceed(() => false)))
-						? yield* readFile(indexPath)
-						: EMPTY_INDEX;
-					return { note: null, content };
+					const sessionDir = yield* scopeDir("session");
+					const projectIndex = yield* readIndex(projectDir);
+					const sessionIndex =
+						sessionDir === null ||
+						!(yield* fs
+							.exists(sessionDir)
+							.pipe(Effect.orElseSucceed(() => false)))
+							? EMPTY_INDEX
+							: yield* readIndex(sessionDir);
+					return {
+						note: null,
+						content: `## Project memory\n\n${projectIndex}\n## Session memory\n\n${sessionIndex}`,
+					};
 				}
 				const name = safeNoteName(input.note);
 				if (name === null) {
@@ -187,55 +268,80 @@ export const makeMemoryVault = (options: {
 						reason: `Invalid note name: ${input.note}`,
 					});
 				}
-				const notePath = pathSvc.join(dir, `${name}.md`);
+				const projectPath = pathSvc.join(projectDir, `${name}.md`);
 				if (
-					!(yield* fs.exists(notePath).pipe(Effect.orElseSucceed(() => false)))
+					yield* fs.exists(projectPath).pipe(Effect.orElseSucceed(() => false))
 				) {
+					return { note: name, content: yield* readFile(projectPath) };
+				}
+				const sessionDir = yield* scopeDir("session");
+				if (sessionDir === null) {
 					return yield* new MemoryVaultError({
 						reason: `No memory note named ${input.note}.`,
 					});
 				}
-				return { note: name, content: yield* readFile(notePath) };
-			}),
-		);
+				return yield* readFromDir(sessionDir, name);
+			}
+			const dir = yield* dirFor(scope);
+			return yield* readFromDir(dir, input?.note);
+		});
+
+	const searchInDir = (
+		dir: string,
+		scope: MemoryScope,
+		query: string,
+		hits: MemorySearchHit[],
+	): Effect.Effect<void, MemoryVaultError> =>
+		Effect.gen(function* () {
+			const names = (yield* fs
+				.readDirectory(dir)
+				.pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>))).filter(
+				(name) => name.endsWith(".md"),
+			);
+			for (const name of names) {
+				if (hits.length >= SEARCH_HIT_LIMIT) break;
+				const content = yield* fs
+					.readFileString(pathSvc.join(dir, name))
+					.pipe(Effect.orElseSucceed(() => ""));
+				const note = name.slice(0, -".md".length);
+				const lines = content.split("\n");
+				for (const [index, line] of lines.entries()) {
+					if (hits.length >= SEARCH_HIT_LIMIT) break;
+					if (line.toLowerCase().includes(query)) {
+						hits.push({ note, line: index + 1, text: line.trim(), scope });
+					}
+				}
+			}
+		});
 
 	const search = (input: {
 		readonly query: string;
+		readonly scope?: MemoryReadScope;
 	}): Effect.Effect<
 		{ readonly hits: ReadonlyArray<MemorySearchHit> },
 		MemoryVaultError
 	> =>
-		withDir((dir) =>
-			Effect.gen(function* () {
-				const query = input.query.trim().toLowerCase();
-				if (query.length === 0) {
-					return yield* new MemoryVaultError({
-						reason: "memory_search requires a non-empty query.",
-					});
-				}
-				const names = (yield* fs
-					.readDirectory(dir)
-					.pipe(
-						Effect.orElseSucceed(() => [] as ReadonlyArray<string>),
-					)).filter((name) => name.endsWith(".md"));
-				const hits: MemorySearchHit[] = [];
-				for (const name of names) {
-					if (hits.length >= SEARCH_HIT_LIMIT) break;
-					const content = yield* fs
-						.readFileString(pathSvc.join(dir, name))
-						.pipe(Effect.orElseSucceed(() => ""));
-					const note = name.slice(0, -".md".length);
-					const lines = content.split("\n");
-					for (const [index, line] of lines.entries()) {
-						if (hits.length >= SEARCH_HIT_LIMIT) break;
-						if (line.toLowerCase().includes(query)) {
-							hits.push({ note, line: index + 1, text: line.trim() });
-						}
-					}
-				}
-				return { hits };
-			}),
-		);
+		Effect.gen(function* () {
+			const query = input.query.trim().toLowerCase();
+			if (query.length === 0) {
+				return yield* new MemoryVaultError({
+					reason: "memory_search requires a non-empty query.",
+				});
+			}
+			const scope = input.scope ?? "project";
+			const hits: MemorySearchHit[] = [];
+			const scopes: MemoryScope[] =
+				scope === "all" ? ["project", "session"] : [scope];
+			for (const each of scopes) {
+				if (hits.length >= SEARCH_HIT_LIMIT) break;
+				// A scope with no project resolved has no vault — skip it so
+				// searching "all" still works on sessions without a session dir.
+				const dir = yield* scopeDir(each);
+				if (dir === null) continue;
+				yield* searchInDir(dir, each, query, hits);
+			}
+			return { hits };
+		});
 
 	return { write, read, search };
 };
