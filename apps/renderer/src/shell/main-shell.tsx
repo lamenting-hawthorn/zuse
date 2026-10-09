@@ -157,6 +157,12 @@ const DirectoryUnavailableBanner = lazy(() =>
 	})),
 );
 
+const ProjectTrustGate = lazy(() =>
+	import("../components/project-trust-gate.tsx").then((module) => ({
+		default: module.ProjectTrustGate,
+	})),
+);
+
 const EnvironmentSummary = lazy(() =>
 	import("../components/environment-summary.tsx").then((module) => ({
 		default: module.EnvironmentSummary,
@@ -703,6 +709,15 @@ export function MainShell() {
 									<UpdateBanner />
 									<ProviderUpdatesToast />
 								</Suspense>
+								{selectedFolderId !== null &&
+								!isCloudProjectFolder(selectedFolderId) ? (
+									<Suspense fallback={null}>
+										<ProjectTrustGate
+											environmentId={selectedEnvironmentId}
+											projectId={selectedFolderId}
+										/>
+									</Suspense>
+								) : null}
 								{showMainTabs ? (
 									<Suspense fallback={<TabsFallback />}>
 										<MainTabs
