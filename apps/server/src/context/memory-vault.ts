@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { Data, Effect, type FileSystem, type Path } from "effect";
 
 /**
@@ -25,11 +27,19 @@ export type MemoryScope = "project" | "session";
 /** Read and search can fan out across both scopes. */
 export type MemoryReadScope = MemoryScope | "all";
 
+/**
+ * Notes land as `pending` (fresh, unvetted) and can be flipped to `verified`
+ * via `memory_verify` once reviewed — search hits carry it so agents can see
+ * which memories are trusted.
+ */
+export type MemoryNoteStatus = "pending" | "verified";
+
 export interface MemorySearchHit {
 	readonly note: string;
 	readonly line: number;
 	readonly text: string;
 	readonly scope: MemoryScope;
+	readonly status: MemoryNoteStatus;
 }
 
 export interface MemoryVault {
@@ -50,6 +60,13 @@ export interface MemoryVault {
 		readonly scope?: MemoryReadScope;
 	}) => Effect.Effect<
 		{ readonly hits: ReadonlyArray<MemorySearchHit> },
+		MemoryVaultError
+	>;
+	readonly verify: (input: {
+		readonly note: string;
+		readonly scope?: MemoryScope;
+	}) => Effect.Effect<
+		{ readonly note: string; readonly status: MemoryNoteStatus },
 		MemoryVaultError
 	>;
 }
@@ -92,6 +109,52 @@ const safeNoteName = (raw: string): string | null => {
  * This is in-process only; two servers sharing one `userData` directory is
  * not a supported deployment.
  */
+const runGit = promisify(execFile);
+
+/**
+ * Version the vault directory in-place (Codex keeps its memory dir git-
+ * versioned). `init` runs once per directory with a local identity, then each
+ * write/verify commits its own change so `git log` gives note history. Fully
+ * best-effort: no git binary, no commits — the vault still works.
+ */
+const versionVault = async (dir: string, message: string): Promise<void> => {
+	const inRepo = await runGit("git", [
+		"-C",
+		dir,
+		"rev-parse",
+		"--is-inside-work-tree",
+	]).then(
+		() => true,
+		() => false,
+	);
+	if (!inRepo) {
+		await runGit("git", ["-C", dir, "init", "-q"]);
+		await runGit("git", ["-C", dir, "config", "user.name", "zuse"]);
+		await runGit("git", ["-C", dir, "config", "user.email", "zuse@local"]);
+		await runGit("git", ["-C", dir, "config", "commit.gpgsign", "false"]);
+	}
+	await runGit("git", ["-C", dir, "add", "-A"]);
+	// "nothing to commit" exits non-zero — that is not a failure worth surfacing.
+	await runGit("git", [
+		"-C",
+		dir,
+		"commit",
+		"-qm",
+		message,
+		"--no-verify",
+	]).catch(() => {});
+};
+
+const commitWrite = (dir: string, message: string): Effect.Effect<void> =>
+	Effect.promise(() => versionVault(dir, message)).pipe(
+		Effect.catch(() => Effect.void),
+	);
+
+const STATUS_PATTERN = /^status: (pending|verified)$/m;
+
+const noteStatus = (content: string): MemoryNoteStatus =>
+	STATUS_PATTERN.exec(content)?.[1] === "verified" ? "verified" : "pending";
+
 const dirWriteQueues = new Map<string, Promise<unknown>>();
 
 const enqueueWrite = <A>(dir: string, run: () => Promise<A>): Promise<A> => {
@@ -196,6 +259,7 @@ export const makeMemoryVault = (options: {
 			`created: ${new Date().toISOString()}`,
 			`session: ${options.sourceSession ?? "unknown"}`,
 			`scope: ${scope}`,
+			"status: pending",
 			"---",
 			"",
 		].join("\n");
@@ -248,6 +312,7 @@ export const makeMemoryVault = (options: {
 								}),
 						),
 					);
+					yield* commitWrite(dir, `memory: write ${note} (${scope})`);
 					return { note };
 				}),
 			);
@@ -351,11 +416,18 @@ export const makeMemoryVault = (options: {
 					.readFileString(pathSvc.join(dir, name))
 					.pipe(Effect.orElseSucceed(() => ""));
 				const note = name.slice(0, -".md".length);
+				const status = noteStatus(content);
 				const lines = content.split("\n");
 				for (const [index, line] of lines.entries()) {
 					if (hits.length >= SEARCH_HIT_LIMIT) break;
 					if (line.toLowerCase().includes(query)) {
-						hits.push({ note, line: index + 1, text: line.trim(), scope });
+						hits.push({
+							note,
+							line: index + 1,
+							text: line.trim(),
+							scope,
+							status,
+						});
 					}
 				}
 			}
@@ -390,5 +462,75 @@ export const makeMemoryVault = (options: {
 			return { hits };
 		});
 
-	return { write, read, search };
+	const verify = (input: {
+		readonly note: string;
+		readonly scope?: MemoryScope;
+	}): Effect.Effect<
+		{ readonly note: string; readonly status: MemoryNoteStatus },
+		MemoryVaultError
+	> =>
+		Effect.gen(function* () {
+			const scope = input.scope ?? "project";
+			const dir = yield* dirFor(scope);
+			return yield* withWriteLock(
+				dir,
+				Effect.gen(function* () {
+					const name = safeNoteName(input.note);
+					if (name === null) {
+						return yield* new MemoryVaultError({
+							reason: `Invalid note name: ${input.note}`,
+						});
+					}
+					const notePath = pathSvc.join(dir, `${name}.md`);
+					if (
+						!(yield* fs
+							.exists(notePath)
+							.pipe(Effect.orElseSucceed(() => false)))
+					) {
+						return yield* new MemoryVaultError({
+							reason: `No memory note named ${input.note} in ${scope} scope.`,
+						});
+					}
+					const content = yield* readFile(notePath);
+					if (noteStatus(content) === "verified") {
+						return { note: name, status: "verified" as const };
+					}
+					const stamped = content.replace(STATUS_PATTERN, "status: verified");
+					if (stamped === content) {
+						// Old-format note without a status line: stamp one into the
+						// frontmatter if present, else refuse rather than guess.
+						const withStatus = content.replace(
+							/^(---\n(?:.*\n)*?)(---)/,
+							"$1status: verified\n$2",
+						);
+						if (withStatus === content) {
+							return yield* new MemoryVaultError({
+								reason: `Note ${name} has no frontmatter to update.`,
+							});
+						}
+						yield* fs.writeFileString(notePath, withStatus).pipe(
+							Effect.mapError(
+								(error) =>
+									new MemoryVaultError({
+										reason: `Could not verify note: ${String(error.reason ?? error)}`,
+									}),
+							),
+						);
+					} else {
+						yield* fs.writeFileString(notePath, stamped).pipe(
+							Effect.mapError(
+								(error) =>
+									new MemoryVaultError({
+										reason: `Could not verify note: ${String(error.reason ?? error)}`,
+									}),
+							),
+						);
+					}
+					yield* commitWrite(dir, `memory: verify ${name} (${scope})`);
+					return { note: name, status: "verified" as const };
+				}),
+			);
+		});
+
+	return { write, read, search, verify };
 };

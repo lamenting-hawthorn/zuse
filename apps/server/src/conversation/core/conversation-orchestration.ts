@@ -468,6 +468,22 @@ export const makeConversationOrchestration = (
 						),
 					),
 				),
+			memoryVerify: (input) =>
+				run(
+					dependencies.memoryVault.verify(input).pipe(
+						Effect.map((result) => ({
+							ok: true as const,
+							note: result.note,
+							status: result.status,
+						})),
+						Effect.catch((error) =>
+							Effect.succeed({
+								ok: false as const,
+								error: orchestrationErrorText(error),
+							}),
+						),
+					),
+				),
 			memorySearch: (input) =>
 				run(
 					dependencies.memoryVault.search(input).pipe(

@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
@@ -220,6 +221,70 @@ describe("memory vault", () => {
 				}
 			}),
 		);
+	});
+
+	it("marks a note verified and reports status in search hits", async () => {
+		const root = fixture();
+		await run(
+			Effect.gen(function* () {
+				const vault = yield* vaultFor(root, "proj_a", "s1");
+				const { note } = yield* vault.write({
+					title: "vetted fact",
+					text: "the provider cache lives in userData",
+				});
+				// Fresh notes are pending.
+				let hits = (yield* vault.search({ query: "vetted" })).hits;
+				expect(hits[0]?.status).toBe("pending");
+				// Verify flips it.
+				const verified = yield* vault.verify({ note });
+				expect(verified.status).toBe("verified");
+				hits = (yield* vault.search({ query: "vetted" })).hits;
+				expect(hits[0]?.status).toBe("verified");
+				// Verify is idempotent.
+				expect((yield* vault.verify({ note })).status).toBe("verified");
+			}),
+		);
+	});
+
+	it("rejects verifying a missing or unsafe note name", async () => {
+		const root = fixture();
+		await run(
+			Effect.gen(function* () {
+				const vault = yield* vaultFor(root, "proj_a", "s1");
+				const missing = yield* vault
+					.verify({ note: "99-nope" })
+					.pipe(Effect.flip);
+				expect(missing.reason).toContain("No memory note");
+				const unsafe = yield* vault
+					.verify({ note: "../escape" })
+					.pipe(Effect.flip);
+				expect(unsafe.reason).toContain("Invalid note name");
+			}),
+		);
+	});
+
+	it("keeps a git history of the vault directory", async () => {
+		const root = fixture();
+		await run(
+			Effect.gen(function* () {
+				const vault = yield* vaultFor(root, "proj_a", "s1");
+				yield* vault.write({ title: "one", text: "first" });
+				yield* vault.write({ title: "two", text: "second" });
+			}),
+		);
+		const dir = `${root}/memory/proj_a/project`;
+		// Best-effort feature: skip if git is unavailable in this env.
+		try {
+			execFileSync("git", ["--version"]);
+		} catch {
+			return;
+		}
+		expect(existsSync(`${dir}/.git`)).toBe(true);
+		const log = execFileSync("git", ["-C", dir, "log", "--oneline"], {
+			encoding: "utf8",
+		});
+		expect(log).toContain("memory: write 01-one");
+		expect(log).toContain("memory: write 02-two");
 	});
 
 	it("reports an error when no project resolves", async () => {

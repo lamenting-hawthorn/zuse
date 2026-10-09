@@ -43,6 +43,7 @@ describe("orchestration MCP tools", () => {
 			"memory_write",
 			"memory_read",
 			"memory_search",
+			"memory_verify",
 		]);
 	});
 
@@ -58,6 +59,7 @@ describe("orchestration MCP tools", () => {
 		expect([...MUTATING_ORCHESTRATION_TOOLS].sort()).toEqual([
 			"create_session",
 			"create_thread",
+			"memory_verify",
 			"memory_write",
 			"send_to_thread",
 		]);
@@ -182,6 +184,11 @@ describe("orchestration MCP tools", () => {
 			content: "# Memory Index",
 		}),
 		memorySearch: async () => ({ ok: true, hits: [] }),
+		memoryVerify: async () => ({
+			ok: true as const,
+			note: "01-note",
+			status: "verified" as const,
+		}),
 	});
 
 	test("generic dispatcher calls the bound deps", async () => {
@@ -216,5 +223,28 @@ describe("orchestration MCP tools", () => {
 			expect(result.isError).toBe(true);
 			expect(result.content[0]?.text).toContain("invalid scope");
 		}
+	});
+
+	test("memory_verify is mutating and dispatches with scope", async () => {
+		expect(MUTATING_ORCHESTRATION_TOOLS.has("memory_verify")).toBe(true);
+		let seen: { note: string; scope?: string } | undefined;
+		const deps: OrchestrationToolDeps = {
+			...stubDeps(),
+			memoryVerify: async (input) => {
+				seen = input;
+				return { ok: true, note: input.note, status: "verified" };
+			},
+		};
+		const ok = await callOrchestrationTool(deps, "memory_verify", {
+			note: "01-first",
+			scope: "session",
+		});
+		expect(ok.isError).toBeUndefined();
+		expect(seen).toEqual({ note: "01-first", scope: "session" });
+		const bad = await callOrchestrationTool(deps, "memory_verify", {
+			note: "01-first",
+			scope: "bogus",
+		});
+		expect(bad.isError).toBe(true);
 	});
 });

@@ -147,10 +147,20 @@ export interface MemorySearchHit {
 	readonly note: string;
 	readonly line: number;
 	readonly text: string;
+	readonly scope: "project" | "session";
+	readonly status: "pending" | "verified";
 }
 
 export type MemorySearchResult =
 	| { readonly ok: true; readonly hits: ReadonlyArray<MemorySearchHit> }
+	| { readonly ok: false; readonly error: string };
+
+export type MemoryVerifyResult =
+	| {
+			readonly ok: true;
+			readonly note: string;
+			readonly status: "pending" | "verified";
+	  }
 	| { readonly ok: false; readonly error: string };
 
 /**
@@ -203,6 +213,10 @@ export interface OrchestrationToolDeps {
 		readonly query: string;
 		readonly scope?: "project" | "session" | "all";
 	}) => Promise<MemorySearchResult>;
+	readonly memoryVerify: (input: {
+		readonly note: string;
+		readonly scope?: "project" | "session";
+	}) => Promise<MemoryVerifyResult>;
 }
 
 export interface OrchestrationPermissionOptions {
@@ -238,7 +252,8 @@ export type OrchestrationToolName =
 	| "whoami"
 	| "memory_write"
 	| "memory_read"
-	| "memory_search";
+	| "memory_search"
+	| "memory_verify";
 
 export type OrchestrationMcpToolDef = {
 	readonly name: OrchestrationToolName;
@@ -290,7 +305,10 @@ const MEMORY_READ_DESCRIPTION =
 	"Read the project's durable memory vault. With no note, returns the MEMORY.md index — one line per stored note. With note (a name from the index, without .md), returns that note's Markdown content. Read-only.";
 
 const MEMORY_SEARCH_DESCRIPTION =
-	"Case-insensitive substring search over the project's memory vault, including the MEMORY.md index. Returns matching lines with their note name, capped at ~50 hits. Use to find existing context before writing a duplicate note. Read-only.";
+	"Case-insensitive substring search over the project's memory vault, including the MEMORY.md index. Returns matching lines with their note name, scope, and status (pending or verified), capped at ~50 hits. Use to find existing context before writing a duplicate note. Read-only.";
+
+const MEMORY_VERIFY_DESCRIPTION =
+	"Mark a stored memory note as verified — flips its frontmatter status from pending to verified so later reads/searches can tell reviewed memories from fresh ones. New notes are always written as pending. Returns { ok, note, status }.";
 
 export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 	{
@@ -418,6 +436,17 @@ export const ORCHESTRATION_MCP_TOOLS: ReadonlyArray<OrchestrationMcpToolDef> = [
 			["query"],
 		),
 	},
+	{
+		name: "memory_verify",
+		description: MEMORY_VERIFY_DESCRIPTION,
+		inputSchema: objectSchema(
+			{
+				note: stringProp("Note name from the MEMORY.md index (without .md)."),
+				scope: MEMORY_SCOPE_PROP,
+			},
+			["note"],
+		),
+	},
 ];
 
 export const READ_ONLY_ORCHESTRATION_TOOLS = new Set<OrchestrationToolName>([
@@ -434,6 +463,7 @@ export const MUTATING_ORCHESTRATION_TOOLS = new Set<OrchestrationToolName>([
 	"create_session",
 	"send_to_thread",
 	"memory_write",
+	"memory_verify",
 ]);
 
 const jsonResult = (value: unknown): OrchestrationMcpToolResult => ({
@@ -494,7 +524,7 @@ const invalidScopeResult = (tool: string): OrchestrationMcpToolResult => ({
 	content: [
 		{
 			type: "text",
-			text: `${tool} got an invalid scope. Use "project" or "session" for memory_write; "project", "session", or "all" for memory_read/memory_search.`,
+			text: `${tool} got an invalid scope. Use "project" or "session" for memory_write/memory_verify; "project", "session", or "all" for memory_read/memory_search.`,
 		},
 	],
 	isError: true,
@@ -522,6 +552,8 @@ const permissionSummary = (name: string, args: JsonObject): string => {
 			return `Send a message to Zuse session ${asString(args, "sessionId") ?? ""}`;
 		case "memory_write":
 			return `Write memory note "${asString(args, "title") ?? "untitled"}"`;
+		case "memory_verify":
+			return `Mark memory note "${asString(args, "note") ?? ""}" as verified`;
 		default:
 			return name;
 	}
@@ -681,6 +713,18 @@ export const callOrchestrationTool = async (
 			const searchScope = asMemoryReadScope(asString(args, "scope"));
 			if (searchScope === "invalid") return invalidScopeResult("memory_search");
 			return settle(await deps.memorySearch({ query, scope: searchScope }));
+		}
+		case "memory_verify": {
+			const note = asString(args, "note");
+			if (note === undefined) {
+				return {
+					content: [{ type: "text", text: "memory_verify requires note." }],
+					isError: true,
+				};
+			}
+			const verifyScope = asMemoryWriteScope(asString(args, "scope"));
+			if (verifyScope === "invalid") return invalidScopeResult("memory_verify");
+			return settle(await deps.memoryVerify({ note, scope: verifyScope }));
 		}
 	}
 };
@@ -924,5 +968,19 @@ export const buildOrchestrationTools = (deps: OrchestrationToolDeps) => [
 		},
 		async (args) =>
 			settle(await deps.memorySearch({ query: args.query, scope: args.scope })),
+	),
+
+	tool(
+		"memory_verify",
+		MEMORY_VERIFY_DESCRIPTION,
+		{
+			note: z.string().min(1).describe("Note name from the MEMORY.md index."),
+			scope: z
+				.enum(["project", "session"])
+				.optional()
+				.describe(MEMORY_SCOPE_PROP.description),
+		},
+		async (args) =>
+			settle(await deps.memoryVerify({ note: args.note, scope: args.scope })),
 	),
 ];

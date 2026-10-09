@@ -53,6 +53,7 @@ instead of provider-specific built-ins:
 - \`memory_write\`: append a Markdown note to the project's memory vault (\`NN-<slug>.md\`) and index it in \`MEMORY.md\`.
 - \`memory_read\`: read the \`MEMORY.md\` index, or one note by name.
 - \`memory_search\`: substring-search every memory note.
+- \`memory_verify\`: mark a note \`status: verified\` after review — new notes are \`pending\`.
 
 **Memory vault.** Every project has a durable memory vault on the server,
 keyed by project and independent of any worktree — notes survive workspace
