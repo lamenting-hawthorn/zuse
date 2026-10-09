@@ -515,6 +515,39 @@ describe("project trust gate", () => {
 				expect(toml).toContain('defaultModel = "claude-opus-4-7"');
 				expect(toml).not.toContain("trusted");
 
+				// Collection patches merge union-wise while untrusted — a patch
+				// built from the gated (empty) view can add but never drop a
+				// repo-shipped entry.
+				await run(
+					Effect.flatMap(RepositorySettingsService, (svc) =>
+						svc.update(PROJECT_ID, {
+							environmentVariables: { USER_VAR: "1" },
+						}),
+					),
+				);
+				const afterCollectionPatch = readRepoSettingsToml(repoPath);
+				expect(afterCollectionPatch).toContain('USER_VAR = "1"');
+				expect(afterCollectionPatch).toContain(
+					'NODE_OPTIONS = "--import ./evil.js"',
+				);
+
+				// Once trusted, the same patch replaces the collection.
+				await run(
+					Effect.flatMap(RepositorySettingsService, (svc) =>
+						svc.update(PROJECT_ID, { trusted: true }),
+					),
+				);
+				const trustedUpdate = await run(
+					Effect.flatMap(RepositorySettingsService, (svc) =>
+						svc.update(PROJECT_ID, {
+							environmentVariables: { ONLY_USER: "1" },
+						}),
+					),
+				);
+				expect(trustedUpdate.environmentVariables).toEqual({
+					ONLY_USER: "1",
+				});
+
 				const trusted = await run(
 					Effect.flatMap(RepositorySettingsService, (svc) =>
 						svc.update(PROJECT_ID, { trusted: true }),

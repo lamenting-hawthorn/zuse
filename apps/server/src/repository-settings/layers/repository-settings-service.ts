@@ -794,12 +794,39 @@ export const RepositorySettingsServiceLive = Layer.effect(
 					gatedConfig: null,
 				});
 				const next = applyPatch(projectId, current, patch);
+				// Callers build collection patches from the gated (empty) view, so
+				// a plain replace would drop repo-shipped entries the user never
+				// saw. While a project is untrusted, collection fields merge
+				// union-wise — a patch can add entries but never delete ones the
+				// repo shipped. Full replace semantics return once trusted.
+				const effectiveTrusted =
+					patch.trusted === true || (project !== null && project.trusted === 1);
+				const merged =
+					effectiveTrusted || project === null
+						? next
+						: RepositorySettings.make({
+								...next,
+								environmentVariables: {
+									...current.environmentVariables,
+									...(patch.environmentVariables ?? {}),
+								},
+								cloudEnvironmentVariables: {
+									...current.cloudEnvironmentVariables,
+									...(patch.cloudEnvironmentVariables ?? {}),
+								},
+								mcpDisabledServers: [
+									...new Set([
+										...current.mcpDisabledServers,
+										...(patch.mcpDisabledServers ?? []),
+									]),
+								],
+							});
 				// Only rewrite the file when the patch actually touches file
 				// fields — a bare `trusted` grant leaves the repo's
 				// `.zuse/settings.toml` byte-for-byte intact.
 				const touchesFile = FILE_PATCH_KEYS.some((key) => key in patch);
 				if (project !== null && touchesFile) {
-					writeTomlSettings(project.path, settingsToFile(next));
+					writeTomlSettings(project.path, settingsToFile(merged));
 					removeLegacyJsonSettings(project.path);
 					yield* clearLegacyRow(projectId);
 				}

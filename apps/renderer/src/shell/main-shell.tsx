@@ -1,4 +1,5 @@
 import { isCloudProjectFolder } from "../lib/cloud-project-folders.ts";
+import { repositorySettingsKey } from "../store/repository-settings.ts";
 import { SurfaceFallback } from "./surface-fallback.tsx";
 import "@zuse/i18n/english/shell";
 
@@ -713,6 +714,10 @@ export function MainShell() {
 								!isCloudProjectFolder(selectedFolderId) ? (
 									<Suspense fallback={null}>
 										<ProjectTrustGate
+											key={repositorySettingsKey(
+												selectedEnvironmentId,
+												selectedFolderId,
+											)}
 											environmentId={selectedEnvironmentId}
 											projectId={selectedFolderId}
 										/>
