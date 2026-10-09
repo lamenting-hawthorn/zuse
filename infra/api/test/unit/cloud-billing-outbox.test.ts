@@ -1,12 +1,14 @@
 import {
+	BillingProviderError,
 	BillingProviderManual,
 	BillingProviders,
 } from "@zuse/billing-providers";
 import { makeSandboxProvidersFake } from "@zuse/sandbox-providers/testing";
 import { Effect, Layer, Redacted } from "effect";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
 	maintainCloudBilling,
+	reconcileCloudMeters,
 	reconcilePolarCloudMeter,
 } from "../../src/cloud-billing-outbox.ts";
 import { CloudBillingStore } from "../../src/cloud-billing-store.ts";
@@ -14,6 +16,13 @@ import { CloudBillingStoreMemory } from "../../src/cloud-billing-store-memory.ts
 import { CloudWorkspaceStoreMemory } from "../../src/cloud-workspace-store.ts";
 import * as Config from "../../src/config.ts";
 import { MachineStoreMemory } from "../../src/machine-store.ts";
+
+beforeEach(() => {
+	vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+});
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 const memoryStore = Effect.runSync(
 	Effect.gen(function* () {
@@ -227,4 +236,164 @@ test("routes historical and Stripe charges by their persisted ownership", async 
 	]);
 	expect(acknowledgments).toEqual(["old", "new"]);
 	expect(retries).toEqual(["unavailable"]);
+});
+
+test.each([
+	"missing-meter",
+	"missing-adapter",
+	"unavailable-provider",
+	"failed-request",
+])("persists scheduling attempts without false observations for %s", async (scenario) => {
+	const attempts: Array<unknown> = [];
+	const observations: Array<unknown> = [];
+	const providerId =
+		scenario === "missing-meter"
+			? "stripe"
+			: scenario === "unavailable-provider"
+				? "unknown"
+				: "polar";
+	const store = CloudBillingStore.of({
+		...memoryStore,
+		pendingMeterReconciliations: () =>
+			Effect.succeed([
+				{
+					periodId: "period",
+					accountId: "account",
+					provider: providerId,
+					expectedUnits: 10,
+				},
+			]),
+		recordMeterReconciliationAttempt: (input) =>
+			Effect.sync(() => {
+				attempts.push(input);
+			}),
+		recordMeterReconciliation: (input) =>
+			Effect.sync(() => {
+				observations.push(input);
+			}),
+	});
+	const provider = {
+		...BillingProviderManual,
+		providerId: scenario === "missing-meter" ? "stripe" : "polar",
+		...(scenario === "missing-adapter"
+			? {}
+			: {
+					reconcileMeter: () =>
+						Effect.gen(function* () {
+							expect(attempts).toHaveLength(1);
+							return yield* new BillingProviderError({
+								code: "provider-unavailable",
+							});
+						}),
+				}),
+	};
+	const layer = Layer.mergeAll(
+		Config.layer({
+			apiIssuer: "https://api.test",
+			workosJwksUrl: "https://unused.test/jwks",
+			workosIssuer: "https://unused.test",
+			mintPrivateKey: Redacted.make("{}"),
+			mintPublicKey: "{}",
+			cloudBillingPolarMeterId: "meter",
+		}),
+		Layer.succeed(CloudBillingStore, store),
+		BillingProviders.layer({
+			adapters: [provider],
+			defaultProviderId: provider.providerId,
+		}).pipe(Layer.orDie),
+	);
+	expect(
+		await Effect.runPromise(
+			reconcileCloudMeters(1_000_000).pipe(Effect.provide(layer)),
+		),
+	).toBe(0);
+	expect(attempts).toEqual([
+		{ periodId: "period", provider: providerId, nowMs: 1_000_000 },
+	]);
+	expect(observations).toEqual([]);
+});
+
+test("timestamps slow checks individually and successful observations when they finish", async () => {
+	let currentTime = 1_000_000;
+	vi.spyOn(Date, "now").mockImplementation(() => currentTime);
+	const attempts: number[] = [];
+	const observations: number[] = [];
+	const store = CloudBillingStore.of({
+		...memoryStore,
+		pendingMeterReconciliations: () =>
+			Effect.succeed(
+				["first", "last"].map((periodId) => ({
+					periodId,
+					accountId: periodId,
+					provider: "stripe",
+					expectedUnits: 0,
+				})),
+			),
+		recordMeterReconciliationAttempt: (input) =>
+			Effect.sync(() => {
+				attempts.push(input.nowMs);
+			}),
+		recordMeterReconciliation: (input) =>
+			Effect.sync(() => {
+				observations.push(input.nowMs);
+			}),
+	});
+	const provider = {
+		...BillingProviderManual,
+		providerId: "stripe",
+		reconcileMeter: () =>
+			Effect.sync(() => {
+				currentTime += 360_000;
+				return 0;
+			}),
+	};
+	const layer = Layer.mergeAll(
+		Config.layer({
+			apiIssuer: "https://api.test",
+			workosJwksUrl: "https://unused.test/jwks",
+			workosIssuer: "https://unused.test",
+			mintPrivateKey: Redacted.make("{}"),
+			mintPublicKey: "{}",
+			cloudBillingStripeMeterId: "meter",
+		}),
+		Layer.succeed(CloudBillingStore, store),
+		BillingProviders.layer({
+			adapters: [provider],
+			defaultProviderId: "stripe",
+		}).pipe(Layer.orDie),
+	);
+	expect(
+		await Effect.runPromise(
+			reconcileCloudMeters(1_000_000).pipe(Effect.provide(layer)),
+		),
+	).toBe(2);
+	expect(attempts).toEqual([1_000_000, 1_360_000]);
+	expect(observations).toEqual([1_360_000, 1_720_000]);
+});
+
+test("scheduled billing maintenance advances customer recovery", async () => {
+	const recoverCustomers = vi.fn(() => Effect.succeed(1));
+	const layer = Layer.mergeAll(
+		Config.layer({
+			apiIssuer: "https://api.test",
+			workosJwksUrl: "https://unused.test/jwks",
+			workosIssuer: "https://unused.test",
+			mintPrivateKey: Redacted.make("{}"),
+			mintPublicKey: "{}",
+		}),
+		Layer.succeed(CloudBillingStore, memoryStore),
+		CloudWorkspaceStoreMemory,
+		MachineStoreMemory,
+		makeSandboxProvidersFake(),
+		BillingProviders.layer({
+			adapters: [
+				{ ...BillingProviderManual, providerId: "stripe", recoverCustomers },
+			],
+			defaultProviderId: "stripe",
+		}).pipe(Layer.orDie),
+	);
+	await Effect.runPromise(
+		maintainCloudBilling(1_000_000).pipe(Effect.provide(layer)),
+	);
+	expect(recoverCustomers).toHaveBeenCalledOnce();
 });

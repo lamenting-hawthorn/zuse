@@ -1,5 +1,5 @@
 import { BillingProviders } from "@zuse/billing-providers";
-import { Effect } from "effect";
+import { Clock, Effect } from "effect";
 import { CloudBillingStore } from "./cloud-billing-store.ts";
 import { reconcileSnapshotStorage } from "./cloud-snapshot-storage.ts";
 import { flushCloudUsage } from "./cloud-usage.ts";
@@ -65,6 +65,7 @@ export const flushCloudBillingOutbox = Effect.fn("flushCloudBillingOutbox")(
 	},
 );
 
+/** Checks settled periods fairly; every attempt advances scheduling even without an observation. */
 export const reconcileCloudMeters = Effect.fn("reconcileCloudMeters")(
 	function* (nowMs: number, limit = 25) {
 		const store = yield* CloudBillingStore;
@@ -75,6 +76,11 @@ export const reconcileCloudMeters = Effect.fn("reconcileCloudMeters")(
 		let reconciled = 0;
 		for (const item of pending) {
 			const providerId = item.provider ?? "polar";
+			yield* store.recordMeterReconciliationAttempt({
+				periodId: item.periodId,
+				provider: providerId,
+				nowMs: yield* Clock.currentTimeMillis,
+			});
 			const meterId =
 				providerId === "stripe"
 					? config.cloudBillingStripeMeterId
@@ -99,7 +105,7 @@ export const reconcileCloudMeters = Effect.fn("reconcileCloudMeters")(
 				provider: providerId,
 				expectedUnits: item.expectedUnits,
 				observedUnits: result.success,
-				nowMs,
+				nowMs: yield* Clock.currentTimeMillis,
 			});
 			if (result.success !== item.expectedUnits) {
 				console.warn("[cloud-billing] billing meter reconciliation mismatch", {
@@ -130,6 +136,18 @@ export const maintainCloudBilling = Effect.fn("maintainCloudBilling")(
 				return Effect.succeed(0);
 			}),
 		);
+		const providers = yield* BillingProviders;
+		const stripe = yield* providers
+			.get("stripe")
+			.pipe(Effect.catch(() => Effect.succeed(null)));
+		if (stripe?.recoverCustomers)
+			yield* stripe.recoverCustomers().pipe(
+				Effect.catchCause(() => {
+					console.warn("[billing] customer recovery maintenance failed");
+					return Effect.succeed(0);
+				}),
+			);
+
 		const [meterReconciled, purgedRawEvents] = yield* Effect.all([
 			reconcileCloudMeters(nowMs).pipe(
 				Effect.provideService(CloudBillingStore, store),

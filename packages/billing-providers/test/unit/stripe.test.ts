@@ -43,12 +43,71 @@ const setup = () => {
 	let sub: StripeSubscription | null = subscription();
 	let linked: string | null = "cus_1";
 	let reservedAt = now;
+	let generation = 0;
+	let recoveryCursor: string | undefined;
+	let recoveryMatches: ReadonlyArray<string> = [];
+	let recoveryComplete = false;
 	let claim: "send" | "sent" | "busy" | "expired" = "send";
 	const store: StripeBillingStore = {
+		claimCustomerRecoveries: async () =>
+			linked === null &&
+			now - reservedAt >= 23 * 60 * 60_000 &&
+			!recoveryComplete
+				? [
+						{
+							accountId: "account",
+							createdAtMs: reservedAt,
+							generation,
+							recoveryCursor,
+							recoveryMatches,
+							recoveryComplete,
+						},
+					]
+				: [],
+		finishCustomerRecovery: async (
+			_account,
+			expectedGeneration,
+			cursor,
+			page,
+		) => {
+			if (
+				generation !== expectedGeneration ||
+				cursor !== recoveryCursor ||
+				recoveryComplete
+			)
+				return;
+			recoveryMatches = [
+				...new Set([...recoveryMatches, ...page.matches]),
+			].slice(0, 2);
+			recoveryCursor = page.nextCursor;
+			recoveryComplete =
+				page.nextCursor === undefined || recoveryMatches.length > 1;
+		},
 		getCustomer: async () => linked,
 		reserveCustomer: async () => ({
 			customerId: linked ?? undefined,
 			createdAtMs: reservedAt,
+			generation,
+			recoveryCursor,
+			recoveryMatches,
+			recoveryComplete,
+		}),
+		renewCustomerReservation: vi.fn(async (_account, expectedGeneration) => {
+			if (linked === null && expectedGeneration === generation) {
+				reservedAt = now;
+				generation++;
+				recoveryCursor = undefined;
+				recoveryMatches = [];
+				recoveryComplete = false;
+			}
+			return {
+				customerId: linked ?? undefined,
+				createdAtMs: reservedAt,
+				generation,
+				recoveryCursor,
+				recoveryMatches,
+				recoveryComplete,
+			};
 		}),
 		linkCustomer: async (_account, id) => {
 			linked = id;
@@ -59,6 +118,7 @@ const setup = () => {
 		}),
 	};
 	const client: StripeBillingClient = {
+		customerPage: vi.fn(async () => ({ matches: [] })),
 		createCustomer: vi.fn(async () => "cus_1"),
 		customerAccountId: async () => "account",
 		createCheckout: vi.fn(async () => "https://checkout.stripe.test"),
@@ -82,13 +142,18 @@ const setup = () => {
 		store,
 		now: () => now,
 	});
-	if (!provider.reportMeterEvent || !provider.reconcileMeter)
+	if (
+		!provider.reportMeterEvent ||
+		!provider.reconcileMeter ||
+		!provider.recoverCustomers
+	)
 		throw new Error("Missing metering methods");
 	return {
 		provider: {
 			...provider,
 			reportMeterEvent: provider.reportMeterEvent,
 			reconcileMeter: provider.reconcileMeter,
+			recoverCustomers: provider.recoverCustomers,
 		},
 		client,
 		store,
@@ -166,10 +231,14 @@ describe("Stripe billing provider", () => {
 		);
 		expect(await fake.store.getCustomer("account")).toBe("cus_1");
 	});
-	test("does not recreate a customer after an ambiguous operation expires", async () => {
+	test("does not recreate a customer when expired recovery finds multiple matches", async () => {
 		const fake = setup();
 		fake.setLinked(null);
 		fake.setReservedAt(now - 24 * 60 * 60_000);
+		vi.spyOn(fake.client, "customerPage").mockResolvedValue({
+			matches: ["cus_1", "cus_2"],
+		});
+		await Effect.runPromise(fake.provider.recoverCustomers());
 		await expect(
 			Effect.runPromise(
 				fake.provider.checkout({
@@ -179,6 +248,78 @@ describe("Stripe billing provider", () => {
 				}),
 			),
 		).rejects.toMatchObject({ code: "reconciliation-required" });
+		expect(fake.client.createCustomer).not.toHaveBeenCalled();
+	});
+
+	test.each([
+		{ matches: [] },
+		{ matches: ["cus_recovered"] },
+	])("recovers expired customer reservation with matches %j", async ({
+		matches,
+	}) => {
+		const fake = setup();
+		fake.setLinked(null);
+		fake.setReservedAt(now - 24 * 60 * 60_000);
+		vi.spyOn(fake.client, "customerPage").mockResolvedValue({ matches });
+		await Effect.runPromise(fake.provider.recoverCustomers());
+		const checkout = () =>
+			Effect.runPromise(
+				fake.provider.checkout({
+					accountId: "account",
+					offerId: "cloud-workspace-standard-v1",
+					successUrl: "https://api.test",
+				}),
+			);
+		await Promise.all(Array.from({ length: 8 }, checkout));
+		if (matches.length) {
+			expect(fake.client.createCustomer).not.toHaveBeenCalled();
+			expect(fake.store.renewCustomerReservation).not.toHaveBeenCalled();
+			expect(await fake.store.getCustomer("account")).toBe("cus_recovered");
+		} else {
+			expect(fake.client.createCustomer).toHaveBeenCalled();
+			for (const call of vi.mocked(fake.client.createCustomer).mock.calls)
+				expect(call).toEqual(["account", "zuse-customer:account:generation:1"]);
+		}
+	});
+	test("recovery lookup failure cannot renew or create a customer", async () => {
+		const fake = setup();
+		fake.setLinked(null);
+		fake.setReservedAt(now - 24 * 60 * 60_000);
+		vi.spyOn(fake.client, "customerPage").mockRejectedValue(
+			new Error("unavailable"),
+		);
+		expect(await Effect.runPromise(fake.provider.recoverCustomers())).toBe(0);
+		await expect(
+			Effect.runPromise(
+				fake.provider.checkout({
+					accountId: "account",
+					offerId: "cloud-workspace-standard-v1",
+					successUrl: "https://api.test",
+				}),
+			),
+		).rejects.toMatchObject({ code: "reconciliation-required" });
+		expect(fake.store.renewCustomerReservation).not.toHaveBeenCalled();
+		expect(fake.client.createCustomer).not.toHaveBeenCalled();
+	});
+	test("a binding established during renewal avoids another remote creation", async () => {
+		const fake = setup();
+		fake.setLinked(null);
+		fake.setReservedAt(now - 24 * 60 * 60_000);
+		await Effect.runPromise(fake.provider.recoverCustomers());
+		vi.spyOn(fake.store, "renewCustomerReservation").mockResolvedValue({
+			customerId: "cus_1",
+			createdAtMs: now,
+			generation: 1,
+			recoveryComplete: false,
+			recoveryMatches: [],
+		});
+		await Effect.runPromise(
+			fake.provider.checkout({
+				accountId: "account",
+				offerId: "cloud-workspace-standard-v1",
+				successUrl: "https://api.test",
+			}),
+		);
 		expect(fake.client.createCustomer).not.toHaveBeenCalled();
 	});
 	test("checkout lookup does not disclose another account's purchase", async () => {
@@ -398,4 +539,122 @@ describe("Stripe billing provider", () => {
 			1791000060,
 		);
 	});
+});
+
+test.each([
+	1, 2,
+])("SDK customer recovery paginates exact metadata matches (%i)", async (count) => {
+	const fake = setup();
+	fake.setLinked(null);
+	fake.setReservedAt(now - 24 * 60 * 60_000);
+	const requests: URL[] = [];
+	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+		const url = new URL(
+			typeof input === "string"
+				? input
+				: input instanceof URL
+					? input.href
+					: input.url,
+		);
+		requests.push(url);
+		if (url.pathname === "/v1/customers") {
+			const next = url.searchParams.get("starting_after");
+			const data = next
+				? Array.from({ length: count }, (_, index) => ({
+						id: `cus_match_${index}`,
+						object: "customer",
+						metadata: { account_id: "account" },
+					}))
+				: [
+						{
+							id: "cus_noise",
+							object: "customer",
+							metadata: { account_id: "account-other" },
+						},
+					];
+			return Response.json({
+				object: "list",
+				data,
+				has_more: !next,
+				url: "/v1/customers",
+			});
+		}
+		if (url.pathname === "/v1/customers/cus_match_0")
+			return Response.json({
+				id: "cus_match_0",
+				object: "customer",
+				metadata: { account_id: "account" },
+			});
+		if (url.pathname === "/v1/checkout/sessions")
+			return Response.json({
+				id: "cs_test",
+				url: "https://checkout.stripe.test",
+			});
+		throw new Error(`unexpected request: ${url.pathname}`);
+	});
+	vi.stubGlobal("fetch", fetchMock);
+	try {
+		const provider = makeStripeBillingProvider(config, {
+			store: fake.store,
+			now: () => now,
+		});
+		if (!provider.recoverCustomers)
+			throw new Error("missing customer recovery");
+		expect(await Effect.runPromise(provider.recoverCustomers())).toBe(1);
+		expect(requests).toHaveLength(1);
+		await expect(
+			Effect.runPromise(
+				provider.checkout({
+					accountId: "account",
+					offerId: "cloud-workspace-standard-v1",
+					successUrl: "https://api.test",
+				}),
+			),
+		).rejects.toMatchObject({ code: "reconciliation-required" });
+		expect(requests).toHaveLength(1);
+		expect(await Effect.runPromise(provider.recoverCustomers())).toBe(1);
+		const checkout = Effect.runPromise(
+			provider.checkout({
+				accountId: "account",
+				offerId: "cloud-workspace-standard-v1",
+				successUrl: "https://api.test",
+			}),
+		);
+		if (count === 2)
+			await expect(checkout).rejects.toMatchObject({
+				code: "reconciliation-required",
+			});
+		else {
+			await expect(checkout).resolves.toBe("https://checkout.stripe.test");
+			expect(await fake.store.getCustomer("account")).toBe("cus_match_0");
+		}
+		const lists = requests.filter((url) => url.pathname === "/v1/customers");
+		expect(lists).toHaveLength(2);
+		expect(lists[1]?.searchParams.get("starting_after")).toBe("cus_noise");
+		expect(fake.store.renewCustomerReservation).not.toHaveBeenCalled();
+	} finally {
+		vi.unstubAllGlobals();
+	}
+});
+
+test("revalidates persisted recovery matches before linking a customer", async () => {
+	const fake = setup();
+	fake.setLinked(null);
+	fake.setReservedAt(now - 24 * 60 * 60_000);
+	vi.spyOn(fake.client, "customerPage").mockResolvedValue({
+		matches: ["cus_recovered"],
+	});
+	await Effect.runPromise(fake.provider.recoverCustomers());
+	vi.spyOn(fake.client, "customerAccountId").mockResolvedValue("other-account");
+	await expect(
+		Effect.runPromise(
+			fake.provider.checkout({
+				accountId: "account",
+				offerId: "cloud-workspace-standard-v1",
+				successUrl: "https://api.test",
+			}),
+		),
+	).rejects.toMatchObject({ code: "provider-unavailable" });
+	expect(await fake.store.getCustomer("account")).toBeNull();
+	expect(fake.client.createCheckout).not.toHaveBeenCalled();
 });

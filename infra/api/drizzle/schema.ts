@@ -1030,6 +1030,16 @@ export const apiCloudBillingOutbox = pgTable(
 	],
 );
 
+export const apiCloudBillingMeterReconciliationAttempts = pgTable(
+	"api_cloud_billing_meter_reconciliation_attempts",
+	{
+		periodId: text("period_id").notNull(),
+		provider: text("provider").notNull(),
+		attemptedAt: bigint("attempted_at", { mode: "number" }).notNull(),
+	},
+	(table) => [primaryKey({ columns: [table.periodId, table.provider] })],
+);
+
 export const apiCloudBillingMeterReconciliations = pgTable(
 	"api_cloud_billing_meter_reconciliations",
 	{
@@ -1534,11 +1544,30 @@ export const apiCloudProviderConnections = pgTable(
 	],
 );
 
-export const apiStripeCustomers = pgTable("api_stripe_customers", {
-	accountId: text("account_id").primaryKey(),
-	customerId: text("customer_id").unique(),
-	createdAt: bigint("created_at", { mode: "number" }).notNull(),
-});
+export const apiStripeCustomers = pgTable(
+	"api_stripe_customers",
+	{
+		recoveryCursor: text("recovery_cursor"),
+		recoveryMatches: jsonb("recovery_matches")
+			.$type<string[]>()
+			.notNull()
+			.default([]),
+		recoveryComplete: boolean("recovery_complete").notNull().default(false),
+		recoveryAttemptedAt: bigint("recovery_attempted_at", { mode: "number" }),
+		generation: integer("generation").notNull().default(0),
+		reservationCreatedAt: bigint("reservation_created_at", { mode: "number" }),
+		accountId: text("account_id").primaryKey(),
+		customerId: text("customer_id").unique(),
+		createdAt: bigint("created_at", { mode: "number" }).notNull(),
+	},
+	(table) => [
+		index("api_stripe_customer_recovery_pending_idx")
+			.on(sql`COALESCE(${table.recoveryAttemptedAt}, 0)`, table.accountId)
+			.where(
+				sql`${table.customerId} IS NULL AND NOT ${table.recoveryComplete}`,
+			),
+	],
+);
 export const apiStripeMeterDeliveries = pgTable("api_stripe_meter_deliveries", {
 	deliveryKey: text("delivery_key").primaryKey(),
 	payload: text("payload").notNull(),

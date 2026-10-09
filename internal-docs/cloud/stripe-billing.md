@@ -121,6 +121,10 @@ fail rather than replacing a period's balance, allowance or cap.
 Stripe meter ingestion is asynchronous. An acknowledged request is not invoice
 proof: compare ledger totals, remote meter summaries and the finalized invoice.
 Mismatched summaries retry every five minutes once pending exports have settled.
+Reconciliation batches prioritize the oldest attempt, including missing meters
+and failed requests, so persistent failures cannot starve other periods.
+Attempt timestamps are separate from authoritative observations; failed requests
+never advance the last successful reconciliation timestamp.
 Configure Stripe Workbench alerts for `v1.billing.meter.error_report_triggered`
 and `v1.billing.meter.no_meter_found`; asynchronous meter rejection must be
 investigated before enabling live invoice exports.
@@ -143,9 +147,26 @@ settlement against its original period; handle finalized invoices through a
 reviewed credit note or supplemental invoice, never move costs into a newer
 allowance or reset a timestamp to charge them automatically.
 
-An unfinished customer-creation reservation older than 23 hours likewise requires
-operator reconciliation: locate the customer by `account_id` metadata and bind
-its verified ID to `api_stripe_customers` instead of creating another customer.
+For unfinished customer creation older than 23 hours, scheduled billing
+maintenance scans Stripe's customer list for exact `account_id` metadata matches.
+Each run leases at most five accounts for five minutes and reads one page of
+100 customers per account. Cursors and matches persist across failures and
+Worker restarts. Checkout makes no lookup requests and returns
+`reconciliation-required` until the scan is complete. A sole match is then bound;
+an empty completed scan atomically renews the reservation with a fresh generation
+and idempotency key. Multiple matches stop the scan and require operator review.
+Concurrent renewals reuse the winning generation;
+existing generation-zero reservations retain their original key. The original
+creation timestamp is preserved so older Workers refuse expired reservations
+during deployment rather than replaying an old key. A failed lookup cannot
+trigger creation.
+The list API is used because Stripe search cannot guarantee immediate consistency.
+
+Apply migrations `0042_billing_recovery` and `0043_stripe_customer_recovery_jobs`
+before deploying these recovery paths.
+These add reservation generations, recovery cursors and an attempt scheduling
+table without changing
+existing customer bindings, meter observations, balances or invoice usage.
 
 ## Coordinated subscription transfer
 

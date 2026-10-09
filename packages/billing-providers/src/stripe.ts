@@ -11,12 +11,40 @@ export interface StripeBillingConfig {
 	readonly portalConfigurationId?: string;
 }
 
+/** Stable identity for one remote creation attempt; generation zero preserves legacy keys. */
+export interface StripeCustomerReservation {
+	readonly customerId?: string;
+	readonly createdAtMs: number;
+	readonly generation: number;
+	readonly recoveryCursor?: string;
+	readonly recoveryMatches: ReadonlyArray<string>;
+	readonly recoveryComplete: boolean;
+}
+
 /** Persisted by the application, including unfinished remote operations. */
 export interface StripeBillingStore {
-	readonly reserveCustomer: (accountId: string) => Promise<{
-		readonly customerId?: string;
-		readonly createdAtMs: number;
-	}>;
+	/** Leases at most limit expired recovery jobs for five minutes. */
+	readonly claimCustomerRecoveries: (
+		nowMs: number,
+		limit: number,
+	) => Promise<
+		ReadonlyArray<StripeCustomerReservation & { readonly accountId: string }>
+	>;
+	/** Persists one page only when its generation and previous cursor still match. */
+	readonly finishCustomerRecovery: (
+		accountId: string,
+		generation: number,
+		cursor: string | undefined,
+		page: StripeCustomerPage,
+	) => Promise<void>;
+	readonly reserveCustomer: (
+		accountId: string,
+	) => Promise<StripeCustomerReservation>;
+	/** Renews only the expected unlinked generation; concurrent callers receive the winner. */
+	readonly renewCustomerReservation: (
+		accountId: string,
+		generation: number,
+	) => Promise<StripeCustomerReservation>;
 	readonly linkCustomer: (
 		accountId: string,
 		customerId: string,
@@ -49,8 +77,18 @@ export interface StripeCheckout {
 	readonly status: "paid" | "pending" | "failed";
 	readonly createdAtMs: number;
 }
+/** One bounded, consistent customer-list page; absence is established only at the end. */
+export interface StripeCustomerPage {
+	readonly matches: ReadonlyArray<string>;
+	readonly nextCursor?: string;
+}
 export interface StripeBillingClient {
 	readonly createCustomer: (accountId: string, key: string) => Promise<string>;
+	/** Reads one list page; reserved for background recovery, never checkout. */
+	readonly customerPage: (
+		accountId: string,
+		cursor?: string,
+	) => Promise<StripeCustomerPage>;
 	readonly customerAccountId: (
 		customerId: string,
 	) => Promise<string | undefined>;
@@ -95,12 +133,14 @@ export interface StripeBillingDependencies {
 const notFound = (error: unknown) =>
 	error instanceof Stripe.errors.StripeInvalidRequestError &&
 	error.statusCode === 404;
+/** Uses fetch for Worker compatibility and bounds retry time for billing requests. */
 const makeSdk = (config: StripeBillingConfig) =>
 	new Stripe(Redacted.value(config.secretKey), {
 		httpClient: Stripe.createFetchHttpClient(),
 		maxNetworkRetries: 1,
 		timeout: 10_000,
 	});
+/** Translates Stripe SDK objects into the billing adapter contract. */
 const makeClient = (
 	sdk: Stripe,
 	config: StripeBillingConfig,
@@ -112,6 +152,21 @@ const makeClient = (
 				{ idempotencyKey: key },
 			)
 		).id,
+	customerPage: async (accountId, cursor) => {
+		const page = await sdk.customers.list({
+			limit: 100,
+			...(cursor ? { starting_after: cursor } : {}),
+		});
+		const last = page.data.at(-1);
+		if (page.has_more && !last)
+			throw new Error("stripe_customer_cursor_missing");
+		return {
+			matches: page.data
+				.filter((customer) => customer.metadata.account_id === accountId)
+				.map((customer) => customer.id),
+			...(page.has_more && last ? { nextCursor: last.id } : {}),
+		};
+	},
 	customerAccountId: async (id) => {
 		const customer = await sdk.customers.retrieve(id);
 		return customer.deleted ? undefined : customer.metadata.account_id;
@@ -254,6 +309,7 @@ const status = (value: string) =>
 				? "pending"
 				: "ended";
 
+/** Stripe checkout, subscription and usage operations with durable application receipts. */
 export const makeStripeBillingProvider = (
 	config: StripeBillingConfig,
 	deps: StripeBillingDependencies,
@@ -285,33 +341,80 @@ export const makeStripeBillingProvider = (
 	const now = deps.now ?? Date.now;
 	const call = <A>(run: () => Promise<A>) =>
 		Effect.tryPromise({ try: run, catch: failure });
+	/** Rejects a persisted binding whose remote ownership no longer matches. */
+	const verifiedCustomer = (accountId: string, customerId: string) =>
+		Effect.gen(function* () {
+			if (
+				(yield* call(() => client.customerAccountId(customerId))) !== accountId
+			)
+				return yield* failure();
+			return customerId;
+		});
 	const customer = (accountId: string, create: boolean) =>
 		Effect.gen(function* () {
 			const existing = yield* call(() => deps.store.getCustomer(accountId));
-			if (existing !== null) {
-				if (
-					(yield* call(() => client.customerAccountId(existing))) !== accountId
-				)
-					return yield* failure();
-				return existing;
-			}
+			if (existing !== null)
+				return yield* verifiedCustomer(accountId, existing);
 			if (!create) return yield* failure();
-			const reservation = yield* call(() =>
+			let reservation = yield* call(() =>
 				deps.store.reserveCustomer(accountId),
 			);
-			if (reservation.customerId !== undefined) return reservation.customerId;
-			// A crash between remote creation and binding must never create a new
-			// customer after Stripe has forgotten its idempotency key.
+			if (
+				reservation.customerId === undefined &&
+				now() - reservation.createdAtMs >= 23 * 60 * 60_000
+			) {
+				if (!reservation.recoveryComplete) return yield* needsReconciliation();
+				const matches = reservation.recoveryMatches;
+				if (matches.length > 1) return yield* needsReconciliation();
+				const recovered = matches[0];
+				if (recovered !== undefined) {
+					yield* verifiedCustomer(accountId, recovered);
+					yield* call(() => deps.store.linkCustomer(accountId, recovered));
+					return recovered;
+				}
+				const generation = reservation.generation;
+				reservation = yield* call(() =>
+					deps.store.renewCustomerReservation(accountId, generation),
+				);
+			}
+			if (reservation.customerId !== undefined)
+				return yield* verifiedCustomer(accountId, reservation.customerId);
+			// A losing renewal must use the winner's key, never replay an expired generation.
 			if (now() - reservation.createdAtMs >= 23 * 60 * 60_000)
 				return yield* needsReconciliation();
-			const id = yield* call(() =>
-				client.createCustomer(accountId, `zuse-customer:${accountId}`),
-			);
+			const key =
+				reservation.generation === 0
+					? `zuse-customer:${accountId}`
+					: `zuse-customer:${accountId}:generation:${reservation.generation}`;
+			const id = yield* call(() => client.createCustomer(accountId, key));
 			yield* call(() => deps.store.linkCustomer(accountId, id));
 			return id;
 		});
 	return {
 		providerId: "stripe",
+		recoverCustomers: () =>
+			Effect.gen(function* () {
+				const jobs = yield* call(() =>
+					deps.store.claimCustomerRecoveries(now(), 5),
+				);
+				let advanced = 0;
+				for (const job of jobs) {
+					const result = yield* call(() =>
+						client.customerPage(job.accountId, job.recoveryCursor),
+					).pipe(Effect.result);
+					if (result._tag === "Failure") continue;
+					yield* call(() =>
+						deps.store.finishCustomerRecovery(
+							job.accountId,
+							job.generation,
+							job.recoveryCursor,
+							result.success,
+						),
+					);
+					advanced++;
+				}
+				return advanced;
+			}),
 		checkout: (input) =>
 			Effect.gen(function* () {
 				const price = config.offerPrices[input.offerId];
