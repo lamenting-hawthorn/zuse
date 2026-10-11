@@ -23,6 +23,23 @@ import { Effect, Fiber, Layer, Stream } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderDriverEvent } from "../../../src/kernel/driver.ts";
 
+// The shared control client answers `config/read` for native MCP isolation.
+let nativeConfigLayers: unknown[] = [];
+vi.mock("../../../src/drivers/codex-control-client.ts", () => ({
+	withCodexControlClient: async (
+		_codexPath: string | null,
+		run: (client: unknown) => Promise<unknown>,
+	) =>
+		run({
+			request: async (method: string) => {
+				if (method !== "config/read") {
+					throw new Error(`Unexpected control method: ${method}`);
+				}
+				return { config: {}, origins: {}, layers: nativeConfigLayers };
+			},
+		}),
+}));
+
 const readAttachmentPath = vi.fn(() =>
 	Effect.succeed<{ path: string; mimeType: string } | null>(null),
 );
@@ -55,8 +72,10 @@ const installAppServer = (
 	missingResume: boolean,
 	initialMissingMcpInventories = 0,
 	terminateOnMcpInventory = false,
+	archivedInCodex = false,
 ) => {
 	const requests: Array<{ method: string; params: unknown }> = [];
+	let archived = archivedInCodex;
 	const turnInputs: unknown[] = [];
 	let mcpInventoryReads = 0;
 	let startupTerminated = false;
@@ -112,7 +131,16 @@ const installAppServer = (
 								params: { thread: { id: "fresh-thread" } },
 							} as never);
 							return { thread: { id: "fresh-thread" } };
+						case "thread/unarchive":
+							archived = false;
+							return { thread: { id: record.threadId } };
 						case "thread/resume":
+							if (archived) {
+								throw new CodexAppServerRequestError({
+									code: -32600,
+									message: `session ${String(record.threadId)} is archived. Run \`codex unarchive ${String(record.threadId)}\` to unarchive it first.`,
+								});
+							}
 							if (missingResume) {
 								throw new CodexAppServerRequestError({
 									code: -32600,
@@ -175,6 +203,7 @@ const withSession = async <A>(
 		readonly apiKey?: string;
 		readonly forkFromResume?: boolean;
 		readonly missingResume?: boolean;
+		readonly archivedInCodex?: boolean;
 		readonly initialMissingMcpInventories?: number;
 		readonly terminateOnMcpInventory?: boolean;
 		readonly onUnexpectedTermination?: (error: Error) => void;
@@ -190,6 +219,7 @@ const withSession = async <A>(
 			options.missingResume ?? false,
 			options.initialMissingMcpInventories ?? 0,
 			options.terminateOnMcpInventory ?? false,
+			options.archivedInCodex ?? false,
 		);
 		const handle = await Effect.runPromise(
 			startCodexSession(
@@ -276,11 +306,56 @@ const requestNativeQuestion = (
 	});
 
 afterEach(() => {
+	nativeConfigLayers = [];
 	appServerRequest = null;
 	appServerExit = null;
 	readAttachmentPath.mockReset();
 	readAttachmentPath.mockImplementation(() => Effect.succeed(null));
 	vi.restoreAllMocks();
+});
+
+describe("Codex native MCP isolation", () => {
+	it("disables user servers at launch and project servers per thread", async () => {
+		nativeConfigLayers = [
+			{
+				name: { type: "user", file: "/home/u/.codex/config.toml" },
+				version: "1",
+				config: {
+					mcp_servers: {
+						linear: { url: "https://mcp.linear.app/mcp" },
+						"dotted.name": { command: "npx" },
+						zuse: { url: "http://127.0.0.1:1/mcp" },
+					},
+				},
+				disabledReason: null,
+			},
+			{
+				name: { type: "project", dotCodexFolder: "/repo/.codex" },
+				version: "1",
+				config: { mcp_servers: { local: { command: "node" } } },
+				disabledReason: null,
+			},
+			{
+				name: { type: "project", dotCodexFolder: "/other/.codex" },
+				version: "1",
+				config: { mcp_servers: { untrusted: { command: "node" } } },
+				disabledReason: "untrusted",
+			},
+		];
+		await withSession({}, async (_handle, appServer) => {
+			const start = vi.mocked(CodexAppServerClient.start);
+			expect(start.mock.calls[0]?.[0].mcp?.disabledNativeServers).toEqual([
+				"linear",
+				"dotted.name",
+			]);
+			expect(appServer.requests).toContainEqual({
+				method: "thread/start",
+				params: expect.objectContaining({
+					config: { "mcp_servers.local.enabled": false },
+				}),
+			});
+		});
+	});
 });
 
 describe("Codex session cursor persistence", () => {
@@ -656,6 +731,29 @@ describe("Codex session cursor persistence", () => {
 					_tag: "SessionCursor",
 					cursor: "forked-thread",
 				});
+			},
+		);
+	});
+
+	it("unarchives a thread archived outside Zuse and resumes it", async () => {
+		await withSession(
+			{ resumeCursor: "archived-thread", archivedInCodex: true },
+			async (handle, appServer) => {
+				await Effect.runPromise(handle.send("continue"));
+				const events = await takeEvents(handle.events, 3);
+
+				expect(events.map((event) => event._tag)).toEqual([
+					"Started",
+					"Status",
+					"Status",
+				]);
+				expect(
+					appServer.requests
+						.map((request) => request.method)
+						.filter((method) =>
+							["thread/resume", "thread/unarchive"].includes(method),
+						),
+				).toEqual(["thread/resume", "thread/unarchive", "thread/resume"]);
 			},
 		);
 	});

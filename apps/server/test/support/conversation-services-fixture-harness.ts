@@ -286,7 +286,6 @@ export const makeConversationFixtureRuntime = (
 					environmentVariables: {},
 					cloudEnvironmentVariables: {},
 					fileIncludeGlobs: "",
-					mcpDisabledServers: [],
 				}),
 			),
 		update: (projectId, patch) =>
@@ -305,7 +304,6 @@ export const makeConversationFixtureRuntime = (
 					environmentVariables: patch.environmentVariables ?? {},
 					cloudEnvironmentVariables: patch.cloudEnvironmentVariables ?? {},
 					fileIncludeGlobs: patch.fileIncludeGlobs ?? "",
-					mcpDisabledServers: patch.mcpDisabledServers ?? [],
 				}),
 			),
 	});
@@ -373,7 +371,6 @@ export const makeConversationFixtureRuntime = (
 
 	const StubTitleGeneratorLive = Layer.succeed(TitleGenerator, {
 		generate: () => Effect.die("not used"),
-		generateBranch: () => Effect.die("not used"),
 	});
 
 	const StubConfigStoreLive = Layer.succeed(ConfigStoreService, {

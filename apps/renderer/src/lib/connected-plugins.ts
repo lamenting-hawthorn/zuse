@@ -3,9 +3,29 @@ import type {
 	PluginDefinition,
 	PluginSnapshot,
 } from "@zuse/contracts";
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { useAuth } from "../hooks/use-auth.ts";
+import { pluginDomain } from "./plugin-servers.ts";
 import { usePluginSnapshot } from "./plugins-client.ts";
+import {
+	rendererWorkspaceSnapshot,
+	subscribeRendererWorkspace,
+} from "./renderer-workspace.ts";
+
+/** Plugin ownership follows the workspace switcher everywhere. */
+export function usePluginTenant(): string | undefined {
+	const workspace = useSyncExternalStore(
+		subscribeRendererWorkspace,
+		rendererWorkspaceSnapshot,
+		rendererWorkspaceSnapshot,
+	);
+	const account = usePluginAccount();
+	return workspace.scope.kind === "organization"
+		? `organization:${workspace.scope.organizationId}`
+		: account === null
+			? undefined
+			: `personal:${account}`;
+}
 
 /** Plugins the signed-in account can use right now, for `@` mentions. */
 export type ConnectedPlugin = Pick<
@@ -39,6 +59,18 @@ export const hasPluginConnectionLabel = (
 	);
 };
 
+/** A free default name: the plugin's name, then "Name 2", "Name 3", … */
+export const nextPluginConnectionLabel = (
+	connections: readonly Pick<PluginConnection, "pluginId" | "label">[],
+	pluginId: string,
+	pluginName: string,
+): string => {
+	for (let index = 1; ; index++) {
+		const label = index === 1 ? pluginName : `${pluginName} ${index}`;
+		if (!hasPluginConnectionLabel(connections, pluginId, label)) return label;
+	}
+};
+
 /** List usable connections individually so mentions can select the exact account. */
 export const connectedOf = (
 	snapshot: PluginSnapshot | null,
@@ -54,13 +86,48 @@ export const connectedOf = (
 		return [
 			{
 				id: plugin.id,
-				domain: plugin.domain,
+				domain: pluginDomain(plugin),
 				name: pluginConnectionName(plugin.name, connection.label),
 				pluginName: plugin.name,
 				connectionId: connection.id,
 			},
 		];
 	});
+};
+
+/** One settings row per connected account, including disabled accounts. */
+export type PluginConnectionRow = {
+	readonly connection: PluginConnection;
+	readonly plugin: PluginDefinition | null;
+	readonly name: string;
+	readonly description: string;
+	readonly domain: string;
+	readonly custom: boolean;
+};
+
+/** Connected accounts in name order, for settings and the composer. */
+export const pluginConnectionRows = (
+	snapshot: PluginSnapshot,
+): readonly PluginConnectionRow[] => {
+	const catalog = new Map(
+		snapshot.catalog.map((plugin) => [plugin.id, plugin]),
+	);
+	return snapshot.connections
+		.filter((connection) => connection.state === "connected")
+		.map((connection) => {
+			const plugin = catalog.get(connection.pluginId) ?? null;
+			return {
+				connection,
+				plugin,
+				name: plugin
+					? pluginConnectionName(plugin.name, connection.label)
+					: connection.label,
+				description: plugin?.description ?? "",
+				domain: plugin ? pluginDomain(plugin) : "",
+				custom: plugin?.custom ?? false,
+			};
+		})
+		.sort((left, right) => left.name.localeCompare(right.name));
 };
 
 /** The account whose plugins apply, or null when signed out. */
@@ -70,12 +137,12 @@ export function usePluginAccount(): string | null {
 }
 
 /**
- * Enabled, connected personal plugins for `@` menus and tool rows; empty while
+ * Enabled, connected workspace plugins for `@` menus and tool rows; empty while
  * signed out. Reads the shared plugin snapshot cache (agent sessions use
- * personal connections only).
+ * workspace connections).
  */
 export function useConnectedPlugins(): readonly ConnectedPlugin[] {
-	const { snapshot } = usePluginSnapshot(usePluginAccount());
+	const { snapshot } = usePluginSnapshot(usePluginAccount(), usePluginTenant());
 	return useMemo(() => connectedOf(snapshot), [snapshot]);
 }
 
@@ -90,7 +157,7 @@ export const pluginMentionContext = (plugin: {
 		? `plugin:${plugin.id}:${plugin.connectionId}`
 		: `plugin:${plugin.id}`,
 	label: plugin.name,
-	comment: `Use my connected ${plugin.name} plugin for this request. Find its tools with plugins_search (an empty query lists every connected tool; this connection’s tool addresses start with "tools.${plugin.id}.${plugin.connectionId ? `user.${plugin.connectionId}.` : ""}"), read a tool's input with plugins_schema, then run it with plugins_call.${plugin.connectionId ? " Use only this exact connection prefix; if it is unavailable, ask me to reconnect rather than using another account." : ""}`,
+	comment: `Use the current workspace’s connected ${plugin.name} plugin for this request. Find its tools with plugins_search (an empty query lists every connected tool; this connection’s tool addresses start with "tools.${plugin.id}.${plugin.connectionId ? `user.${plugin.connectionId}.` : ""}"), read a tool's input with plugins_schema, then run it with plugins_call.${plugin.connectionId ? " Use only this exact connection prefix; if it is unavailable, ask me to reconnect rather than using another account." : ""}`,
 });
 
 /** Logos come from the same public registry as the catalog. */

@@ -2,11 +2,9 @@ import { providerDisplayName } from "~/lib/provider-labels";
 import "@zuse/i18n/english/errors";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-	defaultModelFor,
 	type EnvironmentId,
 	type FolderId,
 	findModelDescriptor,
-	PROVIDER_IDS,
 	type ProviderId,
 	type Session,
 	type SessionId,
@@ -25,7 +23,6 @@ import {
 	type AgentActivityState,
 	deriveAgentActivityState,
 } from "../lib/agent-activity-state.ts";
-import { resolveChatRuntimeMode } from "../lib/auto-worktree.ts";
 import { deriveChatAttentionState } from "../lib/chat-attention-state.ts";
 import { closeChatTab } from "../lib/close-chat-tab.ts";
 import { EMPTY_SESSIONS_BY_PROJECT } from "../lib/environment-entities.ts";
@@ -33,19 +30,17 @@ import { useEnvironmentChat } from "../lib/environment-entity-hooks.ts";
 import { useEnvironmentPermissions } from "../lib/environment-permissions-client-bus.ts";
 import { useEnvironmentQuestionAttachments } from "../lib/environment-question-attachments-client-bus.ts";
 import { useEnvironmentShellResource } from "../lib/environment-shell-client-bus.ts";
-import { selectAuthenticatedProvider } from "../lib/model-picker-availability.ts";
+import { prepareChatTab } from "../lib/prepare-chat-tab.ts";
 import { filterActionableQuestionInteractions } from "../lib/question-actionability.ts";
 import {
 	type RendererSessionTimeline,
 	useRendererSessionTimelines,
 } from "../lib/session-timeline-hooks.ts";
-import { useSettingsStore } from "../lib/settings-client-bus.ts";
 import {
 	activeChatId as deriveActiveChatId,
 	orderedChatTabs,
 } from "../lib/tab-order.ts";
 import { useChatsStore } from "../store/chats.ts";
-import { useProvidersStore } from "../store/providers.ts";
 import { useSessionsStore } from "../store/sessions.ts";
 import { useUiStore } from "../store/ui.ts";
 import { FileIcon } from "./file-icon.tsx";
@@ -298,6 +293,14 @@ export function MainTabs({ projectId, environmentId, emptyLabel }: Props) {
 	);
 }
 
+/** Every tab kind shares one fixed width so the strip doesn't reflow as titles change. */
+const tabClassName = (active: boolean, extra: string): string =>
+	`relative flex h-6 w-40 shrink-0 items-center rounded-md px-2 text-[12px] transition-colors ${extra} ${
+		active
+			? "bg-accent text-foreground"
+			: "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+	}`;
+
 function TabButton({
 	active,
 	onClick,
@@ -314,11 +317,7 @@ function TabButton({
 			type="button"
 			onClick={onClick}
 			title={title ?? label}
-			className={`relative flex h-6 max-w-[160px] shrink-0 items-center gap-1.5 px-2 text-[12px] transition-colors after:pointer-events-none after:absolute after:inset-x-1.5 after:-bottom-px after:h-[2px] after:rounded-full after:transition-colors ${
-				active
-					? "rounded-md bg-accent text-foreground after:bg-transparent"
-					: "rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground after:bg-transparent"
-			}`}
+			className={tabClassName(active, "gap-1.5")}
 		>
 			<span className="truncate">{label}</span>
 		</button>
@@ -357,13 +356,7 @@ export function ChatTabButton({
 	const { message: uiMessage } = useUiMessages(["errors"]);
 
 	return (
-		<div
-			className={`group relative flex h-6 max-w-[160px] shrink-0 items-center gap-1 px-2 text-[12px] transition-colors after:pointer-events-none after:absolute after:inset-x-1.5 after:-bottom-px after:h-[2px] after:rounded-full after:transition-colors ${
-				active
-					? "rounded-md bg-accent text-foreground after:bg-transparent"
-					: "rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground after:bg-transparent"
-			}`}
-		>
+		<div className={tabClassName(active, "group gap-1")}>
 			<button
 				type="button"
 				onClick={onClick}
@@ -451,16 +444,10 @@ function NewChatTabButton({
 }) {
 	const { message: uiMessage } = useUiMessages(["errors"]);
 
-	const loadAvailability = useProvidersStore((s) => s.loadFor);
 	const create = useSessionsStore((s) => s.create);
 	const creating = useSessionsStore((s) => s.creatingByChat[chatId] === true);
 	const [preparing, setPreparing] = useState(false);
 	const busy = creating || preparing;
-	const defaultProviderId = useSettingsStore((s) => s.defaultProviderId);
-	const defaultModelByProvider = useSettingsStore(
-		(s) => s.defaultModelByProvider,
-	);
-	const providerEnabled = useSettingsStore((s) => s.providerEnabled);
 
 	// Creates a new session inside the active chat. Worktree is inherited
 	// from the chat row server-side. Availability is cached per environment,
@@ -470,17 +457,8 @@ function NewChatTabButton({
 		if (busy) return;
 		setPreparing(true);
 		try {
-			await loadAvailability(environmentId);
-			const environmentAvailability =
-				useProvidersStore.getState().availabilityByEnvironment[environmentId]
-					?.availability ?? [];
-			const providerId = selectAuthenticatedProvider({
-				preferredProviderId: defaultProviderId,
-				providerIds: PROVIDER_IDS,
-				availability: environmentAvailability,
-				providerEnabled,
-			});
-			if (providerId === null) {
+			const prepared = await prepareChatTab(environmentId, projectId);
+			if (prepared === null) {
 				toastManager.add({
 					type: "error",
 					title: uiMessage("errors:main_tabs_no_authenticated_agent"),
@@ -490,13 +468,7 @@ function NewChatTabButton({
 				});
 				return;
 			}
-			const model =
-				defaultModelByProvider[providerId] ??
-				defaultModelFor(currentModelCatalog(), providerId);
-			const runtimeMode =
-				projectId === null
-					? useSettingsStore.getState().defaultRuntimeMode
-					: await resolveChatRuntimeMode(environmentId, projectId);
+			const { providerId, model, runtimeMode } = prepared;
 			await create(chatId, providerId, model, {
 				runtimeMode,
 			});
@@ -512,7 +484,7 @@ function NewChatTabButton({
 			disabled={busy}
 			title={uiMessage("errors:main_tabs_new_tab_in_this_chat")}
 			aria-label={uiMessage("errors:main_tabs_new_tab_in_this_chat")}
-			className="relative flex shrink-0 items-center justify-center rounded px-2 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+			className="relative flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
 		>
 			{busy ? (
 				<span className="inline-flex size-3.5 items-center justify-center">
@@ -547,13 +519,7 @@ function FileTabButton({
 	const { message: uiMessage } = useUiMessages(["errors"]);
 
 	return (
-		<div
-			className={`group relative flex h-6 max-w-[160px] shrink-0 items-center gap-1 px-2 text-[12px] leading-none transition-colors after:pointer-events-none after:absolute after:inset-x-1.5 after:-bottom-px after:h-[2px] after:rounded-full after:transition-colors ${
-				active
-					? "rounded-md bg-accent text-foreground after:bg-transparent"
-					: "rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground after:bg-transparent"
-			}`}
-		>
+		<div className={tabClassName(active, "group gap-1 leading-none")}>
 			<button
 				type="button"
 				onClick={onClick}

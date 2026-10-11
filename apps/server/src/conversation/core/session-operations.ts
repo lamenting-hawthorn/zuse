@@ -193,6 +193,7 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 		});
 
 	const { ensureForTurn } = makeProviderSessionRuntime({
+		awaitWorkspaceReady: options.awaitWorkspaceReady,
 		state,
 		agentsFor,
 		cwdForWorktree,
@@ -796,21 +797,6 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 			yield* ndjsonAppend(sessionId, persisted);
 		});
 
-	const updateMcpServers: ConversationOperations["updateMcpServers"] = (
-		sessionId,
-		servers,
-	) =>
-		Effect.gen(function* () {
-			yield* lookupSession(sessionId);
-			const update = provider.updateMcpServers;
-			if (update === undefined) return;
-			yield* update(sessionId, servers).pipe(
-				Effect.catchTag("AgentSessionNotFoundError", () =>
-					Effect.fail(new SessionNotFoundError({ sessionId })),
-				),
-			);
-		});
-
 	const ensureSessionNotStarted = (sessionId: SessionId) =>
 		sql<{ readonly id: string }>`
       SELECT id FROM messages
@@ -866,6 +852,23 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 				updatedAt: yield* currentTimestamp,
 			});
 			yield* setStatus(sessionId, "idle");
+		});
+
+	/**
+	 * Stop an idle session's provider process so the next turn starts a fresh
+	 * one (e.g. under another account). Returns false, without touching the
+	 * process, while a turn is booting or running.
+	 */
+	const releaseProvider: ConversationOperations["releaseProvider"] = (
+		sessionId,
+	) =>
+		Effect.gen(function* () {
+			const session = yield* lookupSession(sessionId);
+			if (session.status === "running" || session.status === "booting")
+				return false;
+			yield* provider.close(sessionId).pipe(Effect.catch(() => Effect.void));
+			yield* interruptProviderFiber(sessionId);
+			return true;
 		});
 
 	/**
@@ -958,10 +961,10 @@ export const makeSessionOperations = (options: SessionOperationsOptions) => {
 		answerQuestion,
 		cancelQuestion,
 		respondToPlan,
-		updateMcpServers,
 		setWorktree,
 		setModel,
 		setProvider,
+		releaseProvider,
 		archiveSession,
 		unarchiveSession,
 		deleteSession,

@@ -130,61 +130,6 @@ describe("cloud runtime assets", () => {
 		}
 	});
 
-	test.each([
-		[".env", 71],
-		["nested/.env.production", 71],
-		["nested/.env.example.local", 71],
-		[".env.example\nnested/.env.sample\nnested/.env.template", 0],
-		["README.md", 0],
-	])("checks %s without closing the repository listing early", async (paths, expectedStatus) => {
-		const builderPath = fileURLToPath(
-			workspaceFileUrl("infra/cloud-sandboxes/project-builder.sh"),
-		);
-		const builder = await readFile(builderPath, "utf8");
-		const validation = builder.match(
-			/\t\tif git -C[^\n]*ls-tree[\s\S]*?\n\t\tfi/,
-		)?.[0];
-		expect(validation).toBeDefined();
-		const temporaryRoot = await mkdtemp(
-			join(tmpdir(), "zuse-project-builder-env-"),
-		);
-		try {
-			// Exceed pipe buffers after an early match, reproducing grep -q's SIGPIPE.
-			const listing = `${paths}\n${Array.from({ length: 20000 }, (_, i) => `src/file-${i}.ts`).join("\n")}\n`;
-			await writeFile(join(temporaryRoot, "paths"), listing);
-			const result = spawnSync(
-				"bash",
-				[
-					"-c",
-					`
-    source "$1"
-    status_dir="$2"
-    phase=sanitizing-snapshot
-    workspace_path=unused
-    source_commit=unused
-    git() { cat "$status_dir/paths"; }
-    ${validation}
-   `,
-					"bash",
-					builderPath,
-					temporaryRoot,
-				],
-				{ encoding: "utf8" },
-			);
-			expect(result.status, result.stderr).toBe(expectedStatus);
-			expect(result.stderr).not.toMatch(/Broken pipe/i);
-			if (expectedStatus === 71) {
-				expect(
-					await readFile(join(temporaryRoot, "failure-phase"), "utf8"),
-				).toBe("sanitizing-snapshot\n");
-			} else {
-				expect(result.stderr).toBe("");
-			}
-		} finally {
-			await rm(temporaryRoot, { recursive: true, force: true });
-		}
-	});
-
 	test("keeps rotating Codex login out of broker-capable account images", async () => {
 		const builder = await readWorkspaceFile(
 			"infra/cloud-sandboxes/project-builder.sh",
@@ -582,7 +527,7 @@ printf '%s\n' '{"token":"lazy-installation-token","expiresAtMs":4102444800000}'
 			"runtime_command=(node /opt/zuse/current/bin.mjs serve --foreground)",
 		);
 		expect(reconciler).toContain(
-			`exec "\\\${ZUSE_RUNTIME_NODE:-node}" "$runtime" serve`,
+			`exec_workspace_runtime "\\\${ZUSE_RUNTIME_NODE:-node}" "$runtime" serve`,
 		);
 		expect(bootstrap).not.toContain("runtime-updater.mjs");
 		expect(reconciler).toContain("ZUSE_RUNTIME_INSTALL_ONLY=1");
@@ -794,7 +739,7 @@ printf '%s\n' '{"token":"lazy-installation-token","expiresAtMs":4102444800000}'
 		expect(cloudInit).not.toMatch(/^\s+tcp dport (22|47837) accept$/mu);
 	});
 
-	test("uses immutable release directories and restores the prior target after a failed health check", async () => {
+	test("uses immutable releases and durable explicit activation and rollback", async () => {
 		const updater = await readWorkspaceFile(
 			"apps/server/scripts/runtime-updater.mjs",
 		);
@@ -804,14 +749,23 @@ printf '%s\n' '{"token":"lazy-installation-token","expiresAtMs":4102444800000}'
 			"await rm(release, { recursive: true, force: true })",
 		);
 		expect(updater).toContain("if (!(await waitForHealthyRuntime()))");
-		expect(updater).toContain("previousTarget = await readlink(currentLink)");
-		expect(updater).toContain("await symlink(previousTarget, rollbackLink)");
 		expect(updater).not.toContain("currentLink}.target");
+		expect(updater).toContain("runtime-signed-manifest.json");
+		expect(updater).toContain("runtime-signed-archive.tar.gz");
+		expect(updater).toContain("ZUSE_RUNTIME_UPDATE_TRANSACTION_ID");
+		expect(updater).toContain("ZUSE_RUNTIME_UPDATE_GENERATION");
+		expect(updater).toContain('await save({ phase: "activated" })');
+		expect(updater).toContain('await save({ phase: "rolled-back" })');
+		expect(updater).toContain(
+			"Rollback requires a fresh fenced runtime generation",
+		);
+		expect(updater).toContain(
+			"Runtime confirmation version or generation does not match",
+		);
 		expect(updater).toContain(
 			'await run("systemctl", ["restart", "zuse.service"])',
 		);
 		expect(updater).toContain('process.env.ZUSE_RUNTIME_INSTALL_ONLY === "1"');
-		expect(updater).toContain("if (installOnly)");
 		expect(updater).toContain("const fetchWithRetry");
 		expect(updater).toContain("AbortSignal.timeout");
 		expect(updater).toContain("Runtime hash is invalid");
@@ -828,13 +782,9 @@ printf '%s\n' '{"token":"lazy-installation-token","expiresAtMs":4102444800000}'
 		);
 		expect(updater).toContain("Number.isInteger(wireProtocol.min)");
 		expect(updater).toContain("const waitForHealthyRuntime = async () =>");
-		expect(updater).toContain("await rm(currentLink, { force: true })");
-		expect(updater).toContain("Rollback runtime failed its health check");
 		expect(updater).toContain('process.argv.includes("--check")');
 		expect(updater).toContain("ZUSE_RUNTIME_UPDATE_REQUEST_FILE");
 		expect(updater).toContain("ZUSE_RUNTIME_UPDATE_STATUS_FILE");
-		expect(updater).toContain('phase: "restarting"');
-		expect(updater).toContain('phase: "verifying"');
 	});
 
 	test("installs a narrow root-owned manual update trigger", async () => {

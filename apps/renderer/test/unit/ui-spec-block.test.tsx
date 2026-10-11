@@ -2,9 +2,10 @@ import { EnvironmentId, SessionId } from "@zuse/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { UiSpecBlock } from "../../src/components/ui-spec-block.tsx";
+import { useUiSpecResponses } from "../../src/store/ui-spec-responses.ts";
 
 const render = (spec: string) =>
-	renderToStaticMarkup(<UiSpecBlock spec={spec} />);
+	renderToStaticMarkup(<UiSpecBlock spec={spec} messageId="read-only" />);
 
 const followUps =
 	'root = FollowUps([{label: "Run tests", prompt: "Run the full test suite."}])';
@@ -62,6 +63,7 @@ describe("generated UI transcript blocks", () => {
 		const live = renderToStaticMarkup(
 			<UiSpecBlock
 				spec={followUps}
+				messageId="live-follow-ups"
 				sessionRef={{
 					environmentId: EnvironmentId.make("local"),
 					sessionId: SessionId.make("session"),
@@ -100,6 +102,7 @@ notes = TextArea("notes", "Notes", "Optional")`;
 		const live = renderToStaticMarkup(
 			<UiSpecBlock
 				spec={spec}
+				messageId="live-form"
 				sessionRef={{
 					environmentId: EnvironmentId.make("local"),
 					sessionId: SessionId.make("session"),
@@ -125,5 +128,39 @@ views = Tabs([{label: "Before", content: Text("Old flow")}, {label: "After", con
 			expect(html).toContain(text);
 		expect(html).toContain('data-status="active"');
 		expect(html).not.toContain("New flow");
+	});
+	it("renders flow diagrams in order with the focal node marked", () => {
+		const html = render(
+			'root = Flow([{label: "Desktop app"}, {label: "Zuse", detail: "Orchestrates", highlight: true}, {label: "Cloud computers"}], "Conceptual integration")',
+		);
+		expect(html.indexOf("Desktop app")).toBeLessThan(html.indexOf("Zuse"));
+		expect(html.indexOf("Zuse")).toBeLessThan(html.indexOf("Cloud computers"));
+		for (const text of ["Orchestrates", "Conceptual integration"])
+			expect(html).toContain(text);
+		expect(html.match(/data-highlight="true"/g)).toHaveLength(1);
+		expect(html).not.toContain("could not");
+	});
+	it("stays locked after a remount once its response is in flight or sent", () => {
+		const live = (messageId: string) =>
+			renderToStaticMarkup(
+				<UiSpecBlock
+					spec={followUps}
+					messageId={messageId}
+					sessionRef={{
+						environmentId: EnvironmentId.make("local"),
+						sessionId: SessionId.make("session"),
+					}}
+				/>,
+			);
+		const responses = useUiSpecResponses.getState();
+		expect(responses.begin("remounted")).toBe(true);
+		expect(responses.begin("remounted")).toBe(false);
+		expect(live("remounted")).toMatch(/<button[^>]* disabled=""/);
+		responses.settle("remounted", false);
+		expect(live("remounted")).not.toMatch(/<button[^>]* disabled=""/);
+		expect(responses.begin("remounted")).toBe(true);
+		responses.settle("remounted", true);
+		expect(live("remounted")).toMatch(/<button[^>]* disabled=""/);
+		expect(useUiSpecResponses.getState().begin("remounted")).toBe(false);
 	});
 });

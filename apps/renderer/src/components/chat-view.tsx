@@ -404,15 +404,17 @@ export function ChatView({
 		() => (
 			<>
 				<div className="px-[var(--chat-row-gutter,0.75rem)]">
-					<WorktreeSetupCard providerOutputStarted={providerOutputStarted} />
-					{backgroundAgents.length > 0 && (
-						<Suspense fallback={null}>
-							<BackgroundAgentWorkingRows agents={backgroundAgents} />
-						</Suspense>
-					)}
-					{pendingCreation?.phase === "failed" ? (
-						<ChatCreationFailureActions creation={pendingCreation} />
-					) : null}
+					<div className="mx-auto w-full max-w-[var(--chat-reading-column,56rem)]">
+						<WorktreeSetupCard providerOutputStarted={providerOutputStarted} />
+						{backgroundAgents.length > 0 && (
+							<Suspense fallback={null}>
+								<BackgroundAgentWorkingRows agents={backgroundAgents} />
+							</Suspense>
+						)}
+						{pendingCreation?.phase === "failed" ? (
+							<ChatCreationFailureActions creation={pendingCreation} />
+						) : null}
+					</div>
 				</div>
 				<div className="h-2" />
 			</>
@@ -906,10 +908,12 @@ export function ChatView({
 							className="flex h-full min-h-0 w-full flex-1 flex-col overflow-y-auto outline-none"
 						>
 							<div className="px-[var(--chat-row-gutter,0.75rem)]">
-								<ChatCreationPromptBubble
-									prompt={pendingStartupTranscriptPrompt}
-								/>
-								<WorktreeSetupCard />
+								<div className="mx-auto w-full max-w-[var(--chat-reading-column,56rem)]">
+									<ChatCreationPromptBubble
+										prompt={pendingStartupTranscriptPrompt}
+									/>
+									<WorktreeSetupCard />
+								</div>
 							</div>
 							{cloudSummary !== null && timeline.projection === null ? (
 								cloudTranscriptIsLoading(timeline.view.sync) ? (

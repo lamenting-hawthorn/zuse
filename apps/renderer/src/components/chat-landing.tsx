@@ -120,7 +120,7 @@ import {
 } from "~/lib/cloud-provider-presentation.ts";
 import { loadCloudWorkspacePlacement } from "~/lib/cloud-workspace-session-cache.ts";
 import {
-	ensureCloudWorkspaceAttached,
+	connectCloudWorkspaceForLaunch,
 	stageCloudChat,
 	summaryFromLaunch,
 	useCloudChatSummaryForSelection,
@@ -527,17 +527,12 @@ function WorkspaceChatLanding({
 	const restoredProject = useRef(false);
 	useEffect(() => {
 		if (restoredProject.current || projectGroups.length === 0) return;
-		// An explicit New Chat request already chose its project. Restoring a
-		// remembered project here would undo that navigation on the fresh landing.
-		if (useChatsStore.getState().landingRevision > 0) {
-			restoredProject.current = true;
-			return;
-		}
 		restoredProject.current = true;
 		const group = landingDefaultProject(
 			projectGroups,
 			newChatPreferences.lastProjectKey(),
 			selectedGroup?.key ?? null,
+			useChatsStore.getState().landingRevision > 0,
 		);
 		if (group === null || group.key === selectedGroup?.key) return;
 		const member = preferredGroupMember(group);
@@ -1117,6 +1112,8 @@ function WorkspaceChatLanding({
 			setPendingInput(startupInput);
 			setPendingCloudStep("creating");
 			let staged = false;
+			let opened = false;
+			let releaseStartupConnection: (() => void) | undefined;
 			let stagedMessage: { ref: SessionRef; id: MessageId } | null = null;
 			try {
 				assertRendererWorkspaceCurrent(workspace);
@@ -1186,7 +1183,17 @@ function WorkspaceChatLanding({
 					stagedMessage = { ref: sandboxSession, id: messageId };
 				staged = true;
 				setPendingCloudChatId(summary.chatId);
-				if (ownsLanding()) useChatsStore.getState().select(summary.chatId);
+				setPendingCloudStep("starting");
+				// Open the staged chat immediately: its header, transcript and
+				// mailbox queue carry the startup status while the gateway connects,
+				// so the user is never left on a bare landing for the whole boot.
+				if (ownsLanding()) {
+					useChatsStore.getState().select(summary.chatId);
+					opened = true;
+				}
+				releaseStartupConnection =
+					await connectCloudWorkspaceForLaunch(summary);
+				assertRendererWorkspaceCurrent(workspace);
 				if (!usesDurableInitialMessage) {
 					// This control plane delivered the prompt with the launch intent,
 					// so there is no first message left for us to enrich.
@@ -1205,17 +1212,7 @@ function WorkspaceChatLanding({
 							},
 						});
 					}
-					void ensureCloudWorkspaceAttached(summary).catch((cause) =>
-						toastManager.add({
-							type: "error",
-							get title() {
-								return uiMessage(
-									"chat:chat_landing_cloud_workspace_needs_attention",
-								);
-							},
-							description: formatError(cause),
-						}),
-					);
+
 					useSessionsStore.getState().clearDraft(draftRevision);
 					setSelectedCloudProviderId(null);
 					setCreateSource(null);
@@ -1224,25 +1221,11 @@ function WorkspaceChatLanding({
 
 				let finalInput = startupInput;
 				if (needsRuntime) {
-					setPendingCloudStep("starting");
-					await ensureCloudWorkspaceAttached(summary);
 					setPendingCloudStep("preparing");
 					finalInput = await finalizeStartupInputWhenReady(
 						startupInput,
 						{ ref: sandboxSession, uploadRoot: null },
 						startupOptions,
-					);
-				} else {
-					void ensureCloudWorkspaceAttached(summary).catch((cause) =>
-						toastManager.add({
-							type: "error",
-							get title() {
-								return uiMessage(
-									"chat:chat_landing_cloud_workspace_needs_attention",
-								);
-							},
-							description: formatError(cause),
-						}),
 					);
 				}
 				setPendingCloudStep("sending");
@@ -1262,9 +1245,9 @@ function WorkspaceChatLanding({
 					cause instanceof StartupInputError
 						? cause.message
 						: formatError(cause);
-				// Once the chat is staged the lander is gone: the open chat is the
+				// Once the chat is selected the lander is gone: the open chat is the
 				// only surface left that can carry the failure.
-				if (staged) {
+				if (opened) {
 					toastManager.add({
 						type: "error",
 						get title() {
@@ -1279,6 +1262,7 @@ function WorkspaceChatLanding({
 				}
 				setPendingPrompt(null);
 			} finally {
+				releaseStartupConnection?.();
 				if (stagedMessage !== null) {
 					for (const item of opts.pendingAttachments)
 						forgetAttachmentPreview(stagedMessage.ref, item.tempId);
@@ -1738,20 +1722,25 @@ function WorkspaceChatLanding({
 			<div className="chat-session-layout relative flex min-h-0 min-w-0 flex-1 flex-col [container-type:inline-size]">
 				<div className="min-h-0 flex-1 overflow-y-auto">
 					{progress.kind === "worktree" ? (
-						<SetupCardView
-							data={{
-								repoName: selectedFolder?.name ?? "this repo",
-								hasWorktree:
-									pendingWorktreeId !== null || workspaceMode === "worktree",
-								worktreePending: pendingWorktree === null,
-								worktreeName: pendingWorktree?.name ?? null,
-								branch: pendingWorktree?.branch ?? null,
-								baseBranch: pendingWorktree?.baseBranch ?? null,
-								setupStatus: pendingWorktree?.setupStatus ?? null,
-								setupOutput: pendingWorktree?.setupOutput ?? "",
-								onRerun: null,
-							}}
-						/>
+						<div className="px-[var(--chat-row-gutter)] pt-3">
+							<div className="mx-auto w-full max-w-[var(--chat-reading-column)]">
+								<SetupCardView
+									data={{
+										repoName: selectedFolder?.name ?? "this repo",
+										hasWorktree:
+											pendingWorktreeId !== null ||
+											workspaceMode === "worktree",
+										worktreePending: pendingWorktree === null,
+										worktreeName: pendingWorktree?.name ?? null,
+										branch: pendingWorktree?.branch ?? null,
+										baseBranch: pendingWorktree?.baseBranch ?? null,
+										setupStatus: pendingWorktree?.setupStatus ?? null,
+										setupOutput: pendingWorktree?.setupOutput ?? "",
+										onRerun: null,
+									}}
+								/>
+							</div>
+						</div>
 					) : null}
 				</div>
 				<div className="px-4 pb-4">

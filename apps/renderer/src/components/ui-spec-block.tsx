@@ -19,7 +19,7 @@ import {
 	generativeUiComponents,
 	validateGenerativeUiSpec,
 } from "@zuse/utils/generative-ui";
-import { Check, Circle, X } from "lucide-react";
+import { ArrowRight, Check, Circle, X } from "lucide-react";
 import {
 	createContext,
 	Fragment,
@@ -33,6 +33,7 @@ import {
 import type { z } from "zod";
 import { sendThroughCurrentComposer } from "~/lib/context-handoff";
 import { cn } from "~/lib/utils";
+import { useUiSpecResponses } from "~/store/ui-spec-responses";
 import { Line } from "./dither-kit/area.tsx";
 import { LineChart } from "./dither-kit/area-chart.tsx";
 import { Grid } from "./dither-kit/grid.tsx";
@@ -87,15 +88,18 @@ type SpecComponent<Name extends GenerativeUiComponentName> = (
 	renderProps: ComponentRenderProps<SpecProps<Name>>,
 ) => ReactNode;
 
-/** Whether this block may send, and whether it already has. */
+/** Whether this block may send, and whether a response is in flight or sent. */
 const UiInteraction = createContext<{
 	readonly enabled: boolean;
-	readonly sent: boolean;
-}>({ enabled: false, sent: false });
+	readonly status: "sending" | "sent" | undefined;
+}>({ enabled: false, status: undefined });
 
 const useInteractive = () => {
-	const { enabled, sent } = useContext(UiInteraction);
-	return { disabled: !enabled || sent, sent };
+	const { enabled, status } = useContext(UiInteraction);
+	return {
+		disabled: !enabled || status !== undefined,
+		sent: status === "sent",
+	};
 };
 
 const renderChildren = (
@@ -391,6 +395,45 @@ const UiSteps: SpecComponent<"Steps"> = ({ props }) => (
 			</li>
 		))}
 	</ol>
+);
+
+const UiFlow: SpecComponent<"Flow"> = ({ props }) => (
+	<figure className="@container min-w-0 space-y-2">
+		<ol className="flex flex-col items-stretch gap-1.5 @lg:flex-row @lg:items-center">
+			{props.nodes.map((node, index) => (
+				// eslint-disable-next-line react/no-array-index-key -- spec order is stable
+				<Fragment key={index}>
+					{index > 0 ? (
+						<ArrowRight
+							aria-hidden
+							className="size-4 shrink-0 rotate-90 self-center text-muted-foreground @lg:rotate-0"
+						/>
+					) : null}
+					<li
+						data-highlight={node.highlight === true || undefined}
+						className={cn(
+							"flex min-w-0 flex-1 flex-col justify-center self-stretch rounded-lg bg-muted/50 px-3 py-2 text-center",
+							node.highlight && "bg-primary/15 ring-1 ring-primary/40",
+						)}
+					>
+						<span className="break-words font-medium text-foreground text-sm">
+							{node.label}
+						</span>
+						{node.detail ? (
+							<span className="break-words text-muted-foreground text-xs leading-5">
+								{node.detail}
+							</span>
+						) : null}
+					</li>
+				</Fragment>
+			))}
+		</ol>
+		{props.caption ? (
+			<figcaption className="text-muted-foreground text-xs">
+				{props.caption}
+			</figcaption>
+		) : null}
+	</figure>
 );
 
 const UiTabs: SpecComponent<"Tabs"> = ({ props, renderNode }) => {
@@ -743,6 +786,7 @@ const components: { [Name in GenerativeUiComponentName]: SpecComponent<Name> } =
 		LineChart: UiLineChart,
 		Callout: UiCallout,
 		Steps: UiSteps,
+		Flow: UiFlow,
 		Tabs: UiTabs,
 		FollowUps: UiFollowUps,
 		Form: UiForm,
@@ -774,37 +818,43 @@ const generativeUiLibrary = createLibrary({
 
 export function UiSpecBlock({
 	spec,
+	messageId,
 	sessionRef,
 }: {
 	readonly spec: string;
+	/** Keys the send-once state, which must survive row remounts. */
+	readonly messageId: string;
 	/** Session that receives responses; omit when the block is read-only. */
 	readonly sessionRef?: SessionRef;
 }) {
 	const { message: uiMessage } = useMessages(["chat"]);
-	const [sent, setSent] = useState(false);
+	const status = useUiSpecResponses((state) => state.byMessageId[messageId]);
 	const onAction = useCallback(
-		(event: ActionEvent) => {
+		async (event: ActionEvent) => {
 			if (
 				sessionRef === undefined ||
-				sent ||
 				event.type !== BuiltinActionType.ContinueConversation
 			)
 				return;
-			if (sendThroughCurrentComposer(event.humanFriendlyMessage, sessionRef)) {
-				setSent(true);
-				return;
-			}
+			const responses = useUiSpecResponses.getState();
+			if (!responses.begin(messageId)) return;
+			const accepted = await sendThroughCurrentComposer(
+				event.humanFriendlyMessage,
+				sessionRef,
+			).catch(() => false);
+			responses.settle(messageId, accepted);
+			if (accepted) return;
 			toastManager.add({
 				type: "error",
 				title: uiMessage("chat:message_row_ui_spec_send_failed"),
 				description: uiMessage("chat:message_row_ui_spec_send_open_chat"),
 			});
 		},
-		[sent, sessionRef, uiMessage],
+		[messageId, sessionRef, uiMessage],
 	);
 	const interaction = useMemo(
-		() => ({ enabled: sessionRef !== undefined, sent }),
-		[sessionRef, sent],
+		() => ({ enabled: sessionRef !== undefined, status }),
+		[sessionRef, status],
 	);
 	// Re-validated at render time so a malformed or outdated persisted row
 	// degrades to the raw-spec fallback instead of a blank block.

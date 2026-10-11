@@ -544,20 +544,19 @@ const StubGitLive = Layer.succeed(GitService, {
 });
 
 const StubTitleGeneratorLive = Layer.succeed(TitleGenerator, {
-	generate: () =>
+	generate: (input) =>
 		Effect.gen(function* () {
 			titleGenerationStarts += 1;
 			if (titleGenerationBarrier !== null) {
 				yield* Effect.promise(() => titleGenerationBarrier as Promise<void>);
 			}
-			return generatedTitle === null
-				? yield* Effect.die("not used")
-				: generatedTitle;
+			if (generatedTitle === null && generatedBranch === null)
+				return yield* Effect.die("not used");
+			return {
+				title: input.title ? generatedTitle : null,
+				branch: input.branch ? generatedBranch : null,
+			};
 		}),
-	generateBranch: () =>
-		generatedBranch === null
-			? Effect.die("not used")
-			: Effect.succeed(generatedBranch),
 });
 
 const StubConfigStoreLive = Layer.succeed(ConfigStoreService, {
@@ -607,7 +606,6 @@ const StubRepositorySettingsLive = Layer.succeed(RepositorySettingsService, {
 				environmentVariables: {},
 				cloudEnvironmentVariables: {},
 				fileIncludeGlobs: "",
-				mcpDisabledServers: [],
 			}),
 		),
 	update: (projectId, patch) =>
@@ -626,7 +624,6 @@ const StubRepositorySettingsLive = Layer.succeed(RepositorySettingsService, {
 				environmentVariables: patch.environmentVariables ?? {},
 				cloudEnvironmentVariables: patch.cloudEnvironmentVariables ?? {},
 				fileIncludeGlobs: patch.fileIncludeGlobs ?? "",
-				mcpDisabledServers: patch.mcpDisabledServers ?? [],
 			}),
 		),
 });
@@ -700,6 +697,7 @@ const runAllMigrations = Effect.all(
 
 let queueAuthorAllowed = true;
 let queueAuthorWait: Effect.Effect<void> = Effect.void;
+let workspacePreparation: Effect.Effect<void> = Effect.void;
 const makeRuntime = (dbPath: string, migrate = true) => {
 	const SqlLive = sqliteLayer({ filename: dbPath });
 	// Run migrations during layer build, and re-export SqlClient downstream.
@@ -720,6 +718,11 @@ const makeRuntime = (dbPath: string, migrate = true) => {
 	const ConversationLayer = ConversationServicesLive.pipe(
 		Layer.provide(
 			Layer.succeed(WorkspaceExecutionPolicy, {
+				get isReady() {
+					return workspacePreparation === Effect.void;
+				},
+				awaitReady: Effect.suspend(() => workspacePreparation),
+				markReady: Effect.void,
 				authorize: () =>
 					queueAuthorWait.pipe(
 						Effect.andThen(Effect.sync(() => queueAuthorAllowed)),
@@ -817,6 +820,7 @@ const store = TestConversation;
 beforeEach(() => {
 	queueAuthorAllowed = true;
 	queueAuthorWait = Effect.void;
+	workspacePreparation = Effect.void;
 	providerGoals.clear();
 	testCommandSequence = 0;
 	providerStartInputs = [];
@@ -988,6 +992,122 @@ describe("ConversationServices migrations", () => {
 });
 
 describe("ConversationServices — chat & session lifecycle", () => {
+	it("never delivers a prompt stopped while repository preparation is pending", async () => {
+		const ready = await Effect.runPromise(Deferred.make<void>());
+		const waiting = await Effect.runPromise(Deferred.make<void>());
+		workspacePreparation = Deferred.succeed(waiting, undefined).pipe(
+			Effect.andThen(Deferred.await(ready)),
+		);
+		await withRuntime(async (run) => {
+			const created = await run(
+				Effect.flatMap(store, (service) =>
+					service.createChat({
+						projectId: PROJECT_ID,
+						providerId: "claude",
+						model: "claude-opus-4-8",
+					}),
+				),
+			);
+			await run(
+				Effect.flatMap(store, (service) =>
+					service.sendMessageWithInput({
+						commandId: "cancel-preparation-prompt",
+						sessionId: created.initialSession.id,
+						text: "this must never reach the agent",
+					}),
+				),
+			);
+			await Effect.runPromise(Deferred.await(waiting));
+			const stopped = run(
+				Effect.flatMap(store, (service) =>
+					service.interruptSession(
+						testCommandId("messages.interrupt"),
+						created.initialSession.id,
+					),
+				).pipe(Effect.timeout("1 second")),
+			);
+			await expect
+				.poll(
+					async () =>
+						(
+							await run(
+								Effect.gen(function* () {
+									const sql = yield* SqlClient.SqlClient;
+									return yield* sql`SELECT type FROM events WHERE stream_id = ${created.initialSession.id} AND type = 'TurnInterruptRequested'`;
+								}),
+							)
+						).length,
+				)
+				.toBe(1);
+			await stopped;
+			expect(providerStartInputs).toHaveLength(0);
+			expect(providerSentTexts).toEqual([]);
+			workspacePreparation = Effect.void;
+			await Effect.runPromise(Deferred.succeed(ready, undefined));
+			await run(
+				Effect.flatMap(store, (service) =>
+					service.interruptSession(
+						testCommandId("messages.interrupt"),
+						created.initialSession.id,
+					),
+				),
+			);
+			expect(providerStartInputs).toHaveLength(0);
+			expect(providerSentTexts).toEqual([]);
+		});
+	});
+
+	it("returns the chat and durably accepts a direct prompt while repository preparation blocks execution", async () => {
+		const ready = await Effect.runPromise(Deferred.make<void>());
+		workspacePreparation = Deferred.await(ready);
+		await withRuntime(async (run) => {
+			const created = await run(
+				Effect.flatMap(store, (service) =>
+					service.createChat({
+						projectId: PROJECT_ID,
+						providerId: "claude",
+						model: "claude-opus-4-8",
+					}),
+				),
+			);
+			await run(
+				Effect.flatMap(store, (service) =>
+					service.sendMessageWithInput({
+						commandId: "preparation-prompt",
+						sessionId: created.initialSession.id,
+						text: "wait for the correct checkout",
+					}),
+				),
+			);
+			const messages = await run(
+				Effect.flatMap(store, (service) =>
+					service.listMessages(created.initialSession.id),
+				),
+			);
+			expect(
+				messages.some(
+					(message) =>
+						message.content._tag === "user" &&
+						message.content.text === "wait for the correct checkout",
+				),
+			).toBe(true);
+			expect(providerStartInputs).toHaveLength(0);
+			const attempts = await run(
+				Effect.gen(function* () {
+					const sql = yield* SqlClient.SqlClient;
+					return yield* sql`SELECT effect_id FROM reactor_effect_receipts WHERE effect_id LIKE 'reactor:provider-turn:%'`;
+				}),
+			);
+			expect(attempts).toHaveLength(0);
+			workspacePreparation = Effect.void;
+			await Effect.runPromise(Deferred.succeed(ready, undefined));
+			await expect.poll(() => providerStartInputs.length).toBe(1);
+			await expect
+				.poll(() => providerSentTexts)
+				.toEqual(["wait for the correct checkout"]);
+		});
+	});
+
 	it("keeps an empty session dormant even when provider startup would fail", async () => {
 		await withRuntime(async (run) => {
 			failProviderStart = true;
@@ -1323,6 +1443,69 @@ describe("ConversationServices — chat & session lifecycle", () => {
 
 			expect(evidence.events).toEqual([]);
 			expect(evidence.receipts).toEqual([]);
+		});
+	});
+
+	it("releases an idle provider for an account switch but never a running turn", async () => {
+		await withRuntime(async (run) => {
+			const { initialSession } = await run(
+				Effect.flatMap(store, (service) =>
+					service.createChat({
+						projectId: PROJECT_ID,
+						providerId: "claude",
+						model: "claude-opus-4-8",
+					}),
+				),
+			);
+			activeProviderSessions.add(initialSession.id);
+			expect(
+				await run(
+					Effect.flatMap(store, (service) =>
+						service.releaseProvider(initialSession.id),
+					),
+				),
+			).toBe(true);
+			expect(activeProviderSessions.has(initialSession.id)).toBe(false);
+
+			await run(
+				Effect.flatMap(SessionDomain, (domain) =>
+					domain.dispatch({
+						commandId: "test:release-running-turn",
+						streamId: initialSession.id,
+						command: {
+							_tag: "SubmitTurn",
+							turnId: AgentTurnId.make("turn_release_running"),
+							messageId: MessageId.make("message_release_running"),
+							role: "user",
+							kind: "user",
+							contentJson: JSON.stringify({ _tag: "user", text: "work" }),
+							parentItemId: null,
+							providerInputJson: JSON.stringify(
+								new ComposerInput({
+									text: "work",
+									attachments: [],
+									fileRefs: [],
+									skillRefs: [],
+								}),
+							),
+							createdAt: Date.now(),
+						},
+					}),
+				),
+			);
+			const session = await run(
+				Effect.flatMap(store, (service) =>
+					service.getSession(initialSession.id),
+				),
+			);
+			expect(["booting", "running"]).toContain(session.status);
+			expect(
+				await run(
+					Effect.flatMap(store, (service) =>
+						service.releaseProvider(initialSession.id),
+					),
+				),
+			).toBe(false);
 		});
 	});
 

@@ -1,7 +1,6 @@
 import { composerFeedbackText } from "@zuse/client-runtime/composer-feedback";
 import { isCloudWorkspaceReady } from "../lib/cloud-workspace-lifecycle.ts";
 import { isHostedProduct } from "../lib/hosted-connect.ts";
-import { useActiveContext } from "../store/active-workspace.ts";
 import { ComposerAttachmentTray } from "./composer/composer-attachment-tray.tsx";
 import "@zuse/i18n/english/common";
 import { formatNumber as formatUiNumber } from "@zuse/i18n";
@@ -188,8 +187,8 @@ import {
 const EMPTY_PERMISSION_REQUESTS: Readonly<Record<string, PermissionRequest>> =
 	{};
 
-import { McpPopover } from "./mcp-popover.tsx";
 import { ModelPicker } from "./model-picker.tsx";
+import { PluginsPopover } from "./plugins/plugins-popover.tsx";
 import { resetLabel, StickMeter } from "./usage/usage-meter.tsx";
 
 const isBrowserAnnotation = (
@@ -299,7 +298,6 @@ export function ChatComposer({
 	const [reasoningLevel, setReasoningLevel] = useState<string | null>(null);
 	// Provider features the installed CLI supports (from the availability
 	// probe). Codex goal mode is version-gated; Grok advertises it natively.
-	const activeContext = useActiveContext();
 	const capabilities = useProvidersStore((s) =>
 		s.capabilitiesFor(session.providerId, qualifiedEnvironmentId),
 	);
@@ -523,7 +521,9 @@ export function ChatComposer({
 	// time, always sees the current sessionId / send / inFlight without
 	// recreating the editor on every render.
 	const submitRef = useRef<() => boolean>(() => false);
-	const sendTextRef = useRef<(text: string) => boolean>(() => false);
+	const sendTextRef = useRef<(text: string) => Promise<boolean>>(
+		async () => false,
+	);
 	// Same indirection for file drops — the editor extension is bound once
 	// and we want it to call the latest closure with the current sessionId.
 	const filesDroppedRef = useRef<(files: ReadonlyArray<File>) => void>(
@@ -1371,7 +1371,7 @@ export function ChatComposer({
 	submitRef.current = submit;
 	// Messages raised by generated UI (form answers, follow-ups) take the same
 	// send-or-queue path as typed text, but never touch the user's draft.
-	sendTextRef.current = (text) => {
+	sendTextRef.current = async (text) => {
 		if (
 			onDraftSubmit !== undefined ||
 			submitDisabled ||
@@ -1380,15 +1380,31 @@ export function ChatComposer({
 			text.trim().length === 0
 		)
 			return false;
+		// Notes pinned to the transcript (often to this very UI) belong with the
+		// response, exactly as with a typed submit.
+		const annotations = annotationsForSession(sessionId);
 		const input = ComposerInput.make({
 			text,
-			attachments: [],
+			attachments: attachmentsWithBrowserAnnotations([], annotations),
 			fileRefs: [],
 			skillRefs: [],
+			annotations,
 		});
-		if (shouldQueueNow()) queue(input);
-		else void send(input).catch(() => undefined);
-		return true;
+		// Drain only what was sent; notes added meanwhile stay in the tray.
+		const drainSent = () => {
+			const store = useAnnotationsStore.getState();
+			for (const annotation of annotations)
+				store.remove(sessionId, annotation.id);
+		};
+		// A queued message has no delivery promise; queueing is the acceptance.
+		if (shouldQueueNow()) {
+			queue(input);
+			drainSent();
+			return true;
+		}
+		const accepted = await send(input).catch(() => false);
+		if (accepted) drainSent();
+		return accepted;
 	};
 	togglePlanModeRef.current = () => {
 		if (session.providerId === "pi") return;
@@ -1741,19 +1757,7 @@ export function ChatComposer({
 												current={session.permissionMode}
 											/>
 										)}
-									{session.providerId !== "pi" &&
-										(!isHostedProduct() ||
-											(!isDraft && activeContext.status === "ready")) && (
-											<McpPopover
-												environmentId={qualifiedEnvironmentId}
-												projectId={
-													activeContext.status === "ready"
-														? activeContext.folderId
-														: session.projectId
-												}
-												providerId={session.providerId}
-											/>
-										)}
+									<PluginsPopover />
 								</div>
 								<div className="flex shrink-0 items-center gap-2">
 									<ComposerModelPicker
